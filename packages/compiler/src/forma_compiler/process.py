@@ -14,7 +14,11 @@ class CutProcess(Record):
         return all(
             (
                 (e.verification_state == "user_confirmed" and e.provenance == "user")
-                or (allow_synthetic and e.provenance == "synthetic_fixture")
+                or (
+                    allow_synthetic
+                    and e.provenance == "synthetic_fixture"
+                    and e.verification_state == "unknown"
+                )
             )
             and e.kind in ("measurement", "physical_test")
             for e in self.evidence
