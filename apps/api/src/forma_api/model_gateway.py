@@ -6,6 +6,7 @@ import json
 import os
 import re
 import socket
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Literal, Protocol, TypeVar
@@ -41,6 +42,21 @@ class MetaHTTP:
             raise GatewayError("invalid_endpoint")
         connection = http.client.HTTPSConnection("api.meta.ai", timeout=timeout)
         deadline = time.monotonic() + timeout
+        expired = threading.Event()
+        active_socket = []
+
+        def interrupt_socket():
+            expired.set()
+            sock = active_socket[0] if active_socket else connection.sock
+            if sock is not None:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass  # A concurrently completed/closed socket needs no cancellation.
+
+        timer = threading.Timer(timeout, interrupt_socket)
+        timer.daemon = True
+        timer.start()
         try:
             connection.request(
                 "POST",
@@ -51,6 +67,10 @@ class MetaHTTP:
                     "Content-Type": "application/json",
                 },
             )
+            if expired.is_set() or time.monotonic() >= deadline:
+                raise GatewayError("timeout")
+            if connection.sock is not None:
+                active_socket.append(connection.sock)
             response = connection.getresponse()
             if response.status != 200:
                 raise GatewayError(
@@ -82,10 +102,14 @@ class MetaHTTP:
         except (TimeoutError, socket.timeout):
             raise GatewayError("timeout") from None
         except (http.client.HTTPException, OSError):
-            raise GatewayError("network_error") from None
+            raise GatewayError(
+                "timeout" if expired.is_set() else "network_error"
+            ) from None
         except (ValueError, UnicodeError):
             raise GatewayError("invalid_response") from None
         finally:
+            timer.cancel()
+            timer.join()
             connection.close()
 
 
@@ -344,12 +368,14 @@ class MetaGateway:
         try:
             if response["status"] != "completed":
                 raise GatewayError("incomplete_output")
-            text = "".join(
-                part["text"]
-                for item in response["output"]
-                for part in item.get("content", [])
-                if part.get("type") == "output_text"
-            )
+            parts = [
+                part for item in response["output"] for part in item.get("content", [])
+            ]
+            if any(part.get("type") == "refusal" for part in parts):
+                raise GatewayError("refusal")
+            if not parts or any(part.get("type") != "output_text" for part in parts):
+                raise GatewayError("invalid_segmentation")
+            text = "".join(part["text"] for part in parts)
             pattern = r"<\|box;x1=(\d+);y1=(\d+);x2=(\d+);y2=(\d+);w=(\d+);h=(\d+)\|>"
             matches = re.findall(pattern, text)
             if text and not matches:

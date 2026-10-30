@@ -1,4 +1,5 @@
 import json
+import threading
 from dataclasses import asdict
 
 import pytest
@@ -190,7 +191,13 @@ def test_sam_boxes_and_empty_match():
             }
         ],
     }
-    fake = Fake(response, {"status": "completed", "output": []})
+    fake = Fake(
+        response,
+        {
+            "status": "completed",
+            "output": [{"content": [{"type": "output_text", "text": ""}]}],
+        },
+    )
     gateway = MetaGateway(fake)
     assert gateway.segment(image, "cardboard sheet")[0].source == "sam"
     assert gateway.segment(image, "cardboard sheet") == []
@@ -222,6 +229,7 @@ def test_consent_and_concept_rejected_before_network():
 def test_http_errors_closed_and_redacted(monkeypatch, status, code):
     class Connection:
         closed = False
+        sock = None
 
         def __init__(self, host, timeout):
             assert host == "api.meta.ai" and timeout == 2
@@ -277,3 +285,59 @@ def test_budget_exhaustion_stops_before_next_model_round(monkeypatch):
 def test_malformed_transport_shape_has_safe_failure(response):
     with pytest.raises(GatewayError):
         MetaGateway(Fake(response)).propose("test", Proposal)
+
+
+@pytest.mark.parametrize(
+    "parts",
+    [
+        [],
+        [{"type": "refusal", "refusal": "private"}],
+        [{"type": "output_image", "data": "private"}],
+    ],
+)
+def test_sam_missing_or_refused_output_is_not_empty_match(parts):
+    response = {"status": "completed", "output": [{"content": parts}]}
+    with pytest.raises(GatewayError) as error:
+        MetaGateway(Fake(response)).segment(
+            ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True), "sheet"
+        )
+    assert error.value.code in ("refusal", "invalid_segmentation")
+    assert "private" not in str(error.value)
+
+
+def test_absolute_timer_interrupts_stalled_headers_and_cleans_up(monkeypatch):
+    interrupted = threading.Event()
+    timers_before = {
+        id(t) for t in threading.enumerate() if isinstance(t, threading.Timer)
+    }
+
+    class Sock:
+        def shutdown(self, how):
+            interrupted.set()
+
+    class Connection:
+        closed = False
+        sock = Sock()
+
+        def __init__(self, host, timeout):
+            pass
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            assert interrupted.wait(2), "absolute timer did not interrupt header read"
+            raise OSError("private socket details")
+
+        def close(self):
+            Connection.closed = True
+
+    monkeypatch.setattr(
+        "forma_api.model_gateway.http.client.HTTPSConnection", Connection
+    )
+    with pytest.raises(GatewayError, match="timeout"):
+        MetaHTTP("secret").post("/responses", {}, 0.03)
+    assert Connection.closed
+    assert {
+        id(t) for t in threading.enumerate() if isinstance(t, threading.Timer)
+    } == timers_before
