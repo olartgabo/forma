@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from pydantic import ValidationError
+
 from forma_domain.models import (
     Blocker,
     BuildPlan,
@@ -48,6 +50,21 @@ def validate_plan(
     the occupied footprint after rotation; rotation is metadata, never a second
     implicit transform. Unallocated cut area is waste, never reusable stock.
     """
+    try:
+        plan = BuildPlan.model_validate_json(plan.model_dump_json())
+        if process is not None:
+            process = CutProcess.model_validate_json(process.model_dump_json())
+    except (ValidationError, AttributeError, TypeError, ValueError):
+        return CompilerResult(
+            status="blocked",
+            plan=None,
+            blockers=(
+                Blocker(
+                    code="invalid_reference",
+                    message="Revalidate the plan and process contracts before compilation.",
+                ),
+            ),
+        )
     blockers: list[Blocker] = []
     stocks = {s.id: s for s in plan.stocks}
     parts = {p.id: p for p in plan.parts}
