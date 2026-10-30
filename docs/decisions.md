@@ -20,7 +20,7 @@ constraints, not claims that software or physical tests exist.
 
 | ID   | Question and required evidence                                                                   | Owner                                  | Resolve before                   |
 | ---- | ------------------------------------------------------------------------------------------------ | -------------------------------------- | -------------------------------- |
-| P001 | Runtime/package versions, npm/Python tooling, dependency install, formatter and real CI commands | @olartgabo with @ResniDev              | #1 implementation                |
+| P001 | Resolved for workspace scaffold; schema integration review remains pending (D008 below)         | @olartgabo with @ResniDev              | #1 review                         |
 | P002 | Python package layout, schema export/type generation paths and error taxonomy                    | @ResniDev with @olartgabo              | #3 consumers                     |
 | P003 | Session/auth mechanism and authenticated project/media access                                    | @olartgabo                             | #6 persistence routes            |
 | P004 | Hosting region, DB/object-storage providers, migrations, backup and deletion approach            | @olartgabo                             | #6/#16 deployment                |
@@ -36,6 +36,22 @@ constraints, not claims that software or physical tests exist.
 Use spec section 18 as the starting reference list for provider/competition
 verification. No live external claims were revalidated by this scaffold.
 Optional Image/Voice/3D decisions wait until physical P0 is green.
+
+## D008: Workspace tooling, October 30, 2026
+
+Owner: @olartgabo; reviewer: @ResniDev. Issue #1 uses npm workspaces for
+`apps/web`, Node 22.21.0/npm 11.16.0, Next.js 16.4.3/React 19.3.1 and
+TypeScript 5.9.3. The root Python project installs `forma_api` from
+`apps/api/src`, using Python 3.12.6 and uv 0.11.16 with exact direct dependencies
+and a generated lock. Prettier 3.9.10 formats web/config source; Ruff 0.17.3
+formats/lints Python. CI runs the documented `npm run check` with no Meta key.
+
+This provides two local processes without optional hosting or task orchestration.
+The health route is liveness only. Domain packaging, schema export, generated
+TypeScript paths and error envelopes remain P002/#3. The
+[#1 handoff](handoffs/issue-1-workspace.md) proposes integration boundaries for
+review; no domain consumer is implemented before agreement. No product scope or
+physical verification claim changes.
 
 ## Recording a resolution
 

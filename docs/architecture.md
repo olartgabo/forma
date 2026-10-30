@@ -1,7 +1,7 @@
 # Architecture
 
-Status: planned boundaries from formspec.md sections 3-13. No module is
-implemented by this scaffold.
+Status: planned boundaries from formspec.md sections 3-13. The workspace
+implements a Next.js preview and API liveness route; the flow below is planned.
 
 ```mermaid
 flowchart TD
@@ -33,8 +33,10 @@ flowchart TD
 | web           | Generated API types and API client                      | Server keys, stock/repair authority                 |
 | evaluation    | Offline modules and explicit live/physical adapters     | Fabricated results                                  |
 
-Python package layout and import names are selected in issue #1/#3. Directory
-boundaries are conceptual and may be simplified without changing these rules.
+The API package is `forma_api` under `apps/api/src`, installed from the root
+Python project. Domain package names and generated contracts remain in #3.
+Directory boundaries are conceptual and may be simplified without changing
+these rules.
 
 ## Three records
 
