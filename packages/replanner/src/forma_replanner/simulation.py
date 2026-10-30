@@ -407,10 +407,22 @@ def simulate_patch(
                 tx.id,
             )
             continue
-        key = (tx.operation_id, tx.kind, tx.source_stock_id, tx.source_region_id)
-        if key in seen_transactions:
-            fail("stock_exhausted", "Duplicate physical material accounting.", tx.id)
-        seen_transactions.add(key)
+        # Loss and salvage reconcile against the live region ledger, so a region
+        # may be lost, recovered and lost again. Cut outputs are keyed by output
+        # region so one cut can record each of its offcuts.
+        if tx.kind in ("consume", "offcut"):
+            key = (
+                tx.operation_id,
+                tx.kind,
+                tx.source_stock_id,
+                tx.source_region_id,
+                tx.output_region.id if tx.output_region else None,
+            )
+            if key in seen_transactions:
+                fail(
+                    "stock_exhausted", "Duplicate physical material accounting.", tx.id
+                )
+            seen_transactions.add(key)
         if tx.kind == "consume":
             if (
                 tx.operation_id not in completed

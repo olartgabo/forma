@@ -614,3 +614,78 @@ def test_family_validator_rejection_blocks_ranking():
     )
     assert result.status == "blocked"
     assert not rank_feasible((result,))
+
+
+def two_offcut_data():
+    data = input_data()
+    second = dict(id="strip", geometry=dict(x=0, y=100, width=65, height=20))
+    data["base_plan"]["operations"][0]["effects"]["created_offcuts"].append(second)
+    data["remaining_stock"][0]["usable_regions"].append(deepcopy(second))
+    tx = dict(
+        project_id="project",
+        version_id="v1",
+        operation_id="cut",
+        source_stock_id="sheet",
+        source_region_id="root",
+        kind="offcut",
+        unit="mm2",
+        recorded_at=STAMP,
+        physical_event_id="event_cut",
+    )
+    offcuts = data["base_plan"]["operations"][0]["effects"]["created_offcuts"]
+    data["material_transactions"] = [
+        tx
+        | dict(
+            id="tx_" + r["id"],
+            output_region=r,
+            quantity=r["geometry"]["width"] * r["geometry"]["height"],
+        )
+        for r in offcuts
+    ]
+    return data
+
+
+def test_one_cut_may_record_each_distinct_offcut():
+    assert run(two_offcut_data()).status == "feasible"
+
+
+def test_same_offcut_recorded_twice_is_duplicate_accounting():
+    data = two_offcut_data()
+    data["material_transactions"].append(
+        data["material_transactions"][0] | dict(id="again")
+    )
+    result = run(data)
+    assert "stock_exhausted" in codes(result)
+    assert any("Duplicate" in b.message for b in result.blockers)
+
+
+def test_salvaged_offcut_can_be_lost_again():
+    data = input_data()
+    for name in ("loss", "recovered", "lost_again"):
+        data["events"].append(event(None, id=name, kind="observation"))
+    tx = dict(
+        project_id="project",
+        version_id="v1",
+        operation_id="cut",
+        source_stock_id="sheet",
+        source_region_id="offcut",
+        quantity=15600,
+        unit="mm2",
+        recorded_at=STAMP,
+    )
+    data["material_transactions"] = [
+        tx | dict(id="lost", kind="waste", physical_event_id="loss"),
+        tx
+        | dict(
+            id="salvaged",
+            kind="salvage",
+            physical_event_id="recovered",
+            output_region=data["remaining_stock"][0]["usable_regions"][0],
+        ),
+        tx | dict(id="lost2", kind="waste", physical_event_id="lost_again"),
+    ]
+    data["remaining_stock"][0]["usable_regions"] = []
+    result = run(data)
+    assert not any("Duplicate" in b.message for b in result.blockers)
+    assert result.lost_region_ids == ("offcut",)
+    assert "stock_exhausted" in codes(result)
