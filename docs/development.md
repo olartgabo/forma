@@ -1,6 +1,7 @@
 # Development plan
 
-Status: planning baseline. No app commands or CI jobs exist yet.
+Status: workspace scaffold. Install, dev and offline check commands are in the
+[root README](../README.md). Domain contracts and product flows remain pending.
 
 ## Named ownership
 

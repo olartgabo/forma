@@ -1,0 +1,26 @@
+{
+  "name": "forma",
+  "private": true,
+  "packageManager": "npm@11.16.0",
+  "engines": {
+    "node": ">=22.21.0 <23",
+    "npm": ">=11 <12"
+  },
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w @forma/web",
+    "dev:api": "uv run --locked uvicorn forma_api.main:app --reload --host 127.0.0.1 --port 8000",
+    "format": "prettier --write \"**/*.{json,js,mjs,cjs,ts,tsx,css,yml,yaml}\" && uv run --locked ruff format .",
+    "format:check": "prettier --check \"**/*.{json,js,mjs,cjs,ts,tsx,css,yml,yaml}\" && uv run --locked ruff format --check .",
+    "lint": "uv run --locked ruff check .",
+    "typecheck": "npm run typecheck -w @forma/web",
+    "test": "uv run --locked pytest",
+    "build": "npm run build -w @forma/web",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "prettier": "3.9.10"
+  }
+}

@@ -16,6 +16,8 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
+*.tsbuildinfo
+apps/web/next-env.d.ts
 
 # Local runtime data and unredacted media
 .local/

@@ -1,0 +1,14 @@
+node_modules/
+.next/
+.venv/
+dist/
+out/
+coverage/
+package-lock.json
+**/*.generated.ts
+**/*.bundled.ts
+**/next-env.d.ts
+**/generated/
+.local/
+uploads/
+data/physical-tests/private/
