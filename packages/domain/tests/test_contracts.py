@@ -244,3 +244,21 @@ def test_contradictory_test_claim_rejected(result, state):
             test_result=result,
             recorded_at=datetime.now(UTC),
         )
+
+
+def test_all_irreversible_variants_require_confirmation():
+    operation = dict(
+        id="tape-op",
+        type="tape_joint",
+        part_ids=(),
+        stock_ids=(),
+        depends_on=(),
+        expected_state_id="state",
+        preconditions={},
+        effects={},
+        args=dict(joint_id="joint", stock_id="tape", length_mm=10),
+        reversible="irreversible",
+        requires_user_confirmation=False,
+    )
+    with pytest.raises(ValidationError):
+        TypeAdapter(m.Operation).validate_python(operation)
