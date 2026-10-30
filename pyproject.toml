@@ -39,4 +39,3 @@ known-first-party = ["forma_api", "forma_domain"]
 
 [tool.uv]
 required-version = "==0.11.16"
-
