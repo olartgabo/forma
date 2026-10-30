@@ -482,6 +482,7 @@ def render_manual(
                 ),
             ),
         )
+    plan = result.plan
     if not profile_evidence_valid(
         plan.joint_profiles,
         profile_evidence,
@@ -637,14 +638,14 @@ def render_manual(
             )
             bill += (
                 BillItem(
-                    "tape-consumed",
+                    f"{stock.id}-consumed",
                     stock.id,
                     used,
                     "mm",
                     "Three full-width hinge strips",
                 ),
                 BillItem(
-                    "tape-remaining",
+                    f"{stock.id}-remaining",
                     stock.id,
                     stock.remaining_length_mm.value - used,
                     "mm",
@@ -652,21 +653,36 @@ def render_manual(
                 ),
             )
         if stock.kind == "sheet":
-            consumed = sum(
-                r.geometry.width * r.geometry.height for r in stock.usable_regions
-            )
-            allocated = sum(
-                p.geometry.width * p.geometry.height
-                for p in plan.parts
-                if p.source_stock_id == stock.id
-            )
+            available = {r.id: r.geometry for r in stock.usable_regions}
+            waste = 0.0
+            for operation in plan.operations:
+                if operation.type != "cut_rect" or operation.args.stock_id != stock.id:
+                    continue
+                source = available.pop(operation.args.source_region_id)
+                children = [
+                    p for p in plan.parts if p.id in operation.args.child_part_ids
+                ]
+                offcuts = operation.effects.created_offcuts
+                waste += (
+                    source.width * source.height
+                    - sum(p.geometry.width * p.geometry.height for p in children)
+                    - sum(r.geometry.width * r.geometry.height for r in offcuts)
+                )
+                available.update({r.id: r.geometry for r in offcuts})
             bill += (
                 BillItem(
-                    "sheet-waste",
+                    f"{stock.id}-waste",
                     stock.id,
-                    consumed - allocated,
+                    waste,
                     "mm2",
-                    "Unallocated source area including kerf/margins; unavailable for reuse",
+                    "Unallocated consumed-source area including kerf/margins; unavailable for reuse",
+                ),
+                BillItem(
+                    f"{stock.id}-remaining",
+                    stock.id,
+                    sum(r.width * r.height for r in available.values()),
+                    "mm2",
+                    "Usable stock regions not consumed by planned cuts",
                 ),
             )
     return Manual("accepted", tuple(panels), bill, ())

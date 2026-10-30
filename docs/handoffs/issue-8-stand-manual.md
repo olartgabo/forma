@@ -89,3 +89,5 @@ Ruff lint All checks passed; Ruff format completed (53 Python files); pytest
 59 passed in3.85s (19 renderer,20 compiler,20 domain/API); generated contract
 check current; git diff --check exit0. Node/web source unchanged; full npm check
 will run on the combined publication branch. No live model or physical tests.
+
+Parent integration: full npm run check passed with62tests before independent-review fixes. Independent review then found unused sheet waste misreporting and malformed model_copy handling; resource replay BOM and runtime revalidation fixes pass65totaltests, including21renderer tests. Eight rasterized panels were visually inspected; cut/joint label collisions were corrected. No physical or live-provider check ran.

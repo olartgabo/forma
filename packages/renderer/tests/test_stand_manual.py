@@ -146,11 +146,16 @@ def test_two_meaningful_parameterizations_and_complete_manual(alternate):
     assert len(result.panels) == len(plan.operations) == 8
     assert result.physical_verification == "not_attempted"
     assert (
-        sum(b.quantity for b in result.bill_of_materials if b.id == "tape-consumed")
+        sum(
+            b.quantity
+            for b in result.bill_of_materials
+            if b.id == "fixture-tape-stock-consumed"
+        )
         == 3 * plan.parts[0].geometry.width
     )
     assert any(
-        b.id == "sheet-waste" and b.quantity > 0 for b in result.bill_of_materials
+        b.id == "fixture-sheet-waste" and b.quantity > 0
+        for b in result.bill_of_materials
     )
     for panel in result.panels:
         root = ET.fromstring(panel.svg)
@@ -347,3 +352,30 @@ def test_long_instructions_expand_panel_without_overlapping_drawing():
     result = manual(m.BuildPlan.model_validate(data), parameters, process)
     root = ET.fromstring(result.panels[-1].svg)
     assert float(root.attrib["viewBox"].split()[-1]) > 900
+
+
+def test_unused_stock_remains_available_in_bill():
+    request, parameters, process = fixture()
+    data = request.model_dump()
+    spare = dict(data["stocks"][0])
+    spare["id"] = "unused-sheet"
+    spare["usable_regions"] = tuple(
+        dict(r, id="unused-region") for r in spare["usable_regions"]
+    )
+    data["stocks"] += (spare,)
+    compiled = compile_stand(
+        m.CompilerInput.model_validate(data),
+        parameters,
+        process=process,
+        allow_synthetic=True,
+    )
+    result = manual(compiled.plan, parameters, process)
+    entries = {item.id: item for item in result.bill_of_materials}
+    assert entries["unused-sheet-waste"].quantity == 0
+    assert entries["unused-sheet-remaining"].quantity == 200 * 550
+
+
+def test_renderer_revalidates_model_copy():
+    plan, parameters, process = build()
+    result = manual(plan.model_copy(update={"parts": ()}), parameters, process)
+    assert result.status == "blocked" and not result.panels
