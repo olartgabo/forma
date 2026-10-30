@@ -6,7 +6,7 @@ FORMA helps a person turn measured reused materials into a small tabletop
 fixture, follow a deterministic assembly manual, and recover when the physical
 build disagrees with the plan.
 
-**Status: workspace scaffold.** Next.js serves a workbench preview and FastAPI
+**Status: workspace and domain contracts.** Next.js serves a workbench preview and FastAPI
 serves a health endpoint. Projects, model connections, measured inventories and
 physical results are not implemented yet.
 The original [formspec.md](formspec.md) is preserved as the product source of truth.
@@ -111,3 +111,7 @@ non-hardcoded, compiler-approved repair with preserved work, material accounting
 and repeated checks. All gates are currently **unverified**. See the
 [evaluation protocol](docs/evaluation-protocol.md) and
 [submission checklist](docs/submission.md).
+
+Domain runtime contracts are implemented in `forma_domain.models`. Run
+`npm run contracts:generate` and `npm run contracts:check`. See the
+[issue #3 handoff](docs/handoffs/issue-3-domain.md) for exact consumer interfaces.

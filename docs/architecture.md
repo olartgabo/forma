@@ -34,7 +34,7 @@ flowchart TD
 | evaluation    | Offline modules and explicit live/physical adapters     | Fabricated results                                  |
 
 The API package is `forma_api` under `apps/api/src`, installed from the root
-Python project. Domain package names and generated contracts remain in #3.
+Python project. The same wheel installs `forma_domain`; see the #3 handoff.
 Directory boundaries are conceptual and may be simplified without changing
 these rules.
 
@@ -78,3 +78,10 @@ box/label fallback. Neither determines exact photo scale, hidden strength or
 physical success. Provider details stay in the API gateway. The compiler works
 without an API key. See [contracts.md](contracts.md) and
 [model-compatibility.md](model-compatibility.md).
+
+## Implemented domain contracts (#3)
+
+The root wheel installs `forma_domain` from `packages/domain/src` beside
+`forma_api`. Pydantic source and deterministic generated components now exist;
+see [the exact interface handoff](handoffs/issue-3-domain.md). Geometry/compiler,
+revision storage and product flows remain future work.

@@ -21,7 +21,7 @@ constraints, not claims that software or physical tests exist.
 | ID   | Question and required evidence                                                                   | Owner                                  | Resolve before                   |
 | ---- | ------------------------------------------------------------------------------------------------ | -------------------------------------- | -------------------------------- |
 | P001 | Resolved for workspace scaffold; schema integration review remains pending (D008 below)         | @olartgabo with @ResniDev              | #1 review                         |
-| P002 | Python package layout, schema export/type generation paths and error taxonomy                    | @ResniDev with @olartgabo              | #3 consumers                     |
+| P002 | Resolved by D009: domain layout, generated schemas and error taxonomy                    | @ResniDev with @olartgabo              | #3 consumers                     |
 | P003 | Session/auth mechanism and authenticated project/media access                                    | @olartgabo                             | #6 persistence routes            |
 | P004 | Hosting region, DB/object-storage providers, migrations, backup and deletion approach            | @olartgabo                             | #6/#16 deployment                |
 | P005 | Actual inventories A/B, stand dimensions, material thickness and tools in hand                   | @olartgabo                             | #2/#5 geometry                   |
@@ -59,3 +59,20 @@ For each resolved pending item, add date, owner, chosen option, why it fits the
 current scope, consequences, supporting issue/experiment and affected contracts.
 Update the table status explicitly. If it changes the product, record the
 spec impact instead of silently treating the old text as current.
+
+## D009: Immutable domain and generated contracts, October 30, 2026
+
+Owner: @ResniDev; consumer/reviewer: @olartgabo. Issue #3 resolves P002 by
+installing `forma_domain` beside `forma_api` in the root wheel. Records forbid
+extra fields and freeze nested records/tuple collections. Pydantic is the only
+schema source. `npm run contracts:generate` exports JSON Schema/OpenAPI
+components to `packages/domain/generated`, and readonly TypeScript to
+`apps/web/src/lib/generated/contracts.ts`; `contracts:check` detects drift.
+OpenAPI has no paths and creates no persistence routes.
+
+The 12 operations form a closed discriminated union with typed arguments,
+preconditions and effects. Flat bounded proposals confer no execution/commit
+authority. Mutation wrappers carry expected version, idempotency and explicit
+approval. See [the handoff](handoffs/issue-3-domain.md) for consumer obligations.
+Material conservation, geometry, auth and transactions remain #5/#6/#10 work.
+Synthetic fixtures are not measured stock. No product scope changes.
