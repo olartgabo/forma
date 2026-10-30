@@ -1,7 +1,7 @@
 # Development plan
 
 Status: workspace scaffold. Install, dev and offline check commands are in the
-[root README](../README.md). Domain contracts and product flows remain pending.
+[root README](../README.md). Domain contracts are implemented; product flows remain pending.
 
 ## Named ownership
 
@@ -60,3 +60,10 @@ The other engineer reviews each lane's changes. Both participate in real builds.
 All gates start unverified. If G2/G3 miss October 31, narrow supported templates
 or operations and stop optional feature work. Confirm actual portal deadlines
 and timezone rules; dates above are planning targets from the supplied spec.
+
+## Domain verification (#3)
+
+Domain contracts are implemented. `npm run contracts:generate` regenerates
+JSON Schema/OpenAPI/TypeScript; `npm run contracts:check` rejects drift and is
+part of `npm run check`. The [handoff](handoffs/issue-3-domain.md) defines the
+consumer boundary. Product/compiler/physical gates remain unverified.

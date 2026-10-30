@@ -1,0 +1,56 @@
+{
+  "label": "SYNTHETIC inventory A: software fixture only; not measured or physically tested",
+  "stocks": [
+    {
+      "allowed_rotations_deg": [
+        0,
+        90
+      ],
+      "condition": "uncertain",
+      "height_mm": {
+        "confirmed": false,
+        "evidence_ids": [],
+        "source": "calculated",
+        "unit": "mm",
+        "value": 200.0
+      },
+      "id": "synthetic-stock-a",
+      "image_ids": [],
+      "kind": "sheet",
+      "material": "cardboard",
+      "remaining_length_mm": {
+        "confirmed": false,
+        "evidence_ids": [],
+        "source": "unknown",
+        "unit": "mm",
+        "value": null
+      },
+      "thickness_mm": {
+        "confirmed": false,
+        "evidence_ids": [],
+        "source": "unknown",
+        "unit": "mm",
+        "value": null
+      },
+      "usable_regions": [
+        {
+          "geometry": {
+            "height": 200.0,
+            "rotation_deg": 0,
+            "width": 300.0,
+            "x": 0.0,
+            "y": 0.0
+          },
+          "id": "synthetic-region-a"
+        }
+      ],
+      "width_mm": {
+        "confirmed": false,
+        "evidence_ids": [],
+        "source": "calculated",
+        "unit": "mm",
+        "value": 300.0
+      }
+    }
+  ]
+}

@@ -14,7 +14,7 @@ requires = ["hatchling==1.27.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["apps/api/src/forma_api"]
+packages = ["apps/api/src/forma_api", "packages/domain/src/forma_domain"]
 
 [dependency-groups]
 dev = [
@@ -24,7 +24,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["apps/api/tests"]
+testpaths = ["apps/api/tests", "packages/domain/tests"]
 addopts = "-ra --strict-markers -m 'not live'"
 markers = ["live: requires explicit provider access; excluded from offline checks"]
 
@@ -35,7 +35,7 @@ target-version = "py312"
 select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["forma_api"]
+known-first-party = ["forma_api", "forma_domain"]
 
 [tool.uv]
 required-version = "==0.11.16"
