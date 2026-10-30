@@ -158,6 +158,17 @@ class OperationBase(Record):
     preconditions: Preconditions
     effects: Effects
 
+    @model_validator(mode="after")
+    def irreversible_confirmation(self):
+        if (
+            getattr(self, "reversible", None) == "irreversible"
+            and not self.requires_user_confirmation
+        ):
+            raise ValueError(
+                "irreversible operations require explicit user confirmation"
+            )
+        return self
+
 
 class MeasureArgs(Record):
     target_id: ID
