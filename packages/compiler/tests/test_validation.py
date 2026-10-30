@@ -448,3 +448,11 @@ def test_detach_irreversible_join_requires_rejection():
         )
     )
     assert "irreversible_conflict" in codes(data)
+
+
+def test_model_copy_cannot_bypass_plan_validation():
+    plan = BuildPlan.model_validate(plan_data())
+    malformed = plan.model_copy(update={"parts": ()})
+    result = validate_plan(malformed, process=process(), allow_synthetic=True)
+    assert result.status == "blocked"
+    assert result.blockers[0].code == "invalid_reference"
