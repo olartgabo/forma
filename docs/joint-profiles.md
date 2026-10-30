@@ -8,6 +8,10 @@ from the spec are tab/slot, folded brace and tape/lash. They are experimental
 ideas until the measured bench tests support them. Three physically tested
 joint/repair strategies are the P0 target across the demo set.
 
+The [October 30 materials intake](../data/physical-tests/materials-intake-2026-10-30.md)
+records available cardboard and proposes the next bench sequence. Thickness,
+tools, connectors and fit tolerances are still unknown; no profile is promoted.
+
 ## Profile record
 
 For each actual profile record:
