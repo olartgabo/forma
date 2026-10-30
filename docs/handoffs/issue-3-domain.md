@@ -99,8 +99,11 @@ Checks actually run locally:
   experimental profiles, contradictory physical claims, mutation scope,
   proposal bounds and byte-for-byte checked-in artifacts plus CLI root paths.
 
-Full Node checks are pending the parent's pinned Node/npm setup and must be
-recorded before publication. No live model or physical attempts were made.
+`npm ci`: exit0, 29 packages added, 31 audited, zero vulnerabilities.
+`npm run check`: exit0 with Node22.21.0/npm11.16.0 and explicit bundled
+Python3.12.14. Prettier matched; Ruff44files formatted/lint passed; generated
+contracts current; Next route types/TypeScript succeeded; pytest20passed;
+production build compiled and generated3/3 static pages. No live model or physical attempts were made.
 Synthetic inventory A is labelled unconfirmed; unknown thickness is preserved.
 Next: @olartgabo reviews contract scope for #6; #5 validates geometry/conservation,
 #10 resolves historical preservation, and #2 supplies measured stock/profiles.
