@@ -1,0 +1,31 @@
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+
+# JavaScript and Python local artifacts
+node_modules/
+.next/
+dist/
+out/
+coverage/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Local runtime data and unredacted media
+.local/
+*.sqlite
+*.sqlite3
+data/physical-tests/private/
+uploads/
+*.log
+
+# Machine-specific notes
+Codex.local.md
+.DS_Store
+Thumbs.db

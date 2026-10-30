@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+# Preserve the supplied source specification byte for byte.
+formspec.md -text
