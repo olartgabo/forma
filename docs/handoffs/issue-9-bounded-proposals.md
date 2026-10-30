@@ -45,8 +45,10 @@ with `compiler_failed`; exception strings never enter traces. Accepted compiler
 plans must retain the project scope. The service returns flat proposals, never
 activates a callback plan or interprets compiler acceptance as physical success.
 
-#5 integration constructs `CompilerInput` from trusted snapshot/process inputs,
-then calls `compile_candidate`; #10 supplies repair simulation/preservation.
+#5 supplies `forma_compiler.validate_plan`. The supported #8 template adapter
+constructs `CompilerInput` plus measured `StandParameters`, then calls
+`forma_renderer.compile_stand(request, parameters, process=...)`; no generic
+`compile_candidate` function is implemented. #10 supplies repair simulation/preservation.
 The adapter does not invent kerf, tolerances, process evidence or measurements
 to make that callback available. Callbacks must be fast, read-only and
 deterministic; Python callbacks are not forcibly preempted, but an expired job
