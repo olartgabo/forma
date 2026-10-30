@@ -7,8 +7,8 @@ fixture, follow a deterministic assembly manual, and recover when the physical
 build disagrees with the plan.
 
 **Status: workspace and domain contracts.** Next.js serves a workbench preview and FastAPI
-serves a health endpoint. Projects, model connections, measured inventories and
-physical results are not implemented yet.
+serves a health endpoint. Private local project/inventory API storage is implemented; browser intake, hosted
+identity and physical results remain pending.
 The original [formspec.md](formspec.md) is preserved as the product source of truth.
 
 ## Start here
@@ -48,8 +48,9 @@ scripts/                Future schema export, smoke test and evaluation commands
 ```
 
 Each module has a README describing its boundary, owner and next deliverable.
-Only the web preview and API health route are implemented. Other module paths
-reserve the boundaries described in the spec.
+The web preview, local project/inventory API and offline compiler, renderer,
+replanner and provider proposal services are implemented. Live-provider and
+physical gates remain unverified.
 
 ## Run and verify
 
@@ -77,8 +78,10 @@ Open <http://127.0.0.1:3000> for the preview. The API at
 OpenAPI documentation is at <http://127.0.0.1:8000/docs>. Health reports process
 liveness only. Stop each server with Ctrl+C in its terminal.
 
-No `.env` or model key is needed. `.env.example` reserves a server-only key for
-future gateway work; the current apps do not read it. Never put credentials in
+No model key is needed for offline checks. Private project routes require explicit
+server credentials; see [API setup](apps/api/README.md). Export environment values
+before starting the API (`.env.example` documents them; it is not loaded automatically).
+Never put credentials in
 `NEXT_PUBLIC_*` variables or commit private physical photos.
 
 ```sh
