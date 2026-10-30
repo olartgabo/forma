@@ -1,0 +1,3551 @@
+{
+  "$defs": {
+    "AdaptProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "base_version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Base Version Id",
+          "type": "string"
+        },
+        "blockers": {
+          "items": {
+            "$ref": "#/$defs/Blocker"
+          },
+          "title": "Blockers",
+          "type": "array"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "invalidated_checkpoint_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Invalidated Checkpoint Ids",
+          "type": "array"
+        },
+        "material_transactions": {
+          "items": {
+            "$ref": "#/$defs/MaterialTransaction"
+          },
+          "title": "Material Transactions",
+          "type": "array"
+        },
+        "newly_required_operation_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Newly Required Operation Ids",
+          "type": "array"
+        },
+        "preserved_operation_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Preserved Operation Ids",
+          "type": "array"
+        },
+        "proposed_plan": {
+          "$ref": "#/$defs/BuildPlan"
+        },
+        "rationale": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "redo_operation_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Redo Operation Ids",
+          "type": "array"
+        },
+        "required_new_stock_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Required New Stock Ids",
+          "type": "array"
+        },
+        "undo_operations": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "attach_brace": "#/$defs/AttachBrace",
+                "cut_rect": "#/$defs/CutRect",
+                "cut_slot": "#/$defs/CutSlot",
+                "detach": "#/$defs/Detach",
+                "fold": "#/$defs/Fold",
+                "functional_test": "#/$defs/FunctionalTest",
+                "insert_tab": "#/$defs/InsertTab",
+                "inspect": "#/$defs/Inspect",
+                "mark": "#/$defs/Mark",
+                "measure": "#/$defs/Measure",
+                "tape_joint": "#/$defs/TapeJoint",
+                "tie_joint": "#/$defs/TieJoint"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Measure"
+              },
+              {
+                "$ref": "#/$defs/Mark"
+              },
+              {
+                "$ref": "#/$defs/CutRect"
+              },
+              {
+                "$ref": "#/$defs/CutSlot"
+              },
+              {
+                "$ref": "#/$defs/Fold"
+              },
+              {
+                "$ref": "#/$defs/InsertTab"
+              },
+              {
+                "$ref": "#/$defs/TapeJoint"
+              },
+              {
+                "$ref": "#/$defs/TieJoint"
+              },
+              {
+                "$ref": "#/$defs/AttachBrace"
+              },
+              {
+                "$ref": "#/$defs/Detach"
+              },
+              {
+                "$ref": "#/$defs/Inspect"
+              },
+              {
+                "$ref": "#/$defs/FunctionalTest"
+              }
+            ]
+          },
+          "title": "Undo Operations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "base_version_id",
+        "proposed_plan",
+        "preserved_operation_ids",
+        "undo_operations",
+        "redo_operation_ids",
+        "newly_required_operation_ids",
+        "invalidated_checkpoint_ids",
+        "material_transactions",
+        "required_new_stock_ids",
+        "blockers",
+        "rationale"
+      ],
+      "title": "AdaptProposal",
+      "type": "object"
+    },
+    "AppendPhysicalEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "$ref": "#/$defs/PhysicalEvent"
+        },
+        "expected_version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected Version Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 128,
+          "minLength": 8,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "expected_version_id",
+        "idempotency_key",
+        "event"
+      ],
+      "title": "AppendPhysicalEvent",
+      "type": "object"
+    },
+    "AttachBrace": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/AttachBraceArgs"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "expected_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected State Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "preconditions": {
+          "$ref": "#/$defs/Preconditions"
+        },
+        "requires_user_confirmation": {
+          "default": true,
+          "title": "Requires User Confirmation",
+          "type": "boolean"
+        },
+        "reversible": {
+          "enum": [
+            "reversible",
+            "lossy",
+            "irreversible",
+            "not_applicable"
+          ],
+          "title": "Reversible",
+          "type": "string"
+        },
+        "stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Stock Ids",
+          "type": "array"
+        },
+        "type": {
+          "const": "attach_brace",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "expected_state_id",
+        "preconditions",
+        "effects",
+        "type",
+        "args",
+        "reversible"
+      ],
+      "title": "AttachBrace",
+      "type": "object"
+    },
+    "AttachBraceArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "brace_part_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Brace Part Id",
+          "type": "string"
+        },
+        "joint_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Joint Id",
+          "type": "string"
+        },
+        "underlying_joint_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Underlying Joint Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "joint_id",
+        "brace_part_id",
+        "underlying_joint_ids"
+      ],
+      "title": "AttachBraceArgs",
+      "type": "object"
+    },
+    "Blocker": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid_reference",
+            "missing_measurement",
+            "stock_exhausted",
+            "geometry_invalid",
+            "unsupported_profile",
+            "invalid_order",
+            "irreversible_conflict",
+            "needs_confirmation",
+            "stale_version",
+            "unsupported",
+            "no_feasible_repair"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "target_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Target Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "Blocker",
+      "type": "object"
+    },
+    "BuildPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoints": {
+          "items": {
+            "$ref": "#/$defs/Checkpoint"
+          },
+          "title": "Checkpoints",
+          "type": "array"
+        },
+        "compiler_version": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Compiler Version",
+          "type": "string"
+        },
+        "constraints": {
+          "$ref": "#/$defs/Constraints"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "family": {
+          "const": "tabletop_fixture_v1",
+          "default": "tabletop_fixture_v1",
+          "title": "Family",
+          "type": "string"
+        },
+        "joint_profiles": {
+          "items": {
+            "$ref": "#/$defs/JointProfile"
+          },
+          "title": "Joint Profiles",
+          "type": "array"
+        },
+        "joints": {
+          "items": {
+            "$ref": "#/$defs/Joint"
+          },
+          "title": "Joints",
+          "type": "array"
+        },
+        "operations": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "attach_brace": "#/$defs/AttachBrace",
+                "cut_rect": "#/$defs/CutRect",
+                "cut_slot": "#/$defs/CutSlot",
+                "detach": "#/$defs/Detach",
+                "fold": "#/$defs/Fold",
+                "functional_test": "#/$defs/FunctionalTest",
+                "insert_tab": "#/$defs/InsertTab",
+                "inspect": "#/$defs/Inspect",
+                "mark": "#/$defs/Mark",
+                "measure": "#/$defs/Measure",
+                "tape_joint": "#/$defs/TapeJoint",
+                "tie_joint": "#/$defs/TieJoint"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Measure"
+              },
+              {
+                "$ref": "#/$defs/Mark"
+              },
+              {
+                "$ref": "#/$defs/CutRect"
+              },
+              {
+                "$ref": "#/$defs/CutSlot"
+              },
+              {
+                "$ref": "#/$defs/Fold"
+              },
+              {
+                "$ref": "#/$defs/InsertTab"
+              },
+              {
+                "$ref": "#/$defs/TapeJoint"
+              },
+              {
+                "$ref": "#/$defs/TieJoint"
+              },
+              {
+                "$ref": "#/$defs/AttachBrace"
+              },
+              {
+                "$ref": "#/$defs/Detach"
+              },
+              {
+                "$ref": "#/$defs/Inspect"
+              },
+              {
+                "$ref": "#/$defs/FunctionalTest"
+              }
+            ]
+          },
+          "title": "Operations",
+          "type": "array"
+        },
+        "parent_version_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Version Id"
+        },
+        "parts": {
+          "items": {
+            "$ref": "#/$defs/Part"
+          },
+          "title": "Parts",
+          "type": "array"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "validated",
+            "blocked",
+            "active"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "stocks": {
+          "items": {
+            "$ref": "#/$defs/Stock"
+          },
+          "title": "Stocks",
+          "type": "array"
+        },
+        "version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Version Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "version_id",
+        "status",
+        "stocks",
+        "parts",
+        "joint_profiles",
+        "joints",
+        "operations",
+        "checkpoints",
+        "constraints",
+        "compiler_version",
+        "created_at"
+      ],
+      "title": "BuildPlan",
+      "type": "object"
+    },
+    "Checkpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "after_operation_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "After Operation Id",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "invalidated_by": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Invalidated By",
+          "type": "array"
+        },
+        "method": {
+          "enum": [
+            "photo",
+            "ruler",
+            "human_inspection",
+            "functional_test"
+          ],
+          "title": "Method",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "after_operation_id",
+        "method",
+        "description"
+      ],
+      "title": "Checkpoint",
+      "type": "object"
+    },
+    "CommitRevision": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected Version Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 128,
+          "minLength": 8,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "proposal_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Proposal Id",
+          "type": "string"
+        },
+        "user_approved": {
+          "const": true,
+          "title": "User Approved",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "project_id",
+        "expected_version_id",
+        "idempotency_key",
+        "proposal_id",
+        "user_approved"
+      ],
+      "title": "CommitRevision",
+      "type": "object"
+    },
+    "CompilerInput": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate": {
+          "$ref": "#/$defs/DesignCandidate"
+        },
+        "constraints": {
+          "$ref": "#/$defs/Constraints"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "edge_margin_mm": {
+          "minimum": 0,
+          "title": "Edge Margin Mm",
+          "type": "number"
+        },
+        "joint_profiles": {
+          "items": {
+            "$ref": "#/$defs/JointProfile"
+          },
+          "title": "Joint Profiles",
+          "type": "array"
+        },
+        "kerf_mm": {
+          "minimum": 0,
+          "title": "Kerf Mm",
+          "type": "number"
+        },
+        "process_evidence_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Process Evidence Ids",
+          "type": "array"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "stocks": {
+          "items": {
+            "$ref": "#/$defs/Stock"
+          },
+          "title": "Stocks",
+          "type": "array"
+        },
+        "version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Version Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "version_id",
+        "created_at",
+        "candidate",
+        "stocks",
+        "joint_profiles",
+        "constraints",
+        "kerf_mm",
+        "edge_margin_mm",
+        "process_evidence_ids"
+      ],
+      "title": "CompilerInput",
+      "type": "object"
+    },
+    "CompilerResult": {
+      "additionalProperties": false,
+      "properties": {
+        "blockers": {
+          "items": {
+            "$ref": "#/$defs/Blocker"
+          },
+          "title": "Blockers",
+          "type": "array"
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BuildPlan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "blocked",
+            "needs_measurement",
+            "unsupported"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "plan",
+        "blockers"
+      ],
+      "title": "CompilerResult",
+      "type": "object"
+    },
+    "ConfirmInventory": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected Version Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 128,
+          "minLength": 8,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "stocks": {
+          "items": {
+            "$ref": "#/$defs/Stock"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Stocks",
+          "type": "array"
+        },
+        "user_confirmed": {
+          "const": true,
+          "title": "User Confirmed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "project_id",
+        "expected_version_id",
+        "idempotency_key",
+        "stocks",
+        "user_confirmed"
+      ],
+      "title": "ConfirmInventory",
+      "type": "object"
+    },
+    "Constraints": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_purchases": {
+          "default": false,
+          "title": "Allow Purchases",
+          "type": "boolean"
+        },
+        "allowed_profile_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Allowed Profile Ids",
+          "type": "array"
+        },
+        "device_mass_g": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "max_footprint_height_mm": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "max_footprint_width_mm": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "support_angle_deg": {
+          "$ref": "#/$defs/Measurement"
+        }
+      },
+      "required": [
+        "device_mass_g",
+        "support_angle_deg",
+        "max_footprint_width_mm",
+        "max_footprint_height_mm"
+      ],
+      "title": "Constraints",
+      "type": "object"
+    },
+    "ConsumableJointArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "joint_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Joint Id",
+          "type": "string"
+        },
+        "length_mm": {
+          "exclusiveMinimum": 0,
+          "title": "Length Mm",
+          "type": "number"
+        },
+        "stock_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Stock Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "joint_id",
+        "stock_id",
+        "length_mm"
+      ],
+      "title": "ConsumableJointArgs",
+      "type": "object"
+    },
+    "CutRect": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/CutRectArgs"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "expected_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected State Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "preconditions": {
+          "$ref": "#/$defs/Preconditions"
+        },
+        "requires_user_confirmation": {
+          "const": true,
+          "default": true,
+          "title": "Requires User Confirmation",
+          "type": "boolean"
+        },
+        "reversible": {
+          "const": "irreversible",
+          "default": "irreversible",
+          "title": "Reversible",
+          "type": "string"
+        },
+        "stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Stock Ids",
+          "type": "array"
+        },
+        "type": {
+          "const": "cut_rect",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "expected_state_id",
+        "preconditions",
+        "effects",
+        "type",
+        "args"
+      ],
+      "title": "CutRect",
+      "type": "object"
+    },
+    "CutRectArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "child_part_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Child Part Ids",
+          "type": "array"
+        },
+        "edge_margin_mm": {
+          "minimum": 0,
+          "title": "Edge Margin Mm",
+          "type": "number"
+        },
+        "kerf_mm": {
+          "minimum": 0,
+          "title": "Kerf Mm",
+          "type": "number"
+        },
+        "source_region_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Source Region Id",
+          "type": "string"
+        },
+        "stock_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Stock Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stock_id",
+        "source_region_id",
+        "child_part_ids",
+        "kerf_mm",
+        "edge_margin_mm"
+      ],
+      "title": "CutRectArgs",
+      "type": "object"
+    },
+    "CutSlot": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/CutSlotArgs"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "expected_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected State Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "preconditions": {
+          "$ref": "#/$defs/Preconditions"
+        },
+        "requires_user_confirmation": {
+          "const": true,
+          "default": true,
+          "title": "Requires User Confirmation",
+          "type": "boolean"
+        },
+        "reversible": {
+          "const": "irreversible",
+          "default": "irreversible",
+          "title": "Reversible",
+          "type": "string"
+        },
+        "stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Stock Ids",
+          "type": "array"
+        },
+        "type": {
+          "const": "cut_slot",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "expected_state_id",
+        "preconditions",
+        "effects",
+        "type",
+        "args"
+      ],
+      "title": "CutSlot",
+      "type": "object"
+    },
+    "CutSlotArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "edge_margin_mm": {
+          "minimum": 0,
+          "title": "Edge Margin Mm",
+          "type": "number"
+        },
+        "feature_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Feature Id",
+          "type": "string"
+        },
+        "geometry": {
+          "$ref": "#/$defs/Rect"
+        },
+        "kerf_mm": {
+          "minimum": 0,
+          "title": "Kerf Mm",
+          "type": "number"
+        },
+        "part_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Part Id",
+          "type": "string"
+        },
+        "profile_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Profile Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "part_id",
+        "feature_id",
+        "geometry",
+        "profile_id",
+        "kerf_mm",
+        "edge_margin_mm"
+      ],
+      "title": "CutSlotArgs",
+      "type": "object"
+    },
+    "DesignCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "assumptions": {
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "family": {
+          "const": "tabletop_fixture_v1",
+          "title": "Family",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "panel_count": {
+          "maximum": 6,
+          "minimum": 2,
+          "title": "Panel Count",
+          "type": "integer"
+        },
+        "part_height_mm": {
+          "exclusiveMinimum": 0,
+          "title": "Part Height Mm",
+          "type": "number"
+        },
+        "part_width_mm": {
+          "exclusiveMinimum": 0,
+          "title": "Part Width Mm",
+          "type": "number"
+        },
+        "profile_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Profile Ids",
+          "type": "array"
+        },
+        "stock_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Stock Ids",
+          "type": "array"
+        },
+        "support_angle_deg": {
+          "exclusiveMaximum": 90,
+          "exclusiveMinimum": 0,
+          "title": "Support Angle Deg",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "family",
+        "support_angle_deg",
+        "part_width_mm",
+        "part_height_mm",
+        "panel_count",
+        "stock_ids",
+        "profile_ids",
+        "assumptions"
+      ],
+      "title": "DesignCandidate",
+      "type": "object"
+    },
+    "DesignProposals": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/DesignCandidate"
+          },
+          "maxItems": 2,
+          "title": "Candidates",
+          "type": "array"
+        },
+        "questions": {
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Questions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "candidates",
+        "questions"
+      ],
+      "title": "DesignProposals",
+      "type": "object"
+    },
+    "Detach": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/DetachArgs"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "expected_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected State Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "preconditions": {
+          "$ref": "#/$defs/Preconditions"
+        },
+        "requires_user_confirmation": {
+          "default": true,
+          "title": "Requires User Confirmation",
+          "type": "boolean"
+        },
+        "reversible": {
+          "enum": [
+            "reversible",
+            "lossy"
+          ],
+          "title": "Reversible",
+          "type": "string"
+        },
+        "stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Stock Ids",
+          "type": "array"
+        },
+        "type": {
+          "const": "detach",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "expected_state_id",
+        "preconditions",
+        "effects",
+        "type",
+        "args",
+        "reversible"
+      ],
+      "title": "Detach",
+      "type": "object"
+    },
+    "DetachArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "joint_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Joint Id",
+          "type": "string"
+        },
+        "material_loss_stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Material Loss Stock Ids",
+          "type": "array"
+        },
+        "supported_inverse": {
+          "enum": [
+            "remove_tab",
+            "peel_tape",
+            "untie",
+            "cut_cord",
+            "remove_brace"
+          ],
+          "title": "Supported Inverse",
+          "type": "string"
+        }
+      },
+      "required": [
+        "joint_id",
+        "supported_inverse"
+      ],
+      "title": "DetachArgs",
+      "type": "object"
+    },
+    "DiagnosisProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Affected Ids",
+          "type": "array"
+        },
+        "failure_type": {
+          "enum": [
+            "torn_slot",
+            "wrong_dimension",
+            "missing_material",
+            "damaged_part",
+            "unstable",
+            "unknown"
+          ],
+          "title": "Failure Type",
+          "type": "string"
+        },
+        "hypotheses": {
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Hypotheses",
+          "type": "array"
+        },
+        "questions_or_measurements": {
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Questions Or Measurements",
+          "type": "array"
+        },
+        "visible_observations": {
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 12,
+          "title": "Visible Observations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "visible_observations",
+        "hypotheses",
+        "questions_or_measurements",
+        "affected_ids",
+        "failure_type"
+      ],
+      "title": "DiagnosisProposal",
+      "type": "object"
+    },
+    "Effects": {
+      "additionalProperties": false,
+      "properties": {
+        "attached_joint_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Attached Joint Ids",
+          "type": "array"
+        },
+        "changed_part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Changed Part Ids",
+          "type": "array"
+        },
+        "consumed_region_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Consumed Region Ids",
+          "type": "array"
+        },
+        "created_offcuts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Region"
+          },
+          "title": "Created Offcuts",
+          "type": "array"
+        },
+        "created_part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Created Part Ids",
+          "type": "array"
+        },
+        "detached_joint_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Detached Joint Ids",
+          "type": "array"
+        },
+        "invalidated_checkpoint_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Invalidated Checkpoint Ids",
+          "type": "array"
+        }
+      },
+      "title": "Effects",
+      "type": "object"
+    },
+    "ErrorEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "blockers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Blocker"
+          },
+          "title": "Blockers",
+          "type": "array"
+        },
+        "code": {
+          "enum": [
+            "validation_error",
+            "not_found",
+            "forbidden",
+            "stale_version",
+            "idempotency_conflict",
+            "blocked"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ErrorEnvelope",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "checkpoint_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Checkpoint Ids",
+          "type": "array"
+        },
+        "description": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "photo",
+            "measurement",
+            "user_report",
+            "model_interpretation",
+            "physical_test"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "operation_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Operation Ids",
+          "type": "array"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "provenance": {
+          "enum": [
+            "user",
+            "model",
+            "compiler",
+            "synthetic_fixture"
+          ],
+          "title": "Provenance",
+          "type": "string"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "title": "Recorded At",
+          "type": "string"
+        },
+        "verification_state": {
+          "enum": [
+            "not_checked",
+            "user_confirmed",
+            "vision_observed",
+            "failed",
+            "unknown",
+            "invalidated"
+          ],
+          "title": "Verification State",
+          "type": "string"
+        },
+        "version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Version Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "project_id",
+        "version_id",
+        "kind",
+        "provenance",
+        "recorded_at",
+        "description",
+        "verification_state"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "EvidenceInvalidation": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "invalidated_for_version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Invalidated For Version Id",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "title": "Recorded At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "evidence_id",
+        "invalidated_for_version_id",
+        "reason",
+        "recorded_at"
+      ],
+      "title": "EvidenceInvalidation",
+      "type": "object"
+    },
+    "Feature": {
+      "additionalProperties": false,
+      "properties": {
+        "geometry": {
+          "$ref": "#/$defs/Rect"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "tab",
+            "slot",
+            "fold",
+            "mark"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "geometry"
+      ],
+      "title": "Feature",
+      "type": "object"
+    },
+    "Fold": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/FoldArgs"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "expected_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected State Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "preconditions": {
+          "$ref": "#/$defs/Preconditions"
+        },
+        "requires_user_confirmation": {
+          "default": true,
+          "title": "Requires User Confirmation",
+          "type": "boolean"
+        },
+        "reversible": {
+          "const": "lossy",
+          "default": "lossy",
+          "title": "Reversible",
+          "type": "string"
+        },
+        "stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Stock Ids",
+          "type": "array"
+        },
+        "type": {
+          "const": "fold",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "expected_state_id",
+        "preconditions",
+        "effects",
+        "type",
+        "args"
+      ],
+      "title": "Fold",
+      "type": "object"
+    },
+    "FoldArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "angle_deg": {
+          "exclusiveMaximum": 180,
+          "exclusiveMinimum": -180,
+          "title": "Angle Deg",
+          "type": "number"
+        },
+        "direction": {
+          "enum": [
+            "mountain",
+            "valley"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "end_x_mm": {
+          "minimum": 0,
+          "title": "End X Mm",
+          "type": "number"
+        },
+        "end_y_mm": {
+          "minimum": 0,
+          "title": "End Y Mm",
+          "type": "number"
+        },
+        "feature_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Feature Id",
+          "type": "string"
+        },
+        "part_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Part Id",
+          "type": "string"
+        },
+        "reachable_face": {
+          "enum": [
+            "front",
+            "back"
+          ],
+          "title": "Reachable Face",
+          "type": "string"
+        },
+        "start_x_mm": {
+          "minimum": 0,
+          "title": "Start X Mm",
+          "type": "number"
+        },
+        "start_y_mm": {
+          "minimum": 0,
+          "title": "Start Y Mm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "part_id",
+        "feature_id",
+        "start_x_mm",
+        "start_y_mm",
+        "end_x_mm",
+        "end_y_mm",
+        "angle_deg",
+        "direction",
+        "reachable_face"
+      ],
+      "title": "FoldArgs",
+      "type": "object"
+    },
+    "FunctionalTest": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/FunctionalTestArgs"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "expected_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected State Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "preconditions": {
+          "$ref": "#/$defs/Preconditions"
+        },
+        "requires_user_confirmation": {
+          "default": true,
+          "title": "Requires User Confirmation",
+          "type": "boolean"
+        },
+        "reversible": {
+          "const": "not_applicable",
+          "default": "not_applicable",
+          "title": "Reversible",
+          "type": "string"
+        },
+        "stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Stock Ids",
+          "type": "array"
+        },
+        "type": {
+          "const": "functional_test",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "expected_state_id",
+        "preconditions",
+        "effects",
+        "type",
+        "args"
+      ],
+      "title": "FunctionalTest",
+      "type": "object"
+    },
+    "FunctionalTestArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "device_label": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Device Label",
+          "type": "string"
+        },
+        "duration_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "mass_g": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mass G"
+        },
+        "pass_criteria": {
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Pass Criteria",
+          "type": "array"
+        },
+        "procedure": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Procedure",
+          "type": "string"
+        },
+        "surface": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Surface",
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "procedure",
+        "device_label",
+        "mass_g",
+        "duration_seconds",
+        "surface",
+        "pass_criteria"
+      ],
+      "title": "FunctionalTestArgs",
+      "type": "object"
+    },
+    "InsertTab": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/InsertTabArgs"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "expected_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected State Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "preconditions": {
+          "$ref": "#/$defs/Preconditions"
+        },
+        "requires_user_confirmation": {
+          "default": true,
+          "title": "Requires User Confirmation",
+          "type": "boolean"
+        },
+        "reversible": {
+          "enum": [
+            "reversible",
+            "lossy"
+          ],
+          "title": "Reversible",
+          "type": "string"
+        },
+        "stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Stock Ids",
+          "type": "array"
+        },
+        "type": {
+          "const": "insert_tab",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "expected_state_id",
+        "preconditions",
+        "effects",
+        "type",
+        "args",
+        "reversible"
+      ],
+      "title": "InsertTab",
+      "type": "object"
+    },
+    "InsertTabArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "joint_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Joint Id",
+          "type": "string"
+        },
+        "slot_feature_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Slot Feature Id",
+          "type": "string"
+        },
+        "tab_feature_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Tab Feature Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "joint_id",
+        "tab_feature_id",
+        "slot_feature_id"
+      ],
+      "title": "InsertTabArgs",
+      "type": "object"
+    },
+    "Inspect": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/InspectArgs"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "expected_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected State Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "preconditions": {
+          "$ref": "#/$defs/Preconditions"
+        },
+        "requires_user_confirmation": {
+          "default": true,
+          "title": "Requires User Confirmation",
+          "type": "boolean"
+        },
+        "reversible": {
+          "const": "not_applicable",
+          "default": "not_applicable",
+          "title": "Reversible",
+          "type": "string"
+        },
+        "stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Stock Ids",
+          "type": "array"
+        },
+        "type": {
+          "const": "inspect",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "expected_state_id",
+        "preconditions",
+        "effects",
+        "type",
+        "args"
+      ],
+      "title": "Inspect",
+      "type": "object"
+    },
+    "InspectArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "method": {
+          "enum": [
+            "photo",
+            "ruler",
+            "human_inspection"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "target_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Target Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "target_ids",
+        "checkpoint_id",
+        "method"
+      ],
+      "title": "InspectArgs",
+      "type": "object"
+    },
+    "JoinArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "joint_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Joint Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "joint_id"
+      ],
+      "title": "JoinArgs",
+      "type": "object"
+    },
+    "Joint": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmed_accessible": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confirmed Accessible"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "interface_feature_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Interface Feature Ids",
+          "type": "array"
+        },
+        "part_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "minItems": 2,
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "profile_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Profile Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "profile_id",
+        "part_ids"
+      ],
+      "title": "Joint",
+      "type": "object"
+    },
+    "JointProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "limitations": {
+          "default": [],
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "material": {
+          "enum": [
+            "cardboard",
+            "paperboard",
+            "other_supported"
+          ],
+          "title": "Material",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "experimental",
+            "tested"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "strategy": {
+          "enum": [
+            "tab_slot",
+            "fold_brace",
+            "tape",
+            "tie"
+          ],
+          "title": "Strategy",
+          "type": "string"
+        },
+        "test_evidence_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Test Evidence Ids",
+          "type": "array"
+        },
+        "thickness_max_mm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Thickness Max Mm"
+        },
+        "thickness_min_mm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Thickness Min Mm"
+        },
+        "tolerated_error_mm": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tolerated Error Mm"
+        }
+      },
+      "required": [
+        "id",
+        "strategy",
+        "status",
+        "material"
+      ],
+      "title": "JointProfile",
+      "type": "object"
+    },
+    "Mark": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/MarkArgs"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "expected_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected State Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "preconditions": {
+          "$ref": "#/$defs/Preconditions"
+        },
+        "requires_user_confirmation": {
+          "default": true,
+          "title": "Requires User Confirmation",
+          "type": "boolean"
+        },
+        "reversible": {
+          "const": "lossy",
+          "default": "lossy",
+          "title": "Reversible",
+          "type": "string"
+        },
+        "stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Stock Ids",
+          "type": "array"
+        },
+        "type": {
+          "const": "mark",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "expected_state_id",
+        "preconditions",
+        "effects",
+        "type",
+        "args"
+      ],
+      "title": "Mark",
+      "type": "object"
+    },
+    "MarkArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "feature_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Feature Id",
+          "type": "string"
+        },
+        "geometry": {
+          "$ref": "#/$defs/Rect"
+        },
+        "part_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Part Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "part_id",
+        "feature_id",
+        "geometry"
+      ],
+      "title": "MarkArgs",
+      "type": "object"
+    },
+    "MaterialTransaction": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "consume",
+            "offcut",
+            "waste",
+            "salvage",
+            "damage"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "output_region": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Region"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "physical_event_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Physical Event Id",
+          "type": "string"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "quantity": {
+          "exclusiveMinimum": 0,
+          "title": "Quantity",
+          "type": "number"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "title": "Recorded At",
+          "type": "string"
+        },
+        "source_region_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Region Id"
+        },
+        "source_stock_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Source Stock Id",
+          "type": "string"
+        },
+        "unit": {
+          "enum": [
+            "mm",
+            "mm2"
+          ],
+          "title": "Unit",
+          "type": "string"
+        },
+        "version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Version Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "project_id",
+        "version_id",
+        "operation_id",
+        "source_stock_id",
+        "kind",
+        "quantity",
+        "unit",
+        "recorded_at",
+        "physical_event_id"
+      ],
+      "title": "MaterialTransaction",
+      "type": "object"
+    },
+    "Measure": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/MeasureArgs"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "expected_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected State Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "preconditions": {
+          "$ref": "#/$defs/Preconditions"
+        },
+        "requires_user_confirmation": {
+          "default": true,
+          "title": "Requires User Confirmation",
+          "type": "boolean"
+        },
+        "reversible": {
+          "const": "not_applicable",
+          "default": "not_applicable",
+          "title": "Reversible",
+          "type": "string"
+        },
+        "stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Stock Ids",
+          "type": "array"
+        },
+        "type": {
+          "const": "measure",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "expected_state_id",
+        "preconditions",
+        "effects",
+        "type",
+        "args"
+      ],
+      "title": "Measure",
+      "type": "object"
+    },
+    "MeasureArgs": {
+      "additionalProperties": false,
+      "properties": {
+        "dimension": {
+          "enum": [
+            "width",
+            "height",
+            "thickness",
+            "length",
+            "mass",
+            "angle"
+          ],
+          "title": "Dimension",
+          "type": "string"
+        },
+        "measurement_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Measurement Id",
+          "type": "string"
+        },
+        "method": {
+          "enum": [
+            "ruler",
+            "scale",
+            "protractor",
+            "known_reference"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Target Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_id",
+        "measurement_id",
+        "dimension",
+        "method"
+      ],
+      "title": "MeasureArgs",
+      "type": "object"
+    },
+    "Measurement": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmed": {
+          "title": "Confirmed",
+          "type": "boolean"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "user_ruler",
+            "known_reference",
+            "calculated",
+            "unknown"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "unit": {
+          "enum": [
+            "mm",
+            "g",
+            "deg"
+          ],
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "value",
+        "unit",
+        "source",
+        "confirmed"
+      ],
+      "title": "Measurement",
+      "type": "object"
+    },
+    "Mutation": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected Version Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 128,
+          "minLength": 8,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "expected_version_id",
+        "idempotency_key"
+      ],
+      "title": "Mutation",
+      "type": "object"
+    },
+    "MutationResult": {
+      "additionalProperties": false,
+      "properties": {
+        "active_version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Active Version Id",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "replayed": {
+          "title": "Replayed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "project_id",
+        "active_version_id",
+        "idempotency_key",
+        "replayed"
+      ],
+      "title": "MutationResult",
+      "type": "object"
+    },
+    "OperationBase": {
+      "additionalProperties": false,
+      "properties": {
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "expected_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected State Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "preconditions": {
+          "$ref": "#/$defs/Preconditions"
+        },
+        "requires_user_confirmation": {
+          "default": true,
+          "title": "Requires User Confirmation",
+          "type": "boolean"
+        },
+        "stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Stock Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "expected_state_id",
+        "preconditions",
+        "effects"
+      ],
+      "title": "OperationBase",
+      "type": "object"
+    },
+    "Part": {
+      "additionalProperties": false,
+      "properties": {
+        "condition": {
+          "enum": [
+            "usable",
+            "damaged",
+            "uncertain"
+          ],
+          "title": "Condition",
+          "type": "string"
+        },
+        "features": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Feature"
+          },
+          "title": "Features",
+          "type": "array"
+        },
+        "geometry": {
+          "$ref": "#/$defs/Rect"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "source_region_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Source Region Id",
+          "type": "string"
+        },
+        "source_stock_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Source Stock Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source_stock_id",
+        "source_region_id",
+        "geometry",
+        "condition"
+      ],
+      "title": "Part",
+      "type": "object"
+    },
+    "PhysicalEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "enum": [
+            "user",
+            "system"
+          ],
+          "title": "Actor",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "operation_confirmed",
+            "observation",
+            "measurement",
+            "damage",
+            "test"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "observation": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Observation",
+          "type": "string"
+        },
+        "operation_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operation Id"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "title": "Recorded At",
+          "type": "string"
+        },
+        "test_result": {
+          "anyOf": [
+            {
+              "enum": [
+                "passed",
+                "failed",
+                "not_attempted"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Test Result"
+        },
+        "verification_state": {
+          "enum": [
+            "not_checked",
+            "user_confirmed",
+            "vision_observed",
+            "failed",
+            "unknown",
+            "invalidated"
+          ],
+          "title": "Verification State",
+          "type": "string"
+        },
+        "version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Version Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "project_id",
+        "version_id",
+        "kind",
+        "recorded_at",
+        "actor",
+        "observation",
+        "verification_state"
+      ],
+      "title": "PhysicalEvent",
+      "type": "object"
+    },
+    "Preconditions": {
+      "additionalProperties": false,
+      "properties": {
+        "accessible_part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Accessible Part Ids",
+          "type": "array"
+        },
+        "confirmed_measurement_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Confirmed Measurement Ids",
+          "type": "array"
+        },
+        "human_checks": {
+          "default": [],
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Human Checks",
+          "type": "array"
+        },
+        "required_joint_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Required Joint Ids",
+          "type": "array"
+        },
+        "safe_tools_confirmed": {
+          "default": false,
+          "title": "Safe Tools Confirmed",
+          "type": "boolean"
+        }
+      },
+      "title": "Preconditions",
+      "type": "object"
+    },
+    "Rect": {
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "exclusiveMinimum": 0,
+          "title": "Height",
+          "type": "number"
+        },
+        "rotation_deg": {
+          "default": 0,
+          "enum": [
+            0,
+            90
+          ],
+          "title": "Rotation Deg",
+          "type": "integer"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "title": "Width",
+          "type": "number"
+        },
+        "x": {
+          "minimum": 0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "minimum": 0,
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "title": "Rect",
+      "type": "object"
+    },
+    "Region": {
+      "additionalProperties": false,
+      "properties": {
+        "geometry": {
+          "$ref": "#/$defs/Rect"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "geometry"
+      ],
+      "title": "Region",
+      "type": "object"
+    },
+    "RepairPatch": {
+      "additionalProperties": false,
+      "description": "Flat parameter edits, not executable operations or arbitrary JSON patches.",
+      "properties": {
+        "angle_deg": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 90,
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Angle Deg"
+        },
+        "base_version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Base Version Id",
+          "type": "string"
+        },
+        "height_mm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Height Mm"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "resize_part",
+            "replace_joint_profile",
+            "replace_part",
+            "change_angle"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "replacement_profile_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Replacement Profile Id"
+        },
+        "replacement_stock_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Replacement Stock Id"
+        },
+        "target_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Target Id",
+          "type": "string"
+        },
+        "width_mm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Width Mm"
+        }
+      },
+      "required": [
+        "id",
+        "base_version_id",
+        "kind",
+        "target_id",
+        "replacement_stock_id",
+        "replacement_profile_id",
+        "width_mm",
+        "height_mm",
+        "angle_deg",
+        "rationale"
+      ],
+      "title": "RepairPatch",
+      "type": "object"
+    },
+    "RepairProposals": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/RepairPatch"
+          },
+          "maxItems": 3,
+          "title": "Candidates",
+          "type": "array"
+        },
+        "questions": {
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Questions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "candidates",
+        "questions"
+      ],
+      "title": "RepairProposals",
+      "type": "object"
+    },
+    "ReplannerInput": {
+      "additionalProperties": false,
+      "properties": {
+        "base_plan": {
+          "$ref": "#/$defs/BuildPlan"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/$defs/PhysicalEvent"
+          },
+          "title": "Events",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "material_transactions": {
+          "items": {
+            "$ref": "#/$defs/MaterialTransaction"
+          },
+          "title": "Material Transactions",
+          "type": "array"
+        },
+        "patch": {
+          "$ref": "#/$defs/RepairPatch"
+        },
+        "remaining_stock": {
+          "items": {
+            "$ref": "#/$defs/Stock"
+          },
+          "title": "Remaining Stock",
+          "type": "array"
+        }
+      },
+      "required": [
+        "base_plan",
+        "events",
+        "evidence",
+        "material_transactions",
+        "remaining_stock",
+        "patch"
+      ],
+      "title": "ReplannerInput",
+      "type": "object"
+    },
+    "Stock": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_rotations_deg": {
+          "default": [
+            0,
+            90
+          ],
+          "items": {
+            "enum": [
+              0,
+              90
+            ],
+            "type": "integer"
+          },
+          "maxItems": 2,
+          "minItems": 1,
+          "title": "Allowed Rotations Deg",
+          "type": "array"
+        },
+        "condition": {
+          "enum": [
+            "usable",
+            "damaged",
+            "uncertain"
+          ],
+          "title": "Condition",
+          "type": "string"
+        },
+        "height_mm": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "image_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Image Ids",
+          "type": "array"
+        },
+        "kind": {
+          "enum": [
+            "sheet",
+            "strip",
+            "tape",
+            "cord"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "material": {
+          "enum": [
+            "cardboard",
+            "paperboard",
+            "other_supported"
+          ],
+          "title": "Material",
+          "type": "string"
+        },
+        "remaining_length_mm": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "thickness_mm": {
+          "$ref": "#/$defs/Measurement"
+        },
+        "usable_regions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Region"
+          },
+          "title": "Usable Regions",
+          "type": "array"
+        },
+        "width_mm": {
+          "$ref": "#/$defs/Measurement"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "material",
+        "width_mm",
+        "height_mm",
+        "thickness_mm",
+        "remaining_length_mm",
+        "condition"
+      ],
+      "title": "Stock",
+      "type": "object"
+    },
+    "TapeJoint": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/ConsumableJointArgs"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "expected_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected State Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "preconditions": {
+          "$ref": "#/$defs/Preconditions"
+        },
+        "requires_user_confirmation": {
+          "default": true,
+          "title": "Requires User Confirmation",
+          "type": "boolean"
+        },
+        "reversible": {
+          "enum": [
+            "lossy",
+            "irreversible"
+          ],
+          "title": "Reversible",
+          "type": "string"
+        },
+        "stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Stock Ids",
+          "type": "array"
+        },
+        "type": {
+          "const": "tape_joint",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "expected_state_id",
+        "preconditions",
+        "effects",
+        "type",
+        "args",
+        "reversible"
+      ],
+      "title": "TapeJoint",
+      "type": "object"
+    },
+    "TieJoint": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "$ref": "#/$defs/ConsumableJointArgs"
+        },
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "expected_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Expected State Id",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "part_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "preconditions": {
+          "$ref": "#/$defs/Preconditions"
+        },
+        "requires_user_confirmation": {
+          "default": true,
+          "title": "Requires User Confirmation",
+          "type": "boolean"
+        },
+        "reversible": {
+          "enum": [
+            "reversible",
+            "lossy"
+          ],
+          "title": "Reversible",
+          "type": "string"
+        },
+        "stock_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Stock Ids",
+          "type": "array"
+        },
+        "type": {
+          "const": "tie_joint",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "expected_state_id",
+        "preconditions",
+        "effects",
+        "type",
+        "args",
+        "reversible"
+      ],
+      "title": "TieJoint",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FORMA contracts"
+}

@@ -1,6 +1,6 @@
 # Contract handoff
 
-Status: requirements for #3, not an implemented schema or endpoint guarantee.
+Status: Pydantic contracts implemented in #3; API routes remain planned.
 @ResniDev owns domain models; @olartgabo consumes generated contracts in API
 services and web. Source: formspec.md sections 4, 5 and 12.
 
@@ -58,3 +58,10 @@ Expose blocked, needs-measurement, unsupported and no-feasible-repair outcomes
 with reasons. A defined user-observed passing functional test gates COMPLETE.
 Job states are queued, running, waiting_for_user, succeeded, failed and cancelled.
 Historical observations remain true as reports even when invalidated for a new plan.
+
+## Implemented contract interface (#3)
+
+Import runtime contracts from `forma_domain.models`. The exact schemas, error
+codes, mutation wrappers and deferred enforcement duties are in the
+[issue #3 handoff](handoffs/issue-3-domain.md). Requirements above are backed
+by Pydantic records and generated components; API routes remain planned.
