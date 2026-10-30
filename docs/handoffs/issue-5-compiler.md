@@ -40,3 +40,5 @@ result will be recorded before publication.
 No measured stock A/B, actual kerf/margin, joint tolerance or physical bench outcome
 exists in the supplied intake. Synthetic fixtures are opt-in only and cannot promote
 real profiles. Physical testing and real catalogue population remain #2/#13 inputs.
+
+Full npm run check passed: Prettier, Ruff49files/lint, generated freshness, strict TypeScript,40tests and production build. Two additional regression checks then passed with42totaltests. No source implementation changed after the full workspace check.

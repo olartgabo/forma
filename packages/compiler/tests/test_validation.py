@@ -420,3 +420,31 @@ def test_process_scope_cannot_cross_project():
         BuildPlan.model_validate(plan_data()), process=proc, allow_synthetic=True
     )
     assert "invalid_reference" in {b.code for b in result.blockers}
+
+
+def test_slot_change_effect_must_identify_changed_part():
+    data = tab_slot_data()
+    data["operations"][2]["effects"]["changed_part_ids"] = []
+    assert "invalid_reference" in codes(data)
+
+
+def test_detach_irreversible_join_requires_rejection():
+    data = joined_data()
+    data["operations"][-1]["reversible"] = "irreversible"
+    data["operations"].append(
+        dict(
+            id="detach",
+            type="detach",
+            depends_on=["join"],
+            expected_state_id="detached",
+            preconditions={},
+            effects=dict(detached_joint_ids=["joint"]),
+            args=dict(
+                joint_id="joint",
+                supported_inverse="peel_tape",
+                material_loss_stock_ids=["tape"],
+            ),
+            reversible="lossy",
+        )
+    )
+    assert "irreversible_conflict" in codes(data)
