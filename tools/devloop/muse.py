@@ -6,9 +6,9 @@ import time
 from budget import Budget
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-MAX_OUT = 32000
+MAX_OUT = 24000
 TRANSIENT = ("timeout", "network_error", "rate_limit", "provider_http_error")
-BACKOFF = (15, 60, 180)  # seconds between retries of transient Meta errors
+BACKOFF = (15, 60)  # seconds between retries of transient Meta errors
 SYSTEM = (
     "You are the programmer on the FORMA repository. Write production-quality, "
     "formatted Python/TypeScript matching the repository style. Follow AGENTS.md: "
@@ -45,8 +45,12 @@ class Muse:
             try:
                 return self.transport.post("/chat/completions", payload, self.timeout)
             except Exception as exc:
-                if delay is None or getattr(exc, "code", None) not in TRANSIENT:
+                code = getattr(exc, "code", None)
+                if code not in TRANSIENT:
                     raise
+                if delay is None:
+                    # Persistent errors fail this attempt, not the whole loop.
+                    raise MuseError(f"Meta {code} after retries") from None
                 print(f"  Meta {exc.code}; retrying in {delay}s")
                 self.sleep(delay)
 

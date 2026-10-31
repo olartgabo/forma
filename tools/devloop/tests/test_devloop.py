@@ -59,7 +59,7 @@ def test_muse_charges_worst_case_when_usage_missing(tmp_path):
     budget = Budget(tmp_path / "l.jsonl", 90, 1, 1)
     result = Muse(FakeMeta(change()), budget, "muse-spark-1.3").write({}, {})
     assert result.files[0].content == "x"
-    assert budget.spent() > 32000 / 1e6
+    assert budget.spent() > 24000 / 1e6
 
 
 def test_muse_rejects_malformed_output(tmp_path):

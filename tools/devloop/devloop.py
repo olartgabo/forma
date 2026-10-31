@@ -143,7 +143,8 @@ def work_on(task: dict, judge: Judge, muse: Muse, dry_run: bool) -> str:
     spec = judge.ask(
         model,
         "Write the next concrete, reviewable step that polishes or finishes this "
-        "task as a TaskSpec for the Muse programmer. Explore the repo first. "
+        "task as a TaskSpec for the Muse programmer. Explore the repo first. Keep "
+        "the step small: at most 3 files_allowed, so Muse can reply in one pass. "
         f"files_allowed may only use these path prefixes: {', '.join(LANE)}. "
         "The loop records which checks ran in the PR, so never ask Muse to "
         "write check results into files.\n" + brief,
@@ -169,7 +170,7 @@ def work_on(task: dict, judge: Judge, muse: Muse, dry_run: bool) -> str:
             print(f"  attempt {attempt + 1}: unusable Muse output")
             feedback = (
                 f"Your previous reply was unusable ({str(exc)[:300]}). It was likely "
-                "cut off: change fewer files and keep the reply under 25k tokens."
+                "cut off or timed out: change fewer files and keep the reply short."
             )
             continue
         for edit in change.files:
