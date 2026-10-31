@@ -137,6 +137,21 @@ def _affected(base, candidate):
     return affected, changed_parts
 
 
+def _safe_result_id(value: object, fallback: str) -> str:
+    return value if isinstance(value, str) and value else fallback
+
+
+def _blocked_snapshot(
+    patch_id: str, base_version_id: str, code: str, message: str
+) -> SimulationResult:
+    return SimulationResult(
+        patch_id=patch_id,
+        base_version_id=base_version_id,
+        status="blocked",
+        blockers=(Blocker(code=code, message=message),),
+    )
+
+
 def simulate_patch(
     snapshot: ReplannerInput,
     *,
@@ -152,6 +167,50 @@ def simulate_patch(
     independently reconciles the user's chronological execution ledger. No
     transactions, events, passes or salvage claims are generated here.
     """
+    raw_patch = getattr(snapshot, "patch", None)
+    raw_base_plan = getattr(snapshot, "base_plan", None)
+    result_patch_id = _safe_result_id(getattr(raw_patch, "id", None), "unknown_patch")
+    result_base_version_id = _safe_result_id(
+        getattr(raw_base_plan, "version_id", None), "unknown_version"
+    )
+    patch_base_version_id = getattr(raw_patch, "base_version_id", None)
+    base_version_id = getattr(raw_base_plan, "version_id", None)
+    if (
+        isinstance(patch_base_version_id, str)
+        and isinstance(base_version_id, str)
+        and patch_base_version_id != base_version_id
+    ):
+        return _blocked_snapshot(
+            result_patch_id,
+            result_base_version_id,
+            "stale_version",
+            "Patch base version does not match the supplied base plan version.",
+        )
+    # model_copy bypasses validators, so rebuild from dumped data to rerun
+    # nested record, reference, scope, uniqueness and chronology checks.
+    try:
+        snapshot = ReplannerInput.model_validate(
+            snapshot.model_dump(mode="python", warnings=False)
+        )
+    except (AttributeError, TypeError, ValueError):
+        return _blocked_snapshot(
+            result_patch_id,
+            result_base_version_id,
+            "invalid_reference",
+            "Supplied repair snapshot failed validation; no repair was simulated.",
+        )
+    try:
+        historical_plans = tuple(
+            BuildPlan.model_validate(plan.model_dump(mode="python", warnings=False))
+            for plan in historical_plans
+        )
+    except (AttributeError, TypeError, ValueError):
+        return _blocked_snapshot(
+            snapshot.patch.id,
+            snapshot.base_plan.version_id,
+            "invalid_reference",
+            "Supplied historical plan failed validation; no repair was simulated.",
+        )
     base, patch = snapshot.base_plan, snapshot.patch
     blockers = []
 

@@ -1,5 +1,6 @@
 """Synthetic offline regressions, never physical evidence."""
 
+import warnings
 from copy import deepcopy
 
 import pytest
@@ -751,6 +752,154 @@ def test_same_offcut_recorded_twice_is_duplicate_accounting():
     result = run(data)
     assert "stock_exhausted" in codes(result)
     assert any("Duplicate" in b.message for b in result.blockers)
+
+
+def test_model_copy_stale_patch_base_blocks_at_public_boundary():
+    request = ReplannerInput.model_validate(input_data())
+    before = request.model_dump(mode="python")
+    stale = request.model_copy(
+        update={
+            "patch": request.patch.model_copy(
+                update={"base_version_id": "wrong-version"}
+            )
+        }
+    )
+    result = simulate_patch(stale, process=process(), allow_synthetic=True)
+    valid = run(input_data())
+    assert result.status == "blocked"
+    assert result.status != "feasible"
+    assert codes(result) == {"stale_version"}
+    assert result.patch_id == "resize"
+    assert result.base_version_id == "v1"
+    assert result.plan is None
+    assert result.cost is None
+    assert rank_feasible((result, valid)) == (valid,)
+    assert all("wrong-version" not in b.message for b in result.blockers)
+    assert stale.patch.base_version_id == "wrong-version"
+    assert stale.base_plan.version_id == "v1"
+    assert stale.events == request.events
+    assert request.model_dump(mode="python") == before
+
+
+def assert_invalid_snapshot(malformed, forbidden):
+    before = malformed.model_dump(mode="python", warnings=False)
+    result = simulate_patch(malformed, process=process(), allow_synthetic=True)
+    assert result.status == "blocked"
+    assert codes(result) == {"invalid_reference"}
+    assert result.plan is None
+    assert result.cost is None
+    assert rank_feasible((result,)) == ()
+    assert all(
+        b.message
+        == "Supplied repair snapshot failed validation; no repair was simulated."
+        for b in result.blockers
+    )
+    assert all(forbidden not in b.message for b in result.blockers)
+    assert malformed.model_dump(mode="python", warnings=False) == before
+
+
+def test_model_copy_malformed_nested_reference_blocks_at_public_boundary():
+    request = ReplannerInput.model_validate(input_data())
+    bad_part = request.base_plan.parts[0].model_copy(
+        update={"source_stock_id": "missing_stock_sentinel"}
+    )
+    malformed = request.model_copy(
+        update={
+            "base_plan": request.base_plan.model_copy(
+                update={"parts": (bad_part, *request.base_plan.parts[1:])}
+            )
+        }
+    )
+    assert_invalid_snapshot(malformed, "missing_stock_sentinel")
+
+
+def test_model_copy_duplicate_history_blocks_at_public_boundary():
+    request = ReplannerInput.model_validate(input_data())
+    malformed = request.model_copy(update={"events": request.events * 2})
+    assert_invalid_snapshot(malformed, "duplicate")
+
+
+def test_model_copy_out_of_scope_history_blocks_at_public_boundary():
+    request = ReplannerInput.model_validate(input_data())
+    bad_event = request.events[0].model_copy(
+        update={"project_id": "other_project_sentinel"}
+    )
+    malformed = request.model_copy(update={"events": (bad_event,)})
+    assert_invalid_snapshot(malformed, "other_project_sentinel")
+
+
+def test_model_copy_malformed_historical_plan_blocks_at_public_boundary():
+    request = ReplannerInput.model_validate(input_data())
+    old = BuildPlan.model_validate(fixture())
+    bad_part = old.parts[0].model_copy(
+        update={"source_stock_id": "missing_stock_sentinel"}
+    )
+    malformed_old = old.model_copy(update={"parts": (bad_part, *old.parts[1:])})
+    result = simulate_patch(
+        request,
+        process=process(),
+        allow_synthetic=True,
+        historical_plans=(malformed_old,),
+    )
+    assert result.status == "blocked"
+    assert codes(result) == {"invalid_reference"}
+    assert result.plan is None
+    assert result.cost is None
+    assert rank_feasible((result,)) == ()
+    assert all("missing_stock_sentinel" not in b.message for b in result.blockers)
+
+
+def test_model_copy_malformed_numeric_snapshot_blocks_without_serializer_warning():
+    request = ReplannerInput.model_validate(input_data())
+    bad_geometry = request.base_plan.parts[0].geometry.model_copy(
+        update={"width": "PRIVATE_NUMERIC_SENTINEL"}
+    )
+    bad_part = request.base_plan.parts[0].model_copy(update={"geometry": bad_geometry})
+    malformed = request.model_copy(
+        update={
+            "base_plan": request.base_plan.model_copy(
+                update={"parts": (bad_part, *request.base_plan.parts[1:])}
+            )
+        }
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("error")
+        assert_invalid_snapshot(malformed, "PRIVATE_NUMERIC_SENTINEL")
+    assert caught == []
+
+
+def test_malformed_numeric_historical_plan_blocks_without_serializer_warning():
+    request = ReplannerInput.model_validate(input_data())
+    request_before = request.model_dump(mode="python", warnings=False)
+    old = BuildPlan.model_validate(fixture())
+    bad_geometry = old.parts[0].geometry.model_copy(
+        update={"width": "PRIVATE_NUMERIC_SENTINEL"}
+    )
+    bad_part = old.parts[0].model_copy(update={"geometry": bad_geometry})
+    malformed_old = old.model_copy(update={"parts": (bad_part, *old.parts[1:])})
+    before = malformed_old.model_dump(mode="python", warnings=False)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("error")
+        result = simulate_patch(
+            request,
+            process=process(),
+            allow_synthetic=True,
+            historical_plans=(malformed_old,),
+        )
+    assert caught == []
+    assert result.status == "blocked"
+    assert codes(result) == {"invalid_reference"}
+    assert result.plan is None
+    assert result.cost is None
+    assert rank_feasible((result,)) == ()
+    assert all(
+        b.message
+        == "Supplied historical plan failed validation; no repair was simulated."
+        for b in result.blockers
+    )
+    assert all("PRIVATE_NUMERIC_SENTINEL" not in b.message for b in result.blockers)
+    assert malformed_old.model_dump(mode="python", warnings=False) == before
+    assert request.model_dump(mode="python", warnings=False) == request_before
 
 
 def test_salvaged_offcut_can_be_lost_again():
