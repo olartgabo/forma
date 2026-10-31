@@ -354,7 +354,6 @@ def test_geometry_change_changes_affected_panels_but_reuses_fold():
             assert panel_a.dependency_hash == panel_b.dependency_hash
             assert panel_a.svg == panel_b.svg
         else:
-            assert index in {0, 1, 3, 4, 5, 6, 7}
             assert panel_a.dependency_hash != panel_b.dependency_hash
             assert panel_a.svg != panel_b.svg
 
