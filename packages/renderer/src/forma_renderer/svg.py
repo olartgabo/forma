@@ -637,6 +637,11 @@ def render_manual(
                 for o in plan.operations
                 if o.type == "tape_joint" and o.args.stock_id == stock.id
             )
+            joints = sum(
+                1
+                for o in plan.operations
+                if o.type == "tape_joint" and o.args.stock_id == stock.id
+            )
             remaining = stock.remaining_length_mm
             remaining_known = remaining.value is not None and remaining.confirmed
             bill += (
@@ -645,7 +650,9 @@ def render_manual(
                     stock.id,
                     used,
                     "mm",
-                    "Three full-width hinge strips",
+                    f"{joints} tape joint strip(s)"
+                    if joints
+                    else "Tape not used by this plan",
                 ),
                 BillItem(
                     f"{stock.id}-remaining",

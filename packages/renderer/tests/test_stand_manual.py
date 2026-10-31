@@ -153,6 +153,16 @@ def test_two_meaningful_parameterizations_and_complete_manual(alternate):
         )
         == 3 * plan.parts[0].geometry.width
     )
+    expected_joints = sum(
+        1
+        for o in plan.operations
+        if o.type == "tape_joint" and o.args.stock_id == "fixture-tape-stock"
+    )
+    consumed = next(
+        b for b in result.bill_of_materials if b.id == "fixture-tape-stock-consumed"
+    )
+    assert str(expected_joints) in consumed.description
+    assert "hinge" not in consumed.description.lower()
     assert any(
         b.id == "fixture-sheet-waste" and b.quantity > 0
         for b in result.bill_of_materials
@@ -443,6 +453,10 @@ def test_unused_unknown_tape_does_not_block_manual_or_fabricate_remaining():
     assert result.status == "accepted", result.blockers
     assert len(result.panels) == 8
     entries = {item.id: item for item in result.bill_of_materials}
+    consumed = entries["unused-unknown-tape-consumed"]
+    assert consumed.quantity == 0
+    assert "not used" in consumed.description.lower()
+    assert "hinge" not in consumed.description.lower()
     remaining = entries["unused-unknown-tape-remaining"]
     assert remaining.quantity is None
     assert remaining.quantity != 0
