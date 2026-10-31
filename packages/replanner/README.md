@@ -27,6 +27,17 @@ or fabricates salvage transactions. Callers supply authenticated project scope,
 reviewed cutting limits and a server-owned tested joint catalogue. Opaque profile
 evidence IDs are trusted catalogue references, not proof supplied by a model.
 
+If `patch.base_version_id` differs from `base_plan.version_id`, the call
+returns `status='blocked'` with a `stale_version` blocker before any
+simulation runs. The snapshot and each supplied historical plan are dumped
+with warnings disabled and rebuilt through `ReplannerInput`/`BuildPlan`
+validation, because `model_copy` can bypass validators. When that rebuild
+fails, including malformed numeric data, the result is blocked with an
+`invalid_reference` blocker and a fixed message; validator details and
+serializer warnings are not exposed, and only `AttributeError`,
+`TypeError` and `ValueError` are handled this way. Caller inputs are not
+mutated, and blocked results are excluded by `rank_feasible`.
+
 Supported targets: `resize_part` and `replace_part` name a part;
 `replace_joint_profile` names a joint; `change_angle` names the base version.
 Resize affects future cuts only. Compatible same-strategy catalogue profile
