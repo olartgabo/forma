@@ -503,3 +503,23 @@ def test_renderer_revalidates_model_copy():
     plan, parameters, process = build()
     result = manual(plan.model_copy(update={"parts": ()}), parameters, process)
     assert result.status == "blocked" and not result.panels
+
+
+def test_overdrawn_tape_stock_blocks_manual():
+    plan, parameters, process = build()
+    tape_ops = [o for o in plan.operations if o.type == "tape_joint"]
+    assert len(tape_ops) == 3
+    stock_id = tape_ops[0].args.stock_id
+    width = tape_ops[0].args.length_mm
+    total = sum(o.args.length_mm for o in tape_ops)
+    initial = 2 * width
+    assert 0 < width < initial < total
+    data = plan.model_dump()
+    for stock in data["stocks"]:
+        if stock["id"] == stock_id:
+            stock["remaining_length_mm"]["value"] = initial
+    overdrawn = m.BuildPlan.model_validate(data)
+    result = manual(overdrawn, parameters, process)
+    assert result.status != "accepted"
+    assert result.blockers
+    assert any(b.code == "stock_exhausted" for b in result.blockers)
