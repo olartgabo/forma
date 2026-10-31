@@ -1,0 +1,180 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import {
+  ApiError,
+  createProject,
+  deletePhoto,
+  fetchPhoto,
+  listPhotos,
+  loadProject,
+  saveInventory,
+  uploadPhoto,
+} from "../src/lib/api.ts";
+
+const token = "synthetic-owner-credential";
+const savedProject = {
+  id: "project-a",
+  goal: "A phone stand",
+  revision_id: "inventory-1",
+  stocks: [],
+};
+
+test("project requests preserve caller scope, explicit confirmations and retry keys", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json({ project: savedProject });
+  });
+  await createProject(token, "Un soporte para mi teléfono", "create-key");
+  await saveInventory(token, "project-a", [], "inventory-1", "save-key");
+  await loadProject(token, "project-a");
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    goal: "Un soporte para mi teléfono",
+    idempotency_key: "create-key",
+  });
+  assert.deepEqual(JSON.parse(calls[1].options.body), {
+    stocks: [],
+    expected_revision_id: "inventory-1",
+    idempotency_key: "save-key",
+    user_confirmed: true,
+  });
+  assert.equal(calls[0].path, "/api/projects");
+  assert.equal(calls[1].path, "/api/projects/project-a/inventory");
+  assert.equal(calls[2].path, "/api/projects/project-a");
+  for (const { options } of calls) {
+    assert.equal(options.headers.get("Authorization"), `Bearer ${token}`);
+    assert.equal(options.credentials, "omit");
+    assert.equal(options.redirect, "error");
+    assert.equal(options.cache, "no-store");
+  }
+});
+
+test("photo requests use private blob downloads and scoped retry headers", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return options.method === "GET" && path.endsWith("/media-a")
+      ? new Response("pixels", { headers: { "Content-Type": "image/png" } })
+      : Response.json({ media: [] });
+  });
+  const file = new File(["pixels"], "private.png", { type: "image/png" });
+  await uploadPhoto(token, "project-a", file, "upload-key");
+  await listPhotos(token, "project-a");
+  const blob = await fetchPhoto(token, "project-a", "media-a");
+  await deletePhoto(token, "project-a", "media-a", "delete-key");
+  assert.equal(calls[0].options.body, file);
+  assert.equal(calls[0].options.headers.get("Content-Type"), "image/png");
+  assert.equal(calls[0].options.headers.get("Idempotency-Key"), "upload-key");
+  assert.equal(calls[1].path, "/api/projects/project-a/media");
+  assert.equal(blob.type, "image/png");
+  assert.equal(await blob.text(), "pixels");
+  assert.equal(calls[3].path, "/api/projects/project-a/media/media-a");
+  assert.equal(calls[3].options.headers.get("Idempotency-Key"), "delete-key");
+});
+
+test("error messages expose known conflict codes without echoing server content", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { code: "stale_version", message: "PRIVATE_SERVER_TEXT" },
+      { status: 409 },
+    ),
+  );
+  await assert.rejects(loadProject(token, "project-a"), (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 409);
+    assert.equal(error.code, "stale_version");
+    assert.match(error.message, /Reload before saving/);
+    assert.doesNotMatch(error.message, /PRIVATE_SERVER_TEXT/);
+    return true;
+  });
+});
+
+test("HTML and unknown server errors become safe local failures", async (t) => {
+  const responses = [
+    new Response("PRIVATE_PROXY_TEXT", { status: 502 }),
+    Response.json(
+      { code: "PRIVATE_CODE", message: "PRIVATE_TEXT" },
+      { status: 500 },
+    ),
+  ];
+  t.mock.method(globalThis, "fetch", async () => responses.shift());
+  for (const status of [502, 500]) {
+    await assert.rejects(loadProject(token, "project-a"), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, status);
+      assert.equal(error.code, "request_failed");
+      assert.doesNotMatch(error.message, /PRIVATE/);
+      return true;
+    });
+  }
+});
+
+test("non-object success payload is reported as unreadable", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => Response.json(null));
+  await assert.rejects(loadProject(token, "project-a"), (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.code, "invalid_response");
+    return true;
+  });
+});
+
+test("malformed success JSON is a safe unreadable response", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response("PRIVATE_HTML"));
+  await assert.rejects(loadProject(token, "project-a"), (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 200);
+    assert.equal(error.code, "invalid_response");
+    assert.doesNotMatch(error.message, /PRIVATE_HTML/);
+    return true;
+  });
+});
+
+test("caller cancellation aborts the in-flight request", async (t) => {
+  let requestSignal;
+  t.mock.method(globalThis, "fetch", (path, options) => {
+    requestSignal = options.signal;
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener(
+        "abort",
+        () => reject(new DOMException("PRIVATE_ABORT_DETAIL", "AbortError")),
+        { once: true },
+      );
+    });
+  });
+  const controller = new AbortController();
+  const pending = loadProject(token, "project-a", controller.signal);
+  controller.abort();
+  await assert.rejects(pending, (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.code, "cancelled");
+    assert.doesNotMatch(error.message, /PRIVATE_ABORT_DETAIL/);
+    return true;
+  });
+  assert.equal(requestSignal.aborted, true);
+});
+
+test("deadline also aborts a stalled response body", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (path, options) =>
+      new Response(
+        new ReadableStream({
+          start(stream) {
+            options.signal.addEventListener("abort", () =>
+              stream.error(new DOMException("aborted", "AbortError")),
+            );
+          },
+        }),
+      ),
+  );
+  const pending = loadProject(token, "project-a");
+  t.mock.timers.tick(30_000);
+  await assert.rejects(pending, (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.code, "request_timeout");
+    return true;
+  });
+});
