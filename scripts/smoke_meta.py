@@ -99,9 +99,13 @@ def run_smoke(gateway, image, sam_concept) -> tuple[int, dict]:
         boxes = gateway.segment(image, sam_concept)
         report["sam"] = "boxes_returned" if boxes else "no_matches_manual_box_required"
         report["box_count"] = len(boxes)
+        report["status"] = "ok"
     except GatewayError as exc:
         report["sam"] = exc.code
         report["fallback"] = "manual Box validation available; user must label/correct"
+        report["status"] = "sam_failed"
+        report["traces"] = [asdict(t) for t in gateway.traces]
+        return 3, report
     report["traces"] = [asdict(t) for t in gateway.traces]
     return 0, report
 

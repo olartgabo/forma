@@ -420,6 +420,7 @@ def test_smoke_success_reports_metadata_without_private_data(monkeypatch):
     image = ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True)
     exit_code, report = smoke_meta.run_smoke(gateway, image, "cardboard sheet")
     assert exit_code == 0
+    assert report["status"] == "ok"
     assert report["spark_image_schema_tool"] == "validated"
     assert report["label_count"] == 1
     assert report["question_count"] == 1
@@ -447,6 +448,7 @@ def test_smoke_success_reports_metadata_without_private_data(monkeypatch):
         "schema_version",
         "runtime",
         "models",
+        "status",
         "spark_image_schema_tool",
         "label_count",
         "question_count",
@@ -479,7 +481,7 @@ def test_smoke_spark_error_skips_sam():
     assert report["traces"][0]["status"] == "authentication"
 
 
-def test_smoke_sam_refusal_falls_back_with_success():
+def test_smoke_sam_refusal_fails_with_sam_failed():
     tool_response = call("check_measurements", '{"measurements_confirmed":false}')
     final_response = final(
         json.dumps(
@@ -498,12 +500,38 @@ def test_smoke_sam_refusal_falls_back_with_success():
     gateway = MetaGateway(fake)
     image = ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True)
     exit_code, report = smoke_meta.run_smoke(gateway, image, "cardboard sheet")
-    assert exit_code == 0
+    assert exit_code == 3
+    assert report["status"] == "sam_failed"
     assert report["spark_image_schema_tool"] == "validated"
     assert report["sam"] == "refusal"
     assert report["fallback"] == (
         "manual Box validation available; user must label/correct"
     )
+
+
+def test_smoke_sam_empty_output_reports_ok_no_matches():
+    tool_response = call("check_measurements", '{"measurements_confirmed":false}')
+    final_response = final(
+        json.dumps(
+            {
+                "labels": ["plain sheet"],
+                "measurement_source": "unknown",
+                "questions": ["What is the thickness?"],
+            }
+        )
+    )
+    sam_empty = {
+        "status": "completed",
+        "output": [{"content": [{"type": "output_text", "text": ""}]}],
+    }
+    fake = Fake(tool_response, final_response, sam_empty)
+    gateway = MetaGateway(fake)
+    image = ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True)
+    exit_code, report = smoke_meta.run_smoke(gateway, image, "cardboard sheet")
+    assert exit_code == 0
+    assert report["status"] == "ok"
+    assert report["sam"] == "no_matches_manual_box_required"
+    assert report["box_count"] == 0
 
 
 def test_smoke_main_oversized_photo_reports_invalid_image(
