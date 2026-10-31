@@ -77,7 +77,24 @@ approval. See [the handoff](handoffs/issue-3-domain.md) for consumer obligations
 Material conservation, geometry, auth and transactions remain #5/#6/#10 work.
 Synthetic fixtures are not measured stock. No product scope changes.
 
-## D010: Muse-written code with a Claude review loop, October 31, 2026
+## D010: Local private persistence, October 30, 2026
+
+Owner: @olartgabo; review requested from @ResniDev through the issue #6 PR.
+The first #6 slice uses SQLite in an ignored local directory and explicitly
+configured owner bearer credentials (`FORMA_API_TOKENS`). Missing configuration
+disables project access. This resolves only the development part of P003/P004;
+hosted identity, production storage and media retention remain pending.
+
+Inventory has its own optimistic revision ID, separate from nullable active plan
+version. API-local envelopes reuse domain Stock records and leave domain plan
+mutation contracts unchanged. Confirmation stores what the user reports, including
+unknown measurements; it does not authorize cutting. Serialized transactions
+persist revision checks and idempotency outcomes together. Scope is project
+creation/read, pre-plan inventory and deletion; media, immutable plans/events and
+approved adaptation transactions remain open. See the
+[#6 handoff](handoffs/issue-6-persistence.md).
+
+## D011: Muse-written code with a Claude review loop, October 31, 2026
 
 Owner: @ResniDev. `tools/devloop` is development tooling for the @ResniDev
 lane. Meta Muse Spark writes the code changes. Claude models are used only as

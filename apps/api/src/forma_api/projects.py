@@ -1,0 +1,261 @@
+"""Local private project persistence; never activates plans or records physical work."""
+
+import hashlib
+import json
+import secrets
+import sqlite3
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Annotated, Literal
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, Header, Request
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import Field
+
+from forma_domain.models import ID, ErrorEnvelope, Record, Stock, Text
+
+Key = Annotated[str, Field(min_length=8, max_length=128)]
+
+
+class CreateProject(Record):
+    goal: Text
+    idempotency_key: Key
+
+
+class InventoryUpdate(Record):
+    expected_revision_id: ID
+    idempotency_key: Key
+    stocks: tuple[Stock, ...] = Field(min_length=1, max_length=32)
+    user_confirmed: Literal[True]
+
+
+class Project(Record):
+    id: ID
+    goal: Text
+    revision_id: ID
+    active_version_id: ID | None = None
+    stocks: tuple[Stock, ...] = ()
+    inventory_confirmed: bool = False
+
+
+class ProjectResult(Record):
+    project: Project
+    replayed: bool = False
+
+
+class DeleteResult(Record):
+    project_id: ID
+    deleted: Literal[True] = True
+    replayed: bool = False
+
+
+class ProjectError(Exception):
+    def __init__(self, status: int, code: str, message: str):
+        self.status = status
+        self.envelope = ErrorEnvelope(code=code, message=message)
+
+
+async def project_error_handler(request: Request, exc: ProjectError):
+    return JSONResponse(exc.envelope.model_dump(mode="json"), status_code=exc.status)
+
+
+class ProjectStore:
+    def __init__(self, directory: Path):
+        self.directory = directory
+
+    @contextmanager
+    def transaction(self):
+        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        connection = sqlite3.connect(self.directory / "projects.sqlite3", timeout=10)
+        try:
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS projects "
+                "(id TEXT PRIMARY KEY, owner TEXT NOT NULL, body TEXT NOT NULL)"
+            )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS requests "
+                "(owner TEXT, scope TEXT, key TEXT, digest TEXT NOT NULL, "
+                "response TEXT NOT NULL, PRIMARY KEY(owner, scope, key))"
+            )
+            yield connection
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    @staticmethod
+    def read(connection, owner: str, project_id: str) -> Project:
+        row = connection.execute(
+            "SELECT body FROM projects WHERE id = ? AND owner = ?", (project_id, owner)
+        ).fetchone()
+        if row is None:
+            raise ProjectError(404, "not_found", "Project not found")
+        return Project.model_validate_json(row[0])
+
+    @staticmethod
+    def replay(connection, owner, scope, key, payload):
+        digest = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        row = connection.execute(
+            "SELECT digest, response FROM requests WHERE owner=? AND scope=? AND key=?",
+            (owner, scope, key),
+        ).fetchone()
+        if row is not None:
+            if row[0] != digest:
+                raise ProjectError(
+                    409, "idempotency_conflict", "Key already used for another request"
+                )
+            return digest, {**json.loads(row[1]), "replayed": True}
+        return digest, None
+
+    @staticmethod
+    def remember(connection, owner, scope, key, digest, response):
+        connection.execute(
+            "INSERT INTO requests VALUES (?, ?, ?, ?, ?)",
+            (owner, scope, key, digest, json.dumps(response)),
+        )
+
+
+def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRouter:
+    if any(len(token) < 32 for token in credentials.values()) or len(
+        set(credentials.values())
+    ) != len(credentials):
+        raise ValueError(
+            "Owner credentials must be distinct and at least 32 characters"
+        )
+    # Keep only digests in the dependency closure; never expose tokens in responses.
+    owners = {
+        hashlib.sha256(token.encode()).digest(): owner
+        for owner, token in credentials.items()
+    }
+    bearer = HTTPBearer(auto_error=False)
+
+    def authenticate(
+        supplied: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    ) -> str:
+        if supplied is not None:
+            digest = hashlib.sha256(supplied.credentials.encode()).digest()
+            for candidate, owner in owners.items():
+                if secrets.compare_digest(digest, candidate):
+                    return owner
+        raise ProjectError(
+            401, "forbidden", "A configured bearer credential is required"
+        )
+
+    Owner = Annotated[str, Depends(authenticate)]
+    router = APIRouter(prefix="/projects", tags=["projects"])
+
+    @router.post("", response_model=ProjectResult, status_code=201)
+    def create(body: CreateProject, owner: Owner):
+        with store.transaction() as connection:
+            digest, replay = store.replay(
+                connection, owner, "create", body.idempotency_key, body.model_dump()
+            )
+            if replay:
+                if "deleted_project_id" in replay:
+                    raise ProjectError(404, "not_found", "Project was deleted")
+                # Creation retries must not resurrect deleted projects or their data.
+                store.read(connection, owner, replay["project"]["id"])
+                return replay
+            project = Project(
+                id="project-" + uuid4().hex,
+                goal=body.goal,
+                revision_id="inventory-" + uuid4().hex,
+            )
+            connection.execute(
+                "INSERT INTO projects VALUES (?, ?, ?)",
+                (project.id, owner, project.model_dump_json()),
+            )
+            result = ProjectResult(project=project).model_dump(mode="json")
+            store.remember(
+                connection, owner, "create", body.idempotency_key, digest, result
+            )
+            return result
+
+    @router.get("/{project_id}", response_model=Project)
+    def get(project_id: ID, owner: Owner):
+        with store.transaction() as connection:
+            return store.read(connection, owner, project_id)
+
+    @router.put("/{project_id}/inventory", response_model=ProjectResult)
+    def inventory(project_id: ID, body: InventoryUpdate, owner: Owner):
+        with store.transaction() as connection:
+            project = store.read(connection, owner, project_id)
+            scope = project_id + ":inventory"
+            digest, replay = store.replay(
+                connection,
+                owner,
+                scope,
+                body.idempotency_key,
+                body.model_dump(mode="json"),
+            )
+            if replay:
+                return replay
+            if project.revision_id != body.expected_revision_id:
+                raise ProjectError(409, "stale_version", "Inventory changed; reload it")
+            if project.active_version_id is not None:
+                raise ProjectError(409, "blocked", "Active plans require a revision")
+            if len({stock.id for stock in body.stocks}) != len(body.stocks):
+                raise ProjectError(422, "validation_error", "Duplicate stock IDs")
+            for stock in body.stocks:
+                measurements = (
+                    stock.width_mm,
+                    stock.height_mm,
+                    stock.thickness_mm,
+                    stock.remaining_length_mm,
+                )
+                if stock.image_ids or any(m.evidence_ids for m in measurements):
+                    raise ProjectError(
+                        422, "validation_error", "Unresolved media reference"
+                    )
+            updated = Project(
+                **{
+                    **project.model_dump(),
+                    "stocks": body.stocks,
+                    "inventory_confirmed": True,
+                    "revision_id": "inventory-" + uuid4().hex,
+                }
+            )
+            connection.execute(
+                "UPDATE projects SET body=? WHERE id=? AND owner=?",
+                (updated.model_dump_json(), project_id, owner),
+            )
+            result = ProjectResult(project=updated).model_dump(mode="json")
+            store.remember(
+                connection, owner, scope, body.idempotency_key, digest, result
+            )
+            return result
+
+    @router.delete("/{project_id}", response_model=DeleteResult)
+    def delete(project_id: ID, owner: Owner, idempotency_key: Annotated[Key, Header()]):
+        with store.transaction() as connection:
+            scope = project_id + ":delete"
+            digest, replay = store.replay(
+                connection, owner, scope, idempotency_key, {"project_id": project_id}
+            )
+            if replay:
+                return replay
+            store.read(connection, owner, project_id)
+            # Purge saved snapshots as well as the live project row.
+            connection.execute(
+                "DELETE FROM requests WHERE owner=? AND scope=?",
+                (owner, project_id + ":inventory"),
+            )
+            connection.execute(
+                "UPDATE requests SET response=? WHERE owner=? AND scope='create' "
+                "AND json_extract(response, '$.project.id')=?",
+                (json.dumps({"deleted_project_id": project_id}), owner, project_id),
+            )
+            connection.execute("DELETE FROM projects WHERE id=?", (project_id,))
+            result = DeleteResult(project_id=project_id).model_dump(mode="json")
+            store.remember(connection, owner, scope, idempotency_key, digest, result)
+            return result
+
+    return router

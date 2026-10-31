@@ -1,7 +1,8 @@
 # API and orchestration
 
 Product/persistence owner: @olartgabo. Gateway/orchestrator owner: @ResniDev.
-Each reviews the other's API contract changes. Status: health scaffold.
+Each reviews the other's API contract changes. Status: health plus local private
+project/inventory persistence; provider services are available offline.
 Issues: #1, #4, #6, #9 and #12.
 
 Implement FastAPI with project-scoped routes and Pydantic validation. Reserve
@@ -30,7 +31,35 @@ exposes FastAPI's OpenAPI UI. No database or provider readiness is implied.
 `uv run --locked ruff format --check .` check Python source. No model key is
 needed. See the [root README](../../README.md) for pinned tools and setup.
 
-Only the health route is implemented. Project routes, authentication, persistence,
-uploads and provider integration remain #6/#4. The
+Project/inventory routes and local development authentication are implemented.
+Uploads, plan/event persistence and hosted authentication remain #6 work. The
 [#1 handoff](../../docs/handoffs/issue-1-workspace.md) reserves the service/domain
 boundary for review before those changes.
+
+## Local private projects (#6, first slice)
+
+`create_app()` now exposes project creation/read/deletion and pre-plan inventory
+confirmation. Configure `FORMA_API_TOKENS` as a JSON object mapping owner IDs to
+distinct secret tokens of at least 32 characters. Send a configured token in
+`Authorization: Bearer <token>`. With no credentials configured, project routes
+return 401; health stays public. This is development auth; hosted sign-in remains
+pending. Keep tokens server-side and out of source control and public logs.
+
+`FORMA_DATA_DIR` defaults to `.local/forma`; SQLite stores private project and
+inventory records there. POST `/api/projects` accepts `goal` and
+`idempotency_key`. GET `/api/projects/{id}` restores the project. PUT
+`/api/projects/{id}/inventory` accepts domain `stocks`, `user_confirmed: true`,
+`expected_revision_id` and `idempotency_key`. Every accepted edit advances the
+inventory revision. Stale edits and changed-payload key reuse return 409; exact
+retries return the original outcome with `replayed: true`. An inventory revision
+is separate from `active_version_id`, which stays null until plan storage exists.
+Unknown measurements remain unknown. Photo/evidence IDs are rejected until
+private media storage can resolve them. OpenAPI documents the actual envelopes.
+
+DELETE `/api/projects/{id}` takes `Idempotency-Key` in a header, removes the
+inventory and stored replay snapshots, and retains only a scoped deletion receipt.
+This is logical deletion; SQLite free pages and local backup copies are outside
+this deletion mechanism. These routes do not send
+data to providers. Uploads, consent/transfer, immutable plan/event/material history
+and revision activation remain open in #6/#12. See the
+[contract handoff](../../docs/handoffs/issue-6-persistence.md).

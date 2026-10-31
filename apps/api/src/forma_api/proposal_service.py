@@ -526,6 +526,9 @@ class ProposalService:
         if snapshot.plan:
             for field in ("parts", "joints", "operations", "checkpoints"):
                 ids.update(item.id for item in getattr(snapshot.plan, field))
+            ids.update(
+                feature.id for part in snapshot.plan.parts for feature in part.features
+            )
         for history in snapshot.historical_scopes:
             ids.update(
                 history.operation_ids + history.part_ids + history.checkpoint_ids

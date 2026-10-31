@@ -408,6 +408,20 @@ def diagnose_data(**changes):
     )
 
 
+def snapshot_with_slot_feature():
+    data = snapshot().model_dump()
+    for part in data["plan"]["parts"]:
+        if part["id"] == "part-a":
+            part["features"] = (
+                m.Feature(
+                    id="known-slot",
+                    kind="slot",
+                    geometry=m.Rect(x=1, y=1, width=3, height=2),
+                ),
+            )
+    return ProposalSnapshot.model_validate(data)
+
+
 def test_diagnosis_separates_observation_hypothesis_question_and_uses_snapshot():
     fake = FakeTransport(diagnose_data())
     result = service(fake).run(
@@ -436,6 +450,110 @@ def test_diagnosis_unknown_affected_id_stops():
         photo_evidence_id="photo-a",
     )
     assert result.error_code == "invalid_diagnosis_reference"
+
+
+def test_diagnosis_accepts_current_plan_slot_feature():
+    state = snapshot_with_slot_feature()
+    before = state.model_dump_json()
+    fake = FakeTransport(diagnose_data(affected_ids=["known-slot"]))
+    result = service(fake).run(
+        "diagnose",
+        state,
+        "private failure",
+        image=ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True),
+        photo_evidence_id="photo-a",
+    )
+    assert result.status == "needs_clarification"
+    assert result.proposal.visible_observations == ("private visible tear",)
+    assert result.proposal.hypotheses == ("weak edge, uncertain",)
+    assert result.proposal.affected_ids == ("known-slot",)
+    assert result.proposal.questions_or_measurements == ("Measure the edge distance.",)
+    assert result.questions == ("Measure the edge distance.",)
+    assert state.model_dump_json() == before
+    trace = result.trace.model_dump_json()
+    assert "private" not in trace and "known-slot" not in trace
+
+
+def test_diagnosis_context_exposes_current_plan_slot_feature():
+    state = snapshot_with_slot_feature()
+    fake = FakeTransport(diagnose_data(affected_ids=["known-slot"]))
+    result = service(fake).run(
+        "diagnose",
+        state,
+        "private failure",
+        image=ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True),
+        photo_evidence_id="photo-a",
+    )
+    assert result.status == "needs_clarification"
+    assert result.proposal.affected_ids == ("known-slot",)
+    context = json.loads(fake.calls[0]["messages"][1]["content"][0]["text"])[
+        "untrusted_context"
+    ]["snapshot"]
+    part_ctx = next(p for p in context["plan"]["parts"] if p["id"] == "part-a")
+    feature_ids = [feature["id"] for feature in part_ctx["features"]]
+    assert "known-slot" in feature_ids
+    assert result.proposal.affected_ids[0] in feature_ids
+
+
+def test_diagnosis_unknown_feature_id_stops():
+    result = service(FakeTransport(diagnose_data(affected_ids=["invented-slot"]))).run(
+        "diagnose",
+        snapshot_with_slot_feature(),
+        "failure",
+        image=ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True),
+        photo_evidence_id="photo-a",
+    )
+    assert result.status == "stopped" and result.proposal is None
+    assert result.error_code == "invalid_diagnosis_reference"
+
+
+def test_diagnosis_feature_outside_current_plan_is_not_available():
+    # known-slot exists only in a different plan; this authorized plan lacks it.
+    result = service(FakeTransport(diagnose_data(affected_ids=["known-slot"]))).run(
+        "diagnose",
+        snapshot(),
+        "failure",
+        image=ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True),
+        photo_evidence_id="photo-a",
+    )
+    assert result.status == "stopped" and result.proposal is None
+    assert result.error_code == "invalid_diagnosis_reference"
+
+
+def test_diagnosis_feature_with_absent_plan_is_not_available():
+    data = snapshot_with_slot_feature().model_dump()
+    data["plan"] = None
+    data["current_operation_id"] = None
+    data["events"] = []
+    data["evidence"] = []
+    state = ProposalSnapshot.model_validate(data)
+    fake = FakeTransport(diagnose_data(affected_ids=["known-slot"]))
+    result = service(fake).run(
+        "diagnose",
+        state,
+        "failure",
+        image=ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True),
+        photo_evidence_id="photo-a",
+    )
+    assert result.status == "needs_clarification" and result.proposal is None
+    assert not fake.calls
+
+
+def test_repair_patch_cannot_target_current_slot_feature():
+    called = []
+    result = service(
+        FakeTransport(
+            batch(
+                repair(target_id="known-slot"),
+                questions=("Please confirm available material.",),
+            )
+        ),
+        lambda c, s: called.append(c),
+    ).run("repair", snapshot_with_slot_feature(), "repair")
+    assert not called and result.status == "needs_clarification"
+    assert result.proposal is None
+    assert result.reviews[0].feedback.blockers[0].code == "invalid_reference"
+    assert result.reviews[0].feedback.blockers[0].target_ids == ("known-slot",)
 
 
 @pytest.mark.parametrize(

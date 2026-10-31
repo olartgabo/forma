@@ -78,6 +78,21 @@ def _close(a, b):
     return abs(a - b) <= 1e-7
 
 
+def _touched_stock_ids(snapshot):
+    """Stocks the base work, ledger or requested patch actually relies on."""
+    base, patch = snapshot.base_plan, snapshot.patch
+    touched = {p.source_stock_id for p in base.parts}
+    for op in base.operations:
+        touched.update(op.stock_ids)
+        stock_id = getattr(op.args, "stock_id", None)
+        if stock_id is not None:
+            touched.add(stock_id)
+    touched.update(tx.source_stock_id for tx in snapshot.material_transactions)
+    if patch.replacement_stock_id is not None:
+        touched.add(patch.replacement_stock_id)
+    return touched
+
+
 def _affected(base, candidate):
     """Include relevant interfaces and all prerequisites, not operation IDs alone."""
     old_parts = {p.id: p for p in base.parts}
@@ -137,6 +152,21 @@ def _affected(base, candidate):
     return affected, changed_parts
 
 
+def _safe_result_id(value: object, fallback: str) -> str:
+    return value if isinstance(value, str) and value else fallback
+
+
+def _blocked_snapshot(
+    patch_id: str, base_version_id: str, code: str, message: str
+) -> SimulationResult:
+    return SimulationResult(
+        patch_id=patch_id,
+        base_version_id=base_version_id,
+        status="blocked",
+        blockers=(Blocker(code=code, message=message),),
+    )
+
+
 def simulate_patch(
     snapshot: ReplannerInput,
     *,
@@ -152,6 +182,50 @@ def simulate_patch(
     independently reconciles the user's chronological execution ledger. No
     transactions, events, passes or salvage claims are generated here.
     """
+    raw_patch = getattr(snapshot, "patch", None)
+    raw_base_plan = getattr(snapshot, "base_plan", None)
+    result_patch_id = _safe_result_id(getattr(raw_patch, "id", None), "unknown_patch")
+    result_base_version_id = _safe_result_id(
+        getattr(raw_base_plan, "version_id", None), "unknown_version"
+    )
+    patch_base_version_id = getattr(raw_patch, "base_version_id", None)
+    base_version_id = getattr(raw_base_plan, "version_id", None)
+    if (
+        isinstance(patch_base_version_id, str)
+        and isinstance(base_version_id, str)
+        and patch_base_version_id != base_version_id
+    ):
+        return _blocked_snapshot(
+            result_patch_id,
+            result_base_version_id,
+            "stale_version",
+            "Patch base version does not match the supplied base plan version.",
+        )
+    # model_copy bypasses validators, so rebuild from dumped data to rerun
+    # nested record, reference, scope, uniqueness and chronology checks.
+    try:
+        snapshot = ReplannerInput.model_validate(
+            snapshot.model_dump(mode="python", warnings=False)
+        )
+    except (AttributeError, TypeError, ValueError):
+        return _blocked_snapshot(
+            result_patch_id,
+            result_base_version_id,
+            "invalid_reference",
+            "Supplied repair snapshot failed validation; no repair was simulated.",
+        )
+    try:
+        historical_plans = tuple(
+            BuildPlan.model_validate(plan.model_dump(mode="python", warnings=False))
+            for plan in historical_plans
+        )
+    except (AttributeError, TypeError, ValueError):
+        return _blocked_snapshot(
+            snapshot.patch.id,
+            snapshot.base_plan.version_id,
+            "invalid_reference",
+            "Supplied historical plan failed validation; no repair was simulated.",
+        )
     base, patch = snapshot.base_plan, snapshot.patch
     blockers = []
 
@@ -524,38 +598,53 @@ def simulate_patch(
             "invalid_reference",
             "Remaining inventory must contain exactly the known physical sources.",
         )
+    touched_stock_ids = _touched_stock_ids(snapshot)
     actual_regions = {}
     for stock in snapshot.remaining_stock:
         original = stocks.get(stock.id)
         if original is None:
             continue
-        if (
-            stock.kind != original.kind
-            or stock.material != original.material
-            or stock.width_mm != original.width_mm
-            or stock.height_mm != original.height_mm
-            or stock.thickness_mm != original.thickness_mm
-            or stock.condition != "usable"
-        ):
-            fail(
-                "needs_confirmation",
-                "Inventory identity, measurements or condition conflict with physical history.",
-                stock.id,
-            )
-        if stock.kind in ("tape", "cord"):
-            expected = lengths.get(stock.id)
-            value = stock.remaining_length_mm
-            if (
-                expected is None
-                or value.value is None
-                or not value.confirmed
-                or not _close(expected, value.value)
-            ):
+        if stock.id not in touched_stock_ids:
+            # Untouched unused inventory may stay exactly as unknown and
+            # uncertain as originally recorded: it supports no part, operation
+            # or patch, so it neither blocks the repair nor becomes usable
+            # availability. Any change to it is a conflict, not confirmation.
+            # Regions are still collected below so structural reconciliation,
+            # including duplicate detection, applies unchanged.
+            if stock != original:
                 fail(
-                    "stock_exhausted",
-                    "Remaining connector length conflicts with confirmed consumption.",
+                    "needs_confirmation",
+                    "Unused inventory changed from its original unknown state; confirm the new identity, measurements or condition explicitly.",
                     stock.id,
                 )
+        else:
+            if (
+                stock.kind != original.kind
+                or stock.material != original.material
+                or stock.width_mm != original.width_mm
+                or stock.height_mm != original.height_mm
+                or stock.thickness_mm != original.thickness_mm
+                or stock.condition != "usable"
+            ):
+                fail(
+                    "needs_confirmation",
+                    "Inventory identity, measurements or condition conflict with physical history.",
+                    stock.id,
+                )
+            if stock.kind in ("tape", "cord"):
+                expected = lengths.get(stock.id)
+                value = stock.remaining_length_mm
+                if (
+                    expected is None
+                    or value.value is None
+                    or not value.confirmed
+                    or not _close(expected, value.value)
+                ):
+                    fail(
+                        "stock_exhausted",
+                        "Remaining connector length conflicts with confirmed consumption.",
+                        stock.id,
+                    )
         for region in stock.usable_regions:
             if region.id in actual_regions:
                 fail("stock_exhausted", "A remaining region appears twice.", region.id)
@@ -959,14 +1048,21 @@ def simulate_patch(
         )
     if family_validator is not None:
         try:
-            blockers.extend(
+            # Materialize first so a failure during lazy iteration cannot
+            # leave partially validated blockers behind. Ordinary callback
+            # failures become one stable, safe blocker; the exception text
+            # is never exposed. BaseException (e.g. KeyboardInterrupt and
+            # SystemExit) is not an Exception subclass and still propagates.
+            family_blockers = tuple(
                 Blocker.model_validate(b) for b in family_validator(candidate)
             )
-        except (ValueError, TypeError):
+        except Exception:
             fail(
                 "unsupported",
                 "Family continuation validator did not return a valid result.",
             )
+        else:
+            blockers.extend(family_blockers)
     # Original stock validates historical cuts once. Only future work may spend
     # the reconciled remaining ledger, including real subsequent loss events.
     future_regions = dict(regions)

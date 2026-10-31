@@ -1,12 +1,13 @@
 """Synthetic offline regressions, never physical evidence."""
 
+import warnings
 from copy import deepcopy
 
 import pytest
 from forma_compiler import CutProcess
 from forma_replanner import rank_feasible, simulate_patch
 
-from forma_domain.models import BuildPlan, Evidence, ReplannerInput
+from forma_domain.models import Blocker, BuildPlan, Evidence, ReplannerInput
 
 STAMP = "2026-10-30T00:00:00Z"
 
@@ -190,6 +191,29 @@ def run(data):
 
 def codes(result):
     return {b.code for b in result.blockers}
+
+
+def unused_unknown(kind="sheet"):
+    def unknown():
+        return dict(value=None, unit="mm", source="unknown", confirmed=False)
+
+    return dict(
+        id="unused-unknown",
+        kind=kind,
+        material="cardboard" if kind == "sheet" else "other_supported",
+        width_mm=unknown(),
+        height_mm=unknown(),
+        thickness_mm=unknown(),
+        remaining_length_mm=unknown(),
+        condition="uncertain",
+        usable_regions=[],
+    )
+
+
+def add_unused_unknown(data, stock):
+    data["base_plan"]["stocks"].append(deepcopy(stock))
+    data["remaining_stock"].append(deepcopy(stock))
+    return data
 
 
 def test_future_resize_preserves_actual_cut_and_invalidates_downstream():
@@ -602,8 +626,6 @@ def test_noop_patch_is_not_ranked_as_a_free_repair():
 
 
 def test_family_validator_rejection_blocks_ranking():
-    from forma_domain.models import Blocker
-
     result = simulate_patch(
         ReplannerInput.model_validate(input_data()),
         process=process(),
@@ -613,7 +635,103 @@ def test_family_validator_rejection_blocks_ranking():
         ),
     )
     assert result.status == "blocked"
+    assert result.plan is None
+    assert result.cost is None
+    assert [b.code for b in result.blockers] == ["geometry_invalid"]
     assert not rank_feasible((result,))
+
+
+def run_with_validator(data, family_validator):
+    return simulate_patch(
+        ReplannerInput.model_validate(data),
+        process=process(),
+        allow_synthetic=True,
+        family_validator=family_validator,
+    )
+
+
+def assert_safe_validator_block(result):
+    assert result.status == "blocked"
+    assert result.plan is None
+    assert result.cost is None
+    assert [(b.code, b.message) for b in result.blockers] == [
+        (
+            "unsupported",
+            "Family continuation validator did not return a valid result.",
+        )
+    ]
+    assert not rank_feasible((result,))
+
+
+def test_family_validator_runtime_error_blocks_safely_and_preserves_input():
+    data = input_data()
+    original_data = deepcopy(data)
+    request = ReplannerInput.model_validate(data)
+    original_request = request.model_dump()
+    original_events = request.events
+
+    def broken_validator(_plan):
+        raise RuntimeError("synthetic callback failure: private detail")
+
+    result = simulate_patch(
+        request,
+        process=process(),
+        allow_synthetic=True,
+        family_validator=broken_validator,
+    )
+
+    assert_safe_validator_block(result)
+    assert all("private detail" not in b.message for b in result.blockers)
+    assert all("RuntimeError" not in b.message for b in result.blockers)
+    assert data == original_data
+    assert request.model_dump() == original_request
+    assert request.events == original_events
+
+
+def test_family_validator_lazy_iteration_failure_blocks_safely():
+    def lazy_validator(_plan):
+        yield Blocker(
+            code="geometry_invalid", message="Yielded before synthetic failure."
+        )
+        raise RuntimeError("synthetic lazy failure: private detail")
+
+    result = run_with_validator(input_data(), lazy_validator)
+
+    # The partially yielded blocker must not leak into the stable result.
+    assert_safe_validator_block(result)
+    assert all("private detail" not in b.message for b in result.blockers)
+
+
+@pytest.mark.parametrize(
+    "family_validator",
+    [
+        pytest.param(lambda plan: None, id="none-result"),
+        pytest.param(lambda plan: ("synthetic invalid output",), id="invalid-item"),
+        pytest.param(
+            lambda plan: ({"code": "geometry_invalid"},), id="missing-message"
+        ),
+    ],
+)
+def test_family_validator_invalid_output_still_blocks_safely(family_validator):
+    result = run_with_validator(input_data(), family_validator)
+    assert_safe_validator_block(result)
+
+
+def test_family_validator_success_is_preserved_and_ranked():
+    result = run_with_validator(input_data(), lambda plan: ())
+    assert result.status == "feasible"
+    assert result.plan is not None
+    assert result.cost is not None
+    assert rank_feasible((result,)) == (result,)
+
+
+@pytest.mark.parametrize("control_error", [KeyboardInterrupt, SystemExit])
+def test_family_validator_process_control_errors_are_not_swallowed(control_error):
+    def interrupted_validator(_plan):
+        raise control_error
+
+    with pytest.raises(control_error):
+        run_with_validator(input_data(), interrupted_validator)
 
 
 def two_offcut_data():
@@ -659,6 +777,154 @@ def test_same_offcut_recorded_twice_is_duplicate_accounting():
     assert any("Duplicate" in b.message for b in result.blockers)
 
 
+def test_model_copy_stale_patch_base_blocks_at_public_boundary():
+    request = ReplannerInput.model_validate(input_data())
+    before = request.model_dump(mode="python")
+    stale = request.model_copy(
+        update={
+            "patch": request.patch.model_copy(
+                update={"base_version_id": "wrong-version"}
+            )
+        }
+    )
+    result = simulate_patch(stale, process=process(), allow_synthetic=True)
+    valid = run(input_data())
+    assert result.status == "blocked"
+    assert result.status != "feasible"
+    assert codes(result) == {"stale_version"}
+    assert result.patch_id == "resize"
+    assert result.base_version_id == "v1"
+    assert result.plan is None
+    assert result.cost is None
+    assert rank_feasible((result, valid)) == (valid,)
+    assert all("wrong-version" not in b.message for b in result.blockers)
+    assert stale.patch.base_version_id == "wrong-version"
+    assert stale.base_plan.version_id == "v1"
+    assert stale.events == request.events
+    assert request.model_dump(mode="python") == before
+
+
+def assert_invalid_snapshot(malformed, forbidden):
+    before = malformed.model_dump(mode="python", warnings=False)
+    result = simulate_patch(malformed, process=process(), allow_synthetic=True)
+    assert result.status == "blocked"
+    assert codes(result) == {"invalid_reference"}
+    assert result.plan is None
+    assert result.cost is None
+    assert rank_feasible((result,)) == ()
+    assert all(
+        b.message
+        == "Supplied repair snapshot failed validation; no repair was simulated."
+        for b in result.blockers
+    )
+    assert all(forbidden not in b.message for b in result.blockers)
+    assert malformed.model_dump(mode="python", warnings=False) == before
+
+
+def test_model_copy_malformed_nested_reference_blocks_at_public_boundary():
+    request = ReplannerInput.model_validate(input_data())
+    bad_part = request.base_plan.parts[0].model_copy(
+        update={"source_stock_id": "missing_stock_sentinel"}
+    )
+    malformed = request.model_copy(
+        update={
+            "base_plan": request.base_plan.model_copy(
+                update={"parts": (bad_part, *request.base_plan.parts[1:])}
+            )
+        }
+    )
+    assert_invalid_snapshot(malformed, "missing_stock_sentinel")
+
+
+def test_model_copy_duplicate_history_blocks_at_public_boundary():
+    request = ReplannerInput.model_validate(input_data())
+    malformed = request.model_copy(update={"events": request.events * 2})
+    assert_invalid_snapshot(malformed, "duplicate")
+
+
+def test_model_copy_out_of_scope_history_blocks_at_public_boundary():
+    request = ReplannerInput.model_validate(input_data())
+    bad_event = request.events[0].model_copy(
+        update={"project_id": "other_project_sentinel"}
+    )
+    malformed = request.model_copy(update={"events": (bad_event,)})
+    assert_invalid_snapshot(malformed, "other_project_sentinel")
+
+
+def test_model_copy_malformed_historical_plan_blocks_at_public_boundary():
+    request = ReplannerInput.model_validate(input_data())
+    old = BuildPlan.model_validate(fixture())
+    bad_part = old.parts[0].model_copy(
+        update={"source_stock_id": "missing_stock_sentinel"}
+    )
+    malformed_old = old.model_copy(update={"parts": (bad_part, *old.parts[1:])})
+    result = simulate_patch(
+        request,
+        process=process(),
+        allow_synthetic=True,
+        historical_plans=(malformed_old,),
+    )
+    assert result.status == "blocked"
+    assert codes(result) == {"invalid_reference"}
+    assert result.plan is None
+    assert result.cost is None
+    assert rank_feasible((result,)) == ()
+    assert all("missing_stock_sentinel" not in b.message for b in result.blockers)
+
+
+def test_model_copy_malformed_numeric_snapshot_blocks_without_serializer_warning():
+    request = ReplannerInput.model_validate(input_data())
+    bad_geometry = request.base_plan.parts[0].geometry.model_copy(
+        update={"width": "PRIVATE_NUMERIC_SENTINEL"}
+    )
+    bad_part = request.base_plan.parts[0].model_copy(update={"geometry": bad_geometry})
+    malformed = request.model_copy(
+        update={
+            "base_plan": request.base_plan.model_copy(
+                update={"parts": (bad_part, *request.base_plan.parts[1:])}
+            )
+        }
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("error")
+        assert_invalid_snapshot(malformed, "PRIVATE_NUMERIC_SENTINEL")
+    assert caught == []
+
+
+def test_malformed_numeric_historical_plan_blocks_without_serializer_warning():
+    request = ReplannerInput.model_validate(input_data())
+    request_before = request.model_dump(mode="python", warnings=False)
+    old = BuildPlan.model_validate(fixture())
+    bad_geometry = old.parts[0].geometry.model_copy(
+        update={"width": "PRIVATE_NUMERIC_SENTINEL"}
+    )
+    bad_part = old.parts[0].model_copy(update={"geometry": bad_geometry})
+    malformed_old = old.model_copy(update={"parts": (bad_part, *old.parts[1:])})
+    before = malformed_old.model_dump(mode="python", warnings=False)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("error")
+        result = simulate_patch(
+            request,
+            process=process(),
+            allow_synthetic=True,
+            historical_plans=(malformed_old,),
+        )
+    assert caught == []
+    assert result.status == "blocked"
+    assert codes(result) == {"invalid_reference"}
+    assert result.plan is None
+    assert result.cost is None
+    assert rank_feasible((result,)) == ()
+    assert all(
+        b.message
+        == "Supplied historical plan failed validation; no repair was simulated."
+        for b in result.blockers
+    )
+    assert all("PRIVATE_NUMERIC_SENTINEL" not in b.message for b in result.blockers)
+    assert malformed_old.model_dump(mode="python", warnings=False) == before
+    assert request.model_dump(mode="python", warnings=False) == request_before
+
+
 def test_salvaged_offcut_can_be_lost_again():
     data = input_data()
     for name in ("loss", "recovered", "lost_again"):
@@ -689,3 +955,86 @@ def test_salvaged_offcut_can_be_lost_again():
     assert not any("Duplicate" in b.message for b in result.blockers)
     assert result.lost_region_ids == ("offcut",)
     assert "stock_exhausted" in codes(result)
+
+
+def test_future_resize_with_identical_unused_unknown_sheet():
+    data = add_unused_unknown(input_data(), unused_unknown())
+    original = deepcopy(data)
+    result = run(data)
+    assert result.status == "feasible", result.blockers
+    assert result.preserved_operation_ids == ("cut",)
+    retained = next(s for s in result.plan.stocks if s.id == "unused-unknown")
+    assert retained.condition == "uncertain"
+    assert retained.width_mm.value is None
+    assert retained.height_mm.value is None
+    assert retained.thickness_mm.value is None
+    assert retained.remaining_length_mm.value is None
+    assert not retained.width_mm.confirmed
+    assert retained.usable_regions == ()
+    assert data == original
+
+
+def test_future_resize_with_identical_unused_unknown_connector():
+    data = add_unused_unknown(input_data(), unused_unknown(kind="tape"))
+    original = deepcopy(data)
+    result = run(data)
+    assert result.status == "feasible", result.blockers
+    assert result.preserved_operation_ids == ("cut",)
+    retained = next(s for s in result.plan.stocks if s.id == "unused-unknown")
+    assert retained.kind == "tape"
+    assert retained.condition == "uncertain"
+    assert retained.remaining_length_mm.value is None
+    assert not retained.remaining_length_mm.confirmed
+    assert data == original
+
+
+def test_unused_unknown_stock_with_unchanged_region_is_retained():
+    stock = unused_unknown()
+    stock["usable_regions"] = [
+        dict(id="unused-region", geometry=dict(x=0, y=0, width=10, height=10))
+    ]
+    data = add_unused_unknown(input_data(), stock)
+    result = run(data)
+    assert result.status == "feasible", result.blockers
+    retained = next(s for s in result.plan.stocks if s.id == "unused-unknown")
+    assert [r.id for r in retained.usable_regions] == ["unused-region"]
+
+
+def test_unknown_source_referenced_by_replacement_patch_still_blocks():
+    data = add_unused_unknown(input_data(("cut", "cut_brace")), unused_unknown())
+    data["patch"].update(
+        kind="replace_part",
+        target_id="brace",
+        replacement_stock_id="unused-unknown",
+        width_mm=None,
+        height_mm=None,
+    )
+    result = run(data)
+    assert result.status == "blocked"
+    assert result.plan is None
+    assert "needs_confirmation" in codes(result)
+    assert any("unused-unknown" in b.target_ids for b in result.blockers)
+
+
+@pytest.mark.parametrize("change", ["length", "condition", "material", "regions"])
+def test_changed_unused_unknown_connector_is_not_treated_as_confirmed(change):
+    data = add_unused_unknown(input_data(), unused_unknown(kind="tape"))
+    remaining = data["remaining_stock"][-1]
+    if change == "length":
+        remaining["remaining_length_mm"] = measurement(100)
+    elif change == "condition":
+        remaining["condition"] = "usable"
+    elif change == "material":
+        remaining["material"] = "cardboard"
+    else:
+        remaining["usable_regions"] = [
+            dict(
+                id="invented-region",
+                geometry=dict(x=0, y=0, width=10, height=10),
+            )
+        ]
+    result = run(data)
+    assert result.status == "blocked"
+    assert result.plan is None
+    assert "needs_confirmation" in codes(result)
+    assert any("unused-unknown" in b.target_ids for b in result.blockers)

@@ -59,4 +59,4 @@ There are three checks:
    `.githooks/attribution-patterns.txt`.
 3. The `attribution` CI job scans PR commits and the PR body.
 
-Claude's review role is disclosed in docs/decisions.md D010.
+Claude's review role is disclosed in docs/decisions.md D011.

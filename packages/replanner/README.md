@@ -27,6 +27,17 @@ or fabricates salvage transactions. Callers supply authenticated project scope,
 reviewed cutting limits and a server-owned tested joint catalogue. Opaque profile
 evidence IDs are trusted catalogue references, not proof supplied by a model.
 
+If `patch.base_version_id` differs from `base_plan.version_id`, the call
+returns `status='blocked'` with a `stale_version` blocker before any
+simulation runs. The snapshot and each supplied historical plan are dumped
+with warnings disabled and rebuilt through `ReplannerInput`/`BuildPlan`
+validation, because `model_copy` can bypass validators. When that rebuild
+fails, including malformed numeric data, the result is blocked with an
+`invalid_reference` blocker and a fixed message; validator details and
+serializer warnings are not exposed, and only `AttributeError`,
+`TypeError` and `ValueError` are handled this way. Caller inputs are not
+mutated, and blocked results are excluded by `rank_feasible`.
+
 Supported targets: `resize_part` and `replace_part` name a part;
 `replace_joint_profile` names a joint; `change_angle` names the base version.
 Resize affects future cuts only. Compatible same-strategy catalogue profile
@@ -44,6 +55,14 @@ Changing joint strategy and changing stand angle require family regeneration and
 currently return `unsupported`. A known `triangular-tape-stand-v1` plan requires
 the injected geometry/manual continuation validator before it can be feasible;
 resource checks alone cannot validate a new support triangle or printable manual.
+
+A `family_validator` result is fully materialized and each item validated as a `Blocker`
+before any of it is added. A validator that raises an ordinary `Exception` (including during
+lazy iteration) or returns an invalid result adds one stable `unsupported` blocker
+(`Family continuation validator did not return a valid result.`). Independent resource
+checks may add other blockers. The blocked result has no plan or cost, so `rank_feasible`
+excludes it. Blockers yielded before a lazy failure are
+discarded, the exception type and message are never exposed in the result. `KeyboardInterrupt` and `SystemExit` are not swallowed and propagate to the caller.
 
 ## Execution, material and evidence accounting
 
