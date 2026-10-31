@@ -2,7 +2,7 @@
 
 Status: October 31, 2026. The workspace implements typed domain contracts,
 offline compiler/stand renderer/replanner, a bounded model gateway and proposal
-service, and private project/inventory persistence. The web remains a preview;
+service, and private project/inventory/photo persistence. The web remains a preview;
 the complete user journey below is the target architecture. Live provider
 compatibility and physical build/recovery acceptance remain unverified.
 
@@ -54,18 +54,20 @@ these rules.
    records. Historical evidence remains visible after it becomes stale.
 
 These three record types exist in domain contracts. Persistence currently stores
-projects and confirmed pre-plan inventory only. It does not yet store immutable
+projects, private photos and confirmed pre-plan inventory. It does not yet store immutable
 plans, material/physical history, evidence or approved adaptations.
 
 The development API uses SQLite and configured owner bearer credentials.
 Project create/read, inventory confirmation and logical deletion are scoped to
 the owner. Mutations require idempotency keys; inventory edits compare a separate
 inventory revision token and reject stale writes with 409. No route activates a
-plan. Media references are rejected until private uploads exist. See the
-[persistence handoff](handoffs/issue-6-persistence.md).
+plan. Inventory image IDs must resolve to the same project's private decoded
+photos. Evidence IDs remain rejected. See the
+[persistence handoff](handoffs/issue-6-persistence.md) and
+[media handoff](handoffs/issue-6-private-media.md).
 
 PostgreSQL and private object storage remain the production targets in the spec.
-Hosted identity, storage/retention choices and private media handling remain
+Hosted identity, production storage/retention and provider-transfer consent remain
 [pending decisions](decisions.md).
 
 ## Revision transaction

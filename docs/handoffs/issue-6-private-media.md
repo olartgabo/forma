@@ -1,7 +1,8 @@
 # Issue #6: private project photos
 
-Owner: @olartgabo; reviewer: @ResniDev. Branch `issue/6-private-media`, based on
-the integrated reviewed progress branch. This slice adds private photo storage
+Owner: @olartgabo; cross-lane review requested from @ResniDev through the PR.
+Branch `issue/6-private-media-integration`, based on the merged progress in main.
+This slice adds private photo storage
 and inventory references; immutable plans/events, hosted identity and approved
 revision transactions remain open. No shared domain/compiler schema changes.
 
@@ -30,7 +31,7 @@ Project deletion purges media request receipts as well as cascading live blobs.
   `{media_id, deleted: true, replayed}`. Remove current inventory references first;
   otherwise deletion returns 409 without changing inventory or media.
 
-Uploads require 1–8 MiB of source bytes and at most 20 million decoded pixels.
+Uploads require 1 byte to 8 MiB of source bytes and at most 20 million decoded pixels.
 The normalized result must also fit 8 MiB. Streaming overflow is rejected even
 without a declared length. MIME must agree with the decoded format; malformed,
 truncated and animated images are rejected. EXIF orientation is applied, then
@@ -66,7 +67,9 @@ Pillow dependency changes copied into the worktree for verification:
   reran the first 32 photo/project cases successfully. The final three tests
   add inventory/delete races, normalized byte limits and project-delete rollback.
 
-The parent runs the full `npm run check` after integration. No live provider or
+After integration, `npm run check` exited 0: Prettier/Ruff formatting, lint,
+generated contracts, TypeScript, `246 passed in 3.86s` and the production web
+build all passed. No live provider or
 physical tests were attempted. Issue #6 remains open for its other acceptance
 criteria. The next step is intake UI using these private endpoints, followed by
 separately consented model transfer and durable plan/event/evidence storage.

@@ -1,7 +1,7 @@
 # Development plan
 
 Status: October 31, 2026. Offline compiler, stand SVG, repair simulation and
-bounded proposals are implemented, along with private project/inventory storage.
+bounded proposals are implemented, along with private project/inventory/photo storage.
 The web remains a preview. Install, dev and offline check commands are in the
 [root README](../README.md). Runtime integration, live provider compatibility
 and physical build/recovery evidence remain pending.
@@ -43,7 +43,7 @@ before the complete build/recovery flow can run.
 | Narrow triangular tape-stand compiler and eight SVG panels            | #8 exact physical attempt, tested profiles and supported build evidence                                |
 | Scoped bounded intake/design/diagnosis/repair service                 | #4 live Spark/SAM evidence and #9 trusted callbacks/authenticated runtime integration                  |
 | Repair simulation, remaining-stock reconciliation and recheck preview | Family continuation wiring; unsupported strategy/angle changes and completed-work undo remain blocked  |
-| Owner-scoped SQLite project/inventory routes with durable retries     | #6 private uploads/consent, hosted identity/storage and immutable plan/event/material/evidence history |
+| Owner-scoped SQLite project/inventory/photo routes with durable retries | #6 consented provider transfer, hosted identity/storage and immutable plan/event/material/evidence history |
 | Next.js workbench preview                                             | #7 intake/inventory, #11 manual/events, #12 approved revision transaction and #14 proof UI             |
 
 Next work follows the physical P0 path:
