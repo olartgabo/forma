@@ -17,7 +17,8 @@ from .template import profile_evidence_valid
 class BillItem:
     id: str
     stock_id: str
-    quantity: float
+    # None means the quantity is explicitly unknown, never a fabricated zero.
+    quantity: float | None
     unit: str
     description: str
 
@@ -636,6 +637,8 @@ def render_manual(
                 for o in plan.operations
                 if o.type == "tape_joint" and o.args.stock_id == stock.id
             )
+            remaining = stock.remaining_length_mm
+            remaining_known = remaining.value is not None and remaining.confirmed
             bill += (
                 BillItem(
                     f"{stock.id}-consumed",
@@ -647,9 +650,11 @@ def render_manual(
                 BillItem(
                     f"{stock.id}-remaining",
                     stock.id,
-                    stock.remaining_length_mm.value - used,
+                    remaining.value - used if remaining_known else None,
                     "mm",
-                    "Remaining connector length",
+                    "Remaining connector length"
+                    if remaining_known
+                    else "Remaining connector length unknown; not measured/confirmed",
                 ),
             )
         if stock.kind == "sheet":
@@ -669,6 +674,14 @@ def render_manual(
                     - sum(r.geometry.width * r.geometry.height for r in offcuts)
                 )
                 available.update({r.id: r.geometry for r in offcuts})
+            dimensions_known = all(
+                item.value is not None and item.confirmed
+                for item in (
+                    stock.width_mm,
+                    stock.height_mm,
+                    stock.thickness_mm,
+                )
+            )
             bill += (
                 BillItem(
                     f"{stock.id}-waste",
@@ -680,9 +693,13 @@ def render_manual(
                 BillItem(
                     f"{stock.id}-remaining",
                     stock.id,
-                    sum(r.width * r.height for r in available.values()),
+                    sum(r.width * r.height for r in available.values())
+                    if dimensions_known
+                    else None,
                     "mm2",
-                    "Usable stock regions not consumed by planned cuts",
+                    "Usable stock regions not consumed by planned cuts"
+                    if dimensions_known
+                    else "Remaining usable area unknown; stock dimensions not measured/confirmed",
                 ),
             )
     return Manual("accepted", tuple(panels), bill, ())

@@ -375,6 +375,98 @@ def test_unused_stock_remains_available_in_bill():
     assert entries["unused-sheet-remaining"].quantity == 200 * 550
 
 
+def unknown_stock(stock_id, kind):
+    unknown = m.Measurement(value=None, unit="mm", source="unknown", confirmed=False)
+    return m.Stock(
+        id=stock_id,
+        kind=kind,
+        material="cardboard" if kind == "sheet" else "other_supported",
+        width_mm=unknown,
+        height_mm=unknown,
+        thickness_mm=unknown,
+        remaining_length_mm=unknown,
+        condition="uncertain",
+    )
+
+
+def compile_with_extra_stock(stock):
+    request, parameters, process = fixture()
+    data = request.model_dump()
+    data["stocks"] += (stock.model_dump(),)
+    compiled = compile_stand(
+        m.CompilerInput.model_validate(data),
+        parameters,
+        process=process,
+        allow_synthetic=True,
+    )
+    return compiled, parameters, process
+
+
+def test_unused_unknown_sheet_does_not_block_manual():
+    compiled, parameters, process = compile_with_extra_stock(
+        unknown_stock("unused-unmeasured", "sheet")
+    )
+    assert compiled.status == "accepted", compiled.blockers
+    retained = {stock.id: stock for stock in compiled.plan.stocks}
+    stock = retained["unused-unmeasured"]
+    assert stock.width_mm.value is None
+    assert stock.thickness_mm.value is None
+    assert not stock.width_mm.confirmed
+    assert stock.condition == "uncertain"
+    result = manual(compiled.plan, parameters, process)
+    assert result.status == "accepted", result.blockers
+    assert len(result.panels) == 8
+    entries = {item.id: item for item in result.bill_of_materials}
+    assert entries["unused-unmeasured-remaining"].quantity is None
+    assert "unknown" in entries["unused-unmeasured-remaining"].description.lower()
+    baseline_plan, _, _ = build()
+    baseline = {
+        item.id: item.quantity
+        for item in manual(baseline_plan, parameters, process).bill_of_materials
+    }
+    assert (
+        entries["fixture-sheet-remaining"].quantity
+        == baseline["fixture-sheet-remaining"]
+    )
+    assert (
+        entries["fixture-tape-stock-remaining"].quantity
+        == baseline["fixture-tape-stock-remaining"]
+    )
+
+
+def test_unused_unknown_tape_does_not_block_manual_or_fabricate_remaining():
+    compiled, parameters, process = compile_with_extra_stock(
+        unknown_stock("unused-unknown-tape", "tape")
+    )
+    assert compiled.status == "accepted", compiled.blockers
+    result = manual(compiled.plan, parameters, process)
+    assert result.status == "accepted", result.blockers
+    assert len(result.panels) == 8
+    entries = {item.id: item for item in result.bill_of_materials}
+    remaining = entries["unused-unknown-tape-remaining"]
+    assert remaining.quantity is None
+    assert remaining.quantity != 0
+    assert "unknown" in remaining.description.lower()
+
+
+def test_actual_use_of_unknown_tape_still_blocks_manual():
+    plan, parameters, process = build()
+    data = plan.model_dump()
+    stock = unknown_stock("unknown-tape", "tape").model_copy(
+        update={"condition": "usable"}
+    )
+    data["stocks"] += (stock.model_dump(),)
+    for operation in data["operations"]:
+        if operation["type"] == "tape_joint":
+            operation["stock_ids"] = ("unknown-tape",)
+            operation["args"]["stock_id"] = "unknown-tape"
+            break
+    result = manual(m.BuildPlan.model_validate(data), parameters, process)
+    assert result.status == "needs_measurement"
+    assert not result.panels
+    assert "missing_measurement" in {b.code for b in result.blockers}
+
+
 def test_renderer_revalidates_model_copy():
     plan, parameters, process = build()
     result = manual(plan.model_copy(update={"parts": ()}), parameters, process)
