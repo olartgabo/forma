@@ -81,6 +81,8 @@ def tools_for(operation):
 
 def instruction(operation, plan):
     if operation.type == "cut_rect":
+        if operation.effects.created_offcuts:
+            return f"Confirm all measurements and safe tools. Cut the three labelled panels; kerf {number(operation.args.kerf_mm)} mm, edge margin {number(operation.args.edge_margin_mm)} mm. Labelled offcut regions are remaining stock; other unallocated sheet material is waste."
         return f"Confirm all measurements and safe tools. Cut the three labelled panels; kerf {number(operation.args.kerf_mm)} mm, edge margin {number(operation.args.edge_margin_mm)} mm. Unallocated sheet material is waste, not available offcut stock."
     if operation.type == "fold":
         a = operation.args
@@ -122,12 +124,12 @@ def flat_view(root, plan, operation, selected, *, stock=False):
             stroke="#111",
             stroke_width=2,
         )
-        text(
-            group,
-            0,
-            -18,
-            f"{source.id}: {number(width)} x {number(height)} mm; shaded remainder = waste",
-        )
+        offcuts = operation.effects.created_offcuts
+        if offcuts:
+            caption = f"{source.id}: {number(width)} x {number(height)} mm; shaded remainder = waste except labelled offcut regions are remaining stock"
+        else:
+            caption = f"{source.id}: {number(width)} x {number(height)} mm; shaded remainder = waste"
+        text(group, 0, -18, caption)
         for index, p in enumerate(parts):
             rect = p.geometry
             pg = element(group, "g", data_part_id=p.id)
@@ -164,6 +166,28 @@ def flat_view(root, plan, operation, selected, *, stock=False):
                 308 + index * 95,
                 f"Stock origin ({dimension(rect.x)}, {dimension(rect.y)}) mm",
                 14,
+            )
+        for region in offcuts:
+            geo = region.geometry
+            og = element(group, "g", data_region_id=region.id)
+            element(
+                og,
+                "rect",
+                x=number(geo.x * scale),
+                y=number(geo.y * scale),
+                width=number(geo.width * scale),
+                height=number(geo.height * scale),
+                fill="none",
+                stroke="#111",
+                stroke_width=2,
+                stroke_dasharray="3 3",
+            )
+            text(
+                og,
+                number((geo.x + geo.width / 2) * scale),
+                number((geo.y + geo.height / 2) * scale),
+                f"{region.id} {dimension(geo.width)} x {dimension(geo.height)} mm",
+                12,
             )
     else:
         for index, p in enumerate(parts):
@@ -503,6 +527,7 @@ def render_manual(
         )
     panels = []
     attached = set()
+    used_by_stock: dict[str, float] = {}
     for index, operation in enumerate(plan.operations):
         selected = (
             tuple(p.id for p in plan.parts)
@@ -557,6 +582,25 @@ def render_manual(
         text(root, 35, 66, operation.id, 15)
         lines(root, 35, 96, instructions, width=102, size=15)
         drawing = element(root, "g", transform=f"translate(0 {header_extra})")
+        tape_readout = None
+        if operation.type == "tape_joint":
+            stock = next(s for s in plan.stocks if s.id == operation.args.stock_id)
+            if stock.remaining_length_mm.value is None:
+                return Manual(
+                    "blocked",
+                    (),
+                    (),
+                    (
+                        m.Blocker(
+                            code="missing_measurement",
+                            message="Tape remaining length unknown.",
+                        ),
+                    ),
+                )
+            used_before = used_by_stock.get(stock.id, 0.0)
+            this_step = operation.args.length_mm
+            remaining_after = stock.remaining_length_mm.value - used_before - this_step
+            tape_readout = (stock.id, used_before, this_step, remaining_after)
         if operation.type == "cut_rect":
             flat_view(drawing, plan, operation, selected, stock=True)
         elif (
@@ -566,6 +610,20 @@ def render_manual(
             flat_view(drawing, plan, operation, selected)
         else:
             side_view(drawing, plan, operation, attached)
+        if tape_readout is not None:
+            stock_id, used_before, this_step, remaining_after = tape_readout
+            readout = element(drawing, "g", data_stock_id=stock_id)
+            text(
+                readout, 610, 445, f"tape used before: {dimension(used_before)} mm", 13
+            )
+            text(readout, 610, 463, f"this step: {dimension(this_step)} mm", 13)
+            text(
+                readout,
+                610,
+                481,
+                f"tape left after: {dimension(remaining_after)} mm",
+                13,
+            )
         text(drawing, 35, 645, "Tools: " + ", ".join(tools_for(operation)), 15)
         text(
             drawing,
@@ -607,7 +665,7 @@ def render_manual(
             size=14,
         )
         svg = ET.tostring(root, encoding="unicode", short_empty_elements=True)
-        # Hash exact visible bytes plus renderer version. No plan version/time in a reusable panel.
+        # dependency_hash covers the visible SVG; version IDs stay excluded
         dependency_hash = sha256(("stand-svg-v1\n" + svg).encode()).hexdigest()
         panels.append(
             Panel(
@@ -620,6 +678,11 @@ def render_manual(
             )
         )
         attached.update(operation.effects.attached_joint_ids)
+        if operation.type == "tape_joint":
+            used_by_stock[operation.args.stock_id] = (
+                used_by_stock.get(operation.args.stock_id, 0.0)
+                + operation.args.length_mm
+            )
     bill = tuple(
         BillItem(
             p.id,
