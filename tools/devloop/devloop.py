@@ -153,7 +153,15 @@ def work_on(task: dict, judge: Judge, muse: Muse, dry_run: bool) -> str:
     feedback = ""
     for attempt in range(1 + REPAIRS):
         files = read_files(allowed + spec.files_to_read)
-        change = muse.write(spec.model_dump(), files, feedback)
+        try:
+            change = muse.write(spec.model_dump(), files, feedback)
+        except MuseError as exc:
+            print(f"  attempt {attempt + 1}: unusable Muse output")
+            feedback = (
+                f"Your previous reply was unusable ({str(exc)[:300]}). It was likely "
+                "cut off: change fewer files and keep the reply under 25k tokens."
+            )
+            continue
         for edit in change.files:
             if check_path(edit.path) not in allowed:
                 raise ScopeError(f"Muse wrote unlisted file {edit.path}")

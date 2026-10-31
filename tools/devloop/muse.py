@@ -5,7 +5,7 @@ import json
 from budget import Budget
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-MAX_OUT = 16000
+MAX_OUT = 32000
 SYSTEM = (
     "You are the programmer on the FORMA repository. Write production-quality, "
     "formatted Python/TypeScript matching the repository style. Follow AGENTS.md: "
