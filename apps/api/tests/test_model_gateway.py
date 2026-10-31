@@ -613,3 +613,24 @@ def test_smoke_main_unsupported_format_reports_invalid_image(
     assert fake_key not in raw
     assert "RIFF" not in raw
     assert "WEBP" not in raw
+
+
+def test_smoke_main_empty_photo_reports_invalid_image(monkeypatch, tmp_path, capsys):
+    fake_key = "FAKE_KEY_EMPTY_INVALID_654"
+    monkeypatch.setenv("MODEL_API_KEY", fake_key)
+    photo = tmp_path / "team-photo.jpg"
+    photo.write_bytes(b"")
+    fake = Fake()
+    monkeypatch.setattr(
+        smoke_meta.MetaGateway,
+        "from_env",
+        classmethod(lambda cls: MetaGateway(fake)),
+    )
+    exit_code = smoke_meta.main(["--live", "--consented", "--image", str(photo)])
+    assert exit_code == 1
+    raw = capsys.readouterr().out
+    output = json.loads(raw)
+    assert output["status"] == "invalid_image"
+    assert "traces" in output
+    assert fake.calls == []
+    assert fake_key not in raw
