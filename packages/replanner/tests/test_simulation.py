@@ -6,7 +6,7 @@ import pytest
 from forma_compiler import CutProcess
 from forma_replanner import rank_feasible, simulate_patch
 
-from forma_domain.models import BuildPlan, Evidence, ReplannerInput
+from forma_domain.models import Blocker, BuildPlan, Evidence, ReplannerInput
 
 STAMP = "2026-10-30T00:00:00Z"
 
@@ -602,8 +602,6 @@ def test_noop_patch_is_not_ranked_as_a_free_repair():
 
 
 def test_family_validator_rejection_blocks_ranking():
-    from forma_domain.models import Blocker
-
     result = simulate_patch(
         ReplannerInput.model_validate(input_data()),
         process=process(),
@@ -613,7 +611,103 @@ def test_family_validator_rejection_blocks_ranking():
         ),
     )
     assert result.status == "blocked"
+    assert result.plan is None
+    assert result.cost is None
+    assert [b.code for b in result.blockers] == ["geometry_invalid"]
     assert not rank_feasible((result,))
+
+
+def run_with_validator(data, family_validator):
+    return simulate_patch(
+        ReplannerInput.model_validate(data),
+        process=process(),
+        allow_synthetic=True,
+        family_validator=family_validator,
+    )
+
+
+def assert_safe_validator_block(result):
+    assert result.status == "blocked"
+    assert result.plan is None
+    assert result.cost is None
+    assert [(b.code, b.message) for b in result.blockers] == [
+        (
+            "unsupported",
+            "Family continuation validator did not return a valid result.",
+        )
+    ]
+    assert not rank_feasible((result,))
+
+
+def test_family_validator_runtime_error_blocks_safely_and_preserves_input():
+    data = input_data()
+    original_data = deepcopy(data)
+    request = ReplannerInput.model_validate(data)
+    original_request = request.model_dump()
+    original_events = request.events
+
+    def broken_validator(_plan):
+        raise RuntimeError("synthetic callback failure: private detail")
+
+    result = simulate_patch(
+        request,
+        process=process(),
+        allow_synthetic=True,
+        family_validator=broken_validator,
+    )
+
+    assert_safe_validator_block(result)
+    assert all("private detail" not in b.message for b in result.blockers)
+    assert all("RuntimeError" not in b.message for b in result.blockers)
+    assert data == original_data
+    assert request.model_dump() == original_request
+    assert request.events == original_events
+
+
+def test_family_validator_lazy_iteration_failure_blocks_safely():
+    def lazy_validator(_plan):
+        yield Blocker(
+            code="geometry_invalid", message="Yielded before synthetic failure."
+        )
+        raise RuntimeError("synthetic lazy failure: private detail")
+
+    result = run_with_validator(input_data(), lazy_validator)
+
+    # The partially yielded blocker must not leak into the stable result.
+    assert_safe_validator_block(result)
+    assert all("private detail" not in b.message for b in result.blockers)
+
+
+@pytest.mark.parametrize(
+    "family_validator",
+    [
+        pytest.param(lambda plan: None, id="none-result"),
+        pytest.param(lambda plan: ("synthetic invalid output",), id="invalid-item"),
+        pytest.param(
+            lambda plan: ({"code": "geometry_invalid"},), id="missing-message"
+        ),
+    ],
+)
+def test_family_validator_invalid_output_still_blocks_safely(family_validator):
+    result = run_with_validator(input_data(), family_validator)
+    assert_safe_validator_block(result)
+
+
+def test_family_validator_success_is_preserved_and_ranked():
+    result = run_with_validator(input_data(), lambda plan: ())
+    assert result.status == "feasible"
+    assert result.plan is not None
+    assert result.cost is not None
+    assert rank_feasible((result,)) == (result,)
+
+
+@pytest.mark.parametrize("control_error", [KeyboardInterrupt, SystemExit])
+def test_family_validator_process_control_errors_are_not_swallowed(control_error):
+    def interrupted_validator(_plan):
+        raise control_error
+
+    with pytest.raises(control_error):
+        run_with_validator(input_data(), interrupted_validator)
 
 
 def two_offcut_data():

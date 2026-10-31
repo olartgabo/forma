@@ -45,6 +45,14 @@ currently return `unsupported`. A known `triangular-tape-stand-v1` plan requires
 the injected geometry/manual continuation validator before it can be feasible;
 resource checks alone cannot validate a new support triangle or printable manual.
 
+A `family_validator` result is fully materialized and each item validated as a `Blocker`
+before any of it is added. A validator that raises an ordinary `Exception` (including during
+lazy iteration) or returns an invalid result adds one stable `unsupported` blocker
+(`Family continuation validator did not return a valid result.`). Independent resource
+checks may add other blockers. The blocked result has no plan or cost, so `rank_feasible`
+excludes it. Blockers yielded before a lazy failure are
+discarded, the exception type and message are never exposed in the result. `KeyboardInterrupt` and `SystemExit` are not swallowed and propagate to the caller.
+
 ## Execution, material and evidence accounting
 
 Completion is chronological, user-confirmed and once per operation, after its

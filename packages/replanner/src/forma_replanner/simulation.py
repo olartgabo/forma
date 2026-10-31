@@ -959,14 +959,21 @@ def simulate_patch(
         )
     if family_validator is not None:
         try:
-            blockers.extend(
+            # Materialize first so a failure during lazy iteration cannot
+            # leave partially validated blockers behind. Ordinary callback
+            # failures become one stable, safe blocker; the exception text
+            # is never exposed. BaseException (e.g. KeyboardInterrupt and
+            # SystemExit) is not an Exception subclass and still propagates.
+            family_blockers = tuple(
                 Blocker.model_validate(b) for b in family_validator(candidate)
             )
-        except (ValueError, TypeError):
+        except Exception:
             fail(
                 "unsupported",
                 "Family continuation validator did not return a valid result.",
             )
+        else:
+            blockers.extend(family_blockers)
     # Original stock validates historical cuts once. Only future work may spend
     # the reconciled remaining ledger, including real subsequent loss events.
     future_regions = dict(regions)
