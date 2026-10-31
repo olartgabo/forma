@@ -66,7 +66,7 @@ Synthetic opt-in adds visible watermarks and changes panel bytes/hash.
 
 ## Checks and next action
 
-19 renderer regression tests cover two distinct synthetic inventories/dimensions/
+Renderer regression tests cover two distinct synthetic inventories/dimensions/
 angles, full XML IDs/checkpoints/tools, byte identity, version-independent cache,
 affected-only hash change, physical-default rejection, unknown measurements,
 short stock, incompatible device contact, XML escaping, malformed supported IDs,
@@ -84,10 +84,4 @@ Do not close physical #8 acceptance or claim buildability from fixture checks.
 Parent reviews the implementation and records final repository checks before
 publication. Full exact check results follow in the commit/report.
 
-Verification actually run: uv sync --locked exit0 (25 packages, Python3.12.14);
-Ruff lint All checks passed; Ruff format completed (53 Python files); pytest
-59 passed in3.85s (19 renderer,20 compiler,20 domain/API); generated contract
-check current; git diff --check exit0. Node/web source unchanged; full npm check
-will run on the combined publication branch. No live model or physical tests.
-
-Parent integration: full npm run check passed with62tests before independent-review fixes. Independent review then found unused sheet waste misreporting and malformed model_copy handling; resource replay BOM and runtime revalidation fixes pass65totaltests, including21renderer tests. Eight rasterized panels were visually inspected; cut/joint label collisions were corrected. No physical or live-provider check ran.
+Check results are recorded in the pull request, not in this file.
