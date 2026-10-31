@@ -12,7 +12,7 @@ from pathlib import Path
 
 from budget import Budget, BudgetExhausted
 from judge import ClaudeLimitReached, Goals, Judge, JudgeError, Review, TaskSpec, Triage
-from muse import Muse, MuseError
+from muse import DevMetaHTTP, MetaError, Muse, MuseError
 from scope import LANE, ScopeError, check_path, touches_contract
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -265,13 +265,11 @@ def main():
     args = parser.parse_args()
 
     budget = build_budget()
-    sys.path.insert(0, str(ROOT / "apps/api/src"))
-    from forma_api.model_gateway import GatewayError, MetaHTTP
-
     muse = Muse(
-        MetaHTTP(os.environ.get("MODEL_API_KEY", "")),
+        DevMetaHTTP(os.environ.get("MODEL_API_KEY", "")),
         budget,
         os.environ.get("META_SPARK_MODEL", "muse-spark-1.3"),
+        timeout=600,
     )
     STATE_DIR.mkdir(exist_ok=True)
     state, judge = State(STATE_DIR / "state.json"), Judge(str(WORKTREE))
@@ -302,8 +300,8 @@ def main():
         print(f"Stopping: Meta budget reached ({exc}).")
     except ClaudeLimitReached:
         print("Stopping: Claude usage limit reached. Rerun after it resets.")
-    except GatewayError as exc:
-        print(f"Stopping: Meta API error {exc.code}.")
+    except MetaError as exc:
+        print(f"Stopping: Meta API error {exc}.")
     except KeyboardInterrupt:
         print("Stopped by user.")
     finally:

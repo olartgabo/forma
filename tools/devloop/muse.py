@@ -1,6 +1,8 @@
 """Muse Spark as the only code author. Returns whole-file replacements."""
 
+import http.client
 import json
+import socket
 import time
 
 from budget import Budget
@@ -35,6 +37,48 @@ class MuseError(Exception):
     pass
 
 
+class MetaError(Exception):
+    def __init__(self, code: str, detail: str = ""):
+        self.code = code
+        super().__init__(f"{code} {detail}".strip())
+
+
+class DevMetaHTTP:
+    """Dev-only Meta client: long timeout, and errors keep the HTTP status and
+    a short body excerpt for diagnosis. The key never appears in errors."""
+
+    def __init__(self, api_key: str):
+        if not api_key.strip():
+            raise MetaError("missing_key")
+        self._key = api_key
+
+    def post(self, path: str, payload: dict, timeout: float) -> dict:
+        conn = http.client.HTTPSConnection("api.meta.ai", timeout=timeout)
+        try:
+            conn.request(
+                "POST",
+                "/v1" + path,
+                body=json.dumps(payload),
+                headers={
+                    "Authorization": "Bearer " + self._key,
+                    "Content-Type": "application/json",
+                },
+            )
+            response = conn.getresponse()
+            raw = response.read()
+        except (TimeoutError, socket.timeout):
+            raise MetaError("timeout") from None
+        except (http.client.HTTPException, OSError) as exc:
+            raise MetaError("network_error", type(exc).__name__) from None
+        finally:
+            conn.close()
+        if response.status != 200:
+            code = {401: "authentication", 403: "access_denied", 429: "rate_limit"}
+            detail = f"HTTP {response.status}: {raw[:300].decode(errors='replace')}"
+            raise MetaError(code.get(response.status, "provider_http_error"), detail)
+        return json.loads(raw)
+
+
 class Muse:
     def __init__(self, transport, budget: Budget, model: str, timeout: float = 240):
         self.transport, self.budget, self.model = transport, budget, model
@@ -50,8 +94,8 @@ class Muse:
                     raise
                 if delay is None:
                     # Persistent errors fail this attempt, not the whole loop.
-                    raise MuseError(f"Meta {code} after retries") from None
-                print(f"  Meta {exc.code}; retrying in {delay}s")
+                    raise MuseError(f"Meta {str(exc)[:300]} after retries") from None
+                print(f"  Meta {str(exc)[:300]}; retrying in {delay}s")
                 self.sleep(delay)
 
     def write(
