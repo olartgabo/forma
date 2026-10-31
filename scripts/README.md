@@ -11,3 +11,5 @@ Scripts must exit nonzero on failure, redact secrets and keep offline checks
 usable without model credentials. Live/physical checks require an explicit mode
 and must never emit a fabricated success. Document install prerequisites and
 exact check commands in the root README with implementation.
+
+The Muse/Claude development loop lives in [tools/devloop](../tools/devloop/README.md).
