@@ -474,6 +474,27 @@ def test_diagnosis_accepts_current_plan_slot_feature():
     assert "private" not in trace and "known-slot" not in trace
 
 
+def test_diagnosis_context_exposes_current_plan_slot_feature():
+    state = snapshot_with_slot_feature()
+    fake = FakeTransport(diagnose_data(affected_ids=["known-slot"]))
+    result = service(fake).run(
+        "diagnose",
+        state,
+        "private failure",
+        image=ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True),
+        photo_evidence_id="photo-a",
+    )
+    assert result.status == "needs_clarification"
+    assert result.proposal.affected_ids == ("known-slot",)
+    context = json.loads(fake.calls[0]["messages"][1]["content"][0]["text"])[
+        "untrusted_context"
+    ]["snapshot"]
+    part_ctx = next(p for p in context["plan"]["parts"] if p["id"] == "part-a")
+    feature_ids = [feature["id"] for feature in part_ctx["features"]]
+    assert "known-slot" in feature_ids
+    assert result.proposal.affected_ids[0] in feature_ids
+
+
 def test_diagnosis_unknown_feature_id_stops():
     result = service(FakeTransport(diagnose_data(affected_ids=["invented-slot"]))).run(
         "diagnose",
