@@ -1,6 +1,10 @@
+import argparse
+import importlib.util
 import json
+import sys
 import threading
 from dataclasses import asdict
+from pathlib import Path
 
 import pytest
 from pydantic import BaseModel, ConfigDict
@@ -341,3 +345,211 @@ def test_absolute_timer_interrupts_stalled_headers_and_cleans_up(monkeypatch):
     assert {
         id(t) for t in threading.enumerate() if isinstance(t, threading.Timer)
     } == timers_before
+
+
+SMOKE_PATH = Path(__file__).resolve().parents[3] / "scripts" / "smoke_meta.py"
+
+
+def _load_smoke():
+    spec = importlib.util.spec_from_file_location("smoke_meta", SMOKE_PATH)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+smoke_meta = _load_smoke()
+
+
+def test_smoke_preflight_lists_all_blockers_without_network(monkeypatch):
+    def _forbid(*args, **kwargs):
+        pytest.fail("preflight must not touch the network")
+
+    monkeypatch.setattr(
+        smoke_meta.MetaGateway,
+        "from_env",
+        classmethod(lambda cls: _forbid()),
+    )
+    monkeypatch.setattr("forma_api.model_gateway.MetaHTTP.post", _forbid)
+    args = argparse.Namespace(
+        image=Path("/nonexistent/team-photo.jpg"),
+        consented=False,
+        live=False,
+    )
+    blockers = smoke_meta.preflight(args, {})
+    assert blockers == [
+        "MODEL_API_KEY missing",
+        "real team photo missing",
+        "photo consent missing",
+        "explicit --live missing; no network attempted",
+    ]
+
+
+def test_smoke_success_reports_metadata_without_private_data(monkeypatch):
+    fake_key = "FAKE_KEY_ABC123"
+    secret_label = "SECRET_LABEL_XYZ"
+    secret_question = "SECRET_QUESTION_XYZ"
+    tool_response = call("check_measurements", '{"measurements_confirmed":false}')
+    final_response = final(
+        json.dumps(
+            {
+                "labels": [secret_label],
+                "measurement_source": "unknown",
+                "questions": [secret_question],
+            }
+        )
+    )
+    sam_response = {
+        "status": "completed",
+        "output": [
+            {
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "<0f>0<|box;x1=1;y1=2;x2=20;y2=30;w=40;h=50|>",
+                    }
+                ]
+            }
+        ],
+    }
+    fake = Fake(tool_response, final_response, sam_response)
+    monkeypatch.setenv("MODEL_API_KEY", fake_key)
+    transport = MetaHTTP(fake_key)
+    transport.post = fake.post
+    gateway = MetaGateway(transport)
+    image = ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True)
+    exit_code, report = smoke_meta.run_smoke(gateway, image, "cardboard sheet")
+    assert exit_code == 0
+    assert report["status"] == "ok"
+    assert report["spark_image_schema_tool"] == "validated"
+    assert report["label_count"] == 1
+    assert report["question_count"] == 1
+    assert report["box_count"] == 1
+    assert report["sam"] == "boxes_returned"
+    assert report["models"] == {"spark": gateway.spark, "sam": gateway.sam}
+    assert report["models"] == {"spark": "muse-spark-1.3", "sam": "sam-3.1"}
+    expected_python = (
+        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    )
+    assert report["runtime"]["python"] == expected_python
+    assert isinstance(report["runtime"]["pydantic"], str)
+    assert report["runtime"]["forma_api"] is None or isinstance(
+        report["runtime"]["forma_api"], str
+    )
+    assert report["runtime"]["http_client"] == "stdlib http.client"
+    assert [t["endpoint"] for t in report["traces"]] == [
+        "/chat/completions",
+        "/chat/completions",
+        "/responses",
+    ]
+    assert [t["status"] for t in report["traces"]] == ["ok", "ok", "ok"]
+    assert set(report) == {
+        "prompt_version",
+        "schema_version",
+        "runtime",
+        "models",
+        "status",
+        "spark_image_schema_tool",
+        "label_count",
+        "question_count",
+        "sam",
+        "box_count",
+        "traces",
+    }
+    assert "boxes" not in report
+    serialized = json.dumps(report)
+    assert fake_key not in serialized
+    assert secret_label not in serialized
+    assert secret_question not in serialized
+    assert "data:image" not in serialized
+    assert '"x1"' not in serialized
+    assert '"x2"' not in serialized
+    assert '"y1"' not in serialized
+    assert '"y2"' not in serialized
+
+
+def test_smoke_spark_error_skips_sam():
+    fake = Fake(GatewayError("authentication"))
+    gateway = MetaGateway(fake)
+    image = ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True)
+    exit_code, report = smoke_meta.run_smoke(gateway, image, "cardboard sheet")
+    assert exit_code == 1
+    assert report["status"] == "authentication"
+    assert "sam" not in report
+    assert len(report["traces"]) == 1
+    assert report["traces"][0]["endpoint"] == "/chat/completions"
+    assert report["traces"][0]["status"] == "authentication"
+
+
+def test_smoke_sam_refusal_fails_with_sam_failed():
+    tool_response = call("check_measurements", '{"measurements_confirmed":false}')
+    final_response = final(
+        json.dumps(
+            {
+                "labels": ["plain sheet"],
+                "measurement_source": "unknown",
+                "questions": ["What is the thickness?"],
+            }
+        )
+    )
+    sam_refusal = {
+        "status": "completed",
+        "output": [{"content": [{"type": "refusal", "refusal": "no"}]}],
+    }
+    fake = Fake(tool_response, final_response, sam_refusal)
+    gateway = MetaGateway(fake)
+    image = ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True)
+    exit_code, report = smoke_meta.run_smoke(gateway, image, "cardboard sheet")
+    assert exit_code == 3
+    assert report["status"] == "sam_failed"
+    assert report["spark_image_schema_tool"] == "validated"
+    assert report["sam"] == "refusal"
+    assert report["fallback"] == (
+        "manual Box validation available; user must label/correct"
+    )
+
+
+def test_smoke_sam_empty_output_reports_ok_no_matches():
+    tool_response = call("check_measurements", '{"measurements_confirmed":false}')
+    final_response = final(
+        json.dumps(
+            {
+                "labels": ["plain sheet"],
+                "measurement_source": "unknown",
+                "questions": ["What is the thickness?"],
+            }
+        )
+    )
+    sam_empty = {
+        "status": "completed",
+        "output": [{"content": [{"type": "output_text", "text": ""}]}],
+    }
+    fake = Fake(tool_response, final_response, sam_empty)
+    gateway = MetaGateway(fake)
+    image = ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True)
+    exit_code, report = smoke_meta.run_smoke(gateway, image, "cardboard sheet")
+    assert exit_code == 0
+    assert report["status"] == "ok"
+    assert report["sam"] == "no_matches_manual_box_required"
+    assert report["box_count"] == 0
+
+
+def test_smoke_main_oversized_photo_reports_invalid_image(
+    monkeypatch, tmp_path, capsys
+):
+    fake_key = "FAKE_KEY_OVERSIZED_456"
+    monkeypatch.setenv("MODEL_API_KEY", fake_key)
+    photo = tmp_path / "team-photo.jpg"
+    photo.write_bytes(b"\xff\xd8\xff" + b"\x00" * 5_000_000)
+    fake = Fake()
+    monkeypatch.setattr(
+        smoke_meta.MetaGateway,
+        "from_env",
+        classmethod(lambda cls: MetaGateway(fake)),
+    )
+    exit_code = smoke_meta.main(["--live", "--consented", "--image", str(photo)])
+    assert exit_code == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "invalid_image"
+    assert fake.calls == []
+    assert fake_key not in json.dumps(output)
