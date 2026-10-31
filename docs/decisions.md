@@ -109,3 +109,24 @@ the project removes its photos. Deletion is logical and does not promise
 forensic erasure or backup deletion. Provider transfer and public sharing are
 unavailable in this slice; their consent and external-retention policy remain
 pending. No measurements or physical outcomes are inferred from uploads.
+
+## D012: Development intake access and API contracts, October 31, 2026
+
+Issue #7 uses the existing configured owner credentials for the local intake
+workbench. The person enters their development access key; it stays in React
+memory and is cleared on disconnect or refresh. Reopening a project requires
+its ID and reentering the key. This extends D010 without choosing hosted identity.
+
+The web server proxies same-origin API requests to a fixed, server-configured
+origin. It forwards the caller's authentication and never injects a shared
+server credential. API-local Pydantic models generate their TypeScript envelopes
+separately from the offline domain exporter, preserving the domain dependency
+boundary and avoiding handwritten request/response schemas.
+
+One stock row describes one physical item. Blank dimensions remain unknown;
+entered measurements require explicit confirmation. Existing measurement
+provenance and usable regions remain intact. Saving inventory does not compile
+a design, authorize cutting or establish a physical test result. Manual stock
+editing and photo linking work without a model. Segmentation boxes, tools and
+design constraints require later contracts; they are not represented by guessed
+fields in this slice.

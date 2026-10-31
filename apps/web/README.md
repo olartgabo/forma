@@ -1,6 +1,6 @@
 # Web product
 
-Owner: @olartgabo. Reviewer: @ResniDev. Status: runnable workbench preview.
+Owner: @olartgabo. Reviewer: @ResniDev. Status: local intake workbench.
 Issues: #1, #7, #11, #12 and #14.
 
 Implement Next.js/React/TypeScript mobile flows: Start, Inventory, Design,
@@ -19,11 +19,28 @@ After the root setup, `npm run dev:web` serves the preview at
 `http://127.0.0.1:3000`. `npm run typecheck -w @forma/web` generates Next route
 types and runs strict TypeScript checks. `npm run build -w @forma/web` builds
 the production app, then `npm run start -w @forma/web` serves it locally.
-The page uses local system fonts and needs no model key or API connection.
+The page uses local system fonts and needs no model key. Creating or reopening
+projects, saving inventory and uploading photos require the private API.
 
-Project creation, inventory forms and assembly screens remain pending. The
-preview states this explicitly. It does not hold synthetic progress or dimensions.
+Enter an existing development owner credential in the workbench. It stays in
+React memory, is cleared on disconnect/refresh and is never written to browser
+storage. The project ID can remain in the URL for reopening after reconnecting.
+The web server proxies `/api` to loopback port 8000 by default, forwarding only
+the caller's credential. Set `FORMA_API_ORIGIN` in the web process environment
+before dev/build to choose another fixed origin. Hosted login remains pending.
 
-First product handoff: project/intake screen with confirmed dimension editing;
-later connect authoritative SVG steps and the computed adaptation diff.
+The workbench creates/reopens projects, uploads and links private photos, and
+edits one physical stock item per row. Empty dimensions stay unknown; entered
+measurements have explicit confirmation. Saving retains the inventory revision
+and uses retry keys; stale saves require reloading and reviewing the inventory.
+Photos do not produce measurements or physical evidence. Segmentation boxes,
+tools/constraints, live proposals and assembly/revision/proof screens remain
+pending. See the [intake handoff](../../docs/handoffs/issue-7-intake.md).
+
+`npm run test:web` runs the native Node client tests without a browser or model
+key. Root `npm run check` includes those tests, API/domain contract freshness,
+formatting, Python tests, TypeScript and production build. Client request/response
+types come from the API Pydantic exporter; do not hand-edit generated files.
+
+Later connect authoritative SVG steps and the computed adaptation diff.
 See [contracts](../../docs/contracts.md) and [development](../../docs/development.md).

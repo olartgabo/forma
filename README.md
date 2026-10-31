@@ -6,9 +6,10 @@ FORMA helps a person turn measured reused materials into a small tabletop
 fixture, follow a deterministic assembly manual, and recover when the physical
 build disagrees with the plan.
 
-**Status: workspace and domain contracts.** Next.js serves a workbench preview and FastAPI
-serves a health endpoint. Private local project/inventory API storage is implemented; browser intake, hosted
-identity and physical results remain pending.
+**Status: offline services and local intake.** Next.js supports goal intake,
+private photos and confirmed inventory editing through the scoped FastAPI API.
+The offline compiler, renderer, replanner and proposal service are implemented;
+design/manual integration, hosted identity and physical results remain pending.
 The original [formspec.md](formspec.md) is preserved as the product source of truth.
 
 ## Start here
@@ -48,7 +49,7 @@ scripts/                Future schema export, smoke test and evaluation commands
 ```
 
 Each module has a README describing its boundary, owner and next deliverable.
-The web preview, local project/inventory API and offline compiler, renderer,
+The local intake workbench, private project/inventory/photo API and offline compiler, renderer,
 replanner and provider proposal services are implemented. Live-provider and
 physical gates remain unverified.
 
@@ -101,6 +102,26 @@ marked and explicitly selected with `uv run --locked pytest -m live`. A fixture
 or health pass does not establish model compatibility or physical feasibility.
 For a production preview, run `npm run build` then `npm run start -w @forma/web`.
 
+## Local intake
+
+Start both `npm run dev:api` and `npm run dev:web` from separate terminals.
+Configure `FORMA_API_TOKENS` in the API process environment as described in the
+[API README](apps/api/README.md). There is no default owner credential. Enter
+your configured development access key in the workbench; it stays in memory and
+must be entered again after refresh. Save the project ID to reopen the project.
+
+The web server proxies `/api` to `http://127.0.0.1:8000` by default. If needed,
+set server-only `FORMA_API_ORIGIN` before starting or building the web app. It
+must be an HTTP(S) origin without a path or credentials. No server owner token
+is inserted into requests. Hosted sign-in remains pending; this is local
+development access.
+
+Add one inventory row per physical item. Leave unknown dimensions blank and
+explicitly confirm measurements you took. Private photos can be uploaded and
+linked to stock; they are not sent to a model or used to infer dimensions.
+Saving inventory does not generate instructions or authorize cutting. See the
+[intake handoff](docs/handoffs/issue-7-intake.md) for scope and remaining work.
+
 Dependency updates use `npm install` and `uv add`; commit the generated
 `package-lock.json` and `uv.lock`, never edit them by hand. Schema generation
 and shared domain contracts remain assigned to #3. See the
@@ -115,6 +136,7 @@ and repeated checks. All gates are currently **unverified**. See the
 [evaluation protocol](docs/evaluation-protocol.md) and
 [submission checklist](docs/submission.md).
 
-Domain runtime contracts are implemented in `forma_domain.models`. Run
-`npm run contracts:generate` and `npm run contracts:check`. See the
+Domain runtime contracts are implemented in `forma_domain.models`. API-local
+Pydantic records also generate browser request/response types. Run
+`npm run contracts:generate` and `npm run contracts:check` for both exporters. See the
 [issue #3 handoff](docs/handoffs/issue-3-domain.md) for exact consumer interfaces.

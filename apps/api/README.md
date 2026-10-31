@@ -83,3 +83,8 @@ transaction. Images remain in the local SQLite database until deleted. Logical
 deletion does not erase SQLite free pages or backups. No route sends images to
 a model or shares them publicly; those capabilities require a future consent
 flow. See the [media handoff](../../docs/handoffs/issue-6-private-media.md).
+
+GET `/api/projects/{id}/media` lists private image metadata for that project,
+including uploads not yet linked to stock. It returns `{media: [...]}` with
+cache prevention, and checks project ownership before reading rows. Image bytes
+still require the authenticated individual media endpoint.

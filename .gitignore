@@ -21,6 +21,7 @@ apps/web/next-env.d.ts
 
 # Local runtime data and unredacted media
 .local/
+.playwright-mcp/
 *.sqlite
 *.sqlite3
 data/physical-tests/private/

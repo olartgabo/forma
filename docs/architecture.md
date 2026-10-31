@@ -2,7 +2,7 @@
 
 Status: October 31, 2026. The workspace implements typed domain contracts,
 offline compiler/stand renderer/replanner, a bounded model gateway and proposal
-service, and private project/inventory/photo persistence. The web remains a preview;
+service, and private project/inventory/photo persistence. The web supports local intake;
 the complete user journey below is the target architecture. Live provider
 compatibility and physical build/recovery acceptance remain unverified.
 
@@ -69,6 +69,13 @@ photos. Evidence IDs remain rejected. See the
 PostgreSQL and private object storage remain the production targets in the spec.
 Hosted identity, production storage/retention and provider-transfer consent remain
 [pending decisions](decisions.md).
+
+The local web workbench creates/reopens projects, uploads and links private
+photos, and saves measured/unknown stock through the scoped API. A same-origin
+rewrite forwards the caller's development credential to a fixed configured API
+origin. The credential stays in React memory; no shared server owner credential
+is inserted. API-local Pydantic envelopes generate separate browser types while
+domain generation remains offline. See the [intake handoff](handoffs/issue-7-intake.md).
 
 ## Revision transaction
 
