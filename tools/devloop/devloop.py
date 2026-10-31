@@ -65,8 +65,9 @@ def next_task(state: State, skip: set[int]) -> dict | None:
         "pr", "list", "--author", "@me", "--state", "open",
         "--json", "number,title,body,headRefName",
     )  # fmt: skip
+    own = sh("git", "branch", "--show-current", cwd=ROOT).strip()  # the loop's own PR
     for pr in prs:
-        if not state.blocked(f"pr#{pr['number']}"):
+        if pr["headRefName"] != own and not state.blocked(f"pr#{pr['number']}"):
             return {"kind": "pr", **pr}
     pr_heads = {pr["headRefName"] for pr in prs}
     issues = gh_json(
@@ -85,16 +86,16 @@ def next_task(state: State, skip: set[int]) -> dict | None:
 
 
 def checkout(task: dict):
-    branch = task["headRefName"]
+    # Detached HEAD: your other worktrees may hold these branches.
     sh("git", "fetch", "origin")
     if task["kind"] == "pr":
-        sh("git", "checkout", "-B", branch, f"origin/{branch}")
+        sh("git", "checkout", "--detach", f"origin/{task['headRefName']}")
         out = sh("git", "merge", "--no-edit", "origin/main", check=False)
         if "CONFLICT" in out:
             sh("git", "merge", "--abort")
             raise RuntimeError("merge conflict with main; needs a human")
     else:
-        sh("git", "checkout", "-B", branch, "origin/main")
+        sh("git", "checkout", "--detach", "origin/main")
 
 
 def read_files(paths: list[str]) -> dict[str, str]:
@@ -186,7 +187,7 @@ def commit(task, message, summary, checks, dry_run) -> str:
         sh("git", "reset", "--hard")
         return f"dry run, not committed:\n{diff}"
     sh("git", "commit", "-m", message)
-    sh("git", "push", "-u", "origin", task["headRefName"])
+    sh("git", "push", "origin", f"HEAD:refs/heads/{task['headRefName']}")
     body = (
         f"## Problem and behavior\n\n{summary}\n\nRefs #{task['number']}\n\n"
         f"## Validation\n\nOffline checks run by the dev loop:\n\n```\n"
@@ -278,7 +279,9 @@ def main():
             try:
                 print("  " + work_on(task, judge, muse, args.dry_run))
             except (JudgeError, MuseError, ScopeError, RuntimeError) as exc:
-                report_block(task, str(exc), args.dry_run)
+                # Local git/tool failures are printed, not posted to GitHub.
+                public = not isinstance(exc, RuntimeError)
+                report_block(task, str(exc), args.dry_run or not public)
                 state.block(key)
                 sh("git", "reset", "--hard")
                 sh("git", "clean", "-fd")
