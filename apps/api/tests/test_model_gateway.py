@@ -553,3 +553,63 @@ def test_smoke_main_oversized_photo_reports_invalid_image(
     assert output["status"] == "invalid_image"
     assert fake.calls == []
     assert fake_key not in json.dumps(output)
+
+
+def test_smoke_main_png_named_jpg_uses_sniffed_mime(monkeypatch, tmp_path, capsys):
+    fake_key = "FAKE_KEY_PNG_MIME_789"
+    monkeypatch.setenv("MODEL_API_KEY", fake_key)
+    photo = tmp_path / "team-photo.jpg"
+    photo.write_bytes(b"\x89PNG\r\n\x1a\nsynthetic")
+    tool_response = call("check_measurements", '{"measurements_confirmed":false}')
+    final_response = final(
+        json.dumps(
+            {
+                "labels": ["plain sheet"],
+                "measurement_source": "unknown",
+                "questions": ["What is the thickness?"],
+            }
+        )
+    )
+    sam_empty = {
+        "status": "completed",
+        "output": [{"content": [{"type": "output_text", "text": ""}]}],
+    }
+    fake = Fake(tool_response, final_response, sam_empty)
+    monkeypatch.setattr(
+        smoke_meta.MetaGateway,
+        "from_env",
+        classmethod(lambda cls: MetaGateway(fake)),
+    )
+    exit_code = smoke_meta.main(["--live", "--consented", "--image", str(photo)])
+    assert exit_code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "ok"
+    assert photo.suffix == ".jpg"
+    url = fake.calls[0][1]["messages"][1]["content"][1]["image_url"]["url"]
+    assert url.startswith("data:image/png;base64,")
+    assert fake_key not in json.dumps(output)
+
+
+def test_smoke_main_unsupported_format_reports_invalid_image(
+    monkeypatch, tmp_path, capsys
+):
+    fake_key = "FAKE_KEY_WEBP_INVALID_321"
+    monkeypatch.setenv("MODEL_API_KEY", fake_key)
+    photo = tmp_path / "team-photo.jpg"
+    photo.write_bytes(b"RIFF\x00\x00\x00\x00WEBPVP8 synthetic")
+    fake = Fake()
+    monkeypatch.setattr(
+        smoke_meta.MetaGateway,
+        "from_env",
+        classmethod(lambda cls: MetaGateway(fake)),
+    )
+    exit_code = smoke_meta.main(["--live", "--consented", "--image", str(photo)])
+    assert exit_code == 1
+    raw = capsys.readouterr().out
+    output = json.loads(raw)
+    assert output["status"] == "invalid_image"
+    assert fake.calls == []
+    assert "traces" in output
+    assert fake_key not in raw
+    assert "RIFF" not in raw
+    assert "WEBP" not in raw
