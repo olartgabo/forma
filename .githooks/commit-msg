@@ -1,0 +1,9 @@
+#!/bin/sh
+# Rejects AI-assistant attribution in commit messages. Code here is written by
+# the authors and Muse Spark; Claude reviews only (docs/decisions.md D010).
+# Enable once per clone: git config core.hooksPath .githooks
+patterns="$(dirname "$0")/attribution-patterns.txt"
+if grep -qiEf "$patterns" "$1"; then
+  echo "commit-msg: remove AI-assistant attribution lines from the message." >&2
+  exit 1
+fi

@@ -27,3 +27,23 @@ jobs:
       - run: npm ci
       - run: uv sync --locked
       - run: npm run check
+
+  attribution:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reject AI-assistant attribution in commits and PR body
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          { git log --format=%B "$BASE..$HEAD"; printf '%s\n' "$PR_BODY"; } > text.txt
+          if grep -iEf .githooks/attribution-patterns.txt text.txt; then
+            echo "::error::Remove AI-assistant attribution lines."
+            exit 1
+          fi

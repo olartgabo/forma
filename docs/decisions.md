@@ -76,3 +76,14 @@ authority. Mutation wrappers carry expected version, idempotency and explicit
 approval. See [the handoff](handoffs/issue-3-domain.md) for consumer obligations.
 Material conservation, geometry, auth and transactions remain #5/#6/#10 work.
 Synthetic fixtures are not measured stock. No product scope changes.
+
+## D010: Muse-written code with a Claude review loop, October 31, 2026
+
+Owner: @ResniDev. `tools/devloop` is development tooling for the @ResniDev
+lane. Meta Muse Spark writes the code changes. Claude models are used only as
+planners and reviewers (task specs, approve/revise verdicts, proposed issues);
+their output is never applied as code. Commits and PRs carry no assistant
+attribution, enforced by `.githooks/commit-msg` and the `attribution` CI job.
+Meta spend is capped at $90 by a local ledger. The loop opens draft PRs only;
+humans review and merge. No product scope changes; CI gains one job (handoff to
+@olartgabo for `.github/workflows/checks.yml`).
