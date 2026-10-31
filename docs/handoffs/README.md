@@ -1,11 +1,28 @@
 # Implementation handoffs
 
-Create one file per active issue using [TEMPLATE.md](TEMPLATE.md), for example
-`issue-3-domain-contracts.md`. Filenames are examples; no handoff is complete yet.
+Create one file per active issue using [TEMPLATE.md](TEMPLATE.md). The handoffs
+below describe implemented interfaces, checks actually run and remaining work.
+Some retain their original branch/review status or historical test counts;
+consult current source, PR history and [development progress](../development.md)
+before treating those notes as the current integration state.
 
-The first cross-lane handoff is @ResniDev's Pydantic schemas, generation command,
-fixture IDs and compiler error contract to @olartgabo's API/UI work. Record
-changes before dependent code is edited. Keep the latest branch/commit and
+Pydantic schemas, generated contracts, fixture IDs and compiler blockers form the
+cross-lane boundary for API/UI work. Record changes before dependent code is
+edited. Keep the latest branch/commit and
 remaining blockers clear so an agent can resume without repeating experiments.
 
-Implemented: [issue #3 domain contracts](issue-3-domain.md); consumer review pending.
+| Issue | Handoff                                            | Current scope and remaining work                                                                                                                       |
+| ----- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| #1    | [Workspace](issue-1-workspace.md)                  | Tooling and offline checks implemented; original schema review remains recorded as pending                                                             |
+| #2    | [Physical intake](issue-2-physical-intake.md)      | Material list and proposed experiments only; measurements and physical attempts pending                                                                |
+| #3    | [Domain contracts](issue-3-domain.md)              | Immutable Pydantic models and generated downstream contracts implemented                                                                               |
+| #4    | [Meta gateway](issue-4-meta-gateway.md)            | Offline adapter and explicit smoke implemented; live account/photo compatibility pending                                                               |
+| #5    | [Compiler](issue-5-compiler.md)                    | Offline resource/operation validation implemented; actual measured process/profile inputs required                                                     |
+| #6    | [Persistence](issue-6-persistence.md)              | Private project/inventory slice implemented; media, plan/history storage and revision activation pending                                               |
+| #8    | [Stand and manual](issue-8-stand-manual.md)        | Narrow stand compiler and deterministic SVG implemented; physical acceptance pending                                                                   |
+| #9    | [Bounded proposals](issue-9-bounded-proposals.md)  | Scoped proposal service implemented; trusted runtime callbacks and live evidence pending                                                               |
+| #10   | [Repair simulation](issue-10-repair-simulation.md) | Offline simulation implemented; listed PR #30/#32 dependencies have now merged; see [current interface and limits](../../packages/replanner/README.md) |
+
+No handoff establishes a real provider result or physical pass through fixture
+checks. User-confirmed measurements, observed build/recovery outcomes and
+authenticated end-to-end integration remain separate acceptance evidence.
