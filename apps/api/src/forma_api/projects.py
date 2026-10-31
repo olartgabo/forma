@@ -81,6 +81,13 @@ class ProjectStore:
                 "(owner TEXT, scope TEXT, key TEXT, digest TEXT NOT NULL, "
                 "response TEXT NOT NULL, PRIMARY KEY(owner, scope, key))"
             )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS media "
+                "(id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
+                "REFERENCES projects(id) ON DELETE CASCADE, "
+                "content_type TEXT NOT NULL, width_px INTEGER NOT NULL, "
+                "height_px INTEGER NOT NULL, body BLOB NOT NULL)"
+            )
             yield connection
             connection.commit()
         except BaseException:
@@ -211,10 +218,21 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                     stock.thickness_mm,
                     stock.remaining_length_mm,
                 )
-                if stock.image_ids or any(m.evidence_ids for m in measurements):
+                if any(m.evidence_ids for m in measurements):
                     raise ProjectError(
                         422, "validation_error", "Unresolved media reference"
                     )
+                for image_id in stock.image_ids:
+                    if (
+                        connection.execute(
+                            "SELECT 1 FROM media WHERE id=? AND project_id=?",
+                            (image_id, project_id),
+                        ).fetchone()
+                        is None
+                    ):
+                        raise ProjectError(
+                            422, "validation_error", "Unresolved media reference"
+                        )
             updated = Project(
                 **{
                     **project.model_dump(),
@@ -249,6 +267,10 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 (owner, project_id + ":inventory"),
             )
             connection.execute(
+                "DELETE FROM requests WHERE owner=? AND scope LIKE ?",
+                (owner, project_id + ":media:%"),
+            )
+            connection.execute(
                 "UPDATE requests SET response=? WHERE owner=? AND scope='create' "
                 "AND json_extract(response, '$.project.id')=?",
                 (json.dumps({"deleted_project_id": project_id}), owner, project_id),
@@ -258,4 +280,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
             store.remember(connection, owner, scope, idempotency_key, digest, result)
             return result
 
+    from forma_api.media import media_router
+
+    router.include_router(media_router(store, authenticate))
     return router

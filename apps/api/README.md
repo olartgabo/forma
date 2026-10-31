@@ -32,7 +32,7 @@ exposes FastAPI's OpenAPI UI. No database or provider readiness is implied.
 needed. See the [root README](../../README.md) for pinned tools and setup.
 
 Project/inventory routes and local development authentication are implemented.
-Uploads, plan/event persistence and hosted authentication remain #6 work. The
+Plan/event persistence and hosted authentication remain #6 work. The
 [#1 handoff](../../docs/handoffs/issue-1-workspace.md) reserves the service/domain
 boundary for review before those changes.
 
@@ -53,13 +53,33 @@ inventory records there. POST `/api/projects` accepts `goal` and
 inventory revision. Stale edits and changed-payload key reuse return 409; exact
 retries return the original outcome with `replayed: true`. An inventory revision
 is separate from `active_version_id`, which stays null until plan storage exists.
-Unknown measurements remain unknown. Photo/evidence IDs are rejected until
-private media storage can resolve them. OpenAPI documents the actual envelopes.
+Unknown measurements remain unknown. Photo IDs must resolve to private media in
+the same project; evidence IDs remain rejected until evidence storage exists.
+OpenAPI documents the actual envelopes.
 
 DELETE `/api/projects/{id}` takes `Idempotency-Key` in a header, removes the
 inventory and stored replay snapshots, and retains only a scoped deletion receipt.
 This is logical deletion; SQLite free pages and local backup copies are outside
 this deletion mechanism. These routes do not send
-data to providers. Uploads, consent/transfer, immutable plan/event/material history
+data to providers. Consent/transfer, immutable plan/event/material history
 and revision activation remain open in #6/#12. See the
 [contract handoff](../../docs/handoffs/issue-6-persistence.md).
+
+## Private photos (#6)
+
+POST `/api/projects/{id}/media` accepts a raw JPEG, PNG or WebP body with
+`Content-Type` and `Idempotency-Key` headers and the same bearer authentication.
+The API checks the byte count, decoded format, pixel count and complete image
+before storing a normalized image without embedded metadata. Animated images
+are rejected. Limits are 8 MiB for input and normalized output and 20 million
+decoded pixels. The response contains an opaque media ID and image metadata;
+it does not establish dimensions in millimeters or physical success.
+
+GET `/api/projects/{id}/media/{media_id}` returns private image bytes only to the
+project owner, with cache prevention and download headers. DELETE at the same
+path requires `Idempotency-Key`; first remove any current inventory references.
+Project deletion removes all photo rows and their upload receipts in the same
+transaction. Images remain in the local SQLite database until deleted. Logical
+deletion does not erase SQLite free pages or backups. No route sends images to
+a model or shares them publicly; those capabilities require a future consent
+flow. See the [media handoff](../../docs/handoffs/issue-6-private-media.md).
