@@ -78,6 +78,21 @@ def _close(a, b):
     return abs(a - b) <= 1e-7
 
 
+def _touched_stock_ids(snapshot):
+    """Stocks the base work, ledger or requested patch actually relies on."""
+    base, patch = snapshot.base_plan, snapshot.patch
+    touched = {p.source_stock_id for p in base.parts}
+    for op in base.operations:
+        touched.update(op.stock_ids)
+        stock_id = getattr(op.args, "stock_id", None)
+        if stock_id is not None:
+            touched.add(stock_id)
+    touched.update(tx.source_stock_id for tx in snapshot.material_transactions)
+    if patch.replacement_stock_id is not None:
+        touched.add(patch.replacement_stock_id)
+    return touched
+
+
 def _affected(base, candidate):
     """Include relevant interfaces and all prerequisites, not operation IDs alone."""
     old_parts = {p.id: p for p in base.parts}
@@ -583,38 +598,53 @@ def simulate_patch(
             "invalid_reference",
             "Remaining inventory must contain exactly the known physical sources.",
         )
+    touched_stock_ids = _touched_stock_ids(snapshot)
     actual_regions = {}
     for stock in snapshot.remaining_stock:
         original = stocks.get(stock.id)
         if original is None:
             continue
-        if (
-            stock.kind != original.kind
-            or stock.material != original.material
-            or stock.width_mm != original.width_mm
-            or stock.height_mm != original.height_mm
-            or stock.thickness_mm != original.thickness_mm
-            or stock.condition != "usable"
-        ):
-            fail(
-                "needs_confirmation",
-                "Inventory identity, measurements or condition conflict with physical history.",
-                stock.id,
-            )
-        if stock.kind in ("tape", "cord"):
-            expected = lengths.get(stock.id)
-            value = stock.remaining_length_mm
-            if (
-                expected is None
-                or value.value is None
-                or not value.confirmed
-                or not _close(expected, value.value)
-            ):
+        if stock.id not in touched_stock_ids:
+            # Untouched unused inventory may stay exactly as unknown and
+            # uncertain as originally recorded: it supports no part, operation
+            # or patch, so it neither blocks the repair nor becomes usable
+            # availability. Any change to it is a conflict, not confirmation.
+            # Regions are still collected below so structural reconciliation,
+            # including duplicate detection, applies unchanged.
+            if stock != original:
                 fail(
-                    "stock_exhausted",
-                    "Remaining connector length conflicts with confirmed consumption.",
+                    "needs_confirmation",
+                    "Unused inventory changed from its original unknown state; confirm the new identity, measurements or condition explicitly.",
                     stock.id,
                 )
+        else:
+            if (
+                stock.kind != original.kind
+                or stock.material != original.material
+                or stock.width_mm != original.width_mm
+                or stock.height_mm != original.height_mm
+                or stock.thickness_mm != original.thickness_mm
+                or stock.condition != "usable"
+            ):
+                fail(
+                    "needs_confirmation",
+                    "Inventory identity, measurements or condition conflict with physical history.",
+                    stock.id,
+                )
+            if stock.kind in ("tape", "cord"):
+                expected = lengths.get(stock.id)
+                value = stock.remaining_length_mm
+                if (
+                    expected is None
+                    or value.value is None
+                    or not value.confirmed
+                    or not _close(expected, value.value)
+                ):
+                    fail(
+                        "stock_exhausted",
+                        "Remaining connector length conflicts with confirmed consumption.",
+                        stock.id,
+                    )
         for region in stock.usable_regions:
             if region.id in actual_regions:
                 fail("stock_exhausted", "A remaining region appears twice.", region.id)
