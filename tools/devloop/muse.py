@@ -1,11 +1,14 @@
 """Muse Spark as the only code author. Returns whole-file replacements."""
 
 import json
+import time
 
 from budget import Budget
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 MAX_OUT = 32000
+TRANSIENT = ("timeout", "network_error", "rate_limit", "provider_http_error")
+BACKOFF = (15, 60, 180)  # seconds between retries of transient Meta errors
 SYSTEM = (
     "You are the programmer on the FORMA repository. Write production-quality, "
     "formatted Python/TypeScript matching the repository style. Follow AGENTS.md: "
@@ -35,7 +38,17 @@ class MuseError(Exception):
 class Muse:
     def __init__(self, transport, budget: Budget, model: str, timeout: float = 240):
         self.transport, self.budget, self.model = transport, budget, model
-        self.timeout = timeout
+        self.timeout, self.sleep = timeout, time.sleep
+
+    def _post(self, payload: dict) -> dict:
+        for delay in (*BACKOFF, None):
+            try:
+                return self.transport.post("/chat/completions", payload, self.timeout)
+            except Exception as exc:
+                if delay is None or getattr(exc, "code", None) not in TRANSIENT:
+                    raise
+                print(f"  Meta {exc.code}; retrying in {delay}s")
+                self.sleep(delay)
 
     def write(
         self, spec: dict, files: dict[str, str], feedback: str = ""
@@ -60,7 +73,7 @@ class Muse:
                 },
             },
         }
-        result = self.transport.post("/chat/completions", payload, self.timeout)
+        result = self._post(payload)
         usage = result.get("usage") or {}
         pt, ct = usage.get("prompt_tokens"), usage.get("completion_tokens")
         if not (isinstance(pt, int) and isinstance(ct, int)):

@@ -13,7 +13,7 @@ from pathlib import Path
 from budget import Budget, BudgetExhausted
 from judge import ClaudeLimitReached, Goals, Judge, JudgeError, Review, TaskSpec, Triage
 from muse import Muse, MuseError
-from scope import ScopeError, check_path, touches_contract
+from scope import LANE, ScopeError, check_path, touches_contract
 
 ROOT = Path(__file__).resolve().parents[2]
 STATE_DIR = ROOT / ".devloop"
@@ -143,10 +143,20 @@ def work_on(task: dict, judge: Judge, muse: Muse, dry_run: bool) -> str:
     spec = judge.ask(
         model,
         "Write the next concrete, reviewable step that polishes or finishes this "
-        "task as a TaskSpec for the Muse programmer. Explore the repo first.\n" + brief,
+        "task as a TaskSpec for the Muse programmer. Explore the repo first. "
+        f"files_allowed may only use these path prefixes: {', '.join(LANE)}. "
+        "The loop records which checks ran in the PR, so never ask Muse to "
+        "write check results into files.\n" + brief,
         TaskSpec,
     )
-    allowed = [check_path(p) for p in spec.files_allowed]
+    allowed = []
+    for path in spec.files_allowed:
+        try:
+            allowed.append(check_path(path))
+        except ScopeError as exc:
+            print(f"  dropped from spec: {exc}")
+    if not allowed:
+        raise ScopeError("spec has no files inside your lane")
     contract = touches_contract(allowed)
     if contract:
         model = SENIOR
@@ -173,14 +183,16 @@ def work_on(task: dict, judge: Judge, muse: Muse, dry_run: bool) -> str:
         review = judge.ask(
             model,
             f"Review Muse's change for this spec.\nSpec: {spec.model_dump_json()}\n"
-            f"Diff:\n{diff[:80_000]}\nChecks:\n{checks}",
+            f"Diff:\n{diff[:80_000]}\nChecks:\n{checks}\n"
+            "Approve when the acceptance criteria are met and checks pass. Revise "
+            "only for correctness, safety or scope problems, not wording nits.",
             Review,
         )
         print(f"  attempt {attempt + 1}: checks={'pass' if ok else 'fail'} "
               f"review={review.verdict}")  # fmt: skip
         if ok and review.verdict == "approve":
             return commit(task, change.commit_message, change.summary, checks, dry_run)
-        feedback = review.feedback + ("" if ok else f"\nFailing checks:\n{checks}")
+        feedback = f"{review.feedback}\nCheck output:\n{checks}"
     sh("git", "reset", "--hard")
     sh("git", "clean", "-fd")
     raise JudgeError(
@@ -228,14 +240,6 @@ def propose_goals(judge: Judge, dry_run: bool) -> int:
             sh("gh", "issue", "create", "--title", issue.title, "--body", issue.body,
                "--label", LOOP_LABEL, "--assignee", "@me", cwd=ROOT)  # fmt: skip
     return len(goals.issues)
-
-
-def report_block(task: dict, reason: str, dry_run: bool):
-    print(f"  blocked: {reason[:300]}")
-    if not dry_run:
-        kind = "pr" if task["kind"] == "pr" else "issue"
-        sh("gh", kind, "comment", str(task["number"]), "--body",
-           f"Dev loop stopped on this item:\n\n```\n{reason[:3000]}\n```", cwd=ROOT)  # fmt: skip
 
 
 def build_budget() -> Budget:
@@ -287,9 +291,8 @@ def main():
             try:
                 print("  " + work_on(task, judge, muse, args.dry_run))
             except (JudgeError, MuseError, ScopeError, RuntimeError) as exc:
-                # Local git/tool failures are printed, not posted to GitHub.
-                public = not isinstance(exc, RuntimeError)
-                report_block(task, str(exc), args.dry_run or not public)
+                # Logged locally only; GitHub stays free of loop noise.
+                print(f"  blocked: {str(exc)[:1500]}")
                 state.block(key)
                 sh("git", "reset", "--hard")
                 sh("git", "clean", "-fd")

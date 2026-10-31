@@ -128,3 +128,30 @@ def test_commit_msg_hook(tmp_path, message, rejected):
     msg.write_text(message)
     proc = subprocess.run(["sh", str(HOOK), str(msg)], capture_output=True)
     assert (proc.returncode != 0) is rejected
+
+
+class Flaky(FakeMeta):
+    def __init__(self, failures, code):
+        super().__init__(change(), {"prompt_tokens": 1, "completion_tokens": 1})
+        self.failures, self.code = failures, code
+
+    def post(self, path, payload, timeout):
+        if self.failures:
+            self.failures -= 1
+            exc = Exception(self.code)
+            exc.code = self.code
+            raise exc
+        return super().post(path, payload, timeout)
+
+
+def test_muse_retries_transient_errors(tmp_path):
+    muse = Muse(Flaky(2, "provider_http_error"), Budget(tmp_path / "l", 90, 1, 1), "m")
+    muse.sleep = lambda s: None
+    assert muse.write({}, {}).files
+
+
+def test_muse_does_not_retry_auth_errors(tmp_path):
+    muse = Muse(Flaky(1, "authentication"), Budget(tmp_path / "l", 90, 1, 1), "m")
+    muse.sleep = lambda s: None
+    with pytest.raises(Exception, match="authentication"):
+        muse.write({}, {})
