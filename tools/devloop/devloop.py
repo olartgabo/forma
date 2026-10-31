@@ -11,14 +11,15 @@ import sys
 from pathlib import Path
 
 from budget import Budget, BudgetExhausted
-from judge import ClaudeLimitReached, Goals, Judge, JudgeError, Review, TaskSpec, Triage
+from judge import ClaudeLimitReached, Goals, Judge, JudgeError, Review, TaskSpec
 from muse import DevMetaHTTP, MetaError, Muse, MuseError
 from scope import LANE, ScopeError, check_path, touches_contract
 
 ROOT = Path(__file__).resolve().parents[2]
 STATE_DIR = ROOT / ".devloop"
 WORKTREE = STATE_DIR / "worktree"
-REPAIRS = 3  # AGENTS.md: repair candidates capped at three
+REPAIRS = 2  # Claude review rounds after the first (3 candidates max)
+MUSE_FIXES = 3  # Muse-only retries on failing checks per candidate
 MAX_FILE = 60_000
 SENIOR, JUNIOR = "opus", "sonnet"
 LOOP_LABEL = "loop-proposed"
@@ -138,18 +139,23 @@ def work_on(task: dict, judge: Judge, muse: Muse, dry_run: bool) -> str:
         f"Branch diff vs main:\n{sh('git', 'diff', '--stat', 'origin/main...HEAD')}\n"
         f"Partner PRs (read-only context, never edit their files): {partner_context()}"
     )
-    triage = judge.ask(JUNIOR, "Rate the difficulty of this task.\n" + brief, Triage)
-    model = SENIOR if triage.difficulty == "hard" else JUNIOR
+    lane_files = sh("git", "ls-files", *LANE)
+    # Sonnet by default; Opus only for shared contracts (decided after the spec).
     spec = judge.ask(
-        model,
+        JUNIOR,
         "Write the next concrete, reviewable step that polishes or finishes this "
-        "task as a TaskSpec for the Muse programmer. Explore the repo first. Keep "
-        "the step small: at most 3 files_allowed, so Muse can reply in one pass. "
+        "task as a TaskSpec for the Muse programmer. Read only the few files you "
+        "need; the lane file list is below. Keep the step small: at most 3 "
+        "files_allowed, so Muse can reply in one pass. "
         f"files_allowed may only use these path prefixes: {', '.join(LANE)}. "
         "The loop records which checks ran in the PR, so never ask Muse to "
-        "write check results into files.\n" + brief,
+        "write check results into files. Set already_done=true if main already "
+        "satisfies the task.\n" + brief + f"\nLane files:\n{lane_files[:20_000]}",
         TaskSpec,
+        effort="medium",
     )
+    if spec.already_done:
+        return "already done; skipped"
     allowed = []
     for path in spec.files_allowed:
         try:
@@ -159,46 +165,51 @@ def work_on(task: dict, judge: Judge, muse: Muse, dry_run: bool) -> str:
     if not allowed:
         raise ScopeError("spec has no files inside your lane")
     contract = touches_contract(allowed)
-    if contract:
-        model = SENIOR
+    model = SENIOR if contract else JUNIOR
     feedback = ""
-    for attempt in range(1 + REPAIRS):
-        files = read_files(allowed + spec.files_to_read)
-        try:
-            change = muse.write(spec.model_dump(), files, feedback)
-        except MuseError as exc:
-            print(f"  attempt {attempt + 1}: unusable Muse output")
-            feedback = (
-                f"Your previous reply was unusable ({str(exc)[:300]}). It was likely "
-                "cut off or timed out: change fewer files and keep the reply short."
-            )
-            continue
-        for edit in change.files:
-            if check_path(edit.path) not in allowed:
-                raise ScopeError(f"Muse wrote unlisted file {edit.path}")
-            target = WORKTREE / edit.path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(edit.content, encoding="utf-8", newline="\n")
-        ok, checks = run_checks(contract)
+    for review_round in range(1 + REPAIRS):
+        # Muse fixes failing checks on its own; Claude only sees green changes.
+        for fix in range(1 + MUSE_FIXES):
+            files = read_files(allowed + spec.files_to_read)
+            try:
+                change = muse.write(spec.model_dump(), files, feedback)
+            except MuseError as exc:
+                print(f"  muse try {fix + 1}: unusable output")
+                feedback = (
+                    f"Your previous reply was unusable ({str(exc)[:300]}). It was "
+                    "likely cut off: change fewer files and keep the reply short."
+                )
+                continue
+            for edit in change.files:
+                if check_path(edit.path) not in allowed:
+                    raise ScopeError(f"Muse wrote unlisted file {edit.path}")
+                target = WORKTREE / edit.path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(edit.content, encoding="utf-8", newline="\n")
+            ok, checks = run_checks(contract)
+            print(f"  muse try {fix + 1}: checks={'pass' if ok else 'fail'}")
+            if ok:
+                break
+            feedback = f"Checks failed; fix them.\n{checks}"
+        else:
+            break  # Muse never reached green checks; no Claude review spent.
         diff = sh("git", "diff") + sh("git", "status", "--short")
         review = judge.ask(
             model,
             f"Review Muse's change for this spec.\nSpec: {spec.model_dump_json()}\n"
-            f"Diff:\n{diff[:80_000]}\nChecks:\n{checks}\n"
-            "Approve when the acceptance criteria are met and checks pass. Revise "
-            "only for correctness, safety or scope problems, not wording nits.",
+            f"Diff:\n{diff[:80_000]}\nChecks (all passed):\n{checks[-3000:]}\n"
+            "Approve when the acceptance criteria are met. Revise only for "
+            "correctness, safety or scope problems, not wording nits.",
             Review,
+            effort="low",
         )
-        print(f"  attempt {attempt + 1}: checks={'pass' if ok else 'fail'} "
-              f"review={review.verdict}")  # fmt: skip
-        if ok and review.verdict == "approve":
+        print(f"  review {review_round + 1}: {review.verdict}")
+        if review.verdict == "approve":
             return commit(task, change.commit_message, change.summary, checks, dry_run)
-        feedback = f"{review.feedback}\nCheck output:\n{checks}"
+        feedback = review.feedback
     sh("git", "reset", "--hard")
     sh("git", "clean", "-fd")
-    raise JudgeError(
-        f"no approved change after {1 + REPAIRS} attempts: {feedback[:1500]}"
-    )
+    raise JudgeError(f"no approved change: {feedback[:1500]}")
 
 
 def commit(task, message, summary, checks, dry_run) -> str:

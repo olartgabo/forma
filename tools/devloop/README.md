@@ -9,19 +9,20 @@ contract-affecting work. Claude's text is never applied as code.
 
 1. Pick work: your open PRs first, then your assigned issues. Partner PRs are
    read-only context.
-2. Sonnet triages the task. Hard tasks, or tasks touching `packages/domain/src`,
-   go to Opus.
-3. The judge writes a `TaskSpec` with allowed files and acceptance criteria.
-4. Muse returns whole-file contents. Every path is checked by `scope.py`:
+2. Sonnet (medium effort) writes a small `TaskSpec` (at most 3 files), using a
+   precomputed lane file list instead of exploring. It may answer
+   `already_done`. Opus is used only when the spec touches `packages/domain/src`.
+3. Muse returns whole-file contents. Every path is checked by `scope.py`:
    lane only, no generated, lock or secret files.
-5. The loop runs `ruff format`, `ruff check` and `pytest`, plus
-   `contracts:check` for contract changes. The judge then reviews the diff and
-   the check output.
-6. A change needs passing checks and an approving review. Otherwise up to 3
-   repairs are attempted, then the item is blocked with a comment.
-7. Approved changes are committed and pushed. Issues get a **draft** PR; PRs get
+4. The loop runs `ruff format`, `ruff check` and `pytest`, plus
+   `contracts:check` for contract changes. On failure Muse gets the output and
+   retries up to 3 times **without any Claude call**.
+5. Only green changes reach the Claude review (low effort). A "revise" verdict
+   goes back to Muse; there are at most 3 reviewed candidates, then the item is
+   skipped for this run.
+6. Approved changes are committed and pushed. Issues get a **draft** PR; PRs get
    a summary comment. The loop never merges or pushes to `main`.
-8. When nothing is left, Opus proposes up to 3 new issues, labeled
+7. When nothing is left, Opus proposes up to 3 new issues, labeled
    `loop-proposed` and assigned to you. These are then worked the same way.
 
 Everything runs in `.devloop/worktree`, so your own checkout is untouched.

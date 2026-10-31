@@ -22,17 +22,13 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class Triage(_Strict):
-    difficulty: Literal["easy", "hard"]
-    reason: str
-
-
 class TaskSpec(_Strict):
     goal: str
-    files_allowed: list[str] = Field(min_length=1, max_length=12)
+    files_allowed: list[str] = Field(max_length=12)
     files_to_read: list[str] = Field(max_length=20)
     acceptance_criteria: list[str] = Field(min_length=1)
     design_notes: str
+    already_done: bool = False
 
 
 class Review(_Strict):
@@ -58,10 +54,13 @@ ROLE = (
 )
 
 
-def run_claude(prompt: str, model: str, schema: dict, cwd: str) -> dict:
+def run_claude(
+    prompt: str, model: str, schema: dict, cwd: str, effort: str = "medium"
+) -> dict:
     cmd = [
         "claude", "-p", prompt,
         "--model", model,
+        "--effort", effort,
         "--output-format", "json",
         "--json-schema", json.dumps(schema),
         "--tools", "Read,Grep,Glob",
@@ -88,8 +87,10 @@ class Judge:
     def __init__(self, cwd: str, runner=run_claude):
         self.cwd, self.runner = cwd, runner
 
-    def ask(self, model: str, prompt: str, output: type[T]) -> T:
-        raw = self.runner(prompt, model, output.model_json_schema(), self.cwd)
+    def ask(
+        self, model: str, prompt: str, output: type[T], effort: str = "medium"
+    ) -> T:
+        raw = self.runner(prompt, model, output.model_json_schema(), self.cwd, effort)
         try:
             return output.model_validate(raw)
         except ValidationError as exc:
