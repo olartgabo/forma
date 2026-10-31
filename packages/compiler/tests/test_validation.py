@@ -305,6 +305,137 @@ def test_stock_regions_may_not_overlap():
     assert "geometry_invalid" in codes(data)
 
 
+def unknown_stock(stock_id, kind):
+    unknown = dict(value=None, unit="mm", source="unknown", confirmed=False)
+    return dict(
+        id=stock_id,
+        kind=kind,
+        material="cardboard" if kind == "sheet" else "other_supported",
+        width_mm=unknown,
+        height_mm=unknown,
+        thickness_mm=unknown,
+        remaining_length_mm=unknown,
+        condition="uncertain",
+        usable_regions=[],
+    )
+
+
+def test_unused_unknown_stock_does_not_block_and_is_retained():
+    data = plan_data()
+    data["stocks"].append(unknown_stock("unused-unmeasured", "sheet"))
+    data["stocks"].append(unknown_stock("unused-unknown-tape", "tape"))
+    result = validate_plan(
+        BuildPlan.model_validate(data), process=process(), allow_synthetic=True
+    )
+    assert result.status == "accepted", result.blockers
+    assert result.plan is not None
+    retained = {stock.id: stock for stock in result.plan.stocks}
+    for stock_id in ("unused-unmeasured", "unused-unknown-tape"):
+        stock = retained[stock_id]
+        assert stock.width_mm.value is None
+        assert stock.remaining_length_mm.value is None
+        assert not stock.width_mm.confirmed
+        assert stock.condition == "uncertain"
+
+
+def test_unused_unknown_stock_overlapping_regions_still_block():
+    data = plan_data()
+    stock = unknown_stock("unused-unmeasured", "sheet")
+    stock["usable_regions"] = [
+        dict(id="a", geometry=dict(x=0, y=0, width=50, height=50)),
+        dict(id="b", geometry=dict(x=10, y=10, width=50, height=50)),
+    ]
+    data["stocks"].append(stock)
+    assert "geometry_invalid" in codes(data)
+
+
+def test_unused_stock_knownwidthoverflow_still_blocks():
+    data = plan_data()
+    stock = unknown_stock("unused-width-only", "sheet")
+    stock["width_mm"] = measurement(50)
+    stock["usable_regions"] = [
+        dict(id="too-wide", geometry=dict(x=0, y=0, width=100, height=10))
+    ]
+    data["stocks"].append(stock)
+    assert "geometry_invalid" in codes(data)
+
+
+def test_unused_stock_knownheightoverflow_still_blocks():
+    data = plan_data()
+    stock = unknown_stock("unused-height-only", "sheet")
+    stock["height_mm"] = measurement(50)
+    stock["usable_regions"] = [
+        dict(id="too-tall", geometry=dict(x=0, y=0, width=10, height=100))
+    ]
+    data["stocks"].append(stock)
+    assert "geometry_invalid" in codes(data)
+
+
+def test_unused_stock_partialknownaxisfits_is_accepted():
+    for axis, stock_id, geometry in (
+        ("width_mm", "unused-width-fits", dict(x=0, y=0, width=50, height=10)),
+        ("height_mm", "unused-height-fits", dict(x=0, y=0, width=10, height=50)),
+    ):
+        data = plan_data()
+        stock = unknown_stock(stock_id, "sheet")
+        stock[axis] = measurement(50)
+        stock["usable_regions"] = [dict(id="fits-known-axis", geometry=geometry)]
+        data["stocks"].append(stock)
+        assert not codes(data)
+
+
+def test_unused_measured_sheet_is_accepted():
+    data = plan_data()
+    spare = deepcopy(data["stocks"][0])
+    spare["id"] = "spare-sheet"
+    spare["usable_regions"] = [
+        dict(id="spare-region", geometry=dict(x=0, y=0, width=200, height=120))
+    ]
+    data["stocks"].append(spare)
+    assert not codes(data)
+
+
+def test_cut_from_unknown_stock_still_blocks():
+    data = plan_data()
+    stock = unknown_stock("unknown-source", "sheet")
+    stock["usable_regions"] = [
+        dict(id="unknown-region", geometry=dict(x=0, y=0, width=100, height=100))
+    ]
+    data["stocks"].append(stock)
+    data["parts"].append(
+        dict(
+            id="brace",
+            source_stock_id="unknown-source",
+            source_region_id="unknown-region",
+            geometry=dict(x=5, y=5, width=30, height=50),
+            condition="usable",
+        )
+    )
+    op = deepcopy(data["operations"][0])
+    op.update(id="cut_unknown", depends_on=[])
+    op["stock_ids"] = ["unknown-source"]
+    op["args"].update(
+        stock_id="unknown-source",
+        source_region_id="unknown-region",
+        child_part_ids=["brace"],
+    )
+    op["effects"] = dict(
+        created_part_ids=["brace"], consumed_region_ids=["unknown-region"]
+    )
+    data["operations"].append(op)
+    assert "missing_measurement" in codes(data)
+
+
+def test_joint_with_unknown_tape_still_blocks():
+    data = joined_data()
+    stock = unknown_stock("unknown-tape", "tape")
+    stock["condition"] = "usable"
+    data["stocks"].append(stock)
+    data["operations"][-1]["stock_ids"] = ["unknown-tape"]
+    data["operations"][-1]["args"]["stock_id"] = "unknown-tape"
+    assert "missing_measurement" in codes(data)
+
+
 def test_wrong_stock_offcut_provenance():
     data = second_cut(plan_data())
     other = deepcopy(data["stocks"][0])

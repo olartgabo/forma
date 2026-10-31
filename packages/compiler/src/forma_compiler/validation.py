@@ -107,9 +107,38 @@ def validate_plan(
     ):
         fail("invalid_reference", "Cut process evidence belongs to another project.")
 
+    # Critical measurements are required only for stock a part, cut, joint or
+    # other physical operation actually uses. Unused inventory stays in the
+    # plan as explicit unknown stock; it is never allocated below.
+    required_stock_ids = {p.source_stock_id for p in plan.parts}
+    for op in plan.operations:
+        required_stock_ids.update(op.stock_ids)
+        for pid in op.part_ids:
+            if pid in parts:
+                required_stock_ids.add(parts[pid].source_stock_id)
+        args = op.args
+        stock_id = getattr(args, "stock_id", None)
+        if stock_id:
+            required_stock_ids.add(stock_id)
+        required_stock_ids.update(getattr(args, "material_loss_stock_ids", ()) or ())
+        for attr in ("part_id", "brace_part_id"):
+            pid = getattr(args, attr, None)
+            if pid in parts:
+                required_stock_ids.add(parts[pid].source_stock_id)
+        for attr in ("feature_id", "tab_feature_id", "slot_feature_id"):
+            fid = getattr(args, attr, None)
+            if fid in features:
+                required_stock_ids.add(features[fid][0].source_stock_id)
+        joint_id = getattr(args, "joint_id", None)
+        if joint_id in joints:
+            for pid in joints[joint_id].part_ids:
+                if pid in parts:
+                    required_stock_ids.add(parts[pid].source_stock_id)
+
     for stock in plan.stocks:
+        required = stock.id in required_stock_ids
         if stock.kind in ("tape", "cord"):
-            if measured(
+            if required and measured(
                 stock.remaining_length_mm, stock.id, "remaining connector length"
             ):
                 lengths[stock.id] = stock.remaining_length_mm.value
@@ -119,6 +148,36 @@ def validate_plan(
                     "Linear connector stock cannot contain sheet regions.",
                     stock.id,
                 )
+            continue
+        if not required:
+            # Known region contradictions are still invalid, but unknown or
+            # unconfirmed dimensions neither block nor allocate this stock.
+            prior_unused: list[Rect] = []
+            for region in stock.usable_regions:
+                # Rect origins are schema-nonnegative, so each known axis can
+                # be checked independently without inventing the other axis.
+                exceeds_known_width = (
+                    stock.width_mm.value is not None
+                    and region.geometry.x + region.geometry.width
+                    > stock.width_mm.value + EPS
+                )
+                exceeds_known_height = (
+                    stock.height_mm.value is not None
+                    and region.geometry.y + region.geometry.height
+                    > stock.height_mm.value + EPS
+                )
+                if (
+                    exceeds_known_width
+                    or exceeds_known_height
+                    or any(overlaps(region.geometry, r) for r in prior_unused)
+                ):
+                    fail(
+                        "geometry_invalid",
+                        "Usable regions must be disjoint and inside measured stock.",
+                        stock.id,
+                        region.id,
+                    )
+                prior_unused.append(region.geometry)
             continue
         dimensions = [
             measured(getattr(stock, name), stock.id, name)
