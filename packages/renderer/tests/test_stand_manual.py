@@ -1,17 +1,19 @@
 """Synthetic software fixtures only. No physical build or test was performed."""
 
+import re
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 
 import pytest
 from forma_compiler import CutProcess
 from forma_renderer import StandParameters, compile_stand, render_manual
+from forma_renderer.svg import dimension
 
 from forma_domain import models as m
 
 
+# measured() builds a confirmed calculated measurement for SYNTHETIC fixtures.
 def measured(value, unit="mm"):
-    # Synthetic confirmation flags exercise the software path; evidence stays synthetic.
     return m.Measurement(value=value, unit=unit, source="calculated", confirmed=True)
 
 
@@ -138,6 +140,128 @@ def manual(plan, parameters, process):
     )
 
 
+def _tape_readout(panel, operation):
+    root = ET.fromstring(panel.svg)
+    stock_id = operation.args.stock_id
+    groups = [n for n in root.iter() if n.attrib.get("data-stock-id") == stock_id]
+    assert len(groups) == 1
+    ns = "http://www.w3.org/2000/svg"
+    texts = ["".join(t.itertext()) for t in groups[0].iter(f"{{{ns}}}text")]
+    joined = " ".join(texts)
+    nums = [float(v) for v in re.findall(r"([0-9]+(?:\.[0-9]+)?)\s*mm", joined)]
+    return texts, nums
+
+
+def test_tape_panels_show_decreasing_remaining_from_plan():
+    plan, parameters, process = build()
+    result = manual(plan, parameters, process)
+    assert result.status == "accepted"
+    tape_ops = [o for o in plan.operations if o.type == "tape_joint"]
+    assert len(tape_ops) == 3
+    stock_id = tape_ops[0].args.stock_id
+    assert all(o.args.stock_id == stock_id for o in tape_ops)
+    width = tape_ops[0].args.length_mm
+    assert width == pytest.approx(plan.parts[0].geometry.width)
+    assert all(o.args.length_mm == pytest.approx(width) for o in tape_ops)
+    initial = next(s for s in plan.stocks if s.id == stock_id).remaining_length_mm.value
+    assert initial is not None
+    tape_ids = {o.id for o in tape_ops}
+    tape_panels = [p for p in result.panels if p.operation_id in tape_ids]
+    assert len(tape_panels) == 3
+    order = {o.id: idx for idx, o in enumerate(plan.operations)}
+    tape_panels.sort(key=lambda p: order[p.operation_id])
+    tape_ops_sorted = sorted(tape_ops, key=lambda o: order[o.id])
+    remainings = []
+    for k, (panel, op) in enumerate(zip(tape_panels, tape_ops_sorted), start=1):
+        texts, nums = _tape_readout(panel, op)
+        assert len(nums) == 3
+        used_before, this_step, remaining = nums
+        assert texts[0].startswith("tape used before")
+        assert dimension((k - 1) * width) in texts[0]
+        assert dimension(width) in texts[1]
+        assert dimension(initial - k * width) in texts[2]
+        assert used_before == pytest.approx((k - 1) * width)
+        assert this_step == pytest.approx(width)
+        assert remaining == pytest.approx(initial - k * width)
+        remainings.append(remaining)
+    assert remainings[0] > remainings[1] > remainings[2]
+    bill_remaining = next(
+        b.quantity for b in result.bill_of_materials if b.id == f"{stock_id}-remaining"
+    )
+    assert remainings[-1] == pytest.approx(bill_remaining)
+
+
+def test_cut_panel_offcut_and_waste_caption():
+    plan, parameters, process = build()
+    result = manual(plan, parameters, process)
+    cut = result.panels[0]
+    root = ET.fromstring(cut.svg)
+    assert not [n for n in root.iter() if "data-region-id" in n.attrib]
+    assert "shaded remainder = waste" in cut.svg
+    cut_op = next(o for o in plan.operations if o.type == "cut_rect")
+    source_region = next(
+        r
+        for s in plan.stocks
+        for r in s.usable_regions
+        if r.id == cut_op.args.source_region_id
+    )
+    sg = source_region.geometry
+    offcut_geo = {"x": 120, "y": 400, "width": 40, "height": 80, "rotation_deg": 0}
+    ox, oy, ow, oh = (
+        offcut_geo["x"],
+        offcut_geo["y"],
+        offcut_geo["width"],
+        offcut_geo["height"],
+    )
+    assert ox >= sg.x and oy >= sg.y
+    assert ox + ow <= sg.x + sg.width and oy + oh <= sg.y + sg.height
+    for part in plan.parts:
+        pg = part.geometry
+        overlaps = not (
+            ox + ow <= pg.x
+            or pg.x + pg.width <= ox
+            or oy + oh <= pg.y
+            or pg.y + pg.height <= oy
+        )
+        assert not overlaps, f"offcut overlaps {part.id}"
+    data = plan.model_dump()
+    offcut = {"id": "fixture-offcut-1", "geometry": dict(offcut_geo)}
+    data["operations"][0]["effects"]["created_offcuts"] = (offcut,)
+    injected = m.BuildPlan.model_validate(data)
+    rendered = manual(injected, parameters, process)
+    assert rendered.status == "accepted", (
+        "hand-injected offcut should validate; if blocked, validation rejects hand-injected offcuts"
+    )
+    cut2 = rendered.panels[0]
+    root2 = ET.fromstring(cut2.svg)
+    regions = [
+        n for n in root2.iter() if n.attrib.get("data-region-id") == "fixture-offcut-1"
+    ]
+    assert len(regions) == 1
+    assert [
+        n.attrib.get("data-region-id")
+        for n in root2.iter()
+        if "data-region-id" in n.attrib
+    ] == ["fixture-offcut-1"]
+    ns = "http://www.w3.org/2000/svg"
+    label = " ".join("".join(t.itertext()) for t in regions[0].iter(f"{{{ns}}}text"))
+    assert "fixture-offcut-1" in label
+    assert f"{dimension(ow)} x {dimension(oh)} mm" in label
+    rect = regions[0].find(f"{{{ns}}}rect")
+    assert rect is not None and rect.attrib["fill"] == "none"
+    sheet = next(s for s in plan.stocks if s.id == cut_op.args.stock_id)
+    scale = min(740 / sheet.width_mm.value, 370 / sheet.height_mm.value)
+    assert float(rect.attrib["x"]) == pytest.approx(ox * scale)
+    assert float(rect.attrib["y"]) == pytest.approx(oy * scale)
+    assert float(rect.attrib["width"]) == pytest.approx(ow * scale)
+    assert float(rect.attrib["height"]) == pytest.approx(oh * scale)
+    assert (
+        "shaded remainder = waste except labelled offcut regions are remaining stock"
+        in cut2.svg
+    )
+    assert "not available offcut stock" not in cut2.svg
+
+
 @pytest.mark.parametrize("alternate", [False, True])
 def test_two_meaningful_parameterizations_and_complete_manual(alternate):
     plan, parameters, process = build(alternate=alternate)
@@ -165,6 +289,7 @@ def test_two_meaningful_parameterizations_and_complete_manual(alternate):
             for node in root.iter()
             if "data-part-id" in node.attrib
         } == set(panel.part_ids)
+        # checkpoint ids are rendered inline in each panel
         assert all(checkpoint in panel.svg for checkpoint in panel.checkpoint_ids)
         assert "SYNTHETIC SOFTWARE FIXTURE" in panel.svg
         assert "Requires user confirmation" in panel.svg
@@ -294,7 +419,6 @@ def test_malformed_supported_ids_block_without_crashing(change):
             for c in data["checkpoints"]
             if c["after_operation_id"] != "stand-inspect-cuts"
         )
-        # Keep the ID reference valid but point to a checkpoint owned by a different step.
         data["operations"][1]["args"]["checkpoint_id"] = "stand-function-check"
     elif change == "unknown_mass":
         data["operations"][-1]["args"]["mass_g"] = None
