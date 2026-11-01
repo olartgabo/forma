@@ -1,70 +1,61 @@
-# Latest monitored-run authorization
-
-The user removed the fixed $90 cap while monitoring. The external guard now
-uses a verified free-credit funding ceiling, preserving the $30 free-credit
-reserve, lag buffer, existing journal history, STOP and no paid fallback. This
-supersedes fixed90 statements below. Continue ResniDev-owned issues and reviews;
-create only concrete useful followups and do not duplicate existing tasks.
-
 # Muse-first feature loop
 
-User direction: November 1, 2026. Supersedes older authorship and per-edit
-supervision instructions in OVERNIGHT.md and external loop specifications.
+Current workflow (November 1, 2026):
 
-1. Codex OR Claude plans one coherent feature with explicit acceptance criteria,
-   source and test paths (12 maximum) and any contract decisions. Do not run two
-   planners. Reuse a sufficient existing plan rather than buying another call.
-2. Supervisor writes a small task JSON: goal, acceptance_criteria, files_allowed.
-   Launch node tools/devloop/guarded/run.mjs --workspace <approved-worktree>
-   --task-file <task.json>. Fresh session; no resume/continue flags.
-3. Muse writes production code and regression tests, executes the exact offline
-   checks allowed by worker-policy.mjs, and repairs failures. Two unsuccessful
-   repairs trigger STUCK with a minimal diagnosis packet. Never weaken an oracle
-   merely to get green checks. Missing dependencies or permissions are blockers.
-4. One premium diagnosis is allowed when stuck, with advice only; Muse implements
-   it and runs checks again. If still stuck, checkpoint and stop. No parallel
-   premium test author, routine premium debugging, or repeated architecture calls.
-5. One Codex OR Claude final reviewer inspects the entire green diff, including
-   new/untracked tests, task criteria and actual check results. Review changes
-   only for correctness, scope and material risk. Muse repairs concrete findings;
-   re-review only those findings and their regression impact (at most two repairs).
-6. Supervisor verifies the final reviewed path set and check evidence, then uses
-   existing authorized publication rules. No automatic merge or physical claims.
+1. **Plan once.** One premium model (Codex or Claude) plans one coherent
+   feature with explicit acceptance criteria, an exact allowlist of source
+   and test paths, and any contract decisions. Do not run two planners, and
+   reuse a sufficient existing plan instead of buying another call.
+2. **Muse implements.** The supervisor writes a small task JSON (`goal`,
+   `acceptance_criteria`, `files_allowed`) and launches
+   `node tools/devloop/guarded/run.mjs --workspace <approved-worktree> --task-file <task.json>`.
+   Muse owns the code, regression tests, execution of the exact offline
+   checks allowed by `worker-policy.mjs`, and ordinary repairs. It must not
+   weaken tests or oracles to make checks pass. Missing prerequisites are
+   blockers.
+3. **Repair, then stop.** After two unsuccessful Muse repairs, return STUCK
+   with the smallest reproducible failure, files changed, checks run, and a
+   concrete question for the planner. One premium diagnosis may follow;
+   Muse implements the advice and re-runs the checks. If still stuck,
+   checkpoint and stop — no indefinite loops.
+4. **Final review.** One premium model reviews the entire green diff,
+   including new and untracked tests, against the acceptance criteria and
+   actual check output. Review only for correctness, scope and material
+   risk. Muse repairs concrete findings; re-review covers those findings and
+   their regression impact only, with at most two final-review repair attempts.
+5. **Publication is supervisor-only.** The supervisor verifies the final
+   reviewed path set and check evidence, then publishes under existing
+   authorizations. There is no automatic merge and no physical-evidence
+   claim from offline checks.
 
-## Context lifecycle
+## Sessions and context
 
-Each worker and each premium plan/review gets a fresh bounded feature session.
-Do not feed historical chat transcripts into it. Task packets are capped at 16KB.
-Keep a checkpoint below roughly 2,000 words with task/branch/PR, acceptance,
-owned paths, decisions, actual checks, failed-repair count, unresolved questions,
-budget/expiry references and next action. Replace current state instead of
-appending the full chronological log to every prompt. Logs stay on disk and are
-read by exact failure reference only when needed.
-
-Muse/OpenCode explicitly enables native automatic compaction and tool-output
-pruning with a 10,000-token buffer inside its existing 65,536-token working
-window. Both normal and compaction requests use the SAME guarded provider and
-budget. No separate cheap-model route or unmetered compaction request is allowed.
-
-Codex uses native automatic compaction at its model default threshold; do not
-invent a context-window size, disable compaction or force /compact every turn.
-Claude reviews use fresh -p calls with --no-session-persistence, bounded turns
-and automatic compaction enabled in the child environment. For a genuinely long
-interactive task, checkpoint before native /compact; only report successful
-compaction when the runtime reports it. This policy cannot force an already-open
-desktop chat to compact through a filesystem edit.
+Each worker and each premium plan/review starts a fresh, bounded feature
+session from the task packet only; no historical transcripts, resume or
+continue. Use task-appropriate context and keep a concise checkpoint (task,
+branch, acceptance criteria, owned paths, decisions, actual checks,
+failed-repair count, blockers, next action). Native automatic compaction
+stays enabled. Muse generation and compaction use the same guarded Meta
+provider and accounting. Codex and Claude planning/review use their existing
+native subscription sessions and native compaction; they do not share Meta's
+guard or free-credit budget. No paid API fallback is implied.
 
 ## Budget and stopping
 
-The verified free-credit funding ceiling, minimum $30 free-credit reserve, both
-historical ledgers, durable $6 reservations, one in-flight provider request,
-STOP, uncertain-outcome accounting, verification expiry, model restrictions and
-no-direct-key/no-paid-fallback rules are unchanged. Do not reset or replace them.
-The launcher never renews verification automatically. Do not start a worker while billing
-verification is expired, STOP is set, accounting is uncertain or prerequisites
-are missing. The legacy Python runner remains blocked for live use.
+Funding uses verified free credit only: keep at least the $30 free-credit
+reserve plus a lag buffer below the verified funding ceiling. Shared
+accounting is append-only; STOP, durable reservations, one in-flight
+request, and pending/unknown outcomes block further dispatch until resolved.
+Billing verification is finite and is never renewed automatically; do not
+start while it is expired, STOP is set, accounting is uncertain, or
+prerequisites are missing. There is no paid provider fallback and no direct
+provider key use.
 
-Offline shell permissions are exact check commands, not unrestricted shell.
-Tool permissions remain monitored application controls, not OS isolation. Worker
-tests execute repository code; do not claim an account-wide billing guarantee.
-When stopped, save one checkpoint and stay quiet until a prerequisite changes.
+Offline shell permissions are the exact permitted check commands, not
+unrestricted shell. When stopped, save one checkpoint and stay quiet until
+a prerequisite changes.
+
+The retired Python engine cannot run: its compatibility entry point always
+exits nonzero and directs callers to the guarded Node launcher. Its old
+provider client, separate accounting implementation and destructive worktree
+cleanup code are removed; historical journals remain outside the repository.
