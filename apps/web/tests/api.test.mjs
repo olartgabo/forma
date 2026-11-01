@@ -10,6 +10,8 @@ import {
   generateDesign,
   listPhotos,
   listPlans,
+  listSavedProjects,
+  loadDesignReadiness,
   loadPlan,
   loadProject,
   requestDiagnosis,
@@ -781,6 +783,218 @@ test("diagnosis cancellation aborts without leaking abort details", async (t) =>
     assert.doesNotMatch(error.message, /PRIVATE_ABORT_DETAIL/);
     return true;
   });
+  assert.equal(requestSignal.aborted, true);
+});
+
+const savedList = {
+  projects: [
+    {
+      id: "project-a",
+      goal: "A phone stand",
+      revision_id: "inventory-1",
+      inventory_confirmed: true,
+      active_version_id: null,
+    },
+    {
+      id: "project-b",
+      goal: "Un soporte",
+      revision_id: "inventory-2",
+      inventory_confirmed: false,
+      active_version_id: "version-1",
+    },
+  ],
+  next_cursor: "project-b",
+};
+
+test("saved projects request sends exact auth and bounded pagination query", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json(savedList);
+  });
+  const result = await listSavedProjects(token, {
+    limit: 2,
+    cursor: "project-0",
+  });
+  assert.deepEqual(result, savedList);
+  assert.equal(calls[0].path, "/api/projects?limit=2&cursor=project-0");
+  assert.equal(calls[0].options.method, "GET");
+  assert.equal(
+    calls[0].options.headers.get("Authorization"),
+    `Bearer ${token}`,
+  );
+  assert.equal(calls[0].options.credentials, "omit");
+  assert.equal(calls[0].options.cache, "no-store");
+  await assert.rejects(
+    listSavedProjects(token, { limit: 51 }),
+    (error) => error instanceof ApiError && error.code === "validation_error",
+  );
+  assert.equal(calls.length, 1);
+});
+
+test("saved projects mismatched, oversized and unordered shapes are rejected", async (t) => {
+  const payloads = [
+    { ...savedList, projects: [...savedList.projects, savedList.projects[1]] },
+    { projects: [{ ...savedList.projects[0], goal: 42 }], next_cursor: null },
+    {
+      projects: [savedList.projects[1], savedList.projects[0]],
+      next_cursor: null,
+    },
+    { projects: [], next_cursor: "project-b" },
+    { projects: savedList.projects, next_cursor: "project-other" },
+    { projects: savedList.projects, next_cursor: 7 },
+  ];
+  for (const payload of payloads) {
+    t.mock.method(globalThis, "fetch", async () => Response.json(payload));
+    await assert.rejects(
+      listSavedProjects(token, { limit: 2 }),
+      (error) => error instanceof ApiError && error.code === "invalid_response",
+    );
+    t.mock.restoreAll();
+  }
+});
+
+test("saved projects errors and cancellation stay safe", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { code: "PRIVATE_CODE", message: "PRIVATE_SERVER_TEXT" },
+      { status: 401 },
+    ),
+  );
+  await assert.rejects(listSavedProjects(token), (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 401);
+    assert.doesNotMatch(error.message, /PRIVATE/);
+    return true;
+  });
+  t.mock.restoreAll();
+  let requestSignal;
+  t.mock.method(globalThis, "fetch", (path, options) => {
+    requestSignal = options.signal;
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener(
+        "abort",
+        () => reject(new DOMException("PRIVATE_ABORT_DETAIL", "AbortError")),
+        { once: true },
+      );
+    });
+  });
+  const controller = new AbortController();
+  const pending = listSavedProjects(token, {}, controller.signal);
+  controller.abort();
+  await assert.rejects(
+    pending,
+    (error) =>
+      error instanceof ApiError &&
+      error.code === "cancelled" &&
+      !/PRIVATE/.test(error.message),
+  );
+  assert.equal(requestSignal.aborted, true);
+});
+
+const readinessResult = {
+  project_id: "project-a",
+  inventory_revision_id: "inventory-1",
+  inventory_confirmed: false,
+  status: "needs_input",
+  missing_inputs: ["Confirm the saved inventory."],
+  blockers: [{ code: "unsupported", message: "No profiles.", target_ids: [] }],
+};
+
+test("readiness request is scoped GET with caller auth and no body", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json(readinessResult);
+  });
+  const result = await loadDesignReadiness(token, "project-a", "inventory-1");
+  assert.deepEqual(result, readinessResult);
+  assert.equal(calls[0].path, "/api/projects/project-a/designs/readiness");
+  assert.equal(calls[0].options.method, "GET");
+  assert.equal(calls[0].options.body, undefined);
+  assert.equal(
+    calls[0].options.headers.get("Authorization"),
+    `Bearer ${token}`,
+  );
+});
+
+test("readiness mismatched revision and inconsistent completeness are rejected", async (t) => {
+  const payloads = [
+    { ...readinessResult, project_id: "project-other" },
+    { ...readinessResult, inventory_revision_id: "inventory-2" },
+    { ...readinessResult, status: "inputs_complete" },
+    { ...readinessResult, missing_inputs: "PRIVATE" },
+    {
+      ...readinessResult,
+      blockers: [{ code: "unsupported", message: 9, target_ids: [] }],
+    },
+    {
+      ...readinessResult,
+      blockers: Array.from({ length: 33 }, () => ({
+        code: "unsupported",
+        message: "x",
+        target_ids: [],
+      })),
+    },
+  ];
+  for (const payload of payloads) {
+    t.mock.method(globalThis, "fetch", async () => Response.json(payload));
+    await assert.rejects(
+      loadDesignReadiness(token, "project-a", "inventory-1"),
+      (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.code, "invalid_response");
+        assert.doesNotMatch(error.message, /PRIVATE/);
+        return true;
+      },
+    );
+    t.mock.restoreAll();
+  }
+});
+
+test("readiness errors and cancellation stay safe", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { code: "not_found", message: "PRIVATE_SERVER_TEXT" },
+      { status: 404 },
+    ),
+  );
+  await assert.rejects(
+    loadDesignReadiness(token, "project-a", "inventory-1"),
+    (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 404);
+      assert.doesNotMatch(error.message, /PRIVATE/);
+      return true;
+    },
+  );
+  t.mock.restoreAll();
+  let requestSignal;
+  t.mock.method(globalThis, "fetch", (path, options) => {
+    requestSignal = options.signal;
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener(
+        "abort",
+        () => reject(new DOMException("PRIVATE_ABORT_DETAIL", "AbortError")),
+        { once: true },
+      );
+    });
+  });
+  const controller = new AbortController();
+  const pending = loadDesignReadiness(
+    token,
+    "project-a",
+    "inventory-1",
+    controller.signal,
+  );
+  controller.abort();
+  await assert.rejects(
+    pending,
+    (error) =>
+      error instanceof ApiError &&
+      error.code === "cancelled" &&
+      !/PRIVATE/.test(error.message),
+  );
   assert.equal(requestSignal.aborted, true);
 });
 

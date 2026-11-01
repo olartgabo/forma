@@ -4,6 +4,7 @@ import type {
   ActivationResult,
   DesignGenerateRequest,
   DesignGenerateResult,
+  DesignReadiness,
   DiagnosisRequest,
   DiagnosisResult,
   PlanActivation,
@@ -17,6 +18,7 @@ import type {
   MediaResult,
   Project,
   ProjectResult,
+  SavedProjectList,
 } from "./generated/api-contracts";
 
 export class ApiError extends Error {
@@ -334,6 +336,153 @@ export function loadProject(
     projectPath(id),
     { method: "GET" },
     json<Project>,
+    signal,
+  );
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function checkedSavedProjectList(
+  value: unknown,
+  limit: number,
+): SavedProjectList {
+  const invalid = () =>
+    new ApiError(
+      200,
+      "invalid_response",
+      "FORMA returned a saved project list that could not be read. Try again.",
+    );
+  if (!isRecord(value) || !Array.isArray(value.projects)) throw invalid();
+  if (value.projects.length > limit) throw invalid();
+  if (
+    value.next_cursor !== null &&
+    value.next_cursor !== undefined &&
+    !isNonEmptyString(value.next_cursor)
+  )
+    throw invalid();
+  if (value.projects.length === 0 && value.next_cursor) throw invalid();
+  let previousId: string | null = null;
+  for (const summary of value.projects) {
+    if (
+      !isRecord(summary) ||
+      !isNonEmptyString(summary.id) ||
+      typeof summary.goal !== "string" ||
+      !isNonEmptyString(summary.revision_id) ||
+      typeof summary.inventory_confirmed !== "boolean" ||
+      (summary.active_version_id !== null &&
+        summary.active_version_id !== undefined &&
+        !isNonEmptyString(summary.active_version_id))
+    )
+      throw invalid();
+    // The backend returns summaries in stable project-ID order.
+    if (previousId !== null && summary.id <= previousId) throw invalid();
+    previousId = summary.id;
+  }
+  if (
+    isNonEmptyString(value.next_cursor) &&
+    previousId !== null &&
+    value.next_cursor !== previousId
+  )
+    throw invalid();
+  return value as unknown as SavedProjectList;
+}
+
+export function listSavedProjects(
+  token: string,
+  options?: { limit?: number; cursor?: string | null },
+  signal?: AbortSignal,
+): Promise<SavedProjectList> {
+  const limit = options?.limit ?? 20;
+  const cursor = options?.cursor ?? null;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+    return Promise.reject(
+      new ApiError(
+        0,
+        "validation_error",
+        "Saved projects can be loaded in pages of 1 to 50.",
+      ),
+    );
+  }
+  if (cursor !== null && !isNonEmptyString(cursor)) {
+    return Promise.reject(
+      new ApiError(
+        0,
+        "validation_error",
+        "The saved project page could not be identified. Reload the list.",
+      ),
+    );
+  }
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor !== null) query.set("cursor", cursor);
+  return request(
+    token,
+    `/api/projects?${query.toString()}`,
+    { method: "GET" },
+    async (response) =>
+      checkedSavedProjectList(await json<unknown>(response), limit),
+    signal,
+  );
+}
+
+function checkedDesignReadiness(
+  value: unknown,
+  projectId: string,
+  expectedRevision: string,
+): DesignReadiness {
+  const invalid = () =>
+    new ApiError(
+      200,
+      "invalid_response",
+      "FORMA returned an input checklist that does not match this project or inventory revision. Reload the project and try again.",
+    );
+  if (!isRecord(value)) throw invalid();
+  if (
+    value.project_id !== projectId ||
+    value.inventory_revision_id !== expectedRevision ||
+    typeof value.inventory_confirmed !== "boolean" ||
+    !["inputs_complete", "needs_input"].includes(value.status as string) ||
+    !isStringArray(value.missing_inputs) ||
+    value.missing_inputs.length > 32 ||
+    !Array.isArray(value.blockers) ||
+    value.blockers.length > 32
+  )
+    throw invalid();
+  // Checklist completeness is derived only from the missing-input list.
+  if (
+    (value.status === "inputs_complete") !==
+    (value.missing_inputs.length === 0)
+  )
+    throw invalid();
+  for (const blocker of value.blockers) {
+    if (
+      !isRecord(blocker) ||
+      !isNonEmptyString(blocker.code) ||
+      typeof blocker.message !== "string" ||
+      (blocker.target_ids !== undefined && !isStringArray(blocker.target_ids))
+    )
+      throw invalid();
+  }
+  return value as unknown as DesignReadiness;
+}
+
+export function loadDesignReadiness(
+  token: string,
+  id: string,
+  expectedRevision: string,
+  signal?: AbortSignal,
+): Promise<DesignReadiness> {
+  return request(
+    token,
+    `${projectPath(id)}/designs/readiness`,
+    { method: "GET" },
+    async (response) =>
+      checkedDesignReadiness(
+        await json<unknown>(response),
+        id,
+        expectedRevision,
+      ),
     signal,
   );
 }
