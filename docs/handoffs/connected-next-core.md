@@ -28,3 +28,12 @@ Do not weaken checks for the staged integration; report what's pending honestly.
 No compiler/replanner algorithms, synthetic calibration or fake inventory are
 part of these tasks. Missing measured stock and calibrated process/profile facts
 remain actual prerequisites for accepted manual generation.
+
+## Integration scheduling update
+
+Readiness and saved-project endpoints passed their scoped checks and independent
+reviews and are now combined on the owned integration branch. The smoke CLI has
+two independent review repairs in progress in its separate lane. Because it uses
+existing endpoints and shares no export/UI files, the API export and UI coordinator
+can proceed in parallel; final combined checks/publication must still include the
+reviewed CLI commit. No incomplete smoke result may be called a live pass.
