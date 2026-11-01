@@ -1257,8 +1257,7 @@ def simulate_patch(
     # useful work, and must not be advertised as such.
     stale_finals = (
         {"stand-inspect-fit", "stand-functional-test"}
-        if tape_peel_ids
-        and {"stand-inspect-fit", "stand-functional-test"} <= completed
+        if tape_peel_ids and {"stand-inspect-fit", "stand-functional-test"} <= completed
         else set()
     )
     kept = tuple(

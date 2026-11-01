@@ -209,6 +209,27 @@ def test_tape_undo_diff_keeps_historical_panels_and_adds_continuation():
     assert outcome.removed == ()
 
 
+def test_full_build_tape_undo_diff_keeps_original_and_adds_continuation():
+    from test_stand_continuation import _attached_brace_replacement
+
+    _base, _snapshot, result, _process = _attached_brace_replacement(completed_count=8)
+    assert result.status == "feasible", result.blockers
+    _, parameters, process = build()
+    old_plan, _p, _pr = build()
+    old = render(old_plan, parameters, process)
+    new = render(result.plan, parameters, process)
+    assert len(old.panels) == 8 and len(new.panels) == 16
+    assert [p.svg for p in new.panels[:8]] == [p.svg for p in old.panels]
+    keys = [p.step_key for p in new.panels]
+    assert len(keys) == len(set(keys))
+    assert all(k.startswith("continuation:") for k in keys[8:])
+    outcome = diff(old, new)
+    assert outcome.unchanged == tuple(range(8))
+    assert outcome.added == tuple(range(8, 16))
+    assert outcome.changed == ()
+    assert outcome.removed == ()
+
+
 def test_noop_resize_is_blocked_while_identical_visible_manuals_have_zero_diff():
     plan, parameters, process = build()
     base = next(p for p in plan.parts if p.id == "stand-base")

@@ -10,7 +10,7 @@ from forma_compiler import CutProcess, validate_plan
 
 from forma_domain import models as m
 
-from .continuation import stand_continuation_blockers
+from .continuation import _resolve_tape_stage, stand_continuation_blockers
 from .resources import ConnectorContext, validated_connectors
 from .template import profile_evidence_valid
 
@@ -352,12 +352,18 @@ def side_view(root, plan, operation, attached_before, active_ids):
     )
     current_name = canonical(current) if current else None
     attached_names = {canonical(jid) for jid in attached_before}
+    pair_joint = {
+        tuple(j.part_ids): j.id
+        for j in plan.joints
+        if len(j.part_ids) == 2 and set(j.part_ids) <= {support_id, base_id, brace_id}
+    }
+    joint_ids = (
+        pair_joint.get((support_id, base_id), "stand-joint-front"),
+        pair_joint.get((base_id, brace_id), "stand-joint-rear"),
+        pair_joint.get((support_id, brace_id), "stand-joint-apex"),
+    )
     for index, (joint, point) in enumerate(
-        (
-            ("stand-joint-front", start),
-            ("stand-joint-rear", rear),
-            ("stand-joint-apex", apex),
-        )
+        zip(joint_ids, (start, rear, apex), strict=True)
     ):
         name = canonical(joint)
         group = element(root, "g", data_joint_id=joint)
@@ -470,11 +476,15 @@ def render_manual(
         else historical_ids
     )
     core_child_ids = ("stand-support", "stand-base", "stand-brace")
+    stage = _resolve_tape_stage(plan.operations)
     first_detach = next(
         (i for i, o in enumerate(plan.operations) if o.type == "detach"), None
     )
     continuation_indexes: set[int] = set()
-    if first_detach is not None:
+    if stage is not None:
+        end = len(plan.operations) if stage.full else stage.fit
+        continuation_indexes = set(range(stage.peel, end))
+    elif first_detach is not None:
         reattach_indexes = [
             i
             for i, o in enumerate(plan.operations)
@@ -535,12 +545,18 @@ def render_manual(
         is_supplemental = index in supplemental_indexes
         is_continuation = index in continuation_indexes
         core_index = core_index_by_plan_index.get(index)
-        is_inspect_fit = operation.type == "inspect" and core_index == 6
+        is_inspect_fit = operation.type == "inspect" and (
+            core_index == 6 or (stage is not None and index == stage.fit)
+        )
         panel_active_ids = active_ids
-        if operation.type == "detach" or (
-            operation.type == "tape_joint"
-            and operation.args.joint_id
-            in ("stand-joint-front", "stand-joint-rear", "stand-joint-apex")
+        if (
+            operation.type == "detach"
+            or (stage is not None and index < stage.historical_count)
+            or (
+                operation.type == "tape_joint"
+                and operation.args.joint_id
+                in ("stand-joint-front", "stand-joint-rear", "stand-joint-apex")
+            )
         ):
             panel_active_ids = historical_ids
         if operation.type == "cut_rect":

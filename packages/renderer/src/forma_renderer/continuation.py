@@ -97,10 +97,7 @@ def _resolve_tape_stage(operations):
     ids = tuple(o.id for o in operations)
     if types == _TAPE_UNDO_TYPES and ids[:6] == _HISTORICAL_OP_IDS:
         return _TapeStage(6, peel=6, cut=8, fit=12, test=13)
-    if (
-        types == _TAPE_UNDO_FULL_TYPES
-        and ids[:8] == _HISTORICAL_OP_IDS + _FINAL_OP_IDS
-    ):
+    if types == _TAPE_UNDO_FULL_TYPES and ids[:8] == _HISTORICAL_OP_IDS + _FINAL_OP_IDS:
         return _TapeStage(8, peel=8, cut=10, fit=14, test=15)
     return None
 
@@ -404,17 +401,19 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
     for hist_fit, hist_test in zip(
         historical_finals[::2], historical_finals[1::2], strict=False
     ):
-        if hist_fit.part_ids != _ORIGINALS or tuple(
-            hist_fit.args.target_ids
-        ) != _ORIGINALS:
+        if (
+            hist_fit.part_ids != _ORIGINALS
+            or tuple(hist_fit.args.target_ids) != _ORIGINALS
+        ):
             add(
                 "invalid_reference",
                 "Historical fit inspection must target the original stand parts.",
                 (hist_fit.id,),
             )
-        if hist_test.part_ids != _ORIGINALS or tuple(
-            hist_test.preconditions.required_joint_ids
-        ) != _JOINT_IDS:
+        if (
+            hist_test.part_ids != _ORIGINALS
+            or tuple(hist_test.preconditions.required_joint_ids) != _JOINT_IDS
+        ):
             add(
                 "invalid_reference",
                 "Historical functional test must require the original joints.",
@@ -462,9 +461,7 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 (op.id, op.args.checkpoint_id),
             )
     mass = plan.constraints.device_mass_g
-    test_ops = (
-        (historical_finals[1], test_op) if historical_finals else (test_op,)
-    )
+    test_ops = (historical_finals[1], test_op) if historical_finals else (test_op,)
     for checked_test in test_ops:
         if (
             checked_test.args.mass_g is None

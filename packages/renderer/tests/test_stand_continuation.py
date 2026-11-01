@@ -168,7 +168,7 @@ def _replacement(target_id="stand-brace"):
 
 
 def _attached_brace_replacement(
-    tape_length=500, target_id="stand-brace", mutate_plan=None
+    tape_length=500, target_id="stand-brace", mutate_plan=None, completed_count=6
 ):
     plan, _parameters, process = build()
     sheet = next(s for s in plan.stocks if s.kind == "sheet")
@@ -200,7 +200,7 @@ def _attached_brace_replacement(
     base = plan.model_copy(update={"stocks": plan.stocks + (spare,)})
     if mutate_plan is not None:
         base = mutate_plan(base)
-    completed_ids = tuple(o.id for o in base.operations[:6])
+    completed_ids = tuple(o.id for o in base.operations[:completed_count])
     events = tuple(
         m.PhysicalEvent(
             id=f"synthetic-attached-{op_id}",
@@ -716,6 +716,66 @@ def test_attached_brace_tape_undo_is_feasible_cost8_and_rendered():
         allow_synthetic=True,
     )
     assert [p.svg for p in rendered.panels[:6]] == [p.svg for p in original.panels[:6]]
+    tape_bill = next(
+        item for item in rendered.bill_of_materials if item.id == f"{tape_id}-remaining"
+    )
+    assert tape_bill.quantity == 100
+
+
+def test_fully_completed_brace_tape_undo_renders_16_panels():
+    base, _snapshot, result, process = _attached_brace_replacement(completed_count=8)
+    assert result.status == "feasible", result.blockers
+    assert stand_continuation_blockers(result.plan) == ()
+    plan = result.plan
+    assert plan.operations[:8] == base.operations
+    assert len(plan.operations) == 16
+
+    _plan, parameters, _p = build()
+    rendered = render_manual(
+        plan,
+        process=process,
+        profile_evidence=parameters.profile_evidence,
+        allow_synthetic=True,
+    )
+    assert rendered.status == "accepted", rendered.blockers
+    assert len(rendered.panels) == 16
+    original_plan, _params, _proc = build()
+    original = render_manual(
+        original_plan,
+        process=process,
+        profile_evidence=parameters.profile_evidence,
+        allow_synthetic=True,
+    )
+    # First eight panels are the untouched original manual.
+    assert [p.svg for p in rendered.panels[:8]] == [p.svg for p in original.panels]
+    assert [p.dependency_hash for p in rendered.panels[:8]] == [
+        p.dependency_hash for p in original.panels
+    ]
+    assert [p.step_key for p in rendered.panels[:8]] == [
+        p.step_key for p in original.panels
+    ]
+    keys = [p.step_key for p in rendered.panels]
+    assert len(keys) == len(set(keys))
+    assert all(k.startswith("continuation:") for k in keys[8:])
+
+    new_id = _new_brace_id(base, result)
+    # Old final checks draw the original brace; new ones draw the replacement.
+    for panel in rendered.panels[6:8]:
+        assert "stand-brace" in _svg_part_ids(panel)
+        assert new_id not in _svg_part_ids(panel)
+    new_joints = [
+        j
+        for j in plan.joints
+        if j.id not in {"stand-joint-front", "stand-joint-rear", "stand-joint-apex"}
+    ]
+    assert len(new_joints) == 2
+    for panel in rendered.panels[-2:]:
+        assert new_id in _svg_part_ids(panel)
+        assert "stand-brace" not in _svg_part_ids(panel)
+        assert "Side elevation" in panel.svg
+        for joint in new_joints:
+            assert joint.id in panel.svg
+    tape_id = next(s.id for s in base.stocks if s.kind == "tape")
     tape_bill = next(
         item for item in rendered.bill_of_materials if item.id == f"{tape_id}-remaining"
     )
