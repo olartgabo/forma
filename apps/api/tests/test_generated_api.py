@@ -16,8 +16,12 @@ from forma_api.proposal_service import IntakeObservation
 def test_api_artifact_reuses_domain_types_and_reflects_route_models():
     content = artifacts()[OUTPUT]
     assert artifacts() == artifacts()
-    assert 'import type { Stock } from "./contracts";' in content
+    assert (
+        'import type { Blocker, BuildPlan, Constraints, DesignCandidate, Stock } from "./contracts";'
+        in content
+    )
     assert "export type Stock" not in content
+    assert "export type Constraints" not in content
     for record in API_RECORDS:
         assert f"export type {record.__name__} = " in content
         for field in record.model_fields:

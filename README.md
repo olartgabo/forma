@@ -8,8 +8,10 @@ build disagrees with the plan.
 
 **Status: offline services and local intake.** Next.js supports goal intake,
 private photos and confirmed inventory editing through the scoped FastAPI API.
-The offline compiler, renderer, replanner and proposal service are implemented;
-design/manual integration, hosted identity and physical results remain pending.
+The compiler, renderer, replanner and proposal service are implemented. Saved
+plan previews, explicit initial approval and immutable manual viewing are connected;
+live design generation, physical event recording, hosted identity and physical
+results remain pending.
 The original [formspec.md](formspec.md) is preserved as the product source of truth.
 
 ## Start here
@@ -119,7 +121,10 @@ development access.
 Add one inventory row per physical item. Leave unknown dimensions blank and
 explicitly confirm measurements you took. Private photos can be uploaded and
 linked to stock; they are not sent to a model or used to infer dimensions.
-Saving inventory does not generate instructions or authorize cutting. See the
+The same form saves available tools, a device description, confirmed device mass,
+viewing angle and footprint limits. Requirements and materials share one revision;
+blank measurements remain unknown. Saving inventory does not generate instructions
+or authorize cutting. See the
 [intake handoff](docs/handoffs/issue-7-intake.md) for scope and remaining work.
 
 Dependency updates use `npm install` and `uv add`; commit the generated

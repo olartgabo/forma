@@ -12,7 +12,20 @@ from forma_api.intake_runtime import (
     IntakeResult,
 )
 from forma_api.media import Media, MediaDeleteResult, MediaList, MediaResult
+from forma_api.plans import (
+    ActivationResult,
+    CompilePreview,
+    ManualBillItem,
+    ManualDocument,
+    ManualPanel,
+    PlanActivation,
+    PlanCompileResult,
+    PlanList,
+    PlanSummary,
+    PlanVersion,
+)
 from forma_api.projects import (
+    BuildRequirements,
     CreateProject,
     DeleteResult,
     InventoryUpdate,
@@ -24,7 +37,10 @@ from forma_domain import models
 from forma_domain.generate import typescript
 
 API_RECORDS = (
+    ActivationResult,
+    BuildRequirements,
     CreateProject,
+    CompilePreview,
     DeleteResult,
     IntakeDiagnostics,
     IntakeErrorResponse,
@@ -32,10 +48,18 @@ API_RECORDS = (
     IntakeRequest,
     IntakeResult,
     InventoryUpdate,
+    ManualBillItem,
+    ManualDocument,
+    ManualPanel,
     Media,
     MediaDeleteResult,
     MediaList,
     MediaResult,
+    PlanActivation,
+    PlanCompileResult,
+    PlanList,
+    PlanSummary,
+    PlanVersion,
     Project,
     ProjectResult,
 )

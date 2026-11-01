@@ -64,3 +64,36 @@ browser request through the web proxy displayed five labels, four questions,
 physical inventory evidence. The isolated browser reused saved project/photo
 state, explicit consent and the existing owner session. No provider credential,
 runtime database, generated image or unredacted private artifact is committed.
+
+## Composition with saved requirements and manuals
+
+The owned integration branch combines PR #70 with PRs #68–69. Both authenticated
+routers and both workbench panels are retained: Muse photo observations alongside
+saved requirements, immutable previews/manuals and explicit initial approval.
+Muse resolved the two source conflicts; independent integration review approved.
+The combined full project check passed 344 Python tests, browser-client tests,
+formatting, lint, contracts, TypeScript and production build. Existing real intake
+and plan suites exercise the shared app, so no duplicate route-list test was added.
+Private historical `.devloop` state is excluded from formatting.
+
+## Next connected producer contract
+
+Connect `MetaGateway.propose(DesignProposals)` and its scoped read-only
+`get_project_snapshot` tool to the existing `PlanService.compile_preview`.
+The request contains expected inventory revision, bounded notes, explicit context
+transfer consent and request identity. Inventory revision is never a plan version;
+the plan service creates real version IDs and timestamps after successful checks.
+
+Resolve process, stand parameters, catalogue and selected kerf/margin from an
+explicit server-owned manifest or injected resolver, scoped to the exact project
+and inventory revision. HTTP cannot submit those trusted objects, file paths,
+synthetic opt-ins or a BuildPlan. Missing inputs remain missing: Muse may return
+questions and no candidates, with precise blockers explaining why no manual exists.
+
+Each candidate must reference the saved stock and available profile IDs, then pass
+the existing compiler/renderer producer before becoming a saved preview. Request
+identity must prevent blind repeated generation and bind the resolved context.
+Generation never activates a plan. Existing manual review and explicit approval
+remain authoritative. Production synthetic acceptance stays disabled; isolated
+test injection must be visibly labelled. No new offline recovery algorithms or
+parallel concept store are part of this work.

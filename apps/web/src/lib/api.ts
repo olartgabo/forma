@@ -1,5 +1,10 @@
 import type { Stock } from "./generated/contracts";
 import type {
+  BuildRequirements,
+  ActivationResult,
+  PlanActivation,
+  PlanList,
+  PlanVersion,
   CreateProject,
   IntakeRequest,
   IntakeResult,
@@ -107,7 +112,7 @@ async function responseError(
     404: "This project or photo is unavailable. Check the project ID or reload.",
     409:
       code === "stale_version"
-        ? "Inventory changed in another session. Reload before saving again."
+        ? "Materials or requirements changed in another session. Reload before saving again."
         : code === "idempotency_conflict"
           ? "This retry differs from the original request. Review your changes and try again."
           : "This change is blocked. Remove photo references or reload the project.",
@@ -238,12 +243,14 @@ export function saveInventory(
   expectedRevision: string,
   key: string,
   signal?: AbortSignal,
+  requirements?: BuildRequirements | null,
 ): Promise<ProjectResult> {
   const body: InventoryUpdate = {
     stocks,
     expected_revision_id: expectedRevision,
     idempotency_key: key,
     user_confirmed: true,
+    ...(requirements !== undefined ? { requirements } : {}),
   };
   return request(
     token,
@@ -254,6 +261,55 @@ export function saveInventory(
       body: JSON.stringify(body),
     },
     json<ProjectResult>,
+    signal,
+  );
+}
+
+export function listPlans(
+  token: string,
+  id: string,
+  signal?: AbortSignal,
+): Promise<PlanList> {
+  return request(
+    token,
+    `${projectPath(id)}/plans`,
+    { method: "GET" },
+    json<PlanList>,
+    signal,
+  );
+}
+
+export function loadPlan(
+  token: string,
+  id: string,
+  versionId: string,
+  signal?: AbortSignal,
+): Promise<PlanVersion> {
+  return request(
+    token,
+    `${projectPath(id)}/versions/${encodeURIComponent(versionId)}`,
+    { method: "GET" },
+    json<PlanVersion>,
+    signal,
+  );
+}
+
+export function activatePlan(
+  token: string,
+  id: string,
+  versionId: string,
+  body: PlanActivation,
+  signal?: AbortSignal,
+): Promise<ActivationResult> {
+  return request(
+    token,
+    `${projectPath(id)}/plans/${encodeURIComponent(versionId)}/activate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    json<ActivationResult>,
     signal,
   );
 }

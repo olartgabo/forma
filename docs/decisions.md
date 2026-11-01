@@ -130,3 +130,32 @@ a design, authorize cutting or establish a physical test result. Manual stock
 editing and photo linking work without a model. Segmentation boxes, tools and
 design constraints require later contracts; they are not represented by guessed
 fields in this slice.
+
+## D013: Persisted build requirements, November 1, 2026
+
+Issue #7 now records available tools, a device description and existing domain
+constraints with inventory confirmation. They share the inventory revision so
+planning can consume a consistent set of user-confirmed inputs. Older projects
+have null requirements; older clients preserve requirements when omitting them.
+Known values require confirmation and the same provenance categories as stock;
+unknown values remain unknown. The API rejects unresolved evidence/profile IDs.
+This extends D012 without changing compiler or proposal contracts. See the
+[requirements handoff](handoffs/issue-7-requirements.md).
+
+The product has one connected planning/build journey. Running deterministic
+validation without provider access is an implementation/testing property, not a
+separate product mode. Live interpretation/design remains integration work.
+
+## D014: Immutable initial plans and manual review, November 1, 2026
+
+Issue #6/#11 stores only accepted compiler/renderer output through an internal
+trusted producer boundary. The browser can read scoped previews and explicitly
+approve one against the current inventory revision; it cannot upload a plan or
+mark a supplied plan valid. Plan/manual bytes stay immutable while a transaction
+sets the active pointer. Physical work remains separate and is never inferred
+from approval or navigation.
+
+Manuals include written instructions, checkpoints, BOM and authoritative SVG with
+an enlarged view for inspecting dimensions on phones. Live model production,
+real measured process/profile intake, physical history and repair activation remain
+separate work. See the [handoff](handoffs/issue-6-plan-activation.md).

@@ -44,7 +44,7 @@ before the complete build/recovery flow can run.
 | Scoped bounded intake/design/diagnosis/repair service                 | #4 live Spark/SAM evidence and #9 trusted callbacks/authenticated runtime integration                  |
 | Repair simulation, remaining-stock reconciliation and recheck preview | Family continuation wiring; unsupported strategy/angle changes and completed-work undo remain blocked  |
 | Owner-scoped SQLite project/inventory/photo routes with durable retries | #6 consented provider transfer, hosted identity/storage and immutable plan/event/material/evidence history |
-| Next.js local goal/photo/inventory workbench | #7 segmentation/tools/constraints and provider interpretation, #11 manual/events, #12 approved revision transaction and #14 proof UI |
+| Next.js intake with tools/constraints, saved plan review, initial approval and immutable SVG manual | #7 segmentation and provider interpretation, #11 physical events, #12 repair revision transaction and #14 proof UI |
 
 Next work follows the physical P0 path:
 
@@ -54,8 +54,8 @@ Next work follows the physical P0 path:
 2. @ResniDev runs the consented live smoke after account/region/privacy/quota
    prerequisites are confirmed, records sanitized results and connects trusted
    compiler/replanner callbacks for #9. Smoke fixtures do not satisfy G0.
-3. @olartgabo connects scoped persistence to intake and the manual, then adds
-   physical event/evidence history and explicit approved revision activation.
+3. @olartgabo connects live design production to the stored-preview service, then adds
+   physical event/evidence history and explicit approved repair activation.
    Inventory revision IDs remain separate from active plan version IDs.
 4. Both perform the generated build and real recovery, record outcomes under
    #13, then evaluate held-out cases and deployment under #15/#16.

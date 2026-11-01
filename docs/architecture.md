@@ -54,14 +54,15 @@ these rules.
    records. Historical evidence remains visible after it becomes stale.
 
 These three record types exist in domain contracts. Persistence currently stores
-projects, private photos and confirmed pre-plan inventory. It does not yet store immutable
-plans, material/physical history, evidence or approved adaptations.
+projects, private photos, confirmed pre-plan inventory and immutable initial plans
+with rendered manuals. Material/physical history, evidence and approved repair
+adaptations remain pending.
 
 The development API uses SQLite and configured owner bearer credentials.
 Project create/read, inventory confirmation and logical deletion are scoped to
 the owner. Mutations require idempotency keys; inventory edits compare a separate
-inventory revision token and reject stale writes with 409. No route activates a
-plan. Inventory image IDs must resolve to the same project's private decoded
+inventory revision token and reject stale writes with 409. Initial approval activates
+a server-compiled stored version against that revision. Inventory image IDs must resolve to the same project's private decoded
 photos. Evidence IDs remain rejected. See the
 [persistence handoff](handoffs/issue-6-persistence.md) and
 [media handoff](handoffs/issue-6-private-media.md).
@@ -146,7 +147,11 @@ without an API key. See [contracts.md](contracts.md) and
   exposure, trusted catalogue loading and compiler/replanner callback wiring
   remain consumer work. See the [proposal handoff](handoffs/issue-9-bounded-proposals.md).
 
-The API currently mounts health and project/inventory routes. Uploads, model and
-manual endpoints, chronological event recording, revision activation and proof
-history are not connected to the web preview. Offline module acceptance never
-records a physical test pass.
+The API mounts health, private project/inventory/photo routes and immutable
+plan/manual reads with explicit initial activation. The internal preview producer
+compiles saved inputs with trusted measured context and binds versions to an
+inventory revision. The browser reviews saved previews and manuals; step navigation
+records no physical work. Model generation, chronological events, repair revision
+activation and proof history remain unconnected. See the
+[plan handoff](handoffs/issue-6-plan-activation.md). Compilation never records a
+physical test pass.

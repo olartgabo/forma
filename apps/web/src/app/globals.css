@@ -468,6 +468,26 @@ figcaption span {
 .measurement {
   min-width: 0;
 }
+.build-requirements {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+.build-requirements > textarea {
+  margin-bottom: 1rem;
+}
+.measurement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 1.5rem;
+  margin: 1.5rem 0;
+}
+.measurement-grid select {
+  margin-bottom: 0.7rem;
+}
+.measurement-grid input[type="number"] {
+  margin-bottom: 0.7rem;
+}
 .measurement .checkbox-label {
   font-size: 0.8rem;
   margin-top: 0.7rem;
@@ -569,6 +589,57 @@ figcaption span {
   border-top: 1px solid var(--line);
   padding-top: 1.5rem;
   color: var(--muted);
+}
+.plan-workbench {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.plan-workbench > button,
+.plan-workbench > select {
+  margin-bottom: 1.5rem;
+}
+.plan-state {
+  overflow-wrap: anywhere;
+}
+.manual-step {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1.5rem;
+  overflow-wrap: anywhere;
+}
+.manual-diagram {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 1rem 0;
+}
+.manual-diagram-frame {
+  max-width: 100%;
+  overflow: auto;
+}
+.manual-diagram-frame.enlarged .manual-diagram {
+  width: max(100%, 70rem);
+  max-width: none;
+}
+.manual-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.manual-materials,
+.plan-approval {
+  margin-top: 1.5rem;
+}
+.manual-materials summary {
+  cursor: pointer;
+  padding: 0.75rem 0;
+  font-weight: 650;
 }
 .next-step-note h2 {
   font-size: 1.15rem;
