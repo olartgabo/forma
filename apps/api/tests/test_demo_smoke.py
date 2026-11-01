@@ -2,9 +2,14 @@ import io
 import json
 import subprocess
 import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import pytest
 
 from forma_api import demo_smoke
-from forma_api.demo_smoke import HttpResponse, TransportError
+from forma_api.demo_smoke import HttpRequest, HttpResponse, TransportError
 
 TOKEN = "smoke-owner-secret-token-1234567890"
 ORIGIN = "https://api.example.test"
@@ -366,6 +371,77 @@ def test_ineligible_media_never_calls_intake():
         assert report["media"]["eligible"] is False
         assert report["media"]["status"] == "ineligible"
         assert all(m == "GET" for m, _ in fake.paths())
+
+
+def test_foreign_project_media_rejected_readonly_and_live_without_post_or_leak():
+    for live in (False, True):
+        routes = healthy_routes(
+            {
+                ("GET", f"/api/projects/{PROJECT_ID}/media"): resp(
+                    payload=media_payload(project_id="project-other-foreign")
+                )
+            }
+        )
+        fake = FakeTransport(routes)
+        extra = ["--live-intake", "--transfer-consent"] if live else []
+        code, report, text = invoke(
+            base_argv("--project-id", PROJECT_ID, "--media-id", MEDIA_ID, *extra),
+            fake,
+            env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
+        )
+        assert code == 1
+        assert report["media"] == {"status": "failed", "media_id": MEDIA_ID}
+        assert report["errors"] == [{"check": "media", "code": "invalid_response"}]
+        assert report["intake"] == {"status": "not_requested"}
+        assert all(m == "GET" for m, _ in fake.paths())
+        assert "project-other-foreign" not in text
+        assert TOKEN not in text
+
+
+class _TricklingHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", "1000")
+        self.end_headers()
+        try:
+            for _ in range(100):
+                self.wfile.write(b"x")
+                self.wfile.flush()
+                time.sleep(0.05)
+        except OSError:
+            pass
+
+    def log_message(self, *args):
+        pass
+
+
+def test_http_transport_total_deadline_bounds_trickling_response():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _TricklingHandler)
+    server.daemon_threads = True
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        start = time.monotonic()
+        with pytest.raises(TransportError) as caught:
+            demo_smoke._http_transport(
+                HttpRequest(
+                    method="GET",
+                    url=f"http://127.0.0.1:{server.server_port}/api/health",
+                    headers={},
+                    body=None,
+                    timeout=0.35,
+                )
+            )
+        elapsed = time.monotonic() - start
+        assert caught.value.code == "timeout"
+        # Bytes arrive every 0.05s, so an inactivity timeout would not fire
+        # for ~5s; the total deadline must cut the request off near 0.35s.
+        assert elapsed < 1.5
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_missing_media_is_not_found():

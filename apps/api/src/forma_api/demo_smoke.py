@@ -18,7 +18,10 @@ import http.client
 import json
 import os
 import re
+import socket
 import sys
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
@@ -101,39 +104,93 @@ class _Parser(argparse.ArgumentParser):
 
 
 def _http_transport(request: HttpRequest) -> HttpResponse:
-    """One bounded HTTP(S) request; redirects are never followed."""
+    """One bounded HTTP(S) request; redirects are never followed.
+
+    ``request.timeout`` is a total per-request deadline covering connection,
+    headers and body. A response that keeps trickling bytes therefore cannot
+    extend the request beyond the deadline: the socket timeout is repeatedly
+    capped at the remaining budget, a timer shuts the socket down at the
+    deadline, and the body is read in bounded ``read1`` chunks.
+    """
 
     parts = urlsplit(request.url)
     host = parts.hostname
     if host is None:
         raise TransportError("invalid_origin")
-    connection = None
+    deadline = time.monotonic() + request.timeout
+    expired = threading.Event()
+    active_socket: list[socket.socket] = []
+    connection: http.client.HTTPConnection | None = None
+
+    def interrupt_socket() -> None:
+        expired.set()
+        sock = active_socket[0] if active_socket else None
+        if sock is None and connection is not None:
+            sock = connection.sock
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass  # A concurrently completed/closed socket needs no cancel.
+
+    def remaining() -> float:
+        left = deadline - time.monotonic()
+        if left <= 0 or expired.is_set():
+            raise TransportError("timeout")
+        return left
+
+    if parts.scheme == "https":
+        connection = http.client.HTTPSConnection(
+            host, parts.port, timeout=request.timeout
+        )
+    else:
+        connection = http.client.HTTPConnection(
+            host, parts.port, timeout=request.timeout
+        )
+    timer = threading.Timer(request.timeout, interrupt_socket)
+    timer.daemon = True
+    timer.start()
     try:
-        if parts.scheme == "https":
-            connection: http.client.HTTPConnection = http.client.HTTPSConnection(
-                host, parts.port, timeout=request.timeout
-            )
-        else:
-            connection = http.client.HTTPConnection(
-                host, parts.port, timeout=request.timeout
-            )
         target = parts.path or "/"
         if parts.query:
             target += "?" + parts.query
         connection.request(
             request.method, target, body=request.body, headers=request.headers
         )
+        remaining()
+        if connection.sock is not None:
+            active_socket.append(connection.sock)
+            connection.sock.settimeout(remaining())
         response = connection.getresponse()
-        body = response.read(MAX_RESPONSE_BYTES + 1)
+        remaining()
         headers = {key.lower(): value for key, value in response.getheaders()}
-        return HttpResponse(status=response.status, headers=headers, body=body)
+        raw = bytearray()
+        while len(raw) <= MAX_RESPONSE_BYTES:
+            if connection.sock is not None:
+                connection.sock.settimeout(remaining())
+            else:
+                remaining()
+            chunk = response.read1(
+                min(65536, MAX_RESPONSE_BYTES + 1 - len(raw))
+            )
+            if not chunk:
+                break
+            raw.extend(chunk)
+        remaining()
+        return HttpResponse(status=response.status, headers=headers, body=bytes(raw))
     except TransportError:
         raise
     except (TimeoutError, http.client.HTTPException, OSError) as exc:
-        if isinstance(exc, TimeoutError) or "timed out" in str(exc).lower():
+        if (
+            expired.is_set()
+            or time.monotonic() >= deadline
+            or isinstance(exc, TimeoutError)
+            or "timed out" in str(exc).lower()
+        ):
             raise TransportError("timeout") from None
         raise TransportError("network_error") from None
     finally:
+        timer.cancel()
         if connection is not None:
             try:
                 connection.close()
@@ -425,6 +482,12 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
     if selected is None:
         report["media"] = {"status": "failed", "media_id": args.media_id}
         _fail(report, "media", "not_found")
+        return emit(1)
+    if selected.project_id != args.project_id:
+        # Foreign/scoped metadata: never report eligibility or POST intake,
+        # and never surface the other project's details.
+        report["media"] = {"status": "failed", "media_id": args.media_id}
+        _fail(report, "media", "invalid_response")
         return emit(1)
     eligible = (
         selected.content_type in SUPPORTED_IMAGE_TYPES
