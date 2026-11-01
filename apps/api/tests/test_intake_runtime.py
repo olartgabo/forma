@@ -5,6 +5,7 @@ import pytest
 from forma_api import intake_runtime
 from forma_api.model_gateway import GatewayError, MetaGateway
 from forma_api.proposal_service import IntakeObservation
+from forma_api.provider_diagnostics import ProviderUsage, summarize_usage
 
 PNG = b"\x89PNG\r\n\x1a\nsynthetic"
 JPEG = b"\xff\xd8\xffsynthetic"
@@ -25,6 +26,18 @@ class Fake:
 
 def final(content):
     return {"choices": [{"finish_reason": "stop", "message": {"content": content}}]}
+
+
+def final_usage(content, usage=None):
+    response = final(content)
+    if usage is not None:
+        response["usage"] = usage
+    return response
+
+
+INTAKE_JSON = (
+    '{"labels":["cardboard sheet"],"measurement_source":"unknown","questions":[]}'
+)
 
 
 def test_observe_photo_uses_strict_intake_schema_without_tool():
@@ -60,6 +73,67 @@ def test_observe_photo_uses_strict_intake_schema_without_tool():
     assert user[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
 
+def test_observe_photo_reports_provider_usage_and_zero_is_valid():
+    fake = Fake(final_usage(INTAKE_JSON, {"prompt_tokens": 12, "completion_tokens": 0}))
+    _, diagnostics = intake_runtime.observe_photo(
+        MetaGateway(fake),
+        project_goal="stand",
+        image_data=PNG,
+        content_type="image/png",
+    )
+    assert diagnostics.usage is not None
+    assert diagnostics.usage.model_calls == 1
+    assert diagnostics.usage.input_tokens == 12
+    assert diagnostics.usage.output_tokens == 0
+
+
+def test_observe_photo_reused_gateway_excludes_prior_calls():
+    gateway = MetaGateway(
+        Fake(
+            final_usage(INTAKE_JSON, {"prompt_tokens": 100, "completion_tokens": 50}),
+            final_usage(INTAKE_JSON, {"prompt_tokens": 7, "completion_tokens": 3}),
+        )
+    )
+    intake_runtime.observe_photo(
+        gateway, project_goal="stand", image_data=PNG, content_type="image/png"
+    )
+    _, diagnostics = intake_runtime.observe_photo(
+        gateway, project_goal="stand", image_data=PNG, content_type="image/png"
+    )
+    assert diagnostics.usage.model_calls == 1
+    assert diagnostics.usage.input_tokens == 7
+    assert diagnostics.usage.output_tokens == 3
+
+
+def test_observe_photo_missing_usage_stays_unknown():
+    fake = Fake(final(INTAKE_JSON))
+    _, diagnostics = intake_runtime.observe_photo(
+        MetaGateway(fake),
+        project_goal="stand",
+        image_data=PNG,
+        content_type="image/png",
+    )
+    assert diagnostics.usage.model_calls == 1
+    assert diagnostics.usage.input_tokens is None
+    assert diagnostics.usage.output_tokens is None
+
+
+@pytest.mark.parametrize("bad", [True, -1, 1.5, "12", 10**9 + 1])
+def test_observe_photo_malformed_input_tokens_unknown_not_partial(bad):
+    fake = Fake(
+        final_usage(INTAKE_JSON, {"prompt_tokens": bad, "completion_tokens": 4})
+    )
+    _, diagnostics = intake_runtime.observe_photo(
+        MetaGateway(fake),
+        project_goal="stand",
+        image_data=PNG,
+        content_type="image/png",
+    )
+    assert diagnostics.usage.model_calls == 1
+    assert diagnostics.usage.input_tokens is None
+    assert diagnostics.usage.output_tokens == 4
+
+
 @pytest.mark.parametrize(
     "code,status,stable",
     [
@@ -81,6 +155,26 @@ def test_gateway_error_mapping_is_safe_and_stable(code, status, stable):
     assert result[0] == status
     assert result[1] == stable
     assert code not in result[2] or code == stable
+
+
+def test_usage_record_optional_for_backwards_compatibility_and_strict():
+    legacy = intake_runtime.IntakeDiagnostics.model_validate(
+        {"status": "ok", "model": "muse-spark-1.3", "elapsed_ms": 1}
+    )
+    assert legacy.usage is None
+    with pytest.raises(Exception):
+        ProviderUsage(model_calls=1, input_tokens=True)
+    with pytest.raises(Exception):
+        ProviderUsage(model_calls=1, input_tokens=-1)
+    with pytest.raises(Exception):
+        ProviderUsage(model_calls=1, output_tokens=10**18)
+    # No traces: call count is known to be zero, tokens remain unknown.
+    empty = summarize_usage([])
+    assert empty.model_calls == 0
+    assert empty.input_tokens is None and empty.output_tokens is None
+    dumped = ProviderUsage(model_calls=1, input_tokens=0, output_tokens=0).model_dump()
+    assert dumped == {"model_calls": 1, "input_tokens": 0, "output_tokens": 0}
+    assert not any("cost" in key or "price" in key for key in dumped)
 
 
 def test_missing_key_from_default_factory(monkeypatch):

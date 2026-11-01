@@ -29,8 +29,8 @@ class Fake:
         return response
 
 
-def tool_call(project_id, revision_id, call_id="call-1"):
-    return {
+def tool_call(project_id, revision_id, call_id="call-1", usage=None):
+    response = {
         "choices": [
             {
                 "finish_reason": "tool_calls",
@@ -54,14 +54,20 @@ def tool_call(project_id, revision_id, call_id="call-1"):
             }
         ]
     }
+    if usage is not None:
+        response["usage"] = usage
+    return response
 
 
-def final(payload):
-    return {
+def final(payload, usage=None):
+    response = {
         "choices": [
             {"finish_reason": "stop", "message": {"content": json.dumps(payload)}}
         ]
     }
+    if usage is not None:
+        response["usage"] = usage
+    return response
 
 
 def seeded(tmp_path):
@@ -168,6 +174,60 @@ def test_runtime_tool_snapshot_and_real_compile(tmp_path):
     assert "profile_evidence" not in tool_content
     with store.transaction() as connection:
         assert connection.execute("SELECT COUNT(*) FROM plans").fetchone()[0] == 1
+
+
+def test_runtime_usage_aggregates_exactly_over_two_rounds(tmp_path):
+    store, project, candidate, context = seeded(tmp_path)
+    fake = Fake(
+        tool_call(
+            project.id,
+            project.revision_id,
+            usage={"prompt_tokens": 11, "completion_tokens": 2},
+        ),
+        final(
+            {"candidates": [candidate.model_dump(mode="json")], "questions": []},
+            usage={"prompt_tokens": 20, "completion_tokens": 9},
+        ),
+    )
+    result = run(store, project, resolve(context, project), fake)
+    assert result.diagnostics.usage.model_calls == 2
+    assert result.diagnostics.usage.input_tokens == 31
+    assert result.diagnostics.usage.output_tokens == 11
+
+
+def test_runtime_usage_missing_in_one_round_stays_unknown_not_partial(tmp_path):
+    store, project, candidate, context = seeded(tmp_path)
+    fake = Fake(
+        tool_call(project.id, project.revision_id),
+        final(
+            {"candidates": [candidate.model_dump(mode="json")], "questions": []},
+            usage={"prompt_tokens": 20, "completion_tokens": 9},
+        ),
+    )
+    result = run(store, project, resolve(context, project), fake)
+    assert result.diagnostics.usage.model_calls == 2
+    assert result.diagnostics.usage.input_tokens is None
+    assert result.diagnostics.usage.output_tokens is None
+
+
+def test_runtime_usage_malformed_in_one_round_stays_unknown(tmp_path):
+    store, project, candidate, context = seeded(tmp_path)
+    fake = Fake(
+        tool_call(
+            project.id,
+            project.revision_id,
+            usage={"prompt_tokens": True, "completion_tokens": 2},
+        ),
+        final(
+            {"candidates": [candidate.model_dump(mode="json")], "questions": []},
+            usage={"prompt_tokens": 20, "completion_tokens": 9},
+        ),
+    )
+    result = run(store, project, resolve(context, project), fake)
+    assert result.diagnostics.usage.model_calls == 2
+    assert result.diagnostics.usage.input_tokens is None
+    # Output was valid in both rounds, so it aggregates exactly.
+    assert result.diagnostics.usage.output_tokens == 11
 
 
 def test_missing_inputs_match_compiler_valid_fixture_by_stock_kind(tmp_path):

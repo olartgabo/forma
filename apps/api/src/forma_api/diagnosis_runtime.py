@@ -12,8 +12,14 @@ from forma_api.intake_runtime import (
 from forma_api.intake_runtime import (
     gateway_error_details as _shared_gateway_error_details,
 )
-from forma_api.model_gateway import GatewayError, ImageInput, MetaGateway
+from forma_api.model_gateway import (
+    GatewayError,
+    ImageInput,
+    MetaGateway,
+    ProposalBudget,
+)
 from forma_api.proposal_prompts import instructions
+from forma_api.provider_diagnostics import ProviderUsage, summarize_usage
 from forma_domain.models import ID, DiagnosisProposal, Record, Stock, Text
 
 MAX_REPORTED_PROBLEM_LENGTH = 1000
@@ -72,6 +78,7 @@ class DiagnosisDiagnostics(Record):
     status: Literal["ok"]
     model: str = Field(min_length=1, max_length=80)
     elapsed_ms: int = Field(ge=0)
+    usage: ProviderUsage | None = None
 
 
 class DiagnosisErrorResponse(Record):
@@ -262,21 +269,28 @@ def diagnose_photo(
     if not 0 < len(image_data) <= MAX_PROVIDER_IMAGE_BYTES:
         raise GatewayError("invalid_image")
     start = time.monotonic()
+    budget = ProposalBudget(
+        max_rounds=getattr(gateway, "max_rounds", 4),
+        seconds=getattr(gateway, "budget", 60),
+    )
     proposal = gateway.propose(
         DIAGNOSIS_PROMPT,
         DiagnosisProposal,
         image=ImageInput(image_data, content_type, True),  # type: ignore[arg-type]
+        request_budget=budget,
         system_prompt=DIAGNOSIS_SYSTEM_PROMPT,
         context=context,
     )
     validate_diagnosis(proposal, plan=plan)
     elapsed_ms = round((time.monotonic() - start) * 1000)
-    traces = getattr(gateway, "traces", [])
-    if traces:
-        elapsed_ms = traces[-1].elapsed_ms
+    if budget.traces:
+        elapsed_ms = budget.traces[-1].elapsed_ms
     model = str(getattr(gateway, "spark", "unknown"))[:80] or "unknown"
     return proposal, DiagnosisDiagnostics(
-        status="ok", model=model, elapsed_ms=elapsed_ms
+        status="ok",
+        model=model,
+        elapsed_ms=elapsed_ms,
+        usage=summarize_usage(budget.traces),
     )
 
 

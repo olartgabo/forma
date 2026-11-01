@@ -48,6 +48,7 @@ from forma_api.projects import (
     ProjectResult,
 )
 from forma_api.proposal_service import IntakeObservation
+from forma_api.provider_diagnostics import ProviderUsage
 from forma_domain import models
 from forma_domain.generate import typescript
 
@@ -88,6 +89,7 @@ API_RECORDS = (
     PlanVersion,
     Project,
     ProjectResult,
+    ProviderUsage,
 )
 OUTPUT = "apps/web/src/lib/generated/api-contracts.ts"
 
