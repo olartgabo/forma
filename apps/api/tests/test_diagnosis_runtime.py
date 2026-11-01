@@ -45,6 +45,13 @@ def final(content):
     return {"choices": [{"finish_reason": "stop", "message": {"content": content}}]}
 
 
+def final_usage(content, usage=None):
+    response = final(content)
+    if usage is not None:
+        response["usage"] = usage
+    return response
+
+
 def proposal_json(**overrides):
     value = {
         "visible_observations": ["A tear is visible near the slot"],
@@ -97,6 +104,67 @@ def test_photo_only_payload_schema_context_and_image_consent():
     assert '"reported_problem_is_observed_fact": false' in serialized
     assert '"completion_history_supplied": false' in serialized
     assert user[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_diagnosis_reports_provider_usage():
+    fake = Fake(
+        final_usage(proposal_json(), {"prompt_tokens": 20, "completion_tokens": 6})
+    )
+    _, diagnostics = diagnosis_runtime.diagnose_photo(
+        MetaGateway(fake),
+        image_data=PNG,
+        content_type="image/png",
+        context=photo_only_context(),
+        plan=None,
+    )
+    assert diagnostics.usage.model_calls == 1
+    assert diagnostics.usage.input_tokens == 20
+    assert diagnostics.usage.output_tokens == 6
+
+
+def test_diagnosis_reused_gateway_excludes_prior_calls_and_missing_unknown():
+    gateway = MetaGateway(
+        Fake(
+            final_usage(
+                proposal_json(), {"prompt_tokens": 100, "completion_tokens": 50}
+            ),
+            final(proposal_json()),
+        )
+    )
+    diagnosis_runtime.diagnose_photo(
+        gateway,
+        image_data=PNG,
+        content_type="image/png",
+        context=photo_only_context(),
+        plan=None,
+    )
+    _, diagnostics = diagnosis_runtime.diagnose_photo(
+        gateway,
+        image_data=PNG,
+        content_type="image/png",
+        context=photo_only_context(),
+        plan=None,
+    )
+    assert diagnostics.usage.model_calls == 1
+    assert diagnostics.usage.input_tokens is None
+    assert diagnostics.usage.output_tokens is None
+
+
+@pytest.mark.parametrize("bad", [False, -2, 2.5, "9", 10**9 + 1])
+def test_diagnosis_malformed_output_tokens_unknown(bad):
+    fake = Fake(
+        final_usage(proposal_json(), {"prompt_tokens": 5, "completion_tokens": bad})
+    )
+    _, diagnostics = diagnosis_runtime.diagnose_photo(
+        MetaGateway(fake),
+        image_data=PNG,
+        content_type="image/png",
+        context=photo_only_context(),
+        plan=None,
+    )
+    assert diagnostics.usage.model_calls == 1
+    assert diagnostics.usage.input_tokens == 5
+    assert diagnostics.usage.output_tokens is None
 
 
 def test_photo_only_invented_affected_ids_rejected():

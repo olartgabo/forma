@@ -13,6 +13,7 @@ from forma_api.model_gateway import GatewayError, MetaGateway, ProposalBudget, T
 from forma_api.plans import PlanService, PlanSummary
 from forma_api.projects import BuildRequirements, ProjectError, ProjectStore
 from forma_api.proposal_prompts import instructions
+from forma_api.provider_diagnostics import ProviderUsage, summarize_usage
 from forma_domain.models import (
     ID,
     Blocker,
@@ -62,6 +63,7 @@ class DesignDiagnostics(Record):
     elapsed_ms: int = Field(ge=0)
     model_rounds: int = Field(ge=0, le=4)
     tool_executions: int = Field(ge=0, le=4)
+    usage: ProviderUsage | None = None
 
 
 class DesignCandidateResult(Record):
@@ -294,6 +296,7 @@ def generate_designs(
         elapsed_ms=elapsed_ms,
         model_rounds=min(budget.rounds, 4),
         tool_executions=executions["count"],
+        usage=summarize_usage(budget.traces),
     )
     snapshot = build_snapshot(project, resolved)
     with store.transaction() as connection:
