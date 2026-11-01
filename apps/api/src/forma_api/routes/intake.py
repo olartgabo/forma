@@ -3,9 +3,9 @@
 from typing import Annotated, Callable
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 
 from forma_api import intake_runtime
 from forma_api.model_gateway import GatewayError, MetaGateway
@@ -21,18 +21,26 @@ class IntakeError(Exception):
         self.body = intake_runtime.IntakeErrorResponse(code=code, message=message)
 
 
-async def _intake_error_handler(request: Request, exc: IntakeError):
-    return JSONResponse(exc.body.model_dump(mode="json"), status_code=exc.status)
+class IntakeRoute(APIRoute):
+    """Intake-local error boundary; other routes keep canonical handling."""
 
+    def get_route_handler(self):
+        original = super().get_route_handler()
 
-async def _validation_handler(request: Request, exc: RequestValidationError):
-    # Registered via this router only; keep other routes' default behaviour.
-    if request.url.path.endswith("/intake"):
-        body = intake_runtime.IntakeErrorResponse(
-            code="validation_error", message="Request validation failed"
-        )
-        return JSONResponse(body.model_dump(mode="json"), status_code=422)
-    return await request_validation_exception_handler(request, exc)
+        async def intake_route_handler(request: Request):
+            try:
+                return await original(request)
+            except RequestValidationError:
+                body = intake_runtime.IntakeErrorResponse(
+                    code="validation_error", message="Request validation failed"
+                )
+                return JSONResponse(body.model_dump(mode="json"), status_code=422)
+            except IntakeError as exc:
+                return JSONResponse(
+                    exc.body.model_dump(mode="json"), status_code=exc.status
+                )
+
+        return intake_route_handler
 
 
 def _provider_error(exc: GatewayError) -> IntakeError:
@@ -46,17 +54,15 @@ def intake_router(
     gateway_factory: Callable[[], MetaGateway] | None = None,
 ) -> APIRouter:
     Owner = Annotated[str, Depends(authenticate)]
-    router = APIRouter(
-        tags=["intake"],
-        exception_handlers={
-            IntakeError: _intake_error_handler,
-            RequestValidationError: _validation_handler,
-        },
-    )
+    router = APIRouter(tags=["intake"], route_class=IntakeRoute)
 
     @router.post(
         "/{project_id}/intake",
         response_model=intake_runtime.IntakeResult,
+        responses={
+            status: {"model": intake_runtime.IntakeErrorResponse}
+            for status in (404, 409, 413, 415, 422, 429, 502, 503, 504)
+        },
     )
     def intake(project_id: ID, body: intake_runtime.IntakeRequest, owner: Owner):
         with store.transaction() as connection:
@@ -111,9 +117,7 @@ def intake_router(
         with store.transaction() as connection:
             current = store.read(connection, owner, project_id)
             if current.revision_id != body.expected_revision_id:
-                raise IntakeError(
-                    409, "stale_version", "Inventory changed; reload it"
-                )
+                raise IntakeError(409, "stale_version", "Inventory changed; reload it")
             if (
                 connection.execute(
                     "SELECT 1 FROM media WHERE id=? AND project_id=?",

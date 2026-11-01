@@ -90,7 +90,8 @@ def test_missing_key_from_default_factory(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "data,mime", [(PNG, "image/webp"), (b"x" * 5_000_001, "image/png"), (b"", "image/png")]
+    "data,mime",
+    [(PNG, "image/webp"), (b"x" * 5_000_001, "image/png"), (b"", "image/png")],
 )
 def test_invalid_image_rejected_before_transport(data, mime):
     fake = Fake(final("{}"))
@@ -101,12 +102,21 @@ def test_invalid_image_rejected_before_transport(data, mime):
     assert fake.calls == []
 
 
-@pytest.mark.parametrize("content", ["SECRET not json", '{"labels":[],"measurement_source":"unknown","questions":[],"extra":1}'])
+@pytest.mark.parametrize(
+    "content",
+    [
+        "SECRET not json",
+        '{"labels":[],"measurement_source":"unknown","questions":[],"extra":1}',
+    ],
+)
 def test_malformed_output_becomes_invalid_proposal_without_leak(content):
     fake = Fake(final(content))
     with pytest.raises(GatewayError) as error:
         intake_runtime.observe_photo(
-            MetaGateway(fake), project_goal="stand", image_data=JPEG, content_type="image/jpeg"
+            MetaGateway(fake),
+            project_goal="stand",
+            image_data=JPEG,
+            content_type="image/jpeg",
         )
     assert error.value.code == "invalid_proposal"
     assert "SECRET" not in str(error.value)

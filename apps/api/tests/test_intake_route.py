@@ -127,10 +127,9 @@ def test_success_is_readonly_and_openapi_lists_route(client, monkeypatch):
     assert isinstance(result["diagnostics"]["elapsed_ms"], int)
     assert counter["factory"] == 1 and len(fake.calls) == 1
     assert client.get(f"/api/projects/{p['id']}", headers=AUTH).json() == before
-    assert (
-        client.get(f"/api/projects/{p['id']}/media", headers=AUTH).json()["media"]
-        == [media]
-    )
+    assert client.get(f"/api/projects/{p['id']}/media", headers=AUTH).json()[
+        "media"
+    ] == [media]
 
 
 @pytest.mark.parametrize("format,mime", [("JPEG", "image/jpeg"), ("PNG", "image/png")])
@@ -170,7 +169,9 @@ def test_denials_have_zero_factory_or_provider_calls(client, monkeypatch, tmp_pa
             422,
             "consent_required",
         )
-    stale = call_intake(client, p, body(p, media, expected_revision_id="inventory-stale"))
+    stale = call_intake(
+        client, p, body(p, media, expected_revision_id="inventory-stale")
+    )
     assert (stale.status_code, stale.json()["code"]) == (409, "stale_version")
     response = call_intake(client, webp_project, body(webp_project, webp))
     assert response.status_code == 415

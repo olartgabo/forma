@@ -145,7 +145,11 @@ def gateway_error_details(code: str) -> tuple[int, str, str]:
             "Model provider returned an unusable response; retry",
         )
     if code == "provider_http_error":
-        return (502, "provider_http_error", "Model provider request failed; retry later")
+        return (
+            502,
+            "provider_http_error",
+            "Model provider request failed; retry later",
+        )
     return (502, "provider_error", "Model provider request failed; retry later")
 
 
