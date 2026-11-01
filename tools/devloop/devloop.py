@@ -52,13 +52,85 @@ class State:
         return key in self.data["blocked"] or key in self.visited
 
 
+def _canonical(path: Path) -> Path:
+    return Path(os.path.realpath(path))
+
+
+def _is_link_or_junction(path: Path) -> bool:
+    is_junction = getattr(path, "is_junction", None)
+    return path.is_symlink() or bool(is_junction and is_junction())
+
+
+def _git_path(output: str, cwd: Path) -> Path:
+    raw = Path(output.strip())
+    return _canonical(raw if raw.is_absolute() else cwd / raw)
+
+
+def _registered_worktrees() -> set[Path]:
+    registered = set()
+    for line in sh("git", "worktree", "list", "--porcelain", cwd=ROOT).splitlines():
+        if line.startswith("worktree "):
+            registered.add(_canonical(Path(line.removeprefix("worktree "))))
+    return registered
+
+
+def _verify_worktree():
+    """Reuse is allowed only for the canonical, clean, registered worktree.
+
+    Every check is read-only: a path that fails identity, repository or
+    cleanliness verification is left exactly as found, never reset or cleaned.
+    This matters because git commands in an ordinary nested directory would
+    otherwise resolve to (and could destroy work in) the parent checkout.
+    """
+    if _is_link_or_junction(WORKTREE) or _is_link_or_junction(STATE_DIR):
+        raise RuntimeError(
+            f"dedicated worktree path is a symlink or junction: {WORKTREE}"
+        )
+    if not WORKTREE.is_dir():
+        raise RuntimeError(f"dedicated worktree is not a directory: {WORKTREE}")
+    if _canonical(WORKTREE) != _canonical(STATE_DIR) / WORKTREE.name:
+        raise RuntimeError(
+            f"dedicated worktree path is not its canonical location: {WORKTREE}"
+        )
+    top = _git_path(sh("git", "rev-parse", "--show-toplevel", cwd=WORKTREE), WORKTREE)
+    if top != _canonical(WORKTREE):
+        raise RuntimeError(
+            f"dedicated worktree is not a repository top level: {WORKTREE}"
+        )
+    root_common = _git_path(sh("git", "rev-parse", "--git-common-dir", cwd=ROOT), ROOT)
+    worktree_common = _git_path(
+        sh("git", "rev-parse", "--git-common-dir", cwd=WORKTREE), WORKTREE
+    )
+    if worktree_common != root_common:
+        raise RuntimeError(
+            f"dedicated worktree belongs to a different repository: {WORKTREE}"
+        )
+    if _canonical(WORKTREE) not in _registered_worktrees():
+        raise RuntimeError(
+            f"dedicated worktree is not a registered worktree: {WORKTREE}"
+        )
+    status = sh(
+        "git", "status", "--porcelain=v1", "--untracked-files=all", cwd=WORKTREE
+    ).strip()
+    if status:
+        raise RuntimeError(
+            f"dedicated worktree is dirty; refusing to reuse or clean it:\n{status}"
+        )
+
+
 def prepare_worktree():
     sh("git", "fetch", "origin", cwd=ROOT)
+    if _is_link_or_junction(WORKTREE) or _is_link_or_junction(STATE_DIR):
+        raise RuntimeError(
+            f"dedicated worktree path is a symlink or junction: {WORKTREE}"
+        )
     if not WORKTREE.exists():
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
         sh("git", "worktree", "add", "--detach", str(WORKTREE), "origin/main", cwd=ROOT)
-    sh("git", "config", "core.hooksPath", ".githooks")
-    sh("git", "reset", "--hard")
-    sh("git", "clean", "-fd")
+    # New worktrees are verified exactly like pre-existing ones; a directory
+    # that git did not register for this repository is never reused.
+    _verify_worktree()
+    sh("git", "config", "core.hooksPath", ".githooks", cwd=WORKTREE)
 
 
 def next_task(state: State, skip: set[int]) -> dict | None:
