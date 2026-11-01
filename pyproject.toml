@@ -5,6 +5,7 @@ description = "FORMA project API"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi==0.162.0",
+    "pillow==13.0.0",
     "pydantic==2.14.2",
     "uvicorn==0.54.0",
 ]

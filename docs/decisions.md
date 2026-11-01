@@ -94,7 +94,23 @@ creation/read, pre-plan inventory and deletion; media, immutable plans/events an
 approved adaptation transactions remain open. See the
 [#6 handoff](handoffs/issue-6-persistence.md).
 
-## D011: Muse-written code with a Claude review loop, October 31, 2026
+## D011: Private local photo storage, October 31, 2026
+
+Issue #6 extends the development SQLite store with project-scoped normalized
+image blobs. Storing bytes and retry receipts in one transaction avoids partial
+filesystem writes and makes project deletion atomic. This fits the local
+fallback in D007; production object storage and hosted identity remain pending.
+
+Uploads accept bounded JPEG/PNG/WebP images after complete decoding and remove
+embedded metadata before persistence. Images remain private and are retained
+until explicit deletion. Inventory photo references must belong to the same
+project. Referenced photos must be unlinked before individual deletion; deleting
+the project removes its photos. Deletion is logical and does not promise
+forensic erasure or backup deletion. Provider transfer and public sharing are
+unavailable in this slice; their consent and external-retention policy remain
+pending. No measurements or physical outcomes are inferred from uploads.
+
+## D012: Muse-written code with a Claude review loop, October 31, 2026
 
 Owner: @ResniDev. `tools/devloop` is development tooling for the @ResniDev
 lane. Meta Muse Spark writes the code changes. Claude models are used only as
@@ -104,3 +120,4 @@ attribution, enforced by `.githooks/commit-msg` and the `attribution` CI job.
 Meta spend is capped at $90 by a local ledger. The loop opens draft PRs only;
 humans review and merge. No product scope changes; CI gains one job (handoff to
 @olartgabo for `.github/workflows/checks.yml`).
+

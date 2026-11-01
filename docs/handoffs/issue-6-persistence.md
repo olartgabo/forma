@@ -1,5 +1,9 @@
 # Issue #6: private project and inventory storage
 
+This records the original persistence slice. The subsequent
+[private-media handoff](issue-6-private-media.md) adds scoped image storage and
+allows inventory references to uploaded photos; evidence history remains pending.
+
 Scope: first persistence slice, branch `issue/6-project-storage`. Consumes the
 #3 domain handoff; changes no compiler, provider or shared domain contracts.
 

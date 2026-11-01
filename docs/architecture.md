@@ -1,7 +1,10 @@
 # Architecture
 
-Status: planned boundaries from formspec.md sections 3-13. The workspace
-implements a Next.js preview and API liveness route; the flow below is planned.
+Status: October 31, 2026. The workspace implements typed domain contracts,
+offline compiler/stand renderer/replanner, a bounded model gateway and proposal
+service, and private project/inventory/photo persistence. The web remains a preview;
+the complete user journey below is the target architecture. Live provider
+compatibility and physical build/recovery acceptance remain unverified.
 
 ```mermaid
 flowchart TD
@@ -33,8 +36,11 @@ flowchart TD
 | web           | Generated API types and API client                      | Server keys, stock/repair authority                 |
 | evaluation    | Offline modules and explicit live/physical adapters     | Fabricated results                                  |
 
-The API package is `forma_api` under `apps/api/src`, installed from the root
-Python project. The same wheel installs `forma_domain`; see the #3 handoff.
+The root Python project installs `forma_api` under `apps/api/src`, plus
+`forma_domain`, `forma_compiler`, `forma_renderer` and `forma_replanner` from
+their package source directories. Pydantic remains the domain schema source;
+`contracts:generate` exports JSON Schema, OpenAPI components and TypeScript,
+and `contracts:check` rejects drift. See the [domain handoff](handoffs/issue-3-domain.md).
 Directory boundaries are conceptual and may be simplified without changing
 these rules.
 
@@ -47,11 +53,28 @@ these rules.
 3. **Evidence:** photos, provenance, interpretations, checks and invalidation
    records. Historical evidence remains visible after it becomes stale.
 
-PostgreSQL and private object storage are the production targets in the spec.
-SQLite and local assets are allowed for development. Hosting, auth and storage
-providers remain [pending decisions](decisions.md).
+These three record types exist in domain contracts. Persistence currently stores
+projects, private photos and confirmed pre-plan inventory. It does not yet store immutable
+plans, material/physical history, evidence or approved adaptations.
+
+The development API uses SQLite and configured owner bearer credentials.
+Project create/read, inventory confirmation and logical deletion are scoped to
+the owner. Mutations require idempotency keys; inventory edits compare a separate
+inventory revision token and reject stale writes with 409. No route activates a
+plan. Inventory image IDs must resolve to the same project's private decoded
+photos. Evidence IDs remain rejected. See the
+[persistence handoff](handoffs/issue-6-persistence.md) and
+[media handoff](handoffs/issue-6-private-media.md).
+
+PostgreSQL and private object storage remain the production targets in the spec.
+Hosted identity, production storage/retention and provider-transfer consent remain
+[pending decisions](decisions.md).
 
 ## Revision transaction
+
+This is the required end-to-end transaction. Offline simulation supplies preview
+data; authenticated event/history storage, revision review and atomic activation
+remain integration work in #6/#11/#12.
 
 1. Capture the active version, actual events and remaining stock.
 2. Obtain at most three typed patch proposals with bounded model/tool rounds.
@@ -79,9 +102,44 @@ physical success. Provider details stay in the API gateway. The compiler works
 without an API key. See [contracts.md](contracts.md) and
 [model-compatibility.md](model-compatibility.md).
 
-## Implemented domain contracts (#3)
+## Implemented services and remaining boundaries
 
-The root wheel installs `forma_domain` from `packages/domain/src` beside
-`forma_api`. Pydantic source and deterministic generated components now exist;
-see [the exact interface handoff](handoffs/issue-3-domain.md). Geometry/compiler,
-revision storage and product flows remain future work.
+- `forma_compiler.validate_plan` replays stock regions, parts, connectors and
+  operations, checking allocation, dependencies, measured process limits and
+  compatible profiles. Unused unknown inventory is retained without allocation;
+  material used by the plan still requires its critical measurements. Inputs
+  remain immutable. See the [compiler handoff](handoffs/issue-5-compiler.md).
+- `forma_renderer.compile_stand` builds one three-panel triangular stand with a
+  folded lip and tape hinges. `render_manual` independently validates supported
+  geometry and emits eight deterministic SVG panels and a BOM, including tape
+  balances and explicit offcut regions when present in the plan. Unallocated
+  sheet area remains waste. Panel hashes permit reuse of unchanged diagrams.
+  Synthetic fixtures require explicit opt-in and visible labels; default calls
+  require measured stock/process and reviewed profile evidence. See the
+  [renderer handoff](handoffs/issue-8-stand-manual.md).
+- `forma_replanner.simulate_patch` validates copied snapshots and history,
+  reconciles actual remaining stock, and returns preservation, loss, rechecks
+  and continuation blockers. `rank_feasible` ranks at most three feasible
+  reports using known cost terms; time, prices and waste estimates remain
+  unknown. Completed modifications requiring undo block until an explicit
+  continuation exists. Joint-strategy/stand-angle changes require family
+  regeneration and currently block; known stand plans require an injected
+  family continuation validator. No simulation commits state. See the
+  [replanner interface](../packages/replanner/README.md).
+- The server-only Meta gateway validates structured outputs and allowlisted
+  read-only tools, bounds calls, and records safe traces. SAM/manual boxes use
+  media pixels and establish no physical dimensions. The smoke script separates
+  Spark validation from SAM failure and makes no request without explicit live
+  prerequisites. Real account/photo results remain pending in
+  [model compatibility](model-compatibility.md).
+- `ProposalService.run` supports intake, design, diagnosis and repair against a
+  validated scoped snapshot. Candidate and round caps span retries; injected
+  deterministic validators gate usable designs/repairs. Diagnosis can reference
+  current-plan features without expanding repair targets. Authenticated HTTP
+  exposure, trusted catalogue loading and compiler/replanner callback wiring
+  remain consumer work. See the [proposal handoff](handoffs/issue-9-bounded-proposals.md).
+
+The API currently mounts health and project/inventory routes. Uploads, model and
+manual endpoints, chronological event recording, revision activation and proof
+history are not connected to the web preview. Offline module acceptance never
+records a physical test pass.
