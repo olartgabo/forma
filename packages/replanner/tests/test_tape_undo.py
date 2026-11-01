@@ -504,6 +504,90 @@ def test_fully_completed_build_tape_undo_preserves_original_history():
     assert len(sheet_consumes) == 1
 
 
+@pytest.mark.parametrize(
+    ("operation_id", "checkpoint_id"),
+    [
+        ("stand-inspect-fit", "stand-inspect-fit-check"),
+        ("stand-functional-test", "stand-function-check"),
+    ],
+)
+def test_full_build_redirected_final_checkpoint_blocks(operation_id, checkpoint_id):
+    base, snapshot, process = full_snapshot()
+    checkpoints = tuple(
+        c.model_copy(update={"after_operation_id": "stand-inspect-cuts"})
+        if c.id == checkpoint_id
+        else c
+        for c in base.checkpoints
+    )
+    changed_base = base.model_copy(update={"checkpoints": checkpoints})
+    # The redirected record still names a real operation, so this rebuild
+    # through the domain schema succeeds; simulation must reject it itself.
+    changed = m.ReplannerInput.model_validate(
+        snapshot.model_copy(update={"base_plan": changed_base}).model_dump(
+            mode="python"
+        )
+    )
+    result = simulate(changed, process)
+    assert result.status == "blocked"
+    assert result.plan is None
+    assert result.cost is None
+    assert result.proposed_material_deltas == ()
+    assert result.incomplete_operation_ids == ()
+    assert any(
+        b.code == "invalid_reference" and b.target_ids == (operation_id, checkpoint_id)
+        for b in result.blockers
+    ), result.blockers
+    assert changed.base_plan.checkpoints == checkpoints
+    assert changed.events == snapshot.events
+    assert changed.evidence == snapshot.evidence
+
+
+def test_full_build_referenced_final_checkpoint_absent_blocks():
+    base, snapshot, process = full_snapshot()
+    operations = tuple(
+        o.model_copy(
+            update={
+                "args": o.args.model_copy(
+                    update={"checkpoint_id": "stand-inspect-cuts-check"}
+                )
+            }
+        )
+        if o.id == "stand-inspect-fit"
+        else o
+        for o in base.operations
+    )
+    checkpoints = tuple(
+        c for c in base.checkpoints if c.id != "stand-inspect-fit-check"
+    )
+    evidence = tuple(
+        e.model_copy(update={"checkpoint_ids": ("stand-inspect-cuts-check",)})
+        if e.id == "synthetic-full-fit-evidence"
+        else e
+        for e in snapshot.evidence
+    )
+    changed_base = base.model_copy(
+        update={"operations": operations, "checkpoints": checkpoints}
+    )
+    changed = m.ReplannerInput.model_validate(
+        snapshot.model_copy(
+            update={"base_plan": changed_base, "evidence": evidence}
+        ).model_dump(mode="python")
+    )
+    result = simulate(changed, process)
+    assert result.status == "blocked"
+    assert result.plan is None
+    assert result.cost is None
+    assert result.proposed_material_deltas == ()
+    assert result.incomplete_operation_ids == ()
+    assert any(
+        b.code == "invalid_reference"
+        and b.target_ids == ("stand-inspect-fit", "stand-inspect-cuts-check")
+        for b in result.blockers
+    ), result.blockers
+    assert changed.base_plan.checkpoints == checkpoints
+    assert changed.events == snapshot.events
+
+
 def test_fully_completed_build_with_399mm_tape_blocks():
     _base, snapshot, process = full_snapshot(tape_length=399)
     result = simulate(snapshot, process)

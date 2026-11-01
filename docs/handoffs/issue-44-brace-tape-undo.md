@@ -20,3 +20,21 @@ Supported prefix is original cut/inspection/fold/threejoins only. Base/support,
 irreversible joins, unsupported folds and completed final checks remain blocked.
 Issue44 stays open for broader supported recovery/evidence; do not infer live
 product-provider or physical acceptance. No shared schema/API/partner edits.
+
+
+## Completed eight-operation extension
+
+Full-build recovery now retains all eight original definitions/IDs/checkpoints,
+then appends eight incomplete operations (two peels, cut/inspection, two joins,
+new fit/function checks). The first eight SVGs/hashes/core keys stay identical;
+new panels use unique continuation keys. Old final checks show the original
+brace; new checks use the replacement and new joints. Existing14-op layout,
+ordinary replacements and16legacy goldens remain unchanged;7-prefix stays blocked.
+
+Real replay tests use original history/ancestor plan and one/two confirmed peels:
+remaining tape stays260mm before reattachment; wrong remaining tape and duplicate
+completion block. Cost8 and500-240-160=100 remain;399 blocks. No history is stripped.
+A final review caught missing historical-checkpoint lookup guards; Muse fixed
+referenced-ID/operation matching before mutation and added3 real simulation
+regressions.434pytest tests and lint/format/contracts pass; focused reviewer3pass
+and final review approved. Final full project check is recorded in PR67.

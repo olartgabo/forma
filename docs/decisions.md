@@ -133,3 +133,19 @@ Completed final fit/function checks block before construction of this candidate;
 the current slice does not rewrite or drop their completion history. Base/support
 replacement and generic physical inverses remain unsupported. Synthetic
 compile/simulate/rank/render regression evidence does not establish a bench pass.
+
+
+## Completed-build brace history, November1,2026
+
+The attached-brace continuation also supports all eight original operations
+completed. It retains all original operation/checkpoint definitions and IDs and
+appends explicit recovery work and new fit/function checks with unique state and
+checkpoint IDs. Old dependent evidence/checks invalidate; they are not treated as
+useful current verification. No event/evidence/transaction/salvage is created.
+
+This supersedes the initial slice's completed-final-check gate for the full
+canonical eight-operation prefix only. The intermediate seven-operation prefix
+and base/support changes remain blocked. Validation and rendering share a narrow
+14/16-stage resolver instead of duplicating the validator. Original checkpoint
+references must match their operations before construction; malformed history
+returns blockers. Synthetic replay/manual evidence is not a physical pass.

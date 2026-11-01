@@ -105,6 +105,24 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
             "replacement brace.",
             *completed_final_checks,
         )
+    # Resolve each original final checkpoint by the operation's own
+    # checkpoint reference, before staging any candidate mutation.
+    original_final_checkpoints = {}
+    if full_build:
+        for old_op_id in ("stand-inspect-fit", "stand-functional-test"):
+            referenced_id = operations[old_op_id].args.checkpoint_id
+            matches = [c for c in base.checkpoints if c.id == referenced_id]
+            if len(matches) != 1 or matches[0].after_operation_id != old_op_id:
+                return blocked(
+                    "invalid_reference",
+                    "Tape-undo replacement requires the checkpoint referenced "
+                    f"by {old_op_id} to exist exactly once and follow that "
+                    "operation; the original final checkpoint is absent or "
+                    "mismatched.",
+                    old_op_id,
+                    referenced_id,
+                )
+            original_final_checkpoints[old_op_id] = matches[0]
     for joint_id, op_id, _partner, _name in TOUCHING:
         op = operations[op_id]
         if op.reversible == "irreversible":
@@ -209,10 +227,9 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
             ("stand-inspect-fit", new_fit_id),
             ("stand-functional-test", new_test_id),
         ):
-            old_check = next(
-                c for c in data["checkpoints"] if c["after_operation_id"] == old_op_id
+            cloned = copy.deepcopy(
+                original_final_checkpoints[old_op_id].model_dump(mode="python")
             )
-            cloned = copy.deepcopy(old_check)
             cloned.update(
                 id=f"{new_op_id}-check",
                 after_operation_id=new_op_id,

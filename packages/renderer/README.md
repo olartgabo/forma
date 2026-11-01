@@ -90,9 +90,12 @@ any parameterization tested or buildable.
 
 The canonical attached-brace continuation retains the original graph as history
 and validates a separate explicit peel/replacement/reattachment sequence. Exact
-fold line, angle, direction and face checks remain required. The first six
-historical panels retain their original geometry and keys; six new continuation
-panels have unique operation-derived keys, followed by invalidated fit/function
-checks. Attached-joint state changes at each peel/reattach stage instead of drawing
-all historical steps with final geometry. Legacy SVG goldens remain unchanged.
+fold line, angle, direction and face checks remain required. A shared narrow stage
+resolver recognizes the14-operation construction-prefix layout and16-operation
+completed-build layout. The former retains six historical panels; the latter
+retains all eight original SVGs, hashes and core keys and adds eight uniquely keyed
+continuation panels, including new final checks. Historical final checks draw the
+original brace; active final checks draw the replacement and require the new
+rear/apex joints. Attached-joint state changes at each peel/reattach stage instead
+of drawing all history with final geometry. Legacy SVG goldens remain unchanged.
 This is a bounded offline manual, not evidence of physical recoverability.

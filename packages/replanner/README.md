@@ -131,7 +131,7 @@ Before packaging integration, add `packages/replanner/src`,
 ## Attached-brace tape continuation
 
 For the original canonical tape stand after its cut, inspection, lip fold and
-three joins, `replace_part` can replace the attached brace from a confirmed
+three joins, or after all eight original operations completed, `replace_part` can replace the attached brace from a confirmed
 remaining measured sheet region. A pure helper emits two new incomplete
 `peel_tape` operations for rear/apex, then replacement cut/inspection and new
 reattachment joints. The front hinge and original completed definitions remain
@@ -147,6 +147,9 @@ not measured user evidence.
 
 The family validator and renderer must accept the staged graph. Exact original
 fold invariants still apply. Base/support replacements, target folds, irreversible
-joins and already-completed final fit/function checks remain blocked. The last
-case is intentionally rejected before any candidate mutation, preserving the
-original completion history. Broader completed-build continuation is not claimed.
+joins and the intermediate seven-operation prefix remain blocked. For the full
+eight-operation case, original fit/function operations and checkpoints remain
+unchanged; new final checks receive new IDs and remain incomplete. Replaying one
+or both confirmed peels retains the original completion history and never refunds
+tape. Historical checkpoint references are checked before candidate construction;
+malformed mappings return blockers rather than exceptions.
