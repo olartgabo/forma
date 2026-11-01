@@ -281,6 +281,8 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
             return result
 
     from forma_api.media import media_router
+    from forma_api.routes.intake import intake_router
 
     router.include_router(media_router(store, authenticate))
+    router.include_router(intake_router(store, authenticate))
     return router
