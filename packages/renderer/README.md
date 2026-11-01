@@ -47,6 +47,21 @@ Identical visible inputs produce identical SVG/hash. Version IDs and timestamps
 are excluded; changed geometry alters affected panels. Cache reuse says nothing
 about checkpoint freshness. API callers must maintain version association.
 
+`diff_manuals(old, new) -> ManualDiff` aligns renderer-generated panels by stable
+`Panel.step_key` metadata before comparing their complete SVG hashes. Core keys
+contain slot/type; replacement cuts use their operation IDs. Keys are outside the
+SVG/hash. `unchanged`, `changed` and `added` contain zero-based new-manual indices;
+`removed` contains old-manual indices. All-unkeyed generic manuals retain positional
+comparison; partial, duplicate or mixed keys are rejected rather than guessed.
+
+For a brace replacement, the original cut moves to new index 1 unchanged, the
+replacement cut is added at index 0, and core consumers at indices 2–8 change.
+Changed visible operation/state IDs count even when fold geometry is unchanged.
+A matching hash never establishes checkpoint freshness or physical validity.
+Identical visible plans compare unchanged; an actual no-op resize remains blocked
+by the replanner. A renderer given one plan cannot infer an ancestor's angle;
+unsupported angle repair is rejected by the replanner, not guessed from history.
+
 ```sh
 uv sync --locked
 uv run --locked pytest packages/renderer/tests

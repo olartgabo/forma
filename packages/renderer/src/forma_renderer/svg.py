@@ -32,6 +32,7 @@ class Panel:
     dependency_hash: str
     svg: str
     tools: tuple[str, ...]
+    step_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -616,6 +617,11 @@ def render_manual(
                 dependency_hash,
                 svg,
                 tools_for(operation),
+                step_key=(
+                    f"replacement:{operation.id}"
+                    if is_supplemental
+                    else f"core:{core_index}:{operation.type}"
+                ),
             )
         )
         attached.update(operation.effects.attached_joint_ids)

@@ -91,3 +91,20 @@ check current; git diff --check exit0. Node/web source unchanged; full npm check
 will run on the combined publication branch. No live model or physical tests.
 
 Parent integration: full npm run check passed with62tests before independent-review fixes. Independent review then found unused sheet waste misreporting and malformed model_copy handling; resource replay BOM and runtime revalidation fixes pass65totaltests, including21renderer tests. Eight rasterized panels were visually inspected; cut/joint label collisions were corrected. No physical or live-provider check ran.
+
+## Stable manual comparison (#48)
+
+Renderer-local `Panel.step_key` is an optional final dataclass field; old six-argument
+construction remains valid. Rendered stand core slots use stable ordinal/type keys,
+while supplemental cuts use operation keys. This metadata is excluded from SVG and
+hash inputs. `diff_manuals` aligns keyed panels and compares full hashes. Generic
+all-unkeyed manuals keep positional behavior; ambiguous metadata raises `ValueError`.
+Unchanged/changed/added indices refer to the new manual, removed indices to the old.
+
+Real replacement tests assert new indices unchanged1, changed2–8, added0, removednone,
+including byte-identical retained cut panels and all three replacement roles.
+No-op requests remain blocked by simulation even though identical visible manuals
+compare unchanged. Angle history cannot be inferred from a standalone valid plan;
+unsupported angle patches are rejected by the replanner. No domain/generated
+contract or route changes; consumers should review this renderer metadata/index
+contract before exposing it in API/UI. Cache reuse is not evidence validity.
