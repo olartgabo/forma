@@ -272,7 +272,8 @@ export default function PlanWorkbench({
         error instanceof ApiError &&
         error.status >= 400 &&
         error.status < 500 &&
-        error.code !== "generation_in_progress"
+        error.code !== "generation_in_progress" &&
+        error.code !== "generation_outcome_unknown"
       )
         setDesignPending(null);
     } finally {
@@ -299,7 +300,7 @@ export default function PlanWorkbench({
   }
 
   function startDesign() {
-    if (!designConsented) return;
+    if (!designConsented || designPending !== null || designUnknown) return;
     const notes = designNotes.trim();
     void runDesign({
       expected_revision_id: project.revision_id,
@@ -359,6 +360,8 @@ export default function PlanWorkbench({
   const designDisabled =
     !designConsented ||
     designBusy ||
+    designPending !== null ||
+    designUnknown ||
     approvalDisabled ||
     pending !== null ||
     project.active_version_id !== null;
