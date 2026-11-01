@@ -158,6 +158,23 @@ def resize_patch(plan):
     )
 
 
+def base_extension_patch(plan):
+    # The one supported stand resize: extend stand-base depth at its
+    # current width (80 x 140 -> 80 x 150 in this fixture).
+    return m.RepairPatch(
+        id="synthetic-base-extension",
+        base_version_id=plan.version_id,
+        kind="resize_part",
+        target_id="stand-base",
+        replacement_stock_id=None,
+        replacement_profile_id=None,
+        width_mm=80,
+        height_mm=150,
+        angle_deg=None,
+        rationale="SYNTHETIC supported base extension only",
+    )
+
+
 def base_input(plan, patch):
     return m.ReplannerInput(
         base_plan=plan,
@@ -169,19 +186,23 @@ def base_input(plan, patch):
     )
 
 
-def test_stand_pipeline_repair_blocked_as_is():
+def test_stand_pipeline_future_support_resize_is_unsupported():
     plan, _, process = compile_and_render()[:3]
-    snapshot = base_input(plan, resize_patch(plan))
+    patch = resize_patch(plan)
+    snapshot = base_input(plan, patch)
     before = deepcopy(plan.model_dump(mode="python"))
     result = simulate_patch(snapshot, process=process, allow_synthetic=True)
-    # Recorded as-is: resizing the stand breaks its triangle geometry.
+    # Only extending stand-base is supported; resizing stand-support is not.
     assert result.status == "blocked"
     assert result.plan is None
     assert result.cost is None
     assert rank_feasible((result,)) == ()
-    assert sorted(b.code for b in result.blockers) == [
-        "geometry_invalid",
-        "geometry_invalid",
+    assert [(b.code, b.message, b.target_ids) for b in result.blockers] == [
+        (
+            "unsupported",
+            "Stand resize only supports extending stand-base; other stand parts cannot be resized.",
+            (patch.target_id,),
+        )
     ]
     assert plan.model_dump(mode="python") == before
 
@@ -242,33 +263,34 @@ def confirmed_tape_input(plan):
     )
 
 
-def test_stand_pipeline_confirmed_tape_needs_undo():
+def test_stand_pipeline_completed_support_resize_is_unsupported():
     plan, _, process = compile_and_render()[:3]
-    result = simulate_patch(
-        confirmed_tape_input(plan), process=process, allow_synthetic=True
-    )
+    snapshot = confirmed_tape_input(plan)
+    result = simulate_patch(snapshot, process=process, allow_synthetic=True)
     assert result.status == "blocked"
     assert result.plan is None
     assert result.cost is None
     assert rank_feasible((result,)) == ()
-    # Recorded as-is: completed cut plus fold and tape need physical undo.
-    assert sorted(b.code for b in result.blockers) == [
-        "irreversible_conflict",
-        "unsupported",
-        "unsupported",
+    # The unsupported target is rejected before any undo reasoning, so this
+    # is not evidence that completed work can or cannot be undone.
+    assert [(b.code, b.message, b.target_ids) for b in result.blockers] == [
+        (
+            "unsupported",
+            "Stand resize only supports extending stand-base; other stand parts cannot be resized.",
+            (snapshot.patch.target_id,),
+        )
     ]
 
 
 def test_stand_pipeline_default_rejects_synthetic():
     plan, _, process = compile_and_render()[:3]
-    result = simulate_patch(base_input(plan, resize_patch(plan)), process=process)
+    # Use the supported base extension so the only rejection on the
+    # default path is the synthetic process provenance.
+    result = simulate_patch(
+        base_input(plan, base_extension_patch(plan)), process=process
+    )
     assert result.status == "blocked"
     assert result.plan is None
     assert result.cost is None
     assert rank_feasible((result,)) == ()
-    # Recorded as-is: same geometry breakage plus synthetic-process rejection.
-    assert sorted(b.code for b in result.blockers) == [
-        "geometry_invalid",
-        "geometry_invalid",
-        "unsupported_profile",
-    ]
+    assert sorted(b.code for b in result.blockers) == ["unsupported_profile"]

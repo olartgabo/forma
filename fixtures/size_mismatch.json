@@ -1,0 +1,756 @@
+{
+  "provenance": "synthetic",
+  "note": "All numeric process/profile values and dimensions are synthetic software fixtures, not physical measurements or physical evidence.",
+  "metadata": {
+    "provenance": "synthetic",
+    "description": "SYNTHETIC offline stand pipeline fixture; no physical build performed.",
+    "numeric_values": "All dimensions, numeric process limits and numeric profile values are synthetic software fixtures, not physical measurements or physical evidence.",
+    "history_note": "User provenance and confirmation values simulate user-reported history for offline tests only; every such record remains explicitly SYNTHETIC in its description.",
+    "purchase_note": "CompilerInput.constraints.allow_purchases is false. No additional stock is introduced except the dimensioned synthetic spare in damaged_slot. ReplannerInput has no separate allow_purchases field.",
+    "legacy_name_note": ""
+  },
+  "compiler_input": {
+    "project_id": "fixture-project",
+    "version_id": "fixture-v1",
+    "created_at": "2026-10-30T00:00:00Z",
+    "candidate": {
+      "id": "fixture-candidate",
+      "family": "tabletop_fixture_v1",
+      "support_angle_deg": 60.0,
+      "part_width_mm": 80.0,
+      "part_height_mm": 150.0,
+      "panel_count": 3,
+      "stock_ids": ["fixture-sheet", "fixture-tape-stock"],
+      "profile_ids": ["fixture-tape-profile", "fixture-fold-profile"],
+      "assumptions": ["SYNTHETIC only"]
+    },
+    "stocks": [
+      {
+        "id": "fixture-sheet",
+        "kind": "sheet",
+        "material": "cardboard",
+        "width_mm": {
+          "value": 200.0,
+          "unit": "mm",
+          "source": "calculated",
+          "confirmed": true,
+          "evidence_ids": []
+        },
+        "height_mm": {
+          "value": 550.0,
+          "unit": "mm",
+          "source": "calculated",
+          "confirmed": true,
+          "evidence_ids": []
+        },
+        "thickness_mm": {
+          "value": 2.0,
+          "unit": "mm",
+          "source": "calculated",
+          "confirmed": true,
+          "evidence_ids": []
+        },
+        "remaining_length_mm": {
+          "value": null,
+          "unit": "mm",
+          "source": "unknown",
+          "confirmed": false,
+          "evidence_ids": []
+        },
+        "condition": "usable",
+        "usable_regions": [
+          {
+            "id": "fixture-region",
+            "geometry": {
+              "x": 0.0,
+              "y": 0.0,
+              "width": 200.0,
+              "height": 550.0,
+              "rotation_deg": 0
+            }
+          }
+        ],
+        "image_ids": [],
+        "allowed_rotations_deg": [0, 90]
+      },
+      {
+        "id": "fixture-tape-stock",
+        "kind": "tape",
+        "material": "other_supported",
+        "width_mm": {
+          "value": 30.0,
+          "unit": "mm",
+          "source": "calculated",
+          "confirmed": true,
+          "evidence_ids": []
+        },
+        "height_mm": {
+          "value": null,
+          "unit": "mm",
+          "source": "unknown",
+          "confirmed": false,
+          "evidence_ids": []
+        },
+        "thickness_mm": {
+          "value": null,
+          "unit": "mm",
+          "source": "unknown",
+          "confirmed": false,
+          "evidence_ids": []
+        },
+        "remaining_length_mm": {
+          "value": 500.0,
+          "unit": "mm",
+          "source": "calculated",
+          "confirmed": true,
+          "evidence_ids": []
+        },
+        "condition": "usable",
+        "usable_regions": [],
+        "image_ids": [],
+        "allowed_rotations_deg": [0, 90]
+      }
+    ],
+    "joint_profiles": [
+      {
+        "id": "fixture-tape-profile",
+        "strategy": "tape",
+        "status": "tested",
+        "material": "cardboard",
+        "thickness_min_mm": 1.0,
+        "thickness_max_mm": 3.0,
+        "tolerated_error_mm": 1.0,
+        "test_evidence_ids": ["fixture-tape"],
+        "limitations": ["SYNTHETIC only"]
+      },
+      {
+        "id": "fixture-fold-profile",
+        "strategy": "fold_brace",
+        "status": "tested",
+        "material": "cardboard",
+        "thickness_min_mm": 1.0,
+        "thickness_max_mm": 3.0,
+        "tolerated_error_mm": 1.0,
+        "test_evidence_ids": ["fixture-fold"],
+        "limitations": ["SYNTHETIC only"]
+      }
+    ],
+    "constraints": {
+      "device_mass_g": {
+        "value": 180.0,
+        "unit": "g",
+        "source": "calculated",
+        "confirmed": true,
+        "evidence_ids": []
+      },
+      "support_angle_deg": {
+        "value": 60.0,
+        "unit": "deg",
+        "source": "calculated",
+        "confirmed": true,
+        "evidence_ids": []
+      },
+      "max_footprint_width_mm": {
+        "value": 120.0,
+        "unit": "mm",
+        "source": "calculated",
+        "confirmed": true,
+        "evidence_ids": []
+      },
+      "max_footprint_height_mm": {
+        "value": 180.0,
+        "unit": "mm",
+        "source": "calculated",
+        "confirmed": true,
+        "evidence_ids": []
+      },
+      "allowed_profile_ids": ["fixture-tape-profile", "fixture-fold-profile"],
+      "allow_purchases": false
+    },
+    "kerf_mm": 2.0,
+    "edge_margin_mm": 4.0,
+    "process_evidence_ids": ["fixture-process"]
+  },
+  "stand_parameters": {
+    "footprint_depth_mm": {
+      "value": 140.0,
+      "unit": "mm",
+      "source": "calculated",
+      "confirmed": true,
+      "evidence_ids": []
+    },
+    "lip_mm": {
+      "value": 15.0,
+      "unit": "mm",
+      "source": "calculated",
+      "confirmed": true,
+      "evidence_ids": []
+    },
+    "device_width_mm": {
+      "value": 70.0,
+      "unit": "mm",
+      "source": "calculated",
+      "confirmed": true,
+      "evidence_ids": []
+    },
+    "device_thickness_mm": {
+      "value": 8.0,
+      "unit": "mm",
+      "source": "calculated",
+      "confirmed": true,
+      "evidence_ids": []
+    },
+    "device_contact_height_mm": {
+      "value": 100.0,
+      "unit": "mm",
+      "source": "calculated",
+      "confirmed": true,
+      "evidence_ids": []
+    },
+    "tape_overlap_mm": {
+      "value": 10.0,
+      "unit": "mm",
+      "source": "calculated",
+      "confirmed": true,
+      "evidence_ids": []
+    },
+    "tools_confirmed": true,
+    "joint_access_confirmed": true,
+    "device_label": "SYNTHETIC phone specimen",
+    "test_duration_seconds": 60.0,
+    "test_surface": "SYNTHETIC flat desk",
+    "test_pass_criteria": ["No slip or tip", "Three insertion/removal cycles"],
+    "profile_evidence": [
+      {
+        "id": "fixture-tape",
+        "project_id": "fixture-project",
+        "version_id": "fixture-v1",
+        "kind": "measurement",
+        "provenance": "synthetic_fixture",
+        "asset_id": null,
+        "part_ids": [],
+        "operation_ids": [],
+        "checkpoint_ids": [],
+        "recorded_at": "2026-10-30T00:00:00Z",
+        "description": "SYNTHETIC software fixture only, not physically tested",
+        "verification_state": "unknown"
+      },
+      {
+        "id": "fixture-fold",
+        "project_id": "fixture-project",
+        "version_id": "fixture-v1",
+        "kind": "measurement",
+        "provenance": "synthetic_fixture",
+        "asset_id": null,
+        "part_ids": [],
+        "operation_ids": [],
+        "checkpoint_ids": [],
+        "recorded_at": "2026-10-30T00:00:00Z",
+        "description": "SYNTHETIC software fixture only, not physically tested",
+        "verification_state": "unknown"
+      }
+    ]
+  },
+  "process": {
+    "kerf_min_mm": 2.0,
+    "edge_margin_min_mm": 4.0,
+    "evidence": [
+      {
+        "id": "fixture-process",
+        "project_id": "fixture-project",
+        "version_id": "fixture-v1",
+        "kind": "measurement",
+        "provenance": "synthetic_fixture",
+        "asset_id": null,
+        "part_ids": [],
+        "operation_ids": [],
+        "checkpoint_ids": [],
+        "recorded_at": "2026-10-30T00:00:00Z",
+        "description": "SYNTHETIC software fixture only, not physically tested",
+        "verification_state": "unknown"
+      }
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "before_cut_base_extension",
+      "replanner_input": {
+        "events": [],
+        "evidence": [],
+        "material_transactions": [],
+        "remaining_stock": [
+          {
+            "id": "fixture-sheet",
+            "kind": "sheet",
+            "material": "cardboard",
+            "width_mm": {
+              "value": 200.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "height_mm": {
+              "value": 550.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "thickness_mm": {
+              "value": 2.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "remaining_length_mm": {
+              "value": null,
+              "unit": "mm",
+              "source": "unknown",
+              "confirmed": false,
+              "evidence_ids": []
+            },
+            "condition": "usable",
+            "usable_regions": [
+              {
+                "id": "fixture-region",
+                "geometry": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "width": 200.0,
+                  "height": 550.0,
+                  "rotation_deg": 0
+                }
+              }
+            ],
+            "image_ids": [],
+            "allowed_rotations_deg": [0, 90]
+          },
+          {
+            "id": "fixture-tape-stock",
+            "kind": "tape",
+            "material": "other_supported",
+            "width_mm": {
+              "value": 30.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "height_mm": {
+              "value": null,
+              "unit": "mm",
+              "source": "unknown",
+              "confirmed": false,
+              "evidence_ids": []
+            },
+            "thickness_mm": {
+              "value": null,
+              "unit": "mm",
+              "source": "unknown",
+              "confirmed": false,
+              "evidence_ids": []
+            },
+            "remaining_length_mm": {
+              "value": 500.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "condition": "usable",
+            "usable_regions": [],
+            "image_ids": [],
+            "allowed_rotations_deg": [0, 90]
+          }
+        ],
+        "patch": {
+          "id": "extend-base",
+          "base_version_id": "fixture-v1",
+          "kind": "resize_part",
+          "target_id": "stand-base",
+          "replacement_stock_id": null,
+          "replacement_profile_id": null,
+          "width_mm": 80.0,
+          "height_mm": 150.0,
+          "angle_deg": null,
+          "rationale": "SYNTHETIC hypothetical repair; no physical test."
+        }
+      },
+      "expected": {
+        "status": "feasible",
+        "blocker_codes": [],
+        "preserved_operation_ids": [],
+        "required_undo_operation_ids": [],
+        "invalidated_checkpoint_ids": [
+          "stand-inspect-cuts-check",
+          "stand-inspect-fit-check",
+          "stand-function-check"
+        ],
+        "feasible_patch_ids": ["extend-base"]
+      },
+      "mutation_input": {
+        "events": [],
+        "evidence": [],
+        "material_transactions": [],
+        "remaining_stock": [
+          {
+            "id": "fixture-sheet",
+            "kind": "sheet",
+            "material": "cardboard",
+            "width_mm": {
+              "value": 200.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "height_mm": {
+              "value": 550.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "thickness_mm": {
+              "value": 2.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "remaining_length_mm": {
+              "value": null,
+              "unit": "mm",
+              "source": "unknown",
+              "confirmed": false,
+              "evidence_ids": []
+            },
+            "condition": "usable",
+            "usable_regions": [
+              {
+                "id": "fixture-region",
+                "geometry": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "width": 200.0,
+                  "height": 550.0,
+                  "rotation_deg": 0
+                }
+              }
+            ],
+            "image_ids": [],
+            "allowed_rotations_deg": [0, 90]
+          },
+          {
+            "id": "fixture-tape-stock",
+            "kind": "tape",
+            "material": "other_supported",
+            "width_mm": {
+              "value": 30.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "height_mm": {
+              "value": null,
+              "unit": "mm",
+              "source": "unknown",
+              "confirmed": false,
+              "evidence_ids": []
+            },
+            "thickness_mm": {
+              "value": null,
+              "unit": "mm",
+              "source": "unknown",
+              "confirmed": false,
+              "evidence_ids": []
+            },
+            "remaining_length_mm": {
+              "value": 500.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "condition": "usable",
+            "usable_regions": [],
+            "image_ids": [],
+            "allowed_rotations_deg": [0, 90]
+          }
+        ],
+        "patch": {
+          "id": "extend-base",
+          "base_version_id": "fixture-v1",
+          "kind": "resize_part",
+          "target_id": "stand-base",
+          "replacement_stock_id": null,
+          "replacement_profile_id": null,
+          "width_mm": 80.0,
+          "height_mm": 400.0,
+          "angle_deg": null,
+          "rationale": "SYNTHETIC hypothetical repair; no physical test."
+        }
+      },
+      "mutation_expected": {
+        "status": "blocked",
+        "blocker_codes": ["geometry_invalid"],
+        "preserved_operation_ids": [],
+        "required_undo_operation_ids": [],
+        "invalidated_checkpoint_ids": [],
+        "feasible_patch_ids": []
+      }
+    },
+    {
+      "id": "after_cut_base_extension",
+      "replanner_input": {
+        "events": [
+          {
+            "id": "synthetic-event-1",
+            "project_id": "fixture-project",
+            "version_id": "fixture-v1",
+            "operation_id": "stand-cut-panels",
+            "kind": "operation_confirmed",
+            "evidence_ids": ["synthetic-history-evidence-0"],
+            "recorded_at": "2026-10-30T00:00:01Z",
+            "actor": "user",
+            "observation": "SYNTHETIC software fixture report; no physical work performed.",
+            "verification_state": "user_confirmed",
+            "test_result": null
+          }
+        ],
+        "evidence": [
+          {
+            "id": "synthetic-history-evidence-0",
+            "project_id": "fixture-project",
+            "version_id": "fixture-v1",
+            "kind": "user_report",
+            "provenance": "user",
+            "asset_id": null,
+            "part_ids": [],
+            "operation_ids": [],
+            "checkpoint_ids": [],
+            "recorded_at": "2026-10-30T00:00:01Z",
+            "description": "SYNTHETIC software-only report; not a physical measurement.",
+            "verification_state": "user_confirmed"
+          }
+        ],
+        "material_transactions": [],
+        "remaining_stock": [
+          {
+            "id": "fixture-sheet",
+            "kind": "sheet",
+            "material": "cardboard",
+            "width_mm": {
+              "value": 200.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "height_mm": {
+              "value": 550.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "thickness_mm": {
+              "value": 2.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "remaining_length_mm": {
+              "value": null,
+              "unit": "mm",
+              "source": "unknown",
+              "confirmed": false,
+              "evidence_ids": []
+            },
+            "condition": "usable",
+            "usable_regions": [],
+            "image_ids": [],
+            "allowed_rotations_deg": [0, 90]
+          },
+          {
+            "id": "fixture-tape-stock",
+            "kind": "tape",
+            "material": "other_supported",
+            "width_mm": {
+              "value": 30.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "height_mm": {
+              "value": null,
+              "unit": "mm",
+              "source": "unknown",
+              "confirmed": false,
+              "evidence_ids": []
+            },
+            "thickness_mm": {
+              "value": null,
+              "unit": "mm",
+              "source": "unknown",
+              "confirmed": false,
+              "evidence_ids": []
+            },
+            "remaining_length_mm": {
+              "value": 500.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "condition": "usable",
+            "usable_regions": [],
+            "image_ids": [],
+            "allowed_rotations_deg": [0, 90]
+          }
+        ],
+        "patch": {
+          "id": "extend-base-after-cut",
+          "base_version_id": "fixture-v1",
+          "kind": "resize_part",
+          "target_id": "stand-base",
+          "replacement_stock_id": null,
+          "replacement_profile_id": null,
+          "width_mm": 80.0,
+          "height_mm": 150.0,
+          "angle_deg": null,
+          "rationale": "SYNTHETIC hypothetical repair; no physical test."
+        }
+      },
+      "expected": {
+        "status": "blocked",
+        "blocker_codes": ["unsupported"],
+        "preserved_operation_ids": [],
+        "required_undo_operation_ids": [],
+        "invalidated_checkpoint_ids": [],
+        "feasible_patch_ids": []
+      },
+      "mutation_input": {
+        "events": [],
+        "evidence": [],
+        "material_transactions": [],
+        "remaining_stock": [
+          {
+            "id": "fixture-sheet",
+            "kind": "sheet",
+            "material": "cardboard",
+            "width_mm": {
+              "value": 200.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "height_mm": {
+              "value": 550.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "thickness_mm": {
+              "value": 2.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "remaining_length_mm": {
+              "value": null,
+              "unit": "mm",
+              "source": "unknown",
+              "confirmed": false,
+              "evidence_ids": []
+            },
+            "condition": "usable",
+            "usable_regions": [
+              {
+                "id": "fixture-region",
+                "geometry": {
+                  "x": 0.0,
+                  "y": 0.0,
+                  "width": 200.0,
+                  "height": 550.0,
+                  "rotation_deg": 0
+                }
+              }
+            ],
+            "image_ids": [],
+            "allowed_rotations_deg": [0, 90]
+          },
+          {
+            "id": "fixture-tape-stock",
+            "kind": "tape",
+            "material": "other_supported",
+            "width_mm": {
+              "value": 30.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "height_mm": {
+              "value": null,
+              "unit": "mm",
+              "source": "unknown",
+              "confirmed": false,
+              "evidence_ids": []
+            },
+            "thickness_mm": {
+              "value": null,
+              "unit": "mm",
+              "source": "unknown",
+              "confirmed": false,
+              "evidence_ids": []
+            },
+            "remaining_length_mm": {
+              "value": 500.0,
+              "unit": "mm",
+              "source": "calculated",
+              "confirmed": true,
+              "evidence_ids": []
+            },
+            "condition": "usable",
+            "usable_regions": [],
+            "image_ids": [],
+            "allowed_rotations_deg": [0, 90]
+          }
+        ],
+        "patch": {
+          "id": "extend-base-after-cut",
+          "base_version_id": "fixture-v1",
+          "kind": "resize_part",
+          "target_id": "stand-base",
+          "replacement_stock_id": null,
+          "replacement_profile_id": null,
+          "width_mm": 80.0,
+          "height_mm": 150.0,
+          "angle_deg": null,
+          "rationale": "SYNTHETIC hypothetical repair; no physical test."
+        }
+      },
+      "mutation_expected": {
+        "status": "feasible",
+        "blocker_codes": [],
+        "preserved_operation_ids": [],
+        "required_undo_operation_ids": [],
+        "invalidated_checkpoint_ids": [
+          "stand-inspect-cuts-check",
+          "stand-inspect-fit-check",
+          "stand-function-check"
+        ],
+        "feasible_patch_ids": ["extend-base-after-cut"]
+      }
+    }
+  ]
+}
