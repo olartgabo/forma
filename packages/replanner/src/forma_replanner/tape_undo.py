@@ -89,6 +89,20 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
     missing = [oid for oid in required_completed if oid not in completed]
     if creator.id not in completed or missing:
         return False, None, (), ()
+    completed_final_checks = tuple(
+        oid
+        for oid in ("stand-inspect-fit", "stand-functional-test")
+        if oid in completed
+    )
+    if completed_final_checks:
+        return blocked(
+            "unsupported",
+            "Tape-undo replacement does not support a completed "
+            "stand-inspect-fit or stand-functional-test operation; "
+            "completed final checks cannot be retargeted to the "
+            "replacement brace.",
+            *completed_final_checks,
+        )
     for joint_id, op_id, _partner, _name in TOUCHING:
         op = operations[op_id]
         if op.reversible == "irreversible":

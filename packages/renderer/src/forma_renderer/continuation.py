@@ -248,6 +248,23 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
             "Historical fold operation must reference only the support part.",
             (fold_op.id,),
         )
+    if feature is not None and support is not None:
+        fold = fold_op.args
+        if (
+            fold.feature_id != feature.id
+            or fold.start_x_mm != 0
+            or fold.end_x_mm != support_part.geometry.width
+            or fold.start_y_mm != support
+            or fold.end_y_mm != support
+            or fold.angle_deg != 90
+            or fold.direction != "valley"
+            or fold.reachable_face != "front"
+        ):
+            add(
+                "geometry_invalid",
+                "Fold operation arguments must match the active support fold feature.",
+                (fold_op.id, feature.id),
+            )
     for op, joint_id in zip(operations[3:6], _JOINT_IDS, strict=True):
         if op.args.joint_id != joint_id or op.part_ids != original_joints[joint_id]:
             add(

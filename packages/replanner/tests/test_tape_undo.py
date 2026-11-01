@@ -227,6 +227,62 @@ def test_attached_brace_peel_and_reattach_leaves_100mm():
     assert all(o.id in result.incomplete_operation_ids for o in peels)
 
 
+@pytest.mark.parametrize(
+    "completed_final_checks",
+    [
+        ("stand-inspect-fit",),
+        ("stand-functional-test",),
+        ("stand-inspect-fit", "stand-functional-test"),
+    ],
+)
+def test_completed_final_checks_block_before_candidate_construction(
+    completed_final_checks,
+):
+    base, snapshot, process = attached_snapshot()
+    ops = {o.id: o for o in base.operations}
+    extra_events = tuple(
+        m.PhysicalEvent(
+            id=f"synthetic-tape-undo-{op_id}",
+            project_id=base.project_id,
+            version_id=base.version_id,
+            operation_id=op_id,
+            kind="operation_confirmed",
+            evidence_ids=(),
+            recorded_at=base.created_at,
+            actor="user",
+            observation="SYNTHETIC user-confirmed operation; no physical build.",
+            verification_state="user_confirmed",
+        )
+        for op_id in completed_final_checks
+    )
+    assert all(op_id in ops for op_id in completed_final_checks)
+    changed = snapshot.model_copy(update={"events": snapshot.events + extra_events})
+    result = simulate(changed, process)
+    assert result.status == "blocked"
+    assert result.plan is None
+    assert result.cost is None
+    if completed_final_checks == ("stand-functional-test",):
+        # Simulation rejects a test completion that precedes its fit
+        # prerequisite before any candidate can be constructed.
+        assert any(
+            b.code == "invalid_order" and b.target_ids == completed_final_checks
+            for b in result.blockers
+        ), result.blockers
+    else:
+        assert any(
+            b.code == "unsupported"
+            and "completed" in b.message
+            and "stand-inspect-fit" in b.message
+            and "stand-functional-test" in b.message
+            and b.target_ids == completed_final_checks
+            for b in result.blockers
+        ), result.blockers
+    # Completion history is preserved and not stripped to obtain a candidate.
+    assert tuple(e.operation_id for e in changed.events[-len(extra_events) :]) == (
+        completed_final_checks
+    )
+
+
 def test_dependent_evidence_and_checkpoints_invalidate():
     base, snapshot, process = attached_snapshot()
     evidence = m.Evidence(

@@ -119,3 +119,17 @@ use separate headings; the original eight core slots keep stable numbering so
 unchanged visible panels retain their hashes. Hashes still cover the entire SVG.
 Grouped cuts are preserved while their other outputs remain useful; retired-part
 material loss is explicit. This changes no schema, physical claim or approval flow.
+
+
+## Brace-only explicit tape undo, November1,2026
+
+Issue44 adds an offline continuation for the canonical attached brace after the
+original six-operation construction prefix. Rear/apex peels are new incomplete
+operations; old definitions/consumption remain immutable, front hinge is kept,
+and remaining measured stock funds replacement. The manual validates historical
+and active stages separately. Exact fold invariants apply to both paths.
+
+Completed final fit/function checks block before construction of this candidate;
+the current slice does not rewrite or drop their completion history. Base/support
+replacement and generic physical inverses remain unsupported. Synthetic
+compile/simulate/rank/render regression evidence does not establish a bench pass.

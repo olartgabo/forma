@@ -84,3 +84,15 @@ npm run check
 See [the handoff](../../docs/handoffs/issue-8-stand-manual.md). Measured inventory,
 real profile experiments and a physical build are still required before calling
 any parameterization tested or buildable.
+
+
+## Brace tape-undo manual
+
+The canonical attached-brace continuation retains the original graph as history
+and validates a separate explicit peel/replacement/reattachment sequence. Exact
+fold line, angle, direction and face checks remain required. The first six
+historical panels retain their original geometry and keys; six new continuation
+panels have unique operation-derived keys, followed by invalidated fit/function
+checks. Attached-joint state changes at each peel/reattach stage instead of drawing
+all historical steps with final geometry. Legacy SVG goldens remain unchanged.
+This is a bounded offline manual, not evidence of physical recoverability.

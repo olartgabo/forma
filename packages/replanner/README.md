@@ -126,3 +126,27 @@ After the parent integrates package/test discovery, run
 `python -m ruff check packages/replanner` in the repository environment.
 Before packaging integration, add `packages/replanner/src`,
 `packages/compiler/src` and `packages/domain/src` to `PYTHONPATH`.
+
+
+## Attached-brace tape continuation
+
+For the original canonical tape stand after its cut, inspection, lip fold and
+three joins, `replace_part` can replace the attached brace from a confirmed
+remaining measured sheet region. A pure helper emits two new incomplete
+`peel_tape` operations for rear/apex, then replacement cut/inspection and new
+reattachment joints. The front hinge and original completed definitions remain
+historical; peeled joins are lost work and their tape is never refunded.
+
+`required_undo_operation_ids` names the new peel operations. New work carries
+explicit device-removal, support, access and undamaged-partner human checks;
+scoped access and remaining-stock limits still gate the proposal. Dependent
+checks/evidence invalidate; no events, transactions, salvage or physical passes
+are created. The synthetic positive case has known weighted cost8 and consumes
+160mm of new tape after240mm historic consumption. These are fixture values,
+not measured user evidence.
+
+The family validator and renderer must accept the staged graph. Exact original
+fold invariants still apply. Base/support replacements, target folds, irreversible
+joins and already-completed final fit/function checks remain blocked. The last
+case is intentionally rejected before any candidate mutation, preserving the
+original completion history. Broader completed-build continuation is not claimed.

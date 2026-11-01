@@ -722,6 +722,46 @@ def test_attached_brace_tape_undo_is_feasible_cost8_and_rendered():
     assert tape_bill.quantity == 100
 
 
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"angle_deg": 45},
+        {"start_y_mm": 0},
+        {"end_y_mm": 0},
+        {"end_x_mm": 10},
+        {"direction": "mountain"},
+        {"reachable_face": "back"},
+    ],
+)
+def test_attached_brace_tape_undo_invalid_fold_blocks(updates):
+    def mutate(plan):
+        return _with_op_args(plan, "stand-fold-lip", **updates)
+
+    _base, _snapshot, result, _process = _attached_brace_replacement(mutate_plan=mutate)
+    assert result.status == "blocked"
+    assert result.plan is None
+    assert any(
+        b.code == "geometry_invalid"
+        and "Fold operation arguments must match" in b.message
+        for b in result.blockers
+    ), result.blockers
+
+
+def test_tape_undo_plan_with_invalid_fold_angle_is_not_render_accepted():
+    _base, _snapshot, result, process = _attached_brace_replacement()
+    assert result.status == "feasible", result.blockers
+    changed = _with_op_args(result.plan, "stand-fold-lip", angle_deg=45)
+    _assert_blocker(changed, "geometry_invalid", "Fold operation arguments")
+    _plan, parameters, _p = build()
+    rendered = render_manual(
+        changed,
+        process=process,
+        profile_evidence=parameters.profile_evidence,
+        allow_synthetic=True,
+    )
+    assert rendered.status != "accepted"
+
+
 def test_attached_brace_tape_undo_insufficient_tape_blocks():
     _base, _snapshot, result, _process = _attached_brace_replacement(tape_length=399)
     assert result.status == "blocked"
