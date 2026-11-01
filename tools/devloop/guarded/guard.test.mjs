@@ -1,5 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,7 +22,7 @@ async function fixture(t,options={}){
  await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>server.close());
  const call=(body={model:MODEL},auth='test')=>fetch(`http://127.0.0.1:${server.address().port}/v1/responses`,{method:'POST',headers:{authorization:`Bearer ${auth}`},body:JSON.stringify(body)});
  const status=()=>fetch(`http://127.0.0.1:${server.address().port}/status`,{headers:{authorization:'Bearer test'}});
- return {dir,ledger,externalLedger,usageFile:path.join(dir,'usage.jsonl'),call,status,calls:()=>calls};
+  return {dir,ledger,externalLedger,usageFile:path.join(dir,'usage.jsonl'),call,status,port:server.address().port,calls:()=>calls};
 }
 test('settles usage and persists across reads; rejects unauthorized requests',async t=>{
  const f=await fixture(t);assert.equal((await f.call({},'bad')).status,401);assert.equal(f.calls(),0);
@@ -97,6 +98,15 @@ test('maxConcurrent is validated as integer 1 or 2',()=>{
  for(const good of [1,2,undefined])assert.doesNotThrow(()=>createGuard({ledger:'x',token:'t',key:'k',expires:'2099-01-01',maxConcurrent:good}).close());
 });
 async function waitFor(fn){for(let i=0;i<100;i++){if(fn())return;await new Promise(r=>setTimeout(r,5));}throw Error('waitFor timed out');}
+async function waitForStatus(f,predicate){for(let i=0;i<200;i++){const s=await(await f.status()).json();if(predicate(s))return s;await new Promise(r=>setTimeout(r,5));}throw Error('waitForStatus timed out');}
+function slowCall(port,body){
+ const payload=JSON.stringify(body),split=Math.max(1,Math.floor(payload.length/2));let finish;
+ const response=new Promise((resolve,reject)=>{
+  const req=http.request({host:'127.0.0.1',port,path:'/v1/responses',method:'POST',headers:{authorization:'Bearer test','content-type':'application/json','content-length':Buffer.byteLength(payload)}},res=>{const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>resolve({status:res.statusCode,body:Buffer.concat(chunks).toString('utf8')}));});
+  req.on('error',reject);req.write(payload.slice(0,split));finish=()=>req.end(payload.slice(split));
+ });
+ return {response,complete:()=>finish()};
+}
 function ledgerEvents(f){return fs.readFileSync(f.ledger,'utf8').trim().split('\n').map(JSON.parse);}
 function usageEvents(f){return fs.existsSync(f.usageFile)&&fs.statSync(f.usageFile).isFile()?fs.readFileSync(f.usageFile,'utf8').trim().split('\n').filter(Boolean).map(JSON.parse):[];}
 
@@ -177,6 +187,48 @@ test('usage audit I/O failure fails closed without settlement',async t=>{
 test('STOP blocks concurrent-mode dispatch without upstream call',async t=>{
  const f=await fixture(t,{maxConcurrent:2});fs.writeFileSync(path.join(f.dir,'STOP'),'');
  assert.equal((await f.call()).status,403);assert.equal(f.calls(),0);assert.equal(ledgerEvents(f).filter(e=>e.kind==='reserve').length,0);
+});
+
+test('delayed body admitted before concurrent uncertain failure halts is not reserved or dispatched',async t=>{
+ let upstream=0;
+ const f=await fixture(t,{maxConcurrent:2,request:async(_u,opts)=>{upstream++;if(JSON.parse(opts.body).input==='bad')throw Error('network lost');return new Response(JSON.stringify({usage:{input_tokens:100,output_tokens:10}}),{headers:{'content-type':'application/json'}});}});
+ const slow=slowCall(f.port,{model:MODEL,input:'slow'});
+ // B holds a slot and is still sending its body before A fails.
+ assert.equal((await waitForStatus(f,s=>s.activeRequests===1)).activeRequests,1);
+ assert.equal((await f.call({model:MODEL,input:'bad'})).status,503);
+ const haltedState=await waitForStatus(f,s=>s.halted===true);
+ assert.equal(haltedState.activeRequests,1);assert.equal(upstream,1);
+ assert.equal(ledgerEvents(f).filter(e=>e.kind==='reserve').length,1);assert.equal(readLedger(f.ledger).pending.size,1);
+ slow.complete();
+ assert.equal((await slow.response).status,403);
+ assert.equal(upstream,1);assert.equal(ledgerEvents(f).filter(e=>e.kind==='reserve').length,1);
+ assert.equal(readLedger(f.ledger).spent,RESERVE);assert.equal(readLedger(f.ledger).pending.size,1);
+ assert.equal((await waitForStatus(f,s=>s.activeRequests===0)).halted,true);
+});
+
+test('delayed body admitted before STOP appears is not reserved or dispatched',async t=>{
+ let upstream=0;
+ const f=await fixture(t,{maxConcurrent:2,request:async()=>{upstream++;return new Response(JSON.stringify({usage:{input_tokens:100,output_tokens:10}}),{headers:{'content-type':'application/json'}});}});
+ const slow=slowCall(f.port,{model:MODEL,input:'slow'});
+ assert.equal((await waitForStatus(f,s=>s.activeRequests===1)).activeRequests,1);
+ fs.writeFileSync(path.join(f.dir,'STOP'),'');
+ slow.complete();
+ assert.equal((await slow.response).status,403);
+ assert.equal(upstream,0);assert.equal(ledgerEvents(f).filter(e=>e.kind==='reserve').length,0);assert.equal(readLedger(f.ledger).pending.size,0);
+ assert.equal((await waitForStatus(f,s=>s.activeRequests===0)).activeRequests,0);
+});
+
+test('delayed body admitted before expiry passes is not reserved or dispatched',async t=>{
+ let upstream=0;
+ const expires=new Date(Date.now()+600).toISOString();
+ const f=await fixture(t,{maxConcurrent:2,expires,request:async()=>{upstream++;return new Response(JSON.stringify({usage:{input_tokens:100,output_tokens:10}}),{headers:{'content-type':'application/json'}});}});
+ const slow=slowCall(f.port,{model:MODEL,input:'slow'});
+ assert.equal((await waitForStatus(f,s=>s.activeRequests===1)).activeRequests,1);
+ while(Date.now()<=Date.parse(expires))await new Promise(r=>setTimeout(r,10));
+ slow.complete();
+ assert.equal((await slow.response).status,403);
+ assert.equal(upstream,0);assert.equal(ledgerEvents(f).filter(e=>e.kind==='reserve').length,0);assert.equal(readLedger(f.ledger).pending.size,0);
+ assert.equal((await waitForStatus(f,s=>s.activeRequests===0)).activeRequests,0);
 });
 
 test('verified free-credit funding can supersede the old90cap without rewriting its journal',async t=>{

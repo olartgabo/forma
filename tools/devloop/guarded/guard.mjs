@@ -52,19 +52,21 @@ export function createGuard({ledger,externalLedger=SPARK_LEDGER,token,key,expire
   if(!Number.isSafeInteger(cap)||cap<RESERVE)throw Error('Verified funding ceiling invalid');
   if(!Number.isSafeInteger(maxConcurrent)||(maxConcurrent!==1&&maxConcurrent!==2))throw Error('maxConcurrent must be 1 or 2');
   let activeRequests=0, halted=false;
+  const paused=()=>halted||fs.existsSync(path.join(path.dirname(ledger),'STOP'))||!Number.isFinite(Date.parse(expires))||Date.now()>=Date.parse(expires);
   const usageFile=path.join(path.dirname(ledger),'usage.jsonl');
   const reply=(r,code,message)=>{r.writeHead(code,{'content-type':'application/json'});r.end(JSON.stringify({error:{message,type:'budget_guard'}}));};
   return http.createServer(async(req,res)=>{
     if(req.headers.authorization!==`Bearer ${token}`)return reply(res,401,'Local access token required');
     if(req.method==='GET'&&req.url==='/status') {try{const local=readLedger(ledger),externalSpent=readExternalSpend(externalLedger);res.end(JSON.stringify({...local,pending:local.pending.size,externalSpent,combinedSpent:local.spent+externalSpent,cap,expires,halted,activeRequests,maxConcurrent}));}catch{reply(res,503,'Budget record unavailable');}return;}
     if(req.method!=='POST'||!['/v1/responses','/responses'].includes(req.url))return reply(res,403,'Only guarded Responses requests are allowed');
-    if(halted||fs.existsSync(path.join(path.dirname(ledger),'STOP'))||!Number.isFinite(Date.parse(expires))||Date.now()>=Date.parse(expires))return reply(res,403,'Usage paused: stop switch active or account credit/pricing recheck required');
+    if(paused())return reply(res,403,'Usage paused: stop switch active or account credit/pricing recheck required');
     if(activeRequests>=maxConcurrent)return reply(res,429,'Concurrent request limit reached; concurrent calls blocked');
     // Synchronous admission in the shared event loop: hold the slot before any await.
     activeRequests++; let reserved=false, id=crypto.randomUUID();
     try {
       let raw='';for await(const chunk of req){raw+=chunk.toString('utf8');if(Buffer.byteLength(raw)>8_000_000)throw Error('Request too large');}
       const body=validate(JSON.parse(raw));
+      if(paused())return reply(res,403,'Usage paused: stop switch active or account credit/pricing recheck required');
       const {spent}=readLedger(ledger);
       const externalSpent=readExternalSpend(externalLedger);
       if(spent+externalSpent+RESERVE>cap)return reply(res,402,'Combined recorded usage reached the lifetime budget; request blocked');
