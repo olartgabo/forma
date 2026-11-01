@@ -93,9 +93,9 @@ test('external USD entries round upward individually to micros',async t=>{
  assert.equal(readExternalSpend(f.externalLedger),3);
 });
 
-test('maxConcurrent is validated as integer 1 or 2',()=>{
- for(const bad of [0,3,1.5,'2',NaN,null])assert.throws(()=>createGuard({ledger:'x',token:'t',key:'k',expires:'2099-01-01',maxConcurrent:bad}),/maxConcurrent/);
- for(const good of [1,2,undefined])assert.doesNotThrow(()=>createGuard({ledger:'x',token:'t',key:'k',expires:'2099-01-01',maxConcurrent:good}).close());
+test('maxConcurrent is validated as integer 1, 2 or 3',()=>{
+ for(const bad of [0,4,1.5,'2',NaN,null])assert.throws(()=>createGuard({ledger:'x',token:'t',key:'k',expires:'2099-01-01',maxConcurrent:bad}),/maxConcurrent/);
+ for(const good of [1,2,3,undefined])assert.doesNotThrow(()=>createGuard({ledger:'x',token:'t',key:'k',expires:'2099-01-01',maxConcurrent:good}).close());
 });
 async function waitFor(fn){for(let i=0;i<100;i++){if(fn())return;await new Promise(r=>setTimeout(r,5));}throw Error('waitFor timed out');}
 async function waitForStatus(f,predicate){for(let i=0;i<200;i++){const s=await(await f.status()).json();if(predicate(s))return s;await new Promise(r=>setTimeout(r,5));}throw Error('waitForStatus timed out');}
@@ -133,6 +133,47 @@ test('opt-in 2 admits two simultaneous, third 429 before reserve/dispatch, separ
  const usage=usageEvents(f);assert.equal(usage.length,2);assert.deepEqual(new Set(usage.map(e=>e.id)),new Set(reserves.map(e=>e.id)));assert.deepEqual(usage.map(e=>e.input_tokens).sort((a,b)=>a-b),[100,200]);assert.deepEqual(usage.map(e=>e.output_tokens).sort((a,b)=>a-b),[10,20]);
  for(const e of usage){assert.deepEqual(Object.keys(e).sort(),['at','id','input_tokens','model','output_tokens']);assert.equal(e.model,MODEL);assert.ok(Number.isFinite(Date.parse(e.at)));}
  assert.equal(readLedger(f.ledger).pending.size,0);
+});
+
+test('opt-in 3 admits three simultaneous, fourth 429 before reserve/dispatch, out-of-order settlements attributed by id',async t=>{
+ const usages={one:{input_tokens:100,output_tokens:10},two:{input_tokens:200,output_tokens:20},three:{input_tokens:300,output_tokens:30}};
+ const resolvers=new Map();let upstream=0;
+ const f=await fixture(t,{maxConcurrent:3,request:async(_u,opts)=>{upstream++;const input=JSON.parse(opts.body).input;return new Promise(resolve=>resolvers.set(input,()=>resolve(new Response(JSON.stringify({usage:usages[input]}),{headers:{'content-type':'application/json'}}))));}});
+ const p1=f.call({model:MODEL,input:'one'}),p2=f.call({model:MODEL,input:'two'}),p3=f.call({model:MODEL,input:'three'});
+ await waitFor(()=>upstream===3);await waitFor(()=>ledgerEvents(f).filter(e=>e.kind==='reserve').length===3);
+ const st=await(await f.status()).json();assert.equal(st.activeRequests,3);assert.equal(st.maxConcurrent,3);assert.equal(st.pending,3);
+ assert.equal((await f.call({model:MODEL,input:'four'})).status,429);assert.equal(upstream,3);assert.equal(ledgerEvents(f).filter(e=>e.kind==='reserve').length,3);
+ // Complete out of order: three, one, two.
+ resolvers.get('three')();resolvers.get('one')();resolvers.get('two')();
+ const rs=await Promise.all([p1,p2,p3]);assert.deepEqual(rs.map(r=>r.status),[200,200,200]);for(const r of rs)await r.text();
+ const events=ledgerEvents(f),reserves=events.filter(e=>e.kind==='reserve'),settles=events.filter(e=>e.kind==='settle');
+ assert.equal(new Set(reserves.map(e=>e.id)).size,3);assert.deepEqual(new Set(settles.map(e=>e.id)),new Set(reserves.map(e=>e.id)));
+ const usage=usageEvents(f);assert.equal(usage.length,3);assert.deepEqual(new Set(usage.map(e=>e.id)),new Set(reserves.map(e=>e.id)));
+ // Usage audit order follows completion order, and each settle matches its own usage id/cost.
+ assert.deepEqual(usage.map(e=>[e.input_tokens,e.output_tokens]),[[300,30],[100,10],[200,20]]);
+ assert.deepEqual(settles.map(e=>e.amount),[1800,600,1200]);
+ for(const e of usage){const settle=settles.find(s=>s.id===e.id);assert.equal(settle.amount,e.input_tokens*4+e.output_tokens*20);assert.deepEqual(Object.keys(e).sort(),['at','id','input_tokens','model','output_tokens']);assert.equal(e.model,MODEL);}
+ assert.equal(readLedger(f.ledger).pending.size,0);assert.equal(readLedger(f.ledger).spent,3600);
+ const st2=await(await f.status()).json();assert.equal(st2.activeRequests,0);
+});
+
+test('one uncertain failure among three halts even when the other two settle',async t=>{
+ let release;const wait=new Promise(r=>release=r);
+ const usages={good1:{input_tokens:100,output_tokens:10},good2:{input_tokens:200,output_tokens:20}};
+ const f=await fixture(t,{maxConcurrent:3,request:async(_u,opts)=>{const input=JSON.parse(opts.body).input;if(input==='bad')throw Error('network lost');await wait;return new Response(JSON.stringify({usage:usages[input]}),{headers:{'content-type':'application/json'}});}});
+ const g1=f.call({model:MODEL,input:'good1'}),g2=f.call({model:MODEL,input:'good2'}),bad=f.call({model:MODEL,input:'bad'});
+ assert.equal((await bad).status,503);release();
+ const [r1,r2]=await Promise.all([g1,g2]);assert.equal(r1.status,200);assert.equal(r2.status,200);await r1.text();await r2.text();
+ assert.equal((await f.call()).status,403);
+ const st=await(await f.status()).json();assert.equal(st.halted,true);assert.equal(st.pending,1);assert.equal(st.maxConcurrent,3);
+ const events=ledgerEvents(f),reserves=events.filter(e=>e.kind==='reserve'),settles=events.filter(e=>e.kind==='settle');
+ assert.equal(reserves.length,3);assert.equal(new Set(reserves.map(e=>e.id)).size,3);assert.equal(settles.length,2);
+ const usage=usageEvents(f);assert.equal(usage.length,2);assert.deepEqual(new Set(usage.map(e=>e.id)),new Set(settles.map(e=>e.id)));
+ assert.deepEqual(usage.map(e=>[e.input_tokens,e.output_tokens]).sort((a,b)=>a[0]-b[0]),[[100,10],[200,20]]);
+ for(const e of usage)assert.equal(settles.find(s=>s.id===e.id).amount,e.input_tokens*4+e.output_tokens*20);
+ // Exactly the uncertain reservation remains pending and retains its full cost.
+ const pendingIds=reserves.map(e=>e.id).filter(id=>!settles.some(s=>s.id===id));assert.equal(pendingIds.length,1);
+ assert.deepEqual([...readLedger(f.ledger).pending.keys()],pendingIds);assert.equal(readLedger(f.ledger).spent,RESERVE+600+1200);
 });
 
 test('concurrent cap check: only one of two simultaneous reservations fits the cap',async t=>{

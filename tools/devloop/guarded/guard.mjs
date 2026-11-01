@@ -50,7 +50,7 @@ export function usageCost(u) {
 }
 export function createGuard({ledger,externalLedger=SPARK_LEDGER,token,key,expires,request=fetch,upstream='https://api.meta.ai/v1/responses',cap=CAP,maxConcurrent=1}) {
   if(!Number.isSafeInteger(cap)||cap<RESERVE)throw Error('Verified funding ceiling invalid');
-  if(!Number.isSafeInteger(maxConcurrent)||(maxConcurrent!==1&&maxConcurrent!==2))throw Error('maxConcurrent must be 1 or 2');
+  if(!Number.isSafeInteger(maxConcurrent)||(maxConcurrent!==1&&maxConcurrent!==2&&maxConcurrent!==3))throw Error('maxConcurrent must be 1, 2 or 3');
   let activeRequests=0, halted=false;
   const paused=()=>halted||fs.existsSync(path.join(path.dirname(ledger),'STOP'))||!Number.isFinite(Date.parse(expires))||Date.now()>=Date.parse(expires);
   const usageFile=path.join(path.dirname(ledger),'usage.jsonl');

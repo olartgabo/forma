@@ -85,7 +85,7 @@ export function checkStatus(state, stopped, now = Date.now()) {
       !Number.isSafeInteger(state.activeRequests) ||
       state.activeRequests < 0 ||
       !Number.isSafeInteger(state.maxConcurrent) ||
-      (state.maxConcurrent !== 1 && state.maxConcurrent !== 2) ||
+      (state.maxConcurrent !== 1 && state.maxConcurrent !== 2 && state.maxConcurrent !== 3) ||
       state.activeRequests > state.maxConcurrent ||
       state.pending > state.activeRequests
     )

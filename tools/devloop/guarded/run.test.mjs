@@ -31,8 +31,8 @@ test('unknown pending greater than activeRequests is rejected',()=>{
 test('invalid counters are rejected',()=>{
  const bad=[
   {activeRequests:-1,maxConcurrent:2},{activeRequests:1.5,maxConcurrent:2},{activeRequests:'1',maxConcurrent:2},
-  {activeRequests:NaN,maxConcurrent:2},{activeRequests:1,maxConcurrent:0},{activeRequests:1,maxConcurrent:3},
-  {activeRequests:1,maxConcurrent:1.5},{activeRequests:1,maxConcurrent:'2'},{activeRequests:3,maxConcurrent:2},
+  {activeRequests:NaN,maxConcurrent:2},{activeRequests:1,maxConcurrent:0},{activeRequests:1,maxConcurrent:4},
+  {activeRequests:1,maxConcurrent:1.5},{activeRequests:1,maxConcurrent:2.5},{activeRequests:1,maxConcurrent:'3'},{activeRequests:3,maxConcurrent:2},{activeRequests:4,maxConcurrent:3},
   {activeRequests:1},{maxConcurrent:2},{activeRequests:1,maxConcurrent:undefined},
  ];
  for(const patch of bad)assert.throws(()=>checkStatus({...base(),pending:0,...patch},false,NOW),undefined,JSON.stringify(patch));
@@ -45,6 +45,28 @@ test('halted, STOP, expired and invalid dates are rejected',()=>{
  assert.throws(()=>checkStatus({...base(),expires:'invalid',activeRequests:0,maxConcurrent:2},false,NOW),/Guard paused/);
  assert.throws(()=>checkStatus({...base(),pending:-1,activeRequests:0,maxConcurrent:2},false,NOW),/Guard paused/);
  assert.throws(()=>checkStatus({...base(),pending:'0'},false,NOW),/Guard paused/);
+});
+
+test('maxConcurrent 3 accepts two active with a free slot',()=>{
+ assert.doesNotThrow(()=>checkStatus({...base(),pending:2,activeRequests:2,maxConcurrent:3},false,NOW));
+ assert.doesNotThrow(()=>checkStatus({...base(),pending:0,activeRequests:0,maxConcurrent:3},false,NOW));
+ assert.doesNotThrow(()=>checkStatus({...base(),pending:1,activeRequests:2,maxConcurrent:3},false,NOW));
+});
+
+test('maxConcurrent 3 rejects full capacity and unknown pending above active',()=>{
+ assert.throws(()=>checkStatus({...base(),pending:3,activeRequests:3,maxConcurrent:3},false,NOW),/capacity|Guard paused/);
+ assert.throws(()=>checkStatus({...base(),pending:0,activeRequests:3,maxConcurrent:3},false,NOW),/capacity|Guard paused/);
+ assert.throws(()=>checkStatus({...base(),pending:3,activeRequests:2,maxConcurrent:3},false,NOW),/Guard paused/);
+ assert.throws(()=>checkStatus({...base(),pending:1,activeRequests:0,maxConcurrent:3},false,NOW),/Guard paused/);
+});
+
+test('maxConcurrent 3 still rejects STOP, expiry, halt and invalid counters',()=>{
+ assert.throws(()=>checkStatus({...base(),pending:2,activeRequests:2,maxConcurrent:3},true,NOW),/Guard paused/);
+ assert.throws(()=>checkStatus({...base(),pending:2,activeRequests:2,maxConcurrent:3,halted:true},false,NOW),/Guard paused/);
+ assert.throws(()=>checkStatus({...base(),pending:2,activeRequests:2,maxConcurrent:3,expires:'2020-01-01'},false,NOW),/Guard paused/);
+ assert.throws(()=>checkStatus({...base(),pending:2,activeRequests:2,maxConcurrent:3,expires:'invalid'},false,NOW),/Guard paused/);
+ assert.throws(()=>checkStatus({...base(),pending:2,activeRequests:2,maxConcurrent:4},false,NOW),/Guard paused/);
+ assert.throws(()=>checkStatus({...base(),pending:2,activeRequests:2,maxConcurrent:'3'},false,NOW),/Guard paused/);
 });
 
 test('budget cap still gates even with a free slot',()=>{
