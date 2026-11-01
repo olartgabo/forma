@@ -150,7 +150,16 @@ def test_runtime_tool_snapshot_and_real_compile(tmp_path):
     assert result.candidates[0].version.candidate_id == candidate.id
     assert result.diagnostics.tool_executions == 1
     assert result.diagnostics.model_rounds == 2
-    assert fake.calls[0][1]["tool_choice"]["function"]["name"] == "get_project_snapshot"
+    assert fake.calls[0][1]["tool_choice"] == "auto"
+    assert fake.calls[0][1]["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_project_snapshot",
+                "parameters": design_runtime.SnapshotToolArgs.model_json_schema(),
+            },
+        }
+    ]
     tool_content = fake.calls[1][1]["messages"][-1]["content"]
     snapshot = json.loads(tool_content)
     assert snapshot["inventory_revision_id"] == project.revision_id
