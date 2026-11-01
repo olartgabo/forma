@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { activatePlan, ApiError, listPlans, loadPlan } from "../lib/api";
+import {
+  activatePlan,
+  ApiError,
+  generateDesign,
+  listPlans,
+  loadPlan,
+} from "../lib/api";
 import type {
+  DesignGenerateRequest,
+  DesignGenerateResult,
   ManualPanel,
   PlanActivation,
   PlanSummary,
@@ -95,6 +103,18 @@ export default function PlanWorkbench({
   const [saving, setSaving] = useState(false);
   const [activationError, setActivationError] = useState("");
   const [activationStale, setActivationStale] = useState(false);
+  const [designNotes, setDesignNotes] = useState("");
+  const [designConsented, setDesignConsented] = useState(false);
+  const [designBusy, setDesignBusy] = useState(false);
+  const [designResult, setDesignResult] = useState<DesignGenerateResult | null>(
+    null,
+  );
+  const [designError, setDesignError] = useState("");
+  const [designNotice, setDesignNotice] = useState("");
+  const [designPending, setDesignPending] =
+    useState<DesignGenerateRequest | null>(null);
+  const designController = useRef<AbortController | null>(null);
+  const designEpoch = useRef(0);
   const controller = useRef(new AbortController());
 
   useEffect(() => {
@@ -102,6 +122,27 @@ export default function PlanWorkbench({
     controller.current = lifetime;
     return () => lifetime.abort();
   }, []);
+
+  // Session, project or revision changes invalidate Muse generation state.
+  useEffect(() => {
+    designEpoch.current += 1;
+    designController.current?.abort();
+    designController.current = null;
+    setDesignConsented(false);
+    setDesignResult(null);
+    setDesignError("");
+    setDesignNotice("");
+    setDesignPending(null);
+    setDesignBusy(false);
+  }, [token, project.id, project.revision_id]);
+
+  useEffect(
+    () => () => {
+      designEpoch.current += 1;
+      designController.current?.abort();
+    },
+    [],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -153,6 +194,92 @@ export default function PlanWorkbench({
     return () => controller.abort();
   }, [token, project.id, selected, attempt]);
 
+  function cancelDesign() {
+    designEpoch.current += 1;
+    designController.current?.abort();
+    designController.current = null;
+    setDesignBusy(false);
+    setDesignError("");
+    setDesignNotice(
+      "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the request, so check saved previews or retry the same request to learn the outcome.",
+    );
+  }
+
+  async function runDesign(body: DesignGenerateRequest) {
+    if (designBusy || approvalDisabled || pending !== null) return;
+    const requestEpoch = ++designEpoch.current;
+    const requestController = new AbortController();
+    designController.current = requestController;
+    const requestProject = project.id;
+    const requestRevision = project.revision_id;
+    setDesignPending(body);
+    setDesignBusy(true);
+    setDesignError("");
+    setDesignNotice("");
+    setDesignResult(null);
+    try {
+      const next = await generateDesign(
+        token,
+        requestProject,
+        body,
+        requestController.signal,
+      );
+      if (
+        requestController.signal.aborted ||
+        requestEpoch !== designEpoch.current ||
+        next.project_id !== requestProject ||
+        next.inventory_revision_id !== requestRevision
+      )
+        return;
+      setDesignResult(next);
+      setDesignPending(null);
+      const accepted = (next.candidates ?? []).find(
+        (candidate) => candidate.status === "accepted" && candidate.version,
+      );
+      if (accepted?.version) setSelected(accepted.version.version_id);
+      setAttempt((value) => value + 1);
+    } catch (error) {
+      if (
+        requestController.signal.aborted ||
+        requestEpoch !== designEpoch.current
+      )
+        return;
+      if (error instanceof ApiError && error.code === "cancelled") {
+        setDesignNotice(
+          "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the request, so check saved previews or retry the same request to learn the outcome.",
+        );
+        return;
+      }
+      setDesignError(message(error));
+      if (
+        error instanceof ApiError &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        error.code !== "generation_in_progress"
+      )
+        setDesignPending(null);
+    } finally {
+      if (
+        !requestController.signal.aborted &&
+        requestEpoch === designEpoch.current
+      ) {
+        designController.current = null;
+        setDesignBusy(false);
+      }
+    }
+  }
+
+  function startDesign() {
+    if (!designConsented) return;
+    const notes = designNotes.trim();
+    void runDesign({
+      expected_revision_id: project.revision_id,
+      ...(notes ? { user_notes: notes } : {}),
+      idempotency_key: crypto.randomUUID(),
+      provider_context_consented: true,
+    });
+  }
+
   async function approve(request: { versionId: string; body: PlanActivation }) {
     if (saving || approvalDisabled) return;
     setPending(request);
@@ -200,6 +327,12 @@ export default function PlanWorkbench({
     !project.active_version_id &&
     !stale &&
     !activationStale;
+  const designDisabled =
+    !designConsented ||
+    designBusy ||
+    approvalDisabled ||
+    pending !== null ||
+    project.active_version_id !== null;
   return (
     <section
       className="plan-workbench"
@@ -240,11 +373,159 @@ export default function PlanWorkbench({
       >
         Refresh saved plans
       </button>
+      <div className="muse-design">
+        <h3>Generate with Muse</h3>
+        <p>
+          Muse proposes up to two designs from the saved project. FORMA compiles
+          and saves only previews that pass its checks. Generating a preview
+          does not approve a plan, record physical work or send a photo.
+        </p>
+        <label htmlFor="design-notes">Notes for Muse (optional)</label>
+        <textarea
+          id="design-notes"
+          value={designNotes}
+          maxLength={1000}
+          disabled={designBusy}
+          onChange={(event) => setDesignNotes(event.target.value)}
+        />
+        <label className="checkbox-label" htmlFor="design-consent">
+          <input
+            id="design-consent"
+            type="checkbox"
+            checked={designConsented}
+            disabled={designBusy}
+            onChange={(event) => setDesignConsented(event.target.checked)}
+          />
+          Share this project&apos;s saved goal, materials, requirements and my
+          notes above with Meta&apos;s Muse service for this one request. No
+          photo is sent by this action.
+        </label>
+        {project.active_version_id && (
+          <p className="help">
+            A plan is already active for this project, so Muse generation is
+            unavailable until a revision flow is connected.
+          </p>
+        )}
+        <div className="muse-actions">
+          <button
+            type="button"
+            className="primary"
+            disabled={designDisabled}
+            onClick={startDesign}
+          >
+            Generate with Muse
+          </button>
+          {designBusy && (
+            <button type="button" className="secondary" onClick={cancelDesign}>
+              Cancel
+            </button>
+          )}
+        </div>
+        {designBusy && (
+          <p className="help" aria-live="polite">
+            Asking Muse… Cancelling stops FORMA waiting; it does not guarantee
+            Muse stopped. There are no automatic retries.
+          </p>
+        )}
+        {designNotice && (
+          <p className="notice" aria-live="polite">
+            {designNotice}
+          </p>
+        )}
+        {designError && (
+          <p className="error" role="alert">
+            {designError}
+          </p>
+        )}
+        {designPending && !designBusy && (
+          <aside className="retry-panel">
+            <h3>Check the generation result</h3>
+            <p>
+              The outcome is unknown. Check saved previews first, or retry the
+              identical Muse request; FORMA will not start a new paid run
+              automatically.
+            </p>
+            <button
+              type="button"
+              className="secondary"
+              disabled={approvalDisabled}
+              onClick={() => setAttempt((value) => value + 1)}
+            >
+              Check saved previews
+            </button>{" "}
+            <button
+              type="button"
+              disabled={approvalDisabled || pending !== null}
+              onClick={() => void runDesign(designPending)}
+            >
+              Retry same Muse request
+            </button>
+          </aside>
+        )}
+        {designResult && (
+          <div className="muse-result">
+            <h3>Muse design result</h3>
+            <p>
+              Status: {designResult.status.replaceAll("_", " ")}. Saved previews
+              below still require separate approval.
+            </p>
+            {(designResult.questions ?? []).length > 0 && (
+              <>
+                <h4>Questions to answer</h4>
+                <ul>
+                  {(designResult.questions ?? []).map((question, index) => (
+                    <li key={`${index}-${question}`}>{question}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {(designResult.blockers ?? []).length > 0 && (
+              <>
+                <h4>Blockers</h4>
+                <ul>
+                  {(designResult.blockers ?? []).map((blocker, index) => (
+                    <li key={`${index}-${blocker.code}`}>{blocker.message}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {(designResult.candidates ?? []).length > 0 && (
+              <ul>
+                {(designResult.candidates ?? []).map((candidate) => (
+                  <li key={candidate.candidate_id}>
+                    {candidate.candidate_id}:{" "}
+                    {candidate.status.replaceAll("_", " ")}
+                    {candidate.version
+                      ? ` — saved preview ${candidate.version.version_id}`
+                      : ""}
+                    {(candidate.blockers ?? []).length > 0 && (
+                      <ul>
+                        {(candidate.blockers ?? []).map((blocker, index) => (
+                          <li key={`${index}-${blocker.code}`}>
+                            {blocker.message}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="help">
+              Request diagnostics — status: {designResult.diagnostics.status};
+              model: {designResult.diagnostics.model}; rounds:{" "}
+              {designResult.diagnostics.model_rounds}; tool calls:{" "}
+              {designResult.diagnostics.tool_executions}; duration:{" "}
+              {designResult.diagnostics.elapsed_ms} ms.
+            </p>
+          </div>
+        )}
+      </div>
       {!loading && !listError && plans.length === 0 && (
         <p className="empty-note">
           No compiled plan has been saved for this project yet. Your materials
-          and requirements are saved; design generation is still being
-          connected.
+          and requirements are saved; use Generate with Muse above to ask for
+          compiled previews.
         </p>
       )}
       {plans.length > 0 && (

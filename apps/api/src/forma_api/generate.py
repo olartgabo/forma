@@ -5,6 +5,15 @@ from pathlib import Path
 
 from pydantic.json_schema import models_json_schema
 
+from forma_api.design_runtime import (
+    DesignCandidateResult,
+    DesignDiagnostics,
+    DesignErrorResponse,
+    DesignGenerateRequest,
+    DesignGenerateResult,
+    ProjectSnapshot,
+    SnapshotToolArgs,
+)
 from forma_api.intake_runtime import (
     IntakeDiagnostics,
     IntakeErrorResponse,
@@ -42,6 +51,13 @@ API_RECORDS = (
     CreateProject,
     CompilePreview,
     DeleteResult,
+    DesignCandidateResult,
+    DesignDiagnostics,
+    DesignErrorResponse,
+    DesignGenerateRequest,
+    DesignGenerateResult,
+    ProjectSnapshot,
+    SnapshotToolArgs,
     IntakeDiagnostics,
     IntakeErrorResponse,
     IntakeObservation,

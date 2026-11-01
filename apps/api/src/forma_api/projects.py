@@ -322,8 +322,13 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 (owner, project_id + ":media:%"),
             )
             connection.execute(
-                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?)",
-                (owner, project_id + ":plan-preview", project_id + ":plan-activation"),
+                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?)",
+                (
+                    owner,
+                    project_id + ":plan-preview",
+                    project_id + ":plan-activation",
+                    project_id + ":design-generation",
+                ),
             )
             connection.execute(
                 "UPDATE requests SET response=? WHERE owner=? AND scope='create' "
@@ -337,9 +342,11 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
 
     from forma_api.media import media_router
     from forma_api.plans import plan_router
+    from forma_api.routes.designs import designs_router
     from forma_api.routes.intake import intake_router
 
     router.include_router(media_router(store, authenticate))
     router.include_router(intake_router(store, authenticate))
     router.include_router(plan_router(store, authenticate))
+    router.include_router(designs_router(store, authenticate))
     return router

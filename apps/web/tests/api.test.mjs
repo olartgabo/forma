@@ -7,6 +7,7 @@ import {
   createProject,
   deletePhoto,
   fetchPhoto,
+  generateDesign,
   listPhotos,
   listPlans,
   loadPlan,
@@ -453,6 +454,152 @@ test("intake scoped mismatch and unreadable shapes are rejected safely", async (
     );
     t.mock.restoreAll();
   }
+});
+
+const designResult = {
+  project_id: "project-a",
+  inventory_revision_id: "inventory-1",
+  status: "proposed",
+  candidates: [
+    {
+      candidate_id: "candidate-a",
+      status: "accepted",
+      version: {
+        project_id: "project-a",
+        version_id: "version-a",
+        inventory_revision_id: "inventory-1",
+        candidate_id: "candidate-a",
+        created_at: "2026-11-01T00:00:00Z",
+      },
+      blockers: [],
+    },
+  ],
+  questions: [],
+  blockers: [],
+  diagnostics: {
+    status: "ok",
+    model: "muse-spark-test",
+    elapsed_ms: 25,
+    model_rounds: 2,
+    tool_executions: 1,
+  },
+};
+
+const designBody = {
+  expected_revision_id: "inventory-1",
+  user_notes: "Compact please",
+  idempotency_key: "design-key-1",
+  provider_context_consented: true,
+};
+
+test("design request sends exactly the scoped body with caller auth", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json(designResult);
+  });
+  const result = await generateDesign(token, "project-a", designBody);
+  assert.deepEqual(result, designResult);
+  assert.equal(calls[0].path, "/api/projects/project-a/designs/generate");
+  assert.equal(calls[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].options.body), designBody);
+  assert.equal(
+    calls[0].options.headers.get("Authorization"),
+    `Bearer ${token}`,
+  );
+  assert.equal(calls[0].options.credentials, "omit");
+  assert.equal(calls[0].options.redirect, "error");
+  assert.equal(calls[0].options.cache, "no-store");
+});
+
+test("design provider errors use safe local messages and preserve codes", async (t) => {
+  const cases = [
+    [503, "provider_not_configured", /not configured/],
+    [429, "rate_limit", /rate limit/],
+    [422, "consent_required", /Consent to share/],
+    [409, "generation_in_progress", /already in progress/],
+    [409, "idempotency_conflict", /differs from the original/],
+  ];
+  for (const [status, code, pattern] of cases) {
+    t.mock.method(globalThis, "fetch", async () =>
+      Response.json(
+        { code, message: "PRIVATE_PROVIDER_BODY sk-secret" },
+        { status },
+      ),
+    );
+    await assert.rejects(
+      generateDesign(token, "project-a", designBody),
+      (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.status, status);
+        assert.equal(error.code, code);
+        assert.match(error.message, pattern);
+        assert.doesNotMatch(error.message, /PRIVATE|sk-secret/);
+        return true;
+      },
+    );
+    t.mock.restoreAll();
+  }
+});
+
+test("design scoped mismatches are rejected safely", async (t) => {
+  const payloads = [
+    { ...designResult, project_id: "project-other" },
+    { ...designResult, inventory_revision_id: "inventory-2" },
+    {
+      ...designResult,
+      candidates: [
+        {
+          ...designResult.candidates[0],
+          version: {
+            ...designResult.candidates[0].version,
+            inventory_revision_id: "inventory-2",
+          },
+        },
+      ],
+    },
+  ];
+  for (const payload of payloads) {
+    t.mock.method(globalThis, "fetch", async () => Response.json(payload));
+    await assert.rejects(
+      generateDesign(token, "project-a", designBody),
+      (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.code, "invalid_response");
+        return true;
+      },
+    );
+    t.mock.restoreAll();
+  }
+});
+
+test("design cancellation aborts without leaking abort details", async (t) => {
+  let requestSignal;
+  t.mock.method(globalThis, "fetch", (path, options) => {
+    requestSignal = options.signal;
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener(
+        "abort",
+        () => reject(new DOMException("PRIVATE_ABORT_DETAIL", "AbortError")),
+        { once: true },
+      );
+    });
+  });
+  const controller = new AbortController();
+  const pending = generateDesign(
+    token,
+    "project-a",
+    designBody,
+    controller.signal,
+  );
+  controller.abort();
+  await assert.rejects(pending, (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.code, "cancelled");
+    assert.doesNotMatch(error.message, /PRIVATE_ABORT_DETAIL/);
+    return true;
+  });
+  assert.equal(requestSignal.aborted, true);
 });
 
 test("deadline also aborts a stalled response body", async (t) => {

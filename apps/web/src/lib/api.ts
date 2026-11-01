@@ -2,6 +2,8 @@ import type { Stock } from "./generated/contracts";
 import type {
   BuildRequirements,
   ActivationResult,
+  DesignGenerateRequest,
+  DesignGenerateResult,
   PlanActivation,
   PlanList,
   PlanVersion,
@@ -64,22 +66,72 @@ const INTAKE_CODE_MESSAGES: Record<string, string> = {
     "This project or photo is unavailable. Check the project ID or reload.",
 };
 
+const DESIGN_CODES = [
+  ...INTAKE_CODES,
+  "blocked",
+  "idempotency_conflict",
+  "generation_in_progress",
+];
+
+const DESIGN_CODE_MESSAGES: Record<string, string> = {
+  ...INTAKE_CODE_MESSAGES,
+  consent_required:
+    "Consent to share the saved project context with Meta is required before generating designs.",
+  stale_version:
+    "Inventory changed in another session. Reload the project before generating designs again.",
+  blocked:
+    "Design generation is blocked for this project. Reload the project and check saved previews.",
+  idempotency_conflict:
+    "This retry differs from the original design request. Start a new request after checking saved previews.",
+  generation_in_progress:
+    "This design request is already in progress. Check saved previews before retrying.",
+  not_found: "This project is unavailable. Check the project ID or reload.",
+};
+
 async function responseError(
   response: Response,
   intake = false,
+  design = false,
 ): Promise<ApiError> {
   let code = "request_failed";
   try {
     const body: unknown = await response.json();
     if (typeof body === "object" && body !== null && "code" in body) {
-      const known = intake
-        ? INTAKE_CODES
-        : ["stale_version", "idempotency_conflict", "blocked"];
+      const known = design
+        ? DESIGN_CODES
+        : intake
+          ? INTAKE_CODES
+          : ["stale_version", "idempotency_conflict", "blocked"];
       if (typeof body.code === "string" && known.includes(body.code))
         code = body.code;
     }
   } catch {
     // Proxy failures may contain HTML; only local messages reach the UI.
+  }
+  if (design) {
+    const designStatusMessages: Record<number, string> = {
+      401: "Check your development access key and reconnect.",
+      403: "This access key cannot open this project.",
+      404: DESIGN_CODE_MESSAGES.not_found,
+      409:
+        DESIGN_CODE_MESSAGES[code] ??
+        "This design request conflicts with saved state. Reload and check saved previews.",
+      422:
+        code === "consent_required"
+          ? DESIGN_CODE_MESSAGES.consent_required
+          : "The design request could not be accepted. Check the saved project and try again.",
+      429: DESIGN_CODE_MESSAGES.rate_limit,
+      502: "The Muse request failed. Try again later.",
+      503: DESIGN_CODE_MESSAGES.provider_not_configured,
+      504: DESIGN_CODE_MESSAGES.timeout,
+    };
+    return new ApiError(
+      response.status,
+      code,
+      DESIGN_CODE_MESSAGES[code] ??
+        designStatusMessages[response.status] ??
+        "FORMA could not complete this request. Try again shortly.",
+    );
   }
   if (intake) {
     const intakeStatusMessages: Record<number, string> = {
@@ -135,6 +187,7 @@ async function request<T>(
   read: (response: Response) => Promise<T>,
   signal?: AbortSignal,
   intake = false,
+  design = false,
 ): Promise<T> {
   const controller = new AbortController();
   const cancel = () => controller.abort();
@@ -152,7 +205,7 @@ async function request<T>(
       redirect: "error",
       signal: controller.signal,
     });
-    if (!response.ok) throw await responseError(response, intake);
+    if (!response.ok) throw await responseError(response, intake, design);
     return await read(response);
   } catch (error) {
     if (error instanceof ApiError) throw error;
@@ -434,6 +487,104 @@ export function requestIntakeObservation(
         mediaId,
       ),
     signal,
+    true,
+  );
+}
+
+function checkedDesignResult(
+  value: unknown,
+  projectId: string,
+  revisionId: string,
+): DesignGenerateResult {
+  const invalid = () =>
+    new ApiError(
+      200,
+      "invalid_response",
+      "FORMA returned a design result that does not match this project or inventory revision. Check saved previews and reload the project.",
+    );
+  if (!isRecord(value)) throw invalid();
+  if (
+    value.project_id !== projectId ||
+    value.inventory_revision_id !== revisionId ||
+    !["proposed", "needs_measurement", "blocked"].includes(
+      value.status as string,
+    ) ||
+    !Array.isArray(value.candidates) ||
+    !isStringArray(value.questions) ||
+    !Array.isArray(value.blockers) ||
+    !isRecord(value.diagnostics) ||
+    value.diagnostics.status !== "ok" ||
+    typeof value.diagnostics.model !== "string" ||
+    value.diagnostics.model.length === 0 ||
+    typeof value.diagnostics.elapsed_ms !== "number" ||
+    !Number.isFinite(value.diagnostics.elapsed_ms) ||
+    value.diagnostics.elapsed_ms < 0 ||
+    typeof value.diagnostics.model_rounds !== "number" ||
+    typeof value.diagnostics.tool_executions !== "number"
+  )
+    throw invalid();
+  for (const candidate of value.candidates) {
+    if (
+      !isRecord(candidate) ||
+      typeof candidate.candidate_id !== "string" ||
+      !["accepted", "blocked", "needs_measurement", "unsupported"].includes(
+        candidate.status as string,
+      ) ||
+      !Array.isArray(candidate.blockers)
+    )
+      throw invalid();
+    if (candidate.version !== null && candidate.version !== undefined) {
+      if (
+        !isRecord(candidate.version) ||
+        candidate.version.project_id !== projectId ||
+        candidate.version.inventory_revision_id !== revisionId ||
+        typeof candidate.version.version_id !== "string" ||
+        candidate.version.candidate_id !== candidate.candidate_id
+      )
+        throw invalid();
+    }
+    for (const blocker of candidate.blockers) {
+      if (
+        !isRecord(blocker) ||
+        typeof blocker.code !== "string" ||
+        typeof blocker.message !== "string"
+      )
+        throw invalid();
+    }
+  }
+  for (const blocker of value.blockers) {
+    if (
+      !isRecord(blocker) ||
+      typeof blocker.code !== "string" ||
+      typeof blocker.message !== "string"
+    )
+      throw invalid();
+  }
+  return value as unknown as DesignGenerateResult;
+}
+
+export function generateDesign(
+  token: string,
+  id: string,
+  body: DesignGenerateRequest,
+  signal?: AbortSignal,
+): Promise<DesignGenerateResult> {
+  return request(
+    token,
+    `${projectPath(id)}/designs/generate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    async (response) =>
+      checkedDesignResult(
+        await json<unknown>(response),
+        id,
+        body.expected_revision_id,
+      ),
+    signal,
+    false,
     true,
   );
 }
