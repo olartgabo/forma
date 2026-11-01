@@ -148,11 +148,13 @@ export async function main(args = process.argv.slice(2)) {
     const inheritedPath = Object.keys(env).find(
       (k) => k.toLowerCase() === "path",
     );
-    const toolDirs = [path.dirname(process.execPath)];
+    const toolDirs = [];
     if (env.MUSE_TOOLS_BIN) toolDirs.unshift(path.resolve(env.MUSE_TOOLS_BIN));
     const systemPath = inheritedPath ? env[inheritedPath] : "";
     if (inheritedPath) delete env[inheritedPath];
-    env.PATH = [...toolDirs, systemPath].join(path.delimiter);
+    env.PATH = [...toolDirs, systemPath, path.dirname(process.execPath)].join(
+      path.delimiter,
+    );
     for (const name of Object.keys(env)) {
       if (
         name.startsWith("CODEX_") ||

@@ -91,6 +91,13 @@ export function workerConfig(base, workspace, task) {
     config.permission.edit[path.join(workspace, file)] = "allow";
   }
   for (const command of CHECKS) config.permission.bash[command] = "allow";
+  const formatted = task.files_allowed.filter((x) =>
+    /\.(mjs|js|ts|tsx|json|css)$/.test(x),
+  );
+  if (formatted.length)
+    config.permission.bash[
+      `node node_modules/prettier/bin/prettier.cjs --write ${formatted.join(" ")}`
+    ] = "allow";
   return config;
 }
 
