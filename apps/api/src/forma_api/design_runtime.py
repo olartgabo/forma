@@ -131,6 +131,22 @@ class ProjectSnapshot(Record):
     missing_inputs: tuple[Text, ...] = Field(max_length=32)
 
 
+class DesignReadiness(Record):
+    """Saved-input checklist completeness for one project revision.
+
+    ``inputs_complete`` means only that the checklist in ``missing_inputs``
+    is currently empty. It is not compilation success, not a compiled
+    manual, and not evidence of physical safety or a physical pass.
+    """
+
+    project_id: ID
+    inventory_revision_id: ID
+    inventory_confirmed: bool
+    status: Literal["inputs_complete", "needs_input"]
+    missing_inputs: tuple[Text, ...] = Field(max_length=32)
+    blockers: tuple[Blocker, ...] = Field(max_length=32)
+
+
 def default_gateway_factory() -> MetaGateway:
     return MetaGateway.from_env()
 
@@ -218,6 +234,24 @@ def build_snapshot(project, resolved: ResolvedDesignContext) -> ProjectSnapshot:
         selected_kerf_mm=resolved.kerf_mm,
         selected_edge_margin_mm=resolved.edge_margin_mm,
         missing_inputs=tuple(missing_inputs(project, resolved)),
+    )
+
+
+def build_readiness(project, resolved: ResolvedDesignContext) -> DesignReadiness:
+    """Read-only readiness from saved facts and server-resolved context.
+
+    Reuses the snapshot/missing-input checklist; never invents measured
+    values, calibrated process facts or joint profiles that are absent.
+    """
+
+    missing = tuple(missing_inputs(project, resolved))
+    return DesignReadiness(
+        project_id=project.id,
+        inventory_revision_id=project.revision_id,
+        inventory_confirmed=project.inventory_confirmed,
+        status="inputs_complete" if not missing else "needs_input",
+        missing_inputs=missing,
+        blockers=tuple(resolved.blockers[:32]),
     )
 
 
