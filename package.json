@@ -20,7 +20,8 @@
     "contracts:generate": "uv run --locked python -m forma_domain.generate",
     "contracts:check": "uv run --locked python -m forma_domain.generate --check",
     "build": "npm run build -w @forma/web",
-    "check": "npm run format:check && npm run lint && npm run contracts:check && npm run typecheck && npm test && npm run build"
+    "check": "npm run format:check && npm run lint && npm run contracts:check && npm run typecheck && npm test && npm run test:devloop && npm run build",
+    "test:devloop": "node --test tools/devloop/guarded/*.test.mjs"
   },
   "devDependencies": {
     "prettier": "3.9.10"

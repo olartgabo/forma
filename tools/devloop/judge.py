@@ -1,6 +1,7 @@
 """Claude as architect and reviewer via headless `claude -p`. Never writes code."""
 
 import json
+import os
 import subprocess
 from typing import Literal, TypeVar
 
@@ -47,8 +48,10 @@ class Goals(_Strict):
 
 ROLE = (
     "You are the architect and judge for @ResniDev's lane of FORMA (domain, "
-    "compiler, replanner, renderer, model gateway, prompts). Meta Muse Spark is "
-    "the programmer; you never write code, only specs and reviews. Read AGENTS.md "
+    "compiler, replanner, renderer, model gateway, prompts). Meta Muse is "
+    "the programmer and test author; you only plan a feature, review its final "
+    "green diff, or diagnose a stuck task after two failed Muse repairs. Never "
+    "write implementation or tests. Read AGENTS.md "
     "and formspec.md as needed. Be strict: reject false-green tests, invented "
     "measurements, scope creep and anything outside the lane."
 )
@@ -66,8 +69,16 @@ def run_claude(
         "--tools", "Read,Grep,Glob",
         "--append-system-prompt", ROLE,
         "--no-session-persistence",
+        "--max-turns", "8",
     ]  # fmt: skip
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=1800)
+    env = os.environ.copy()
+    # Fresh calls avoid accumulating history; retain native compaction if a
+    # single planning/review session grows. Do not modify the user's live CLI.
+    env.pop("DISABLE_AUTO_COMPACT", None)
+    env.pop("DISABLE_COMPACT", None)
+    proc = subprocess.run(
+        cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=1800
+    )
     text = proc.stdout + proc.stderr
     try:
         out = json.loads(proc.stdout)

@@ -113,6 +113,38 @@ def test_usage_limit_stops(monkeypatch):
         run_claude("p", "sonnet", {}, ".")
 
 
+def test_judge_fresh_bounded_session_keeps_native_compaction(monkeypatch):
+    monkeypatch.setenv("DISABLE_AUTO_COMPACT", "1")
+    monkeypatch.setenv("DISABLE_COMPACT", "1")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return subprocess.CompletedProcess(
+            cmd, 0, json.dumps({"structured_output": {"verdict": "approve"}}), ""
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    run_claude("review", "sonnet", {}, ".")
+    cmd, kwargs = calls[0]
+    assert "--no-session-persistence" in cmd
+    assert cmd[cmd.index("--max-turns") + 1] == "8"
+    assert "--resume" not in cmd and "--continue" not in cmd
+    assert "DISABLE_AUTO_COMPACT" not in kwargs["env"]
+    assert "DISABLE_COMPACT" not in kwargs["env"]
+
+
+def test_legacy_entrypoint_stops_before_budget_or_checkout(monkeypatch):
+    import devloop
+
+    monkeypatch.setattr("sys.argv", ["devloop", "--dry-run"])
+    monkeypatch.setattr(
+        devloop, "build_budget", lambda: pytest.fail("must not initialize budget")
+    )
+    with pytest.raises(SystemExit, match="Legacy runner disabled"):
+        devloop.main()
+
+
 @pytest.mark.skipif(shutil.which("sh") is None, reason="needs a POSIX shell")
 @pytest.mark.parametrize(
     "message,rejected",

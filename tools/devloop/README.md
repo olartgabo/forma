@@ -1,5 +1,40 @@
 # Dev loop (@ResniDev lane)
 
+## Current control path — November 1, 2026
+
+Use [guarded/run.mjs](guarded/run.mjs) for Muse implementation, tests, offline
+checks and repairs. Codex or Claude plans a feature, reviews the final green diff,
+or diagnoses after two failed Muse repairs. The legacy Python entry point exits
+before budget construction, cleanup or provider calls, even with `--dry-run`.
+
+The machine's existing audited guard must already be provisioned outside Git.
+Default guard home is `~/.meta-budget`; `META_GUARD_HOME` can select that existing
+installation. Never copy credentials, settings, billing records or journals into
+this repository and never initialize a second allowance. Put `uv`, Node and npm
+on PATH (or set `MUSE_TOOLS_BIN` to the existing uv tools directory).
+
+Create a task JSON containing `goal`, `acceptance_criteria` and `files_allowed`
+(exact source AND test paths; at most 12). Then run:
+
+```sh
+node tools/devloop/guarded/run.mjs --workspace /path/to/owned/forma-worktree --task-file /path/to/task.json
+node --test tools/devloop/guarded/*.test.mjs
+```
+
+The workspace must be a clean registered FORMA checkout on an `agent/muse-`
+branch. No reset/clean is performed. No resume/continue flag is accepted: each
+feature starts fresh from a task packet under 16KB. Native automatic compaction
+and old-tool-output pruning are enabled, using the same guarded model/budget.
+Claude plan/review calls are fresh and capped at eight turns. Codex keeps native
+model-default compaction. See [the complete policy](guarded/POLICY.md).
+
+The shared $90 lifetime cap, $30 free-credit reserve, both historical journals,
+$6 durable request reservations, STOP, pending/unknown usage and billing expiry
+remain in force. Expired billing verification must be reviewed before dispatch;
+the launcher never renews it. No paid provider fallback or automatic merge.
+
+## Historical Python runner (disabled)
+
 Development tooling, not part of the product. The original runner has Muse Spark write every code
 change. Claude acts as architect and judge through headless `claude -p`, with
 read-only tools: Sonnet handles routine work and Opus handles hard or

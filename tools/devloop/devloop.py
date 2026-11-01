@@ -292,6 +292,12 @@ def main():
     )
     args = parser.parse_args()
 
+    sys.exit(
+        "Legacy runner disabled: use the shared guarded Muse launcher and "
+        "Muse-first feature policy. Accounting/worktree/review blockers must "
+        "be resolved before this runner can dispatch providers."
+    )
+
     budget = build_budget()
     muse = Muse(
         DevMetaHTTP(os.environ.get("MODEL_API_KEY", "")),
