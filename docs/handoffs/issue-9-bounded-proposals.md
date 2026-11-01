@@ -38,12 +38,14 @@ IDs; repair patches remain restricted to current targets.
 ## Compiler/replanner injection
 
 The injected synchronous validator takes `(DesignCandidate | RepairPatch,
-ProposalSnapshot)` and returns a runtime-valid `CompilerResult` or private service
-`CandidateFeedback(status, blockers)`. A missing validator stops design/repair
+ProposalSnapshot)` and returns a runtime-valid `CompilerResult`, private service
+`CandidateFeedback(status, blockers)`, or repair-only `SimulationResult`.
+A missing validator stops design/repair
 before calling a provider. Arbitrary return shapes or callback exceptions stop
 with `compiler_failed`; exception strings never enter traces. Accepted compiler
-plans must retain the project scope. The service returns flat proposals, never
-activates a callback plan or interprets compiler acceptance as physical success.
+plans must retain the project scope. The service returns proposals and computed
+repair previews, never activates a callback plan or interprets compiler acceptance
+as physical success.
 
 #5 supplies `forma_compiler.validate_plan`. The supported #8 template adapter
 constructs `CompilerInput` plus measured `StandParameters`, then calls
@@ -71,7 +73,19 @@ opt-in even when the cutting process is otherwise verified. Design parameters
 and creation time do not gate repairs, which use the bound plan's geometry.
 
 The factory is available for callers; no authenticated route is added here.
-Full simulation diffs/ranking remain #41 work rather than fabricated feedback.
+
+For repairs the adapter returns the original `SimulationResult`. Accepted repair
+feedback without that typed result is rejected with `compiler_failed`. The
+service strictly revalidates patch/base identity and the new plan's project,
+parent and version scope. `ProposalOutcome.repair_results` contains one feasible
+result per accepted patch, ordered by `rank_feasible`; proposal candidates have
+the same order. Results come from the accepting callback invocation and are
+never re-simulated by the service. Blocked candidates remain in reviews only.
+Partial cost terms stay partial, with unmeasured estimates null.
+
+Repair diffs are outside `SafeProposalTrace` and outside feedback replay. This
+is an API-local outcome field; exposing it through OpenAPI or web requires a
+separate consumer contract handoff. No generated contract changes are implied.
 
 Repair target mapping: resize/replace part -> current part ID; replace profile ->
 current joint ID; change angle -> current version ID. Replacement stock/profile

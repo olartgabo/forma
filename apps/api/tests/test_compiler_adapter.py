@@ -227,7 +227,7 @@ def test_repair_uses_bound_plan_without_design_parameters_or_creation_time():
     _, state, kwargs = setup_case()
     kwargs.pop("stand_parameters")
     kwargs.pop("created_at")
-    assert adapter.build_validator(**kwargs)(patch(state), state).status == "accepted"
+    assert adapter.build_validator(**kwargs)(patch(state), state).status == "feasible"
 
 
 def test_profile_evidence_must_agree_with_bound_history(monkeypatch):

@@ -5,7 +5,7 @@ from datetime import datetime
 from forma_compiler import CutProcess
 from forma_renderer import StandParameters, compile_stand, stand_continuation_blockers
 from forma_renderer.template import profile_evidence_valid
-from forma_replanner import simulate_patch
+from forma_replanner import SimulationResult, simulate_patch
 
 from forma_api.proposal_service import CandidateFeedback, ProposalSnapshot, Validator
 from forma_domain import models as m
@@ -49,7 +49,7 @@ def build_validator(
     def validate(
         candidate: m.DesignCandidate | m.RepairPatch,
         snapshot: ProposalSnapshot,
-    ) -> m.CompilerResult | CandidateFeedback:
+    ) -> m.CompilerResult | CandidateFeedback | SimulationResult:
         if isinstance(candidate, m.DesignCandidate):
             if process is None:
                 return _needs_measurement(
@@ -163,16 +163,12 @@ def build_validator(
                 remaining_stock=snapshot.stocks,
                 patch=candidate,
             )
-            result = simulate_patch(
+            return simulate_patch(
                 replanner_input,
                 process=process,
                 allow_synthetic=allow_synthetic,
                 historical_plans=trusted_history,
                 family_validator=stand_continuation_blockers,
-            )
-            return CandidateFeedback(
-                status="accepted" if result.status == "feasible" else "blocked",
-                blockers=result.blockers,
             )
 
         raise TypeError(f"Unsupported candidate type: {type(candidate).__name__}")
