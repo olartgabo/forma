@@ -1,1 +1,227 @@
-{"expected": {"blocker_codes": ["geometry_invalid"], "invalidated_checkpoint_ids": ["check"], "preserved_operation_ids": ["cut"], "status": "blocked"}, "input": {"base_plan": {"checkpoints": [{"after_operation_id": "cut_brace", "description": "Measure cut brace", "id": "check", "method": "ruler"}], "compiler_version": "synthetic", "constraints": {"device_mass_g": {"confirmed": true, "source": "user_ruler", "unit": "g", "value": 180}, "max_footprint_height_mm": {"confirmed": true, "source": "user_ruler", "unit": "mm", "value": 120}, "max_footprint_width_mm": {"confirmed": true, "source": "user_ruler", "unit": "mm", "value": 200}, "support_angle_deg": {"confirmed": true, "source": "user_ruler", "unit": "deg", "value": 60}}, "created_at": "2026-10-30T00:00:00Z", "joint_profiles": [], "joints": [], "operations": [{"args": {"child_part_ids": ["base"], "edge_margin_mm": 5, "kerf_mm": 2, "source_region_id": "root", "stock_id": "sheet"}, "depends_on": [], "effects": {"consumed_region_ids": ["root"], "created_offcuts": [{"geometry": {"height": 120, "width": 130, "x": 70, "y": 0}, "id": "offcut"}], "created_part_ids": ["base"]}, "expected_state_id": "state", "id": "cut", "preconditions": {"safe_tools_confirmed": true}, "stock_ids": ["sheet"], "type": "cut_rect"}, {"args": {"child_part_ids": ["brace"], "edge_margin_mm": 5, "kerf_mm": 2, "source_region_id": "offcut", "stock_id": "sheet"}, "depends_on": ["cut"], "effects": {"consumed_region_ids": ["offcut"], "created_part_ids": ["brace"]}, "expected_state_id": "brace_state", "id": "cut_brace", "preconditions": {"safe_tools_confirmed": true}, "stock_ids": ["sheet"], "type": "cut_rect"}], "parts": [{"condition": "usable", "geometry": {"height": 90, "width": 60, "x": 5, "y": 5}, "id": "base", "source_region_id": "root", "source_stock_id": "sheet"}, {"condition": "usable", "geometry": {"height": 50, "width": 30, "x": 75, "y": 5}, "id": "brace", "source_region_id": "offcut", "source_stock_id": "sheet"}], "project_id": "project", "status": "draft", "stocks": [{"condition": "usable", "height_mm": {"confirmed": true, "source": "user_ruler", "unit": "mm", "value": 120}, "id": "sheet", "kind": "sheet", "material": "cardboard", "remaining_length_mm": {"confirmed": false, "source": "unknown", "unit": "mm", "value": null}, "thickness_mm": {"confirmed": true, "source": "user_ruler", "unit": "mm", "value": 3}, "usable_regions": [{"geometry": {"height": 120, "width": 200, "x": 0, "y": 0}, "id": "root"}], "width_mm": {"confirmed": true, "source": "user_ruler", "unit": "mm", "value": 200}}], "version_id": "v1"}, "events": [{"actor": "user", "evidence_ids": [], "id": "event_cut", "kind": "operation_confirmed", "observation": "Synthetic user report", "operation_id": "cut", "project_id": "project", "recorded_at": "2026-10-30T00:00:00Z", "verification_state": "user_confirmed", "version_id": "v1"}], "evidence": [], "material_transactions": [], "patch": {"angle_deg": null, "base_version_id": "v1", "height_mm": 50, "id": "resize", "kind": "resize_part", "rationale": "Synthetic edit", "replacement_profile_id": null, "replacement_stock_id": null, "target_id": "brace", "width_mm": 300}, "remaining_stock": [{"condition": "usable", "height_mm": {"confirmed": true, "source": "user_ruler", "unit": "mm", "value": 120}, "id": "sheet", "kind": "sheet", "material": "cardboard", "remaining_length_mm": {"confirmed": false, "source": "unknown", "unit": "mm", "value": null}, "thickness_mm": {"confirmed": true, "source": "user_ruler", "unit": "mm", "value": 3}, "usable_regions": [{"geometry": {"height": 120, "width": 130, "x": 70, "y": 0}, "id": "offcut"}], "width_mm": {"confirmed": true, "source": "user_ruler", "unit": "mm", "value": 200}}]}, "note": "Synthetic offline fixture only; not a measurement or physical result. All dimensions copy source values already accepted in test_simulation.py (user_ruler/unknown) and kerf/margin limits are synthetic, never measured. Asks for a 300 mm resize larger than any remaining region with no purchases or replacement stock.", "process": {"edge_margin_min_mm": 5, "kerf_min_mm": 2, "note": "Synthetic limits, not measured.", "provenance": "synthetic"}, "provenance": "synthetic"}
+{
+  "expected": {
+    "blocker_codes": ["geometry_invalid"],
+    "invalidated_checkpoint_ids": ["check"],
+    "preserved_operation_ids": ["cut"],
+    "status": "blocked"
+  },
+  "input": {
+    "base_plan": {
+      "checkpoints": [
+        {
+          "after_operation_id": "cut_brace",
+          "description": "Measure cut brace",
+          "id": "check",
+          "method": "ruler"
+        }
+      ],
+      "compiler_version": "synthetic",
+      "constraints": {
+        "device_mass_g": {
+          "confirmed": true,
+          "source": "user_ruler",
+          "unit": "g",
+          "value": 180
+        },
+        "max_footprint_height_mm": {
+          "confirmed": true,
+          "source": "user_ruler",
+          "unit": "mm",
+          "value": 120
+        },
+        "max_footprint_width_mm": {
+          "confirmed": true,
+          "source": "user_ruler",
+          "unit": "mm",
+          "value": 200
+        },
+        "support_angle_deg": {
+          "confirmed": true,
+          "source": "user_ruler",
+          "unit": "deg",
+          "value": 60
+        }
+      },
+      "created_at": "2026-10-30T00:00:00Z",
+      "joint_profiles": [],
+      "joints": [],
+      "operations": [
+        {
+          "args": {
+            "child_part_ids": ["base"],
+            "edge_margin_mm": 5,
+            "kerf_mm": 2,
+            "source_region_id": "root",
+            "stock_id": "sheet"
+          },
+          "depends_on": [],
+          "effects": {
+            "consumed_region_ids": ["root"],
+            "created_offcuts": [
+              {
+                "geometry": { "height": 120, "width": 130, "x": 70, "y": 0 },
+                "id": "offcut"
+              }
+            ],
+            "created_part_ids": ["base"]
+          },
+          "expected_state_id": "state",
+          "id": "cut",
+          "preconditions": { "safe_tools_confirmed": true },
+          "stock_ids": ["sheet"],
+          "type": "cut_rect"
+        },
+        {
+          "args": {
+            "child_part_ids": ["brace"],
+            "edge_margin_mm": 5,
+            "kerf_mm": 2,
+            "source_region_id": "offcut",
+            "stock_id": "sheet"
+          },
+          "depends_on": ["cut"],
+          "effects": {
+            "consumed_region_ids": ["offcut"],
+            "created_part_ids": ["brace"]
+          },
+          "expected_state_id": "brace_state",
+          "id": "cut_brace",
+          "preconditions": { "safe_tools_confirmed": true },
+          "stock_ids": ["sheet"],
+          "type": "cut_rect"
+        }
+      ],
+      "parts": [
+        {
+          "condition": "usable",
+          "geometry": { "height": 90, "width": 60, "x": 5, "y": 5 },
+          "id": "base",
+          "source_region_id": "root",
+          "source_stock_id": "sheet"
+        },
+        {
+          "condition": "usable",
+          "geometry": { "height": 50, "width": 30, "x": 75, "y": 5 },
+          "id": "brace",
+          "source_region_id": "offcut",
+          "source_stock_id": "sheet"
+        }
+      ],
+      "project_id": "project",
+      "status": "draft",
+      "stocks": [
+        {
+          "condition": "usable",
+          "height_mm": {
+            "confirmed": true,
+            "source": "user_ruler",
+            "unit": "mm",
+            "value": 120
+          },
+          "id": "sheet",
+          "kind": "sheet",
+          "material": "cardboard",
+          "remaining_length_mm": {
+            "confirmed": false,
+            "source": "unknown",
+            "unit": "mm",
+            "value": null
+          },
+          "thickness_mm": {
+            "confirmed": true,
+            "source": "user_ruler",
+            "unit": "mm",
+            "value": 3
+          },
+          "usable_regions": [
+            {
+              "geometry": { "height": 120, "width": 200, "x": 0, "y": 0 },
+              "id": "root"
+            }
+          ],
+          "width_mm": {
+            "confirmed": true,
+            "source": "user_ruler",
+            "unit": "mm",
+            "value": 200
+          }
+        }
+      ],
+      "version_id": "v1"
+    },
+    "events": [
+      {
+        "actor": "user",
+        "evidence_ids": [],
+        "id": "event_cut",
+        "kind": "operation_confirmed",
+        "observation": "Synthetic user report",
+        "operation_id": "cut",
+        "project_id": "project",
+        "recorded_at": "2026-10-30T00:00:00Z",
+        "verification_state": "user_confirmed",
+        "version_id": "v1"
+      }
+    ],
+    "evidence": [],
+    "material_transactions": [],
+    "patch": {
+      "angle_deg": null,
+      "base_version_id": "v1",
+      "height_mm": 50,
+      "id": "resize",
+      "kind": "resize_part",
+      "rationale": "Synthetic edit",
+      "replacement_profile_id": null,
+      "replacement_stock_id": null,
+      "target_id": "brace",
+      "width_mm": 300
+    },
+    "remaining_stock": [
+      {
+        "condition": "usable",
+        "height_mm": {
+          "confirmed": true,
+          "source": "user_ruler",
+          "unit": "mm",
+          "value": 120
+        },
+        "id": "sheet",
+        "kind": "sheet",
+        "material": "cardboard",
+        "remaining_length_mm": {
+          "confirmed": false,
+          "source": "unknown",
+          "unit": "mm",
+          "value": null
+        },
+        "thickness_mm": {
+          "confirmed": true,
+          "source": "user_ruler",
+          "unit": "mm",
+          "value": 3
+        },
+        "usable_regions": [
+          {
+            "geometry": { "height": 120, "width": 130, "x": 70, "y": 0 },
+            "id": "offcut"
+          }
+        ],
+        "width_mm": {
+          "confirmed": true,
+          "source": "user_ruler",
+          "unit": "mm",
+          "value": 200
+        }
+      }
+    ]
+  },
+  "note": "Synthetic offline fixture only; not a measurement or physical result. All dimensions copy source values already accepted in test_simulation.py (user_ruler/unknown) and kerf/margin limits are synthetic, never measured. Asks for a 300 mm resize larger than any remaining region with no purchases or replacement stock.",
+  "process": {
+    "edge_margin_min_mm": 5,
+    "kerf_min_mm": 2,
+    "note": "Synthetic limits, not measured.",
+    "provenance": "synthetic"
+  },
+  "provenance": "synthetic"
+}
