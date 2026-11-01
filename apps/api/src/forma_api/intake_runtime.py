@@ -8,7 +8,7 @@ from pydantic import Field
 from forma_api.model_gateway import GatewayError, ImageInput, MetaGateway
 from forma_api.proposal_prompts import PROMPT_VERSION, SCHEMA_VERSION, TASK_PROMPTS
 from forma_api.proposal_service import IntakeObservation
-from forma_domain.models import ID, Record
+from forma_domain.models import ID, Record, Text
 
 MAX_PROVIDER_IMAGE_BYTES = 5_000_000
 SUPPORTED_IMAGE_TYPES = ("image/jpeg", "image/png")
@@ -38,6 +38,27 @@ class IntakeDiagnostics(Record):
     status: Literal["ok"]
     model: str = Field(min_length=1, max_length=80)
     elapsed_ms: int = Field(ge=0)
+
+
+class IntakeErrorResponse(Record):
+    """API-owned intake error body; not the domain ``ErrorEnvelope``."""
+
+    code: Literal[
+        "validation_error",
+        "not_found",
+        "stale_version",
+        "consent_required",
+        "provider_not_configured",
+        "provider_authentication",
+        "access_denied",
+        "rate_limit",
+        "timeout",
+        "network_error",
+        "invalid_response",
+        "provider_http_error",
+        "provider_error",
+    ]
+    message: Text
 
 
 class IntakeResult(Record):
