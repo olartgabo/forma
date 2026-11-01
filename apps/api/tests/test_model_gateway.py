@@ -46,6 +46,21 @@ class Fake:
         return response
 
 
+class MetaCompatibleFake(Fake):
+    """Simulates Meta Chat Completions: tool_choice supports only auto/omitted.
+
+    Any named, required or none choice is rejected before a response is
+    produced, matching the provider's HTTP 400 behaviour.
+    """
+
+    def post(self, path, payload, timeout):
+        tool_choice = payload.get("tool_choice")
+        if tool_choice is not None and tool_choice != "auto":
+            self.calls.append((path, json.loads(json.dumps(payload)), timeout))
+            raise GatewayError("provider_http_error")
+        return super().post(path, payload, timeout)
+
+
 def final(content='{"questions":["Measure thickness"]}', reason="stop"):
     return {"choices": [{"finish_reason": reason, "message": {"content": content}}]}
 
@@ -110,6 +125,112 @@ def test_validated_deterministic_tool_roundtrip():
         "content": '{"needs_measurement":true}',
     }
     assert "tools" not in fake.calls[1][1]
+
+
+@pytest.mark.parametrize(
+    "unsupported",
+    [
+        {"type": "function", "function": {"name": "get_project_snapshot"}},
+        "required",
+        "none",
+    ],
+)
+def test_meta_compatible_transport_rejects_unsupported_tool_choice(unsupported):
+    fake = MetaCompatibleFake(final())
+    with pytest.raises(GatewayError, match="provider_http_error"):
+        fake.post(
+            "/chat/completions",
+            {"model": "muse-spark-1.3", "tool_choice": unsupported},
+            1,
+        )
+    assert len(fake.calls) == 1
+
+
+def test_meta_auto_first_tool_then_validated_result_then_typed_output():
+    fake = MetaCompatibleFake(call("get_project_snapshot"), final())
+    ran = []
+
+    def snapshot(args):
+        ran.append(args)
+        return Result(needs_measurement=not args.measured)
+
+    gateway = MetaGateway(fake)
+    output = gateway.propose(
+        "design",
+        Proposal,
+        tool=Tool("get_project_snapshot", Args, Result, snapshot),
+    )
+    assert output == Proposal(questions=["Measure thickness"])
+    assert ran == [Args(measured=False)]
+    first = fake.calls[0][1]
+    assert first["tool_choice"] == "auto"
+    assert first["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_project_snapshot",
+                "parameters": Args.model_json_schema(),
+            },
+        }
+    ]
+    assert "get_project_snapshot" in first["messages"][0]["content"]
+    assert "exactly once" in first["messages"][0]["content"]
+    second = fake.calls[1][1]
+    assert "tools" not in second
+    assert "tool_choice" not in second
+    assert (
+        second["response_format"]["json_schema"]["schema"]
+        == Proposal.model_json_schema()
+    )
+    assert second["messages"][-2]["role"] == "assistant"
+    assert second["messages"][-1] == {
+        "role": "tool",
+        "tool_call_id": "call_1",
+        "content": '{"needs_measurement":true}',
+    }
+    assert [trace.status for trace in gateway.traces] == ["ok", "ok"]
+
+
+@pytest.mark.parametrize(
+    "response", [final(), final("Here is a design, no snapshot needed")]
+)
+def test_direct_final_before_tool_rejected_without_bypassing_snapshot(response):
+    ran = []
+
+    def snapshot(args):
+        ran.append(args)
+        return Result(needs_measurement=True)
+
+    fake = MetaCompatibleFake(response)
+    with pytest.raises(GatewayError) as error:
+        MetaGateway(fake).propose(
+            "design",
+            Proposal,
+            tool=Tool("get_project_snapshot", Args, Result, snapshot),
+        )
+    assert error.value.code == "invalid_tool_call"
+    assert ran == []
+    assert len(fake.calls) == 1
+
+
+def test_multiple_tool_calls_rejected_without_execution():
+    response = call("get_project_snapshot")
+    response["choices"][0]["message"]["tool_calls"].append(
+        response["choices"][0]["message"]["tool_calls"][0].copy()
+    )
+    fake = MetaCompatibleFake(response)
+
+    def forbidden(args):
+        pytest.fail("multiple tool calls executed")
+
+    with pytest.raises(GatewayError) as error:
+        MetaGateway(fake).propose(
+            "design",
+            Proposal,
+            tool=Tool("get_project_snapshot", Args, Result, forbidden),
+        )
+    assert error.value.code == "invalid_tool_call"
+    assert len(fake.calls) == 1
 
 
 @pytest.mark.parametrize(
