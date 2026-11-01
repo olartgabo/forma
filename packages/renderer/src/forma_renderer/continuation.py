@@ -7,6 +7,7 @@ this single-plan validator checks presence and replacement equivalence only.
 It never mutates the plan.
 """
 
+from dataclasses import dataclass
 from math import cos, hypot, radians, sin
 
 from forma_domain import models as m
@@ -58,6 +59,50 @@ _HISTORICAL_OP_IDS = (
     "stand-joint-rear-attach",
     "stand-joint-apex-attach",
 )
+_FINAL_OP_IDS = ("stand-inspect-fit", "stand-functional-test")
+_TAPE_UNDO_FULL_TYPES = _CORE_TYPES + (
+    "detach",
+    "detach",
+    "cut_rect",
+    "inspect",
+    "tape_joint",
+    "tape_joint",
+    "inspect",
+    "functional_test",
+)
+
+
+@dataclass(frozen=True)
+class _TapeStage:
+    """Resolved layout of a tape-undo continuation plan."""
+
+    historical_count: int  # 6 (retargeted finals) or 8 (preserved finals)
+    peel: int
+    cut: int
+    fit: int
+    test: int
+
+    @property
+    def full(self):
+        return self.historical_count == 8
+
+    @property
+    def reattach(self):
+        return self.cut + 2
+
+
+def _resolve_tape_stage(operations):
+    """Map historical/recovery/active-final roles for exact tape layouts."""
+    types = tuple(o.type for o in operations)
+    ids = tuple(o.id for o in operations)
+    if types == _TAPE_UNDO_TYPES and ids[:6] == _HISTORICAL_OP_IDS:
+        return _TapeStage(6, peel=6, cut=8, fit=12, test=13)
+    if (
+        types == _TAPE_UNDO_FULL_TYPES
+        and ids[:8] == _HISTORICAL_OP_IDS + _FINAL_OP_IDS
+    ):
+        return _TapeStage(8, peel=8, cut=10, fit=14, test=15)
+    return None
 
 
 def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
@@ -209,7 +254,8 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 (brace_part.id,),
             )
 
-    if tuple(o.type for o in operations) != _TAPE_UNDO_TYPES:
+    stage = _resolve_tape_stage(operations)
+    if stage is None:
         add(
             "unsupported",
             "Tape-undo operations must stage historical attach, peel, "
@@ -279,7 +325,7 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 (op.id,),
             )
     tape_stock_ids = {operations[i].args.stock_id for i in (3, 4, 5)}
-    peels = operations[6:8]
+    peels = operations[stage.peel : stage.peel + 2]
     for op, joint_id, partner in (
         (peels[0], "stand-joint-rear", "stand-base"),
         (peels[1], "stand-joint-apex", "stand-support"),
@@ -316,7 +362,10 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 f"Peel operation {op.id} requires scoped access to {partner}.",
                 (op.id, partner),
             )
-    replacement_cut, replacement_inspect = operations[8], operations[9]
+    replacement_cut, replacement_inspect = (
+        operations[stage.cut],
+        operations[stage.cut + 1],
+    )
     if tuple(replacement_cut.args.child_part_ids) != (active_brace_id,):
         add(
             "invalid_reference",
@@ -335,8 +384,8 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
             (replacement_inspect.id,),
         )
     for op, joint in (
-        (operations[10], new_rear),
-        (operations[11], new_apex),
+        (operations[stage.reattach], new_rear),
+        (operations[stage.reattach + 1], new_apex),
     ):
         if (
             op.args.joint_id != joint.id
@@ -350,7 +399,35 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 "to the replacement brace using the original tape stock.",
                 (op.id, joint.id),
             )
-    inspect_fit, test_op = operations[12], operations[13]
+    inspect_fit, test_op = operations[stage.fit], operations[stage.test]
+    historical_finals = operations[6:8] if stage.full else ()
+    for hist_fit, hist_test in zip(
+        historical_finals[::2], historical_finals[1::2], strict=False
+    ):
+        if hist_fit.part_ids != _ORIGINALS or tuple(
+            hist_fit.args.target_ids
+        ) != _ORIGINALS:
+            add(
+                "invalid_reference",
+                "Historical fit inspection must target the original stand parts.",
+                (hist_fit.id,),
+            )
+        if hist_test.part_ids != _ORIGINALS or tuple(
+            hist_test.preconditions.required_joint_ids
+        ) != _JOINT_IDS:
+            add(
+                "invalid_reference",
+                "Historical functional test must require the original joints.",
+                (hist_test.id,),
+            )
+    if stage.full and inspect_fit.id in _FINAL_OP_IDS + tuple(
+        o.id for o in historical_finals
+    ):
+        add(
+            "unsupported",
+            "Full-build tape-undo requires new fit/test operations.",
+            (inspect_fit.id, test_op.id),
+        )
     for op in (inspect_fit, test_op):
         if op.part_ids != active_ordered:
             add(
@@ -374,7 +451,7 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
             "Functional test must require the front and new rear/apex joints.",
             (test_op.id,),
         )
-    for op in (inspect_cuts, inspect_fit, test_op):
+    for op in (inspect_cuts, *historical_finals, inspect_fit, test_op):
         if not any(
             c.after_operation_id == op.id and c.id == op.args.checkpoint_id
             for c in plan.checkpoints
@@ -385,17 +462,21 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 (op.id, op.args.checkpoint_id),
             )
     mass = plan.constraints.device_mass_g
-    if (
-        test_op.args.mass_g is None
-        or mass.value is None
-        or not mass.confirmed
-        or test_op.args.mass_g != mass.value
-    ):
-        add(
-            "geometry_invalid",
-            "Functional test mass must equal the confirmed device mass constraint.",
-            (test_op.id,),
-        )
+    test_ops = (
+        (historical_finals[1], test_op) if historical_finals else (test_op,)
+    )
+    for checked_test in test_ops:
+        if (
+            checked_test.args.mass_g is None
+            or mass.value is None
+            or not mass.confirmed
+            or checked_test.args.mass_g != mass.value
+        ):
+            add(
+                "geometry_invalid",
+                "Functional test mass must equal the confirmed device mass constraint.",
+                (checked_test.id,),
+            )
     # Parts are produced exactly by the historical or replacement cut, and
     # no staged work after the peels may reference the retired brace.
     if set(parts) != {*_ORIGINALS, active_brace_id}:
@@ -404,7 +485,7 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
             "Tape-undo plan parts must be the originals plus one replacement brace.",
             tuple(sorted(set(parts) ^ {*_ORIGINALS, active_brace_id})),
         )
-    for op in operations[8:]:
+    for op in operations[stage.cut :]:
         refs: set[str] = set(op.part_ids)
         refs.update(op.preconditions.accessible_part_ids)
         refs.update(getattr(op.args, "target_ids", ()) or ())

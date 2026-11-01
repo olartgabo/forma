@@ -1252,12 +1252,22 @@ def simulate_patch(
     # Retained legacy cuts remain historically complete, but discarded work is
     # not advertised as usable preservation. Peeled tape joins are lost work,
     # not preserved, even though their historical operations stay in the plan.
+    # In a full-build tape recovery the original final checks were completed
+    # against the retired brace: they stay in history but are not preserved
+    # useful work, and must not be advertised as such.
+    stale_finals = (
+        {"stand-inspect-fit", "stand-functional-test"}
+        if tape_peel_ids
+        and {"stand-inspect-fit", "stand-functional-test"} <= completed
+        else set()
+    )
     kept = tuple(
         o.id
         for o in base.operations
         if o.id in completed
         and o.id not in affected
         and o.id not in reported_lost_operations
+        and o.id not in stale_finals
     )
     changed_parts.update(lost_parts)
     invalid_checks = tuple(

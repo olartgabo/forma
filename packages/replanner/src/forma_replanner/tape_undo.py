@@ -11,6 +11,7 @@ is never touched. No tape is refunded: peeled tape is named as material
 loss and the compiler/replanner ledgers charge reattachment separately.
 """
 
+import copy
 from hashlib import sha256
 
 from forma_domain.models import Blocker
@@ -94,7 +95,8 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
         for oid in ("stand-inspect-fit", "stand-functional-test")
         if oid in completed
     )
-    if completed_final_checks:
+    full_build = len(completed_final_checks) == 2
+    if completed_final_checks and not full_build:
         return blocked(
             "unsupported",
             "Tape-undo replacement does not support a completed "
@@ -160,6 +162,8 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
         f"{joint_id}-replacement-{token}" for joint_id, _o, _p, _n in TOUCHING
     )
     reattach_ids = tuple(f"{joint_id}-attach" for joint_id in new_joint_ids)
+    new_fit_id = f"replacement_inspect_fit_{token}"
+    new_test_id = f"replacement_functional_test_{token}"
     active = ("stand-support", "stand-base", new_pid)
 
     new_part = original.model_dump(mode="python")
@@ -200,6 +204,21 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
             "invalidated_by": (),
         },
     )
+    if full_build:
+        for old_op_id, new_op_id in (
+            ("stand-inspect-fit", new_fit_id),
+            ("stand-functional-test", new_test_id),
+        ):
+            old_check = next(
+                c for c in data["checkpoints"] if c["after_operation_id"] == old_op_id
+            )
+            cloned = copy.deepcopy(old_check)
+            cloned.update(
+                id=f"{new_op_id}-check",
+                after_operation_id=new_op_id,
+                invalidated_by=(),
+            )
+            data["checkpoints"] = (*data["checkpoints"], cloned)
 
     new_ops = []
     for (joint_id, op_id, partner, _name), peel_id in zip(
@@ -322,29 +341,56 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
         )
 
     operations_data = list(data["operations"])
-    for op in operations_data:
-        if op["id"] == "stand-inspect-fit":
-            op["part_ids"] = active
-            op["depends_on"] = (reattach_ids[-1],)
-            op["preconditions"]["accessible_part_ids"] = active
-            op["args"]["target_ids"] = active
-        elif op["id"] == "stand-functional-test":
-            op["part_ids"] = active
-            op["preconditions"]["accessible_part_ids"] = ()
-            op["preconditions"]["required_joint_ids"] = (
-                "stand-joint-front",
-                *new_joint_ids,
-            )
-    insert_at = (
-        next(
-            i
-            for i, o in enumerate(operations_data)
-            if o["id"] == "stand-joint-apex-attach"
+    if full_build:
+        by_id = {op["id"]: op for op in operations_data}
+        fit = copy.deepcopy(by_id["stand-inspect-fit"])
+        fit.update(
+            id=new_fit_id,
+            part_ids=active,
+            depends_on=(reattach_ids[-1],),
+            expected_state_id=f"state_{new_fit_id}",
         )
-        + 1
-    )
-    data["operations"] = tuple(
-        operations_data[:insert_at] + new_ops + operations_data[insert_at:]
-    )
+        fit["preconditions"]["accessible_part_ids"] = active
+        fit["args"].update(target_ids=active, checkpoint_id=f"{new_fit_id}-check")
+        test = copy.deepcopy(by_id["stand-functional-test"])
+        test.update(
+            id=new_test_id,
+            part_ids=active,
+            depends_on=(new_fit_id,),
+            expected_state_id=f"state_{new_test_id}",
+        )
+        test["preconditions"]["accessible_part_ids"] = ()
+        test["preconditions"]["required_joint_ids"] = (
+            "stand-joint-front",
+            *new_joint_ids,
+        )
+        test["args"]["checkpoint_id"] = f"{new_test_id}-check"
+        new_ops = [*new_ops, fit, test]
+        data["operations"] = tuple(operations_data + new_ops)
+    else:
+        for op in operations_data:
+            if op["id"] == "stand-inspect-fit":
+                op["part_ids"] = active
+                op["depends_on"] = (reattach_ids[-1],)
+                op["preconditions"]["accessible_part_ids"] = active
+                op["args"]["target_ids"] = active
+            elif op["id"] == "stand-functional-test":
+                op["part_ids"] = active
+                op["preconditions"]["accessible_part_ids"] = ()
+                op["preconditions"]["required_joint_ids"] = (
+                    "stand-joint-front",
+                    *new_joint_ids,
+                )
+        insert_at = (
+            next(
+                i
+                for i, o in enumerate(operations_data)
+                if o["id"] == "stand-joint-apex-attach"
+            )
+            + 1
+        )
+        data["operations"] = tuple(
+            operations_data[:insert_at] + new_ops + operations_data[insert_at:]
+        )
     peeled = tuple(op for _j, op, _p, _n in TOUCHING)
     return True, None, peel_ids, peeled
