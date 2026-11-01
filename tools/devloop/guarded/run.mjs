@@ -63,7 +63,8 @@ export function checkStatus(state, stopped, now = Date.now()) {
       "Guard paused: STOP, pending usage or expired billing verification",
     );
   if (
-    state.cap !== 90_000_000 ||
+    !Number.isSafeInteger(state.cap) ||
+    state.cap < 6_000_000 ||
     !Number.isSafeInteger(state.combinedSpent) ||
     state.combinedSpent < 0 ||
     state.combinedSpent + 6_000_000 > state.cap
@@ -167,7 +168,7 @@ export async function main(args = process.argv.slice(2)) {
     env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
     env.UV_OFFLINE = "1";
     console.log(
-      `Starting fresh Muse feature session; shared recorded spend $${(state.combinedSpent / 1e6).toFixed(4)} / $90.`,
+      `Starting fresh Muse feature session; shared recorded spend $${(state.combinedSpent / 1e6).toFixed(4)} / $${(state.cap / 1e6).toFixed(2)} verified funding ceiling.`,
     );
     const executable =
       process.platform === "win32"

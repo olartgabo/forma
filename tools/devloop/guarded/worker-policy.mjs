@@ -91,6 +91,11 @@ export function workerConfig(base, workspace, task) {
     config.permission.edit[path.join(workspace, file)] = "allow";
   }
   for (const command of CHECKS) config.permission.bash[command] = "allow";
+  const pythonFiles = task.files_allowed.filter((x) => x.endsWith(".py"));
+  if (pythonFiles.length)
+    config.permission.bash[
+      `uv run --locked --offline ruff format ${pythonFiles.join(" ")}`
+    ] = "allow";
   const formatted = task.files_allowed.filter((x) =>
     /\.(mjs|js|ts|tsx|json|css)$/.test(x),
   );

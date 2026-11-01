@@ -1,3 +1,11 @@
+# Latest monitored-run authorization
+
+The user removed the fixed $90 cap while monitoring. The external guard now
+uses a verified free-credit funding ceiling, preserving the $30 free-credit
+reserve, lag buffer, existing journal history, STOP and no paid fallback. This
+supersedes fixed90 statements below. Continue ResniDev-owned issues and reviews;
+create only concrete useful followups and do not duplicate existing tasks.
+
 # Muse-first feature loop
 
 User direction: November 1, 2026. Supersedes older authorship and per-edit
@@ -48,7 +56,7 @@ desktop chat to compact through a filesystem edit.
 
 ## Budget and stopping
 
-The existing single $90 lifetime cap, minimum $30 free-credit reserve, both
+The verified free-credit funding ceiling, minimum $30 free-credit reserve, both
 historical ledgers, durable $6 reservations, one in-flight provider request,
 STOP, uncertain-outcome accounting, verification expiry, model restrictions and
 no-direct-key/no-paid-fallback rules are unchanged. Do not reset or replace them.

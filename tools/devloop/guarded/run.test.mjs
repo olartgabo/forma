@@ -30,7 +30,7 @@ test("preserves shared cap, reservation headroom, STOP, pending and expiry gates
   for (const patch of [
     { pending: 1 },
     { halted: true },
-    { cap: 100_000_000 },
+    { cap: 5_000_000 },
     { combinedSpent: 84_000_001 },
     { combinedSpent: -1 },
     { expires: "invalid" },

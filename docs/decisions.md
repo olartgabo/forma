@@ -152,3 +152,16 @@ The guarded Node launcher uses the existing external budget authority; the legac
 Python command exits before dispatch. Existing lifetime cap, reserve, STOP,
 uncertain-outcome accounting and finite verification window remain in force.
 No product runtime, contract, ownership, or physical acceptance changes.
+
+
+## D015: Monitored own-work loop without the fixed90 cap, November1,2026
+
+The user removes the fixed90USD limit while monitoring and asks for continued
+Muse development, delegation, review of their submissions and code cleanup.
+The external guard retains append-only accounting, durable reservations, STOP,
+finite verified funding and no paid fallback. Its allowance is based on current
+verified free credits with the existing30USD reserve and a billing-lag buffer;
+the original ledger is never reset or rewritten. Development roles in D014 stay.
+Continue ResniDev-owned issues/PRs and open only concrete useful followups. Reuse
+original issues instead of multiplying equivalent loop-proposed tickets. Product
+runtime bounds, ownership and physical-evidence requirements are unchanged.

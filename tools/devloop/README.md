@@ -28,7 +28,7 @@ and old-tool-output pruning are enabled, using the same guarded model/budget.
 Claude plan/review calls are fresh and capped at eight turns. Codex keeps native
 model-default compaction. See [the complete policy](guarded/POLICY.md).
 
-The shared $90 lifetime cap, $30 free-credit reserve, both historical journals,
+The shared verified free-credit funding ceiling, $30 free-credit reserve, both historical journals,
 $6 durable request reservations, STOP, pending/unknown usage and billing expiry
 remain in force. Expired billing verification must be reviewed before dispatch;
 the launcher never renews it. No paid provider fallback or automatic merge.
