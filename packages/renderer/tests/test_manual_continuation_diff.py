@@ -209,6 +209,27 @@ def test_tape_undo_diff_keeps_historical_panels_and_adds_continuation():
     assert outcome.removed == ()
 
 
+def test_seven_prefix_tape_undo_diff_keeps_first_seven_and_adds_continuation():
+    from test_stand_continuation import _attached_brace_replacement
+
+    _base, _snapshot, result, _process = _attached_brace_replacement(completed_count=7)
+    assert result.status == "feasible", result.blockers
+    _, parameters, process = build()
+    old_plan, _p, _pr = build()
+    old = render(old_plan, parameters, process)
+    new = render(result.plan, parameters, process)
+    assert len(old.panels) == 8 and len(new.panels) == 15
+    assert [p.svg for p in new.panels[:7]] == [p.svg for p in old.panels[:7]]
+    keys = [p.step_key for p in new.panels]
+    assert len(keys) == len(set(keys))
+    assert all(k.startswith("continuation:") for k in keys[7:])
+    outcome = diff(old, new)
+    assert outcome.unchanged == tuple(range(7))
+    assert outcome.added == tuple(range(7, 15))
+    assert outcome.changed == ()
+    assert outcome.removed == (7,)
+
+
 def test_full_build_tape_undo_diff_keeps_original_and_adds_continuation():
     from test_stand_continuation import _attached_brace_replacement
 

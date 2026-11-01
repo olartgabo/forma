@@ -70,13 +70,23 @@ _TAPE_UNDO_FULL_TYPES = _CORE_TYPES + (
     "inspect",
     "functional_test",
 )
+_TAPE_UNDO_SEVEN_TYPES = _CORE_TYPES[:7] + (
+    "detach",
+    "detach",
+    "cut_rect",
+    "inspect",
+    "tape_joint",
+    "tape_joint",
+    "inspect",
+    "functional_test",
+)
 
 
 @dataclass(frozen=True)
 class _TapeStage:
     """Resolved layout of a tape-undo continuation plan."""
 
-    historical_count: int  # 6 (retargeted finals) or 8 (preserved finals)
+    historical_count: int  # 6, 7 (historical fit) or 8 (preserved finals)
     peel: int
     cut: int
     fit: int
@@ -85,6 +95,10 @@ class _TapeStage:
     @property
     def full(self):
         return self.historical_count == 8
+
+    @property
+    def has_new_finals(self):
+        return self.historical_count >= 7
 
     @property
     def reattach(self):
@@ -97,6 +111,10 @@ def _resolve_tape_stage(operations):
     ids = tuple(o.id for o in operations)
     if types == _TAPE_UNDO_TYPES and ids[:6] == _HISTORICAL_OP_IDS:
         return _TapeStage(6, peel=6, cut=8, fit=12, test=13)
+    if types == _TAPE_UNDO_SEVEN_TYPES and ids[:7] == _HISTORICAL_OP_IDS + (
+        "stand-inspect-fit",
+    ):
+        return _TapeStage(7, peel=7, cut=9, fit=13, test=14)
     if types == _TAPE_UNDO_FULL_TYPES and ids[:8] == _HISTORICAL_OP_IDS + _FINAL_OP_IDS:
         return _TapeStage(8, peel=8, cut=10, fit=14, test=15)
     return None
@@ -397,29 +415,30 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 (op.id, joint.id),
             )
     inspect_fit, test_op = operations[stage.fit], operations[stage.test]
-    historical_finals = operations[6:8] if stage.full else ()
-    for hist_fit, hist_test in zip(
-        historical_finals[::2], historical_finals[1::2], strict=False
+    historical_fit = operations[6] if stage.historical_count >= 7 else None
+    historical_test = operations[7] if stage.historical_count >= 8 else None
+    historical_finals = tuple(
+        op for op in (historical_fit, historical_test) if op is not None
+    )
+    if historical_fit is not None and (
+        historical_fit.part_ids != _ORIGINALS
+        or tuple(historical_fit.args.target_ids) != _ORIGINALS
     ):
-        if (
-            hist_fit.part_ids != _ORIGINALS
-            or tuple(hist_fit.args.target_ids) != _ORIGINALS
-        ):
-            add(
-                "invalid_reference",
-                "Historical fit inspection must target the original stand parts.",
-                (hist_fit.id,),
-            )
-        if (
-            hist_test.part_ids != _ORIGINALS
-            or tuple(hist_test.preconditions.required_joint_ids) != _JOINT_IDS
-        ):
-            add(
-                "invalid_reference",
-                "Historical functional test must require the original joints.",
-                (hist_test.id,),
-            )
-    if stage.full and inspect_fit.id in _FINAL_OP_IDS + tuple(
+        add(
+            "invalid_reference",
+            "Historical fit inspection must target the original stand parts.",
+            (historical_fit.id,),
+        )
+    if historical_test is not None and (
+        historical_test.part_ids != _ORIGINALS
+        or tuple(historical_test.preconditions.required_joint_ids) != _JOINT_IDS
+    ):
+        add(
+            "invalid_reference",
+            "Historical functional test must require the original joints.",
+            (historical_test.id,),
+        )
+    if stage.has_new_finals and inspect_fit.id in _FINAL_OP_IDS + tuple(
         o.id for o in historical_finals
     ):
         add(
@@ -461,7 +480,9 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 (op.id, op.args.checkpoint_id),
             )
     mass = plan.constraints.device_mass_g
-    test_ops = (historical_finals[1], test_op) if historical_finals else (test_op,)
+    test_ops = (
+        (historical_test, test_op) if historical_test is not None else (test_op,)
+    )
     for checked_test in test_ops:
         if (
             checked_test.args.mass_g is None

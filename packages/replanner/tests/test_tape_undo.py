@@ -227,16 +227,8 @@ def test_attached_brace_peel_and_reattach_leaves_100mm():
     assert all(o.id in result.incomplete_operation_ids for o in peels)
 
 
-@pytest.mark.parametrize(
-    "completed_final_checks",
-    [
-        ("stand-inspect-fit",),
-        ("stand-functional-test",),
-    ],
-)
-def test_completed_final_checks_block_before_candidate_construction(
-    completed_final_checks,
-):
+def test_completed_functional_test_without_fit_blocks():
+    completed_final_checks = ("stand-functional-test",)
     base, snapshot, process = attached_snapshot()
     ops = {o.id: o for o in base.operations}
     extra_events = tuple(
@@ -260,22 +252,12 @@ def test_completed_final_checks_block_before_candidate_construction(
     assert result.status == "blocked"
     assert result.plan is None
     assert result.cost is None
-    if completed_final_checks == ("stand-functional-test",):
-        # Simulation rejects a test completion that precedes its fit
-        # prerequisite before any candidate can be constructed.
-        assert any(
-            b.code == "invalid_order" and b.target_ids == completed_final_checks
-            for b in result.blockers
-        ), result.blockers
-    else:
-        assert any(
-            b.code == "unsupported"
-            and "completed" in b.message
-            and "stand-inspect-fit" in b.message
-            and "stand-functional-test" in b.message
-            and b.target_ids == completed_final_checks
-            for b in result.blockers
-        ), result.blockers
+    # Simulation rejects a test completion that precedes its fit
+    # prerequisite before any candidate can be constructed.
+    assert any(
+        b.code == "invalid_order" and b.target_ids == completed_final_checks
+        for b in result.blockers
+    ), result.blockers
     # Completion history is preserved and not stripped to obtain a candidate.
     assert tuple(e.operation_id for e in changed.events[-len(extra_events) :]) == (
         completed_final_checks
@@ -291,8 +273,8 @@ def test_dependent_evidence_and_checkpoints_invalidate():
         kind="user_report",
         provenance="user",
         part_ids=("stand-brace",),
-        operation_ids=("stand-inspect-fit",),
-        checkpoint_ids=("stand-inspect-fit-check",),
+        operation_ids=("stand-inspect-cuts",),
+        checkpoint_ids=("stand-inspect-cuts-check",),
         recorded_at=base.created_at,
         description="SYNTHETIC dependent evidence for the attached brace.",
         verification_state="user_confirmed",
@@ -405,6 +387,286 @@ def full_snapshot(tape_length=500):
     )
     changed = snapshot.model_copy(update={"events": events, "evidence": records})
     return base, changed, process
+
+
+def seven_snapshot(tape_length=500):
+    base, snapshot, process = attached_snapshot(tape_length=tape_length)
+    checks = {c.after_operation_id: c.id for c in base.checkpoints}
+    fit_evidence = m.Evidence(
+        id="synthetic-seven-fit-evidence",
+        project_id=base.project_id,
+        version_id=base.version_id,
+        kind="user_report",
+        provenance="user",
+        part_ids=("stand-support", "stand-base", "stand-brace"),
+        operation_ids=("stand-inspect-fit",),
+        checkpoint_ids=(checks["stand-inspect-fit"],),
+        recorded_at=base.created_at,
+        description="SYNTHETIC user evidence; no physical build.",
+        verification_state="user_confirmed",
+    )
+    events = tuple(
+        e.model_copy(update={"evidence_ids": (fit_evidence.id,)})
+        if e.operation_id == "stand-inspect-fit"
+        else e
+        for e in snapshot.events
+    ) + (
+        m.PhysicalEvent(
+            id="synthetic-tape-undo-stand-inspect-fit",
+            project_id=base.project_id,
+            version_id=base.version_id,
+            operation_id="stand-inspect-fit",
+            kind="operation_confirmed",
+            evidence_ids=(fit_evidence.id,),
+            recorded_at=base.created_at,
+            actor="user",
+            observation="SYNTHETIC user-confirmed operation; no physical build.",
+            verification_state="user_confirmed",
+        ),
+    )
+    changed = snapshot.model_copy(
+        update={"events": events, "evidence": (fit_evidence,)}
+    )
+    return base, changed, process
+
+
+def test_seven_prefix_tape_undo_preserves_fit_and_regenerates_finals():
+    base, snapshot, process = seven_snapshot()
+    result = simulate(snapshot, process)
+    assert result.status == "feasible", result.blockers
+    assert result.cost is not None and result.cost.known_weighted_cost == 8
+    plan = result.plan
+    assert len(plan.operations) == 15
+    assert plan.operations[:7] == base.operations[:7]
+    assert {p.id: p for p in plan.parts if p.id in {x.id for x in base.parts}} == {
+        p.id: p for p in base.parts
+    }
+    assert tuple(j for j in plan.joints if j.id.startswith("stand-joint-"))[:3] == (
+        base.joints
+    )
+    base_checks = {c.id: c for c in base.checkpoints}
+    plan_checks = {c.id: c for c in plan.checkpoints}
+    fit_check = next(
+        c for c in base.checkpoints if c.after_operation_id == "stand-inspect-fit"
+    )
+    assert plan_checks[fit_check.id] == fit_check
+    appended = plan.operations[7:]
+    assert [o.type for o in appended] == [
+        "detach",
+        "detach",
+        "cut_rect",
+        "inspect",
+        "tape_joint",
+        "tape_joint",
+        "inspect",
+        "functional_test",
+    ]
+    assert all(o.id in result.incomplete_operation_ids for o in appended)
+    assert all(o.id in result.incomplete_operation_ids for o in plan.operations[7:])
+    peels = appended[:2]
+    assert tuple(result.required_undo_operation_ids) == tuple(o.id for o in peels)
+    assert "stand-joint-front-attach" in result.preserved_operation_ids
+    assert "stand-inspect-fit" not in result.preserved_operation_ids
+    assert fit_check.id in result.invalidated_checkpoint_ids
+    assert result.invalidated_evidence_ids == ("synthetic-seven-fit-evidence",)
+    new_id = next(p.id for p in plan.parts if p.id not in {x.id for x in base.parts})
+    active = ("stand-support", "stand-base", new_id)
+    new_fit, new_test = appended[-2], appended[-1]
+    assert new_fit.id not in {o.id for o in base.operations}
+    assert new_test.id not in {o.id for o in base.operations}
+    assert "stand-functional-test" not in {o.id for o in plan.operations}
+    assert new_fit.part_ids == active and tuple(new_fit.args.target_ids) == active
+    assert new_test.part_ids == active
+    new_joints = [j for j in plan.joints if j.id not in {x.id for x in base.joints}]
+    assert tuple(new_test.preconditions.required_joint_ids) == (
+        "stand-joint-front",
+        *[j.id for j in new_joints],
+    )
+    orig_test = next(o for o in base.operations if o.id == "stand-functional-test")
+    assert new_test.args.device_label == orig_test.args.device_label
+    assert new_test.args.mass_g == orig_test.args.mass_g
+    assert new_test.args.duration_seconds == orig_test.args.duration_seconds
+    assert new_test.args.surface == orig_test.args.surface
+    assert new_test.args.pass_criteria == orig_test.args.pass_criteria
+    for op in (new_fit, new_test):
+        assert any(
+            c.after_operation_id == op.id and c.id == op.args.checkpoint_id
+            for c in plan.checkpoints
+        )
+    tape_uses = [
+        d.quantity
+        for d in result.proposed_material_deltas
+        if d.stock_id == "fixture-tape-stock" and d.kind == "consume"
+    ]
+    assert tape_uses == [80, 80]
+    assert 500 - 240 - sum(tape_uses) == 100
+
+
+def _extra_event(base, event_id, operation_id, **updates):
+    fields = {
+        "id": event_id,
+        "project_id": base.project_id,
+        "version_id": base.version_id,
+        "operation_id": operation_id,
+        "kind": "observation",
+        "evidence_ids": (),
+        "recorded_at": base.created_at,
+        "actor": "user",
+        "observation": "SYNTHETIC persisted reference; no physical build.",
+        "verification_state": "user_confirmed",
+    }
+    fields.update(updates)
+    return m.PhysicalEvent(**fields)
+
+
+def test_persisted_observation_on_unfinished_fit_blocks_six_prefix():
+    base, snapshot, process = attached_snapshot()
+    event = _extra_event(
+        base, "synthetic-obs-fit", "stand-inspect-fit"
+    )
+    changed = snapshot.model_copy(update={"events": snapshot.events + (event,)})
+    result = simulate(changed, process)
+    assert result.status == "blocked"
+    assert result.plan is None and result.cost is None
+    assert any(
+        b.code == "invalid_reference" and b.target_ids == ("stand-inspect-fit",)
+        for b in result.blockers
+    ), result.blockers
+    assert changed.events[-1] == event
+
+
+def test_persisted_not_attempted_test_on_unfinished_function_blocks_six_prefix():
+    base, snapshot, process = attached_snapshot()
+    event = _extra_event(
+        base,
+        "synthetic-test-not-attempted",
+        "stand-functional-test",
+        kind="test",
+        verification_state="not_checked",
+        test_result="not_attempted",
+    )
+    changed = snapshot.model_copy(update={"events": snapshot.events + (event,)})
+    result = simulate(changed, process)
+    assert result.status == "blocked"
+    assert result.plan is None and result.cost is None
+    assert any(
+        b.code == "invalid_reference"
+        and b.target_ids == ("stand-functional-test",)
+        for b in result.blockers
+    ), result.blockers
+
+
+def test_persisted_future_function_checkpoint_evidence_blocks_six_prefix():
+    base, snapshot, process = attached_snapshot()
+    check_id = next(
+        c.id for c in base.checkpoints if c.after_operation_id == "stand-functional-test"
+    )
+    evidence = m.Evidence(
+        id="synthetic-future-function-check-evidence",
+        project_id=base.project_id,
+        version_id=base.version_id,
+        kind="user_report",
+        provenance="user",
+        checkpoint_ids=(check_id,),
+        recorded_at=base.created_at,
+        description="SYNTHETIC future checkpoint evidence; no physical build.",
+        verification_state="not_checked",
+    )
+    changed = snapshot.model_copy(update={"evidence": (evidence,)})
+    result = simulate(changed, process)
+    assert result.status == "blocked"
+    assert result.plan is None
+    assert any(
+        b.code == "invalid_reference"
+        and b.target_ids == ("stand-functional-test",)
+        for b in result.blockers
+    ), result.blockers
+    assert changed.evidence == (evidence,)
+
+
+def test_persisted_reference_to_unfinished_function_blocks_seven_prefix():
+    base, snapshot, process = seven_snapshot()
+    event = _extra_event(
+        base,
+        "synthetic-seven-test-not-attempted",
+        "stand-functional-test",
+        kind="test",
+        verification_state="not_checked",
+        test_result="not_attempted",
+    )
+    changed = snapshot.model_copy(update={"events": snapshot.events + (event,)})
+    result = simulate(changed, process)
+    assert result.status == "blocked"
+    assert result.plan is None
+    assert any(
+        b.code == "invalid_reference"
+        and b.target_ids == ("stand-functional-test",)
+        for b in result.blockers
+    ), result.blockers
+
+
+def test_persisted_transaction_on_unfinished_fit_blocks_six_prefix():
+    base, snapshot, process = attached_snapshot()
+    event = _extra_event(base, "synthetic-tx-event", None)
+    spare = next(s for s in snapshot.remaining_stock if s.id == "spare")
+    region = spare.usable_regions[0]
+    tx = m.MaterialTransaction(
+        id="synthetic-tx-future-fit",
+        project_id=base.project_id,
+        version_id=base.version_id,
+        operation_id="stand-inspect-fit",
+        source_stock_id="spare",
+        kind="waste",
+        source_region_id=region.id,
+        quantity=region.geometry.width * region.geometry.height,
+        unit="mm2",
+        recorded_at=base.created_at,
+        physical_event_id=event.id,
+    )
+    changed = snapshot.model_copy(
+        update={
+            "events": snapshot.events + (event,),
+            "material_transactions": (tx,),
+            "remaining_stock": tuple(
+                s.model_copy(update={"usable_regions": ()})
+                if s.id == "spare"
+                else s
+                for s in snapshot.remaining_stock
+            ),
+        }
+    )
+    result = simulate(changed, process)
+    assert result.status == "blocked"
+    assert result.plan is None
+    assert any(
+        b.code == "invalid_reference" and b.target_ids == ("stand-inspect-fit",)
+        for b in result.blockers
+    ), result.blockers
+
+
+def test_failed_function_test_stays_needs_confirmation():
+    base, snapshot, process = attached_snapshot()
+    event = _extra_event(
+        base,
+        "synthetic-failed-function",
+        "stand-functional-test",
+        kind="test",
+        verification_state="failed",
+        test_result="failed",
+    )
+    changed = snapshot.model_copy(update={"events": snapshot.events + (event,)})
+    result = simulate(changed, process)
+    assert result.status == "blocked"
+    assert result.plan is None
+    assert any(b.code == "needs_confirmation" for b in result.blockers), result.blockers
+
+
+def test_seven_prefix_with_399mm_tape_blocks():
+    _base, snapshot, process = seven_snapshot(tape_length=399)
+    result = simulate(snapshot, process)
+    assert result.status == "blocked"
+    assert result.plan is None
+    assert any(b.code == "stock_exhausted" for b in result.blockers)
 
 
 def test_fully_completed_build_tape_undo_preserves_original_history():
@@ -594,6 +856,102 @@ def test_fully_completed_build_with_399mm_tape_blocks():
     assert result.status == "blocked"
     assert result.plan is None
     assert any(b.code == "stock_exhausted" for b in result.blockers)
+
+
+def _replay_seven_candidate(tape_value=260, duplicate_peel=False, peel_count=1):
+    base, snapshot, process = seven_snapshot()
+    result = simulate(snapshot, process)
+    assert result.status == "feasible", result.blockers
+    candidate = result.plan
+    peels = [o for o in candidate.operations if o.type == "detach"]
+    peel_events = tuple(
+        m.PhysicalEvent(
+            id=f"synthetic-seven-replay-{o.id}",
+            project_id=candidate.project_id,
+            version_id=candidate.version_id,
+            operation_id=o.id,
+            kind="operation_confirmed",
+            evidence_ids=(),
+            recorded_at=candidate.created_at,
+            actor="user",
+            observation="SYNTHETIC user-confirmed peel; no physical build.",
+            verification_state="user_confirmed",
+        )
+        for o in peels[:peel_count]
+    )
+    if duplicate_peel:
+        peel_events += (
+            peel_events[0].model_copy(update={"id": "synthetic-seven-replay-dup"}),
+        )
+    remaining = []
+    for stock in candidate.stocks:
+        if stock.kind == "sheet" and stock.id != "spare":
+            remaining.append(stock.model_copy(update={"usable_regions": ()}))
+        elif stock.kind == "tape":
+            remaining.append(
+                stock.model_copy(
+                    update={
+                        "remaining_length_mm": stock.remaining_length_mm.model_copy(
+                            update={"value": tape_value}
+                        )
+                    }
+                )
+            )
+        else:
+            remaining.append(stock)
+    base_part = next(p for p in candidate.parts if p.id == "stand-base")
+    replay = m.ReplannerInput(
+        base_plan=candidate,
+        events=snapshot.events + peel_events,
+        evidence=snapshot.evidence,
+        material_transactions=(),
+        remaining_stock=tuple(remaining),
+        patch=m.RepairPatch(
+            id="synthetic-seven-replay-noop",
+            base_version_id=candidate.version_id,
+            kind="resize_part",
+            target_id="stand-base",
+            replacement_stock_id=None,
+            replacement_profile_id=None,
+            width_mm=base_part.geometry.width,
+            height_mm=base_part.geometry.height,
+            angle_deg=None,
+            rationale="SYNTHETIC no-op follow-up after confirmed peel.",
+        ),
+    )
+    before = copy.deepcopy(replay)
+    outcome = simulate_patch(
+        replay,
+        process=process,
+        allow_synthetic=True,
+        historical_plans=(base,),
+        family_validator=stand_continuation_blockers,
+    )
+    assert replay.model_dump() == before.model_dump()
+    return outcome
+
+
+@pytest.mark.parametrize("peel_count", [1, 2])
+def test_seven_candidate_replay_after_peels_has_no_history_blockers(peel_count):
+    outcome = _replay_seven_candidate(peel_count=peel_count)
+    assert outcome.status == "blocked"
+    codes = {b.code for b in outcome.blockers}
+    assert codes <= {"unsupported", "no_feasible_repair"}
+    assert codes.isdisjoint(
+        {"invalid_reference", "stale_version", "stock_exhausted", "invalid_order"}
+    )
+
+
+def test_seven_candidate_replay_wrong_remaining_tape_blocks():
+    outcome = _replay_seven_candidate(tape_value=261)
+    assert outcome.status == "blocked"
+    assert any(b.code == "stock_exhausted" for b in outcome.blockers)
+
+
+def test_seven_candidate_replay_duplicate_peel_blocks():
+    outcome = _replay_seven_candidate(duplicate_peel=True)
+    assert outcome.status == "blocked"
+    assert any(b.code == "invalid_order" for b in outcome.blockers)
 
 
 def _replay_full_candidate(tape_value=260, duplicate_peel=False, peel_count=1):

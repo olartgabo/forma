@@ -95,8 +95,11 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
         for oid in ("stand-inspect-fit", "stand-functional-test")
         if oid in completed
     )
-    full_build = len(completed_final_checks) == 2
-    if completed_final_checks and not full_build:
+    fit_completed = "stand-inspect-fit" in completed
+    test_completed = "stand-functional-test" in completed
+    full_build = fit_completed and test_completed
+    seven_build = fit_completed and not test_completed
+    if test_completed and not fit_completed:
         return blocked(
             "unsupported",
             "Tape-undo replacement does not support a completed "
@@ -108,7 +111,7 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
     # Resolve each original final checkpoint by the operation's own
     # checkpoint reference, before staging any candidate mutation.
     original_final_checkpoints = {}
-    if full_build:
+    if fit_completed:
         for old_op_id in ("stand-inspect-fit", "stand-functional-test"):
             referenced_id = operations[old_op_id].args.checkpoint_id
             matches = [c for c in base.checkpoints if c.id == referenced_id]
@@ -222,7 +225,7 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
             "invalidated_by": (),
         },
     )
-    if full_build:
+    if fit_completed:
         for old_op_id, new_op_id in (
             ("stand-inspect-fit", new_fit_id),
             ("stand-functional-test", new_test_id),
@@ -235,7 +238,16 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
                 after_operation_id=new_op_id,
                 invalidated_by=(),
             )
-            data["checkpoints"] = (*data["checkpoints"], cloned)
+            if seven_build and old_op_id == "stand-functional-test":
+                # The unfinished test is renamed, so its checkpoint is
+                # retargeted rather than left pointing at the old operation.
+                original_id = original_final_checkpoints[old_op_id].id
+                data["checkpoints"] = tuple(
+                    cloned if c["id"] == original_id else c
+                    for c in data["checkpoints"]
+                )
+            else:
+                data["checkpoints"] = (*data["checkpoints"], cloned)
 
     new_ops = []
     for (joint_id, op_id, partner, _name), peel_id in zip(
@@ -358,7 +370,7 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
         )
 
     operations_data = list(data["operations"])
-    if full_build:
+    if fit_completed:
         by_id = {op["id"]: op for op in operations_data}
         fit = copy.deepcopy(by_id["stand-inspect-fit"])
         fit.update(
@@ -383,7 +395,15 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
         )
         test["args"]["checkpoint_id"] = f"{new_test_id}-check"
         new_ops = [*new_ops, fit, test]
-        data["operations"] = tuple(operations_data + new_ops)
+        if seven_build:
+            # Keep the seven historical operations exactly; the unfinished
+            # functional test is renamed/retargeted as the new final test.
+            historical = [
+                op for op in operations_data if op["id"] != "stand-functional-test"
+            ]
+            data["operations"] = tuple(historical + new_ops)
+        else:
+            data["operations"] = tuple(operations_data + new_ops)
     else:
         for op in operations_data:
             if op["id"] == "stand-inspect-fit":

@@ -722,6 +722,56 @@ def test_attached_brace_tape_undo_is_feasible_cost8_and_rendered():
     assert tape_bill.quantity == 100
 
 
+def test_seven_prefix_brace_tape_undo_renders_15_panels():
+    base, _snapshot, result, process = _attached_brace_replacement(completed_count=7)
+    assert result.status == "feasible", result.blockers
+    assert stand_continuation_blockers(result.plan) == ()
+    plan = result.plan
+    assert plan.operations[:7] == base.operations[:7]
+    assert len(plan.operations) == 15
+
+    _plan, parameters, _p = build()
+    rendered = render_manual(
+        plan,
+        process=process,
+        profile_evidence=parameters.profile_evidence,
+        allow_synthetic=True,
+    )
+    assert rendered.status == "accepted", rendered.blockers
+    assert len(rendered.panels) == 15
+    original_plan, _params, _proc = build()
+    original = render_manual(
+        original_plan,
+        process=process,
+        profile_evidence=parameters.profile_evidence,
+        allow_synthetic=True,
+    )
+    assert [p.svg for p in rendered.panels[:7]] == [p.svg for p in original.panels[:7]]
+    assert [p.dependency_hash for p in rendered.panels[:7]] == [
+        p.dependency_hash for p in original.panels[:7]
+    ]
+    assert [p.step_key for p in rendered.panels[:7]] == [
+        p.step_key for p in original.panels[:7]
+    ]
+    keys = [p.step_key for p in rendered.panels]
+    assert len(keys) == len(set(keys))
+    assert all(k.startswith("continuation:") for k in keys[7:])
+
+    new_id = _new_brace_id(base, result)
+    historical_fit = rendered.panels[6]
+    assert "stand-brace" in _svg_part_ids(historical_fit)
+    assert new_id not in _svg_part_ids(historical_fit)
+    for panel in rendered.panels[-2:]:
+        assert new_id in _svg_part_ids(panel)
+        assert "stand-brace" not in _svg_part_ids(panel)
+        assert "Side elevation" in panel.svg
+    tape_id = next(s.id for s in base.stocks if s.kind == "tape")
+    tape_bill = next(
+        item for item in rendered.bill_of_materials if item.id == f"{tape_id}-remaining"
+    )
+    assert tape_bill.quantity == 100
+
+
 def test_fully_completed_brace_tape_undo_renders_16_panels():
     base, _snapshot, result, process = _attached_brace_replacement(completed_count=8)
     assert result.status == "feasible", result.blockers

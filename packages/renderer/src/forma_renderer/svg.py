@@ -482,7 +482,7 @@ def render_manual(
     )
     continuation_indexes: set[int] = set()
     if stage is not None:
-        end = len(plan.operations) if stage.full else stage.fit
+        end = len(plan.operations) if stage.has_new_finals else stage.fit
         continuation_indexes = set(range(stage.peel, end))
     elif first_detach is not None:
         reattach_indexes = [
@@ -505,6 +505,10 @@ def render_manual(
         else:
             core_index_by_plan_index[plan_index] = len(core_index_by_plan_index)
     core_count = len(core_index_by_plan_index)
+    if stage is not None:
+        # Tape layouts keep the original eight core step slots in titles
+        # even when a historical final is superseded by a continuation.
+        core_count = 8
     if not profile_evidence_valid(
         plan.joint_profiles,
         profile_evidence,

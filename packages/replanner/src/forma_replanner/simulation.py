@@ -928,6 +928,58 @@ def simulate_patch(
     if blockers:
         return blocked(lost_region_ids=tuple(lost))
 
+    # Before any candidate mutation, persisted records that reference a
+    # not-yet-completed final operation which this tape recovery would
+    # rename/retarget block the simulation. Historical records are never
+    # stripped or rewritten to make the renamed candidate replayable.
+    if (
+        patch.kind == "replace_part"
+        and patch.target_id == "stand-brace"
+        and base.compiler_version == "triangular-tape-stand-v1"
+    ):
+        renamed_future = tuple(
+            oid
+            for oid in ("stand-inspect-fit", "stand-functional-test")
+            if oid not in completed
+        )
+        required_tape = {
+            "stand-cut-panels",
+            "stand-fold-lip",
+            "stand-joint-rear-attach",
+            "stand-joint-apex-attach",
+        }
+        if renamed_future and required_tape <= completed:
+            checkpoint_ops = {c.id: c.after_operation_id for c in base.checkpoints}
+            for op in base.operations:
+                checkpoint_id = getattr(op.args, "checkpoint_id", None)
+                if checkpoint_id is not None:
+                    checkpoint_ops[checkpoint_id] = op.id
+            referenced = set()
+            for event in snapshot.events:
+                if event.operation_id in renamed_future:
+                    referenced.add(event.operation_id)
+            for item in snapshot.evidence:
+                referenced.update(set(item.operation_ids) & set(renamed_future))
+                referenced.update(
+                    checkpoint_ops[cid]
+                    for cid in item.checkpoint_ids
+                    if checkpoint_ops.get(cid) in renamed_future
+                )
+            for tx in snapshot.material_transactions:
+                if tx.operation_id in renamed_future:
+                    referenced.add(tx.operation_id)
+            for oid in renamed_future:
+                if oid in referenced:
+                    fail(
+                        "invalid_reference",
+                        "Persisted events, evidence or material transactions "
+                        f"reference {oid}, which would be renamed by this "
+                        "repair; the original history cannot be rewritten.",
+                        oid,
+                    )
+    if blockers:
+        return blocked(lost_region_ids=tuple(lost))
+
     data = base.model_dump(mode="python")
     tape_peel_ids: tuple[str, ...] = ()
     tape_peeled_ids: tuple[str, ...] = ()
@@ -1256,8 +1308,8 @@ def simulate_patch(
     # against the retired brace: they stay in history but are not preserved
     # useful work, and must not be advertised as such.
     stale_finals = (
-        {"stand-inspect-fit", "stand-functional-test"}
-        if tape_peel_ids and {"stand-inspect-fit", "stand-functional-test"} <= completed
+        {"stand-inspect-fit", "stand-functional-test"} & completed
+        if tape_peel_ids
         else set()
     )
     kept = tuple(
