@@ -198,6 +198,26 @@ def test_request_validation_rejects_trusted_snapshot_and_keys(client, monkeypatc
     assert counter["factory"] == 0 and fake.calls == []
 
 
+@pytest.mark.parametrize(
+    "value",
+    [1, 0, 1.0, "true", "True", "yes", "on", "false", "1", "0", None, [], {}],
+)
+def test_nonboolean_consent_is_rejected_without_provider_calls(
+    client, monkeypatch, value
+):
+    p = project(client)
+    media = upload(client, p)
+    fake = Fake(final())
+    counter = install(monkeypatch, fake)
+    response = call_intake(client, p, body(p, media, provider_transfer_consented=value))
+    assert response.status_code == 422, response.text
+    assert response.json() == {
+        "code": "validation_error",
+        "message": "Request validation failed",
+    }
+    assert counter["factory"] == 0 and fake.calls == []
+
+
 def test_missing_key_is_safe_503(client, monkeypatch):
     p = project(client)
     media = upload(client, p)

@@ -3,7 +3,7 @@
 import time
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, StrictBool
 
 from forma_api.model_gateway import GatewayError, ImageInput, MetaGateway
 from forma_api.proposal_prompts import PROMPT_VERSION, SCHEMA_VERSION, TASK_PROMPTS
@@ -31,7 +31,7 @@ INTAKE_PROMPT = (
 class IntakeRequest(Record):
     media_id: ID
     expected_revision_id: ID
-    provider_transfer_consented: bool = False
+    provider_transfer_consented: StrictBool = False
 
 
 class IntakeDiagnostics(Record):
