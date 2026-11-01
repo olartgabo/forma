@@ -14,6 +14,12 @@ from forma_api.design_runtime import (
     ProjectSnapshot,
     SnapshotToolArgs,
 )
+from forma_api.diagnosis_runtime import (
+    DiagnosisDiagnostics,
+    DiagnosisErrorResponse,
+    DiagnosisRequest,
+    DiagnosisResult,
+)
 from forma_api.intake_runtime import (
     IntakeDiagnostics,
     IntakeErrorResponse,
@@ -56,6 +62,10 @@ API_RECORDS = (
     DesignErrorResponse,
     DesignGenerateRequest,
     DesignGenerateResult,
+    DiagnosisDiagnostics,
+    DiagnosisErrorResponse,
+    DiagnosisRequest,
+    DiagnosisResult,
     ProjectSnapshot,
     SnapshotToolArgs,
     IntakeDiagnostics,

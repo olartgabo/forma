@@ -12,6 +12,7 @@ import {
   uploadPhoto,
 } from "../lib/api";
 import MuseIntakePanel from "./muse-intake-panel";
+import MuseDiagnosisPanel from "./muse-diagnosis-panel";
 import type {
   BuildRequirements,
   Media,
@@ -1071,6 +1072,13 @@ function ProjectWorkbench({
             </section>
           </div>
           <MuseIntakePanel
+            token={token}
+            project={project}
+            photos={photos}
+            inventoryStale={stale || dirty}
+            disabled={locked}
+          />
+          <MuseDiagnosisPanel
             token={token}
             project={project}
             photos={photos}

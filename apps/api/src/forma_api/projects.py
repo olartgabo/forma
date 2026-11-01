@@ -343,10 +343,12 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     from forma_api.media import media_router
     from forma_api.plans import plan_router
     from forma_api.routes.designs import designs_router
+    from forma_api.routes.diagnosis import diagnosis_router
     from forma_api.routes.intake import intake_router
 
     router.include_router(media_router(store, authenticate))
     router.include_router(intake_router(store, authenticate))
     router.include_router(plan_router(store, authenticate))
     router.include_router(designs_router(store, authenticate))
+    router.include_router(diagnosis_router(store, authenticate))
     return router

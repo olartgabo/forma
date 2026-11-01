@@ -4,6 +4,8 @@ import type {
   ActivationResult,
   DesignGenerateRequest,
   DesignGenerateResult,
+  DiagnosisRequest,
+  DiagnosisResult,
   PlanActivation,
   PlanList,
   PlanVersion,
@@ -66,6 +68,16 @@ const INTAKE_CODE_MESSAGES: Record<string, string> = {
     "This project or photo is unavailable. Check the project ID or reload.",
 };
 
+const DIAGNOSIS_CODES = [...INTAKE_CODES];
+
+const DIAGNOSIS_CODE_MESSAGES: Record<string, string> = {
+  ...INTAKE_CODE_MESSAGES,
+  consent_required:
+    "Consent to send the selected photo, your reported problem and saved project context to Meta is required before asking Muse.",
+  stale_version:
+    "Saved project state changed in another session. Reload the project before asking Muse again.",
+};
+
 const DESIGN_CODES = [
   ...INTAKE_CODES,
   "blocked",
@@ -99,6 +111,7 @@ async function responseError(
   response: Response,
   intake = false,
   design = false,
+  diagnosis = false,
 ): Promise<ApiError> {
   let code = "request_failed";
   try {
@@ -106,14 +119,41 @@ async function responseError(
     if (typeof body === "object" && body !== null && "code" in body) {
       const known = design
         ? DESIGN_CODES
-        : intake
-          ? INTAKE_CODES
-          : ["stale_version", "idempotency_conflict", "blocked"];
+        : diagnosis
+          ? DIAGNOSIS_CODES
+          : intake
+            ? INTAKE_CODES
+            : ["stale_version", "idempotency_conflict", "blocked"];
       if (typeof body.code === "string" && known.includes(body.code))
         code = body.code;
     }
   } catch {
     // Proxy failures may contain HTML; only local messages reach the UI.
+  }
+  if (diagnosis) {
+    const diagnosisStatusMessages: Record<number, string> = {
+      401: "Check your development access key and reconnect.",
+      403: "This access key cannot open this project.",
+      404: "This project, photo or active plan is unavailable. Reload the project.",
+      409: "Saved project state changed. Reload the project before asking Muse again.",
+      413: "The selected photo is too large for Muse. Choose a saved JPEG or PNG photo of 5,000,000 bytes or smaller.",
+      415: "Muse can only read JPEG or PNG photos. Choose a saved JPEG or PNG photo for this project.",
+      422:
+        code === "consent_required"
+          ? DIAGNOSIS_CODE_MESSAGES.consent_required
+          : "The diagnosis request could not be accepted. Check the reported problem and current step, then try again.",
+      429: DIAGNOSIS_CODE_MESSAGES.rate_limit,
+      502: "The Muse request failed. Try again later.",
+      503: DIAGNOSIS_CODE_MESSAGES.provider_not_configured,
+      504: DIAGNOSIS_CODE_MESSAGES.timeout,
+    };
+    return new ApiError(
+      response.status,
+      code,
+      DIAGNOSIS_CODE_MESSAGES[code] ??
+        diagnosisStatusMessages[response.status] ??
+        "FORMA could not complete this request. Try again shortly.",
+    );
   }
   if (design) {
     const designStatusMessages: Record<number, string> = {
@@ -195,6 +235,7 @@ async function request<T>(
   signal?: AbortSignal,
   intake = false,
   design = false,
+  diagnosis = false,
 ): Promise<T> {
   const controller = new AbortController();
   const cancel = () => controller.abort();
@@ -212,7 +253,8 @@ async function request<T>(
       redirect: "error",
       signal: controller.signal,
     });
-    if (!response.ok) throw await responseError(response, intake, design);
+    if (!response.ok)
+      throw await responseError(response, intake, design, diagnosis);
     return await read(response);
   } catch (error) {
     if (error instanceof ApiError) throw error;
@@ -591,6 +633,86 @@ export function generateDesign(
         body.expected_revision_id,
       ),
     signal,
+    false,
+    true,
+  );
+}
+
+const FAILURE_TYPES = [
+  "torn_slot",
+  "wrong_dimension",
+  "missing_material",
+  "damaged_part",
+  "unstable",
+  "unknown",
+];
+
+function checkedDiagnosisResult(
+  value: unknown,
+  projectId: string,
+  revisionId: string,
+  mediaId: string,
+  activeVersionId: string | null,
+  operationId: string | null,
+): DiagnosisResult {
+  const invalid = () =>
+    new ApiError(
+      200,
+      "invalid_response",
+      "FORMA returned a diagnosis that does not match this project, revision, photo or active step. Reload the project and try again.",
+    );
+  if (!isRecord(value)) throw invalid();
+  if (
+    value.project_id !== projectId ||
+    value.revision_id !== revisionId ||
+    value.media_id !== mediaId ||
+    (value.active_version_id ?? null) !== activeVersionId ||
+    (value.current_operation_id ?? null) !== operationId ||
+    !isRecord(value.diagnosis) ||
+    !isStringArray(value.diagnosis.visible_observations) ||
+    !isStringArray(value.diagnosis.hypotheses) ||
+    !isStringArray(value.diagnosis.questions_or_measurements) ||
+    !isStringArray(value.diagnosis.affected_ids) ||
+    !FAILURE_TYPES.includes(value.diagnosis.failure_type as string) ||
+    !isRecord(value.diagnostics) ||
+    value.diagnostics.status !== "ok" ||
+    typeof value.diagnostics.model !== "string" ||
+    value.diagnostics.model.length === 0 ||
+    typeof value.diagnostics.elapsed_ms !== "number" ||
+    !Number.isFinite(value.diagnostics.elapsed_ms) ||
+    value.diagnostics.elapsed_ms < 0
+  )
+    throw invalid();
+  if (activeVersionId === null && value.diagnosis.affected_ids.length !== 0)
+    throw invalid();
+  return value as unknown as DiagnosisResult;
+}
+
+export function requestDiagnosis(
+  token: string,
+  id: string,
+  body: DiagnosisRequest,
+  signal?: AbortSignal,
+): Promise<DiagnosisResult> {
+  return request(
+    token,
+    `${projectPath(id)}/diagnose`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    async (response) =>
+      checkedDiagnosisResult(
+        await json<unknown>(response),
+        id,
+        body.expected_revision_id,
+        body.media_id,
+        body.expected_active_version_id ?? null,
+        body.current_operation_id ?? null,
+      ),
+    signal,
+    false,
     false,
     true,
   );

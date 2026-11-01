@@ -12,6 +12,7 @@ import {
   listPlans,
   loadPlan,
   loadProject,
+  requestDiagnosis,
   requestIntakeObservation,
   saveInventory,
   uploadPhoto,
@@ -596,6 +597,118 @@ test("design cancellation aborts without leaking abort details", async (t) => {
     token,
     "project-a",
     designBody,
+    controller.signal,
+  );
+  controller.abort();
+  await assert.rejects(pending, (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.code, "cancelled");
+    assert.doesNotMatch(error.message, /PRIVATE_ABORT_DETAIL/);
+    return true;
+  });
+  assert.equal(requestSignal.aborted, true);
+});
+
+const diagnosisResult = {
+  project_id: "project-a",
+  revision_id: "inventory-1",
+  media_id: "media-a",
+  active_version_id: null,
+  current_operation_id: null,
+  diagnosis: {
+    visible_observations: ["A tear is visible"],
+    hypotheses: ["The slot may be weak"],
+    questions_or_measurements: ["Measure the edge distance"],
+    affected_ids: [],
+    failure_type: "unknown",
+  },
+  diagnostics: { status: "ok", model: "muse-spark-test", elapsed_ms: 18 },
+};
+
+const diagnosisBody = {
+  media_id: "media-a",
+  expected_revision_id: "inventory-1",
+  reported_problem: "The slot tore",
+  provider_transfer_consented: true,
+};
+
+test("diagnosis request sends exactly the scoped body with caller auth", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json(diagnosisResult);
+  });
+  const result = await requestDiagnosis(token, "project-a", diagnosisBody);
+  assert.deepEqual(result, diagnosisResult);
+  assert.equal(calls[0].path, "/api/projects/project-a/diagnose");
+  assert.equal(calls[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].options.body), diagnosisBody);
+  assert.equal(
+    calls[0].options.headers.get("Authorization"),
+    `Bearer ${token}`,
+  );
+});
+
+test("diagnosis photo-only invented affected IDs are rejected safely", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({
+      ...diagnosisResult,
+      diagnosis: { ...diagnosisResult.diagnosis, affected_ids: ["part-x"] },
+    }),
+  );
+  await assert.rejects(
+    requestDiagnosis(token, "project-a", diagnosisBody),
+    (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.code, "invalid_response");
+      return true;
+    },
+  );
+});
+
+test("diagnosis scoped mismatches and provider errors are safe", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ ...diagnosisResult, revision_id: "inventory-2" }),
+  );
+  await assert.rejects(
+    requestDiagnosis(token, "project-a", diagnosisBody),
+    (error) => error instanceof ApiError && error.code === "invalid_response",
+  );
+  t.mock.restoreAll();
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { code: "timeout", message: "PRIVATE_PROVIDER_BODY sk-secret" },
+      { status: 504 },
+    ),
+  );
+  await assert.rejects(
+    requestDiagnosis(token, "project-a", diagnosisBody),
+    (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.code, "timeout");
+      assert.doesNotMatch(error.message, /PRIVATE|sk-secret/);
+      return true;
+    },
+  );
+});
+
+test("diagnosis cancellation aborts without leaking abort details", async (t) => {
+  let requestSignal;
+  t.mock.method(globalThis, "fetch", (path, options) => {
+    requestSignal = options.signal;
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener(
+        "abort",
+        () => reject(new DOMException("PRIVATE_ABORT_DETAIL", "AbortError")),
+        { once: true },
+      );
+    });
+  });
+  const controller = new AbortController();
+  const pending = requestDiagnosis(
+    token,
+    "project-a",
+    diagnosisBody,
     controller.signal,
   );
   controller.abort();
