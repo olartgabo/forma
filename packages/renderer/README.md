@@ -26,11 +26,24 @@ All hashes still cover the complete visible SVG. The replanner supports extendin
 the original uncut base depth with regenerated brace/layout; other stand resize
 variants remain blocked. No physical verification is implied.
 
-Plan-only tape balances use the original plan stock baseline. Separately recorded
-connector losses are not encoded in `BuildPlan`; these readouts must not be
-presented as observed current inventory. A resource-context rendering follow-up
-is needed to project future balances from the reconciled physical ledger without
-rewriting historical stock.
+Plan-only tape balances use the original plan stock baseline and have
+`resource_basis="plan"`. To forecast from reconciled current connectors, pass
+`connector_context=ConnectorContext(...)` with project/target/observed versions,
+remaining connector stocks and actual completed operation IDs. The trusted server
+caller must obtain those facts from validated history, never model proposals.
+The renderer checks scope, identity, dependency closure, confirmed measurements,
+usable stock and strict nonnegative capacity; it does not authenticate or replay
+the material ledger. Unknown used balances block; unknown unused balances stay
+unknown.
+
+Context manuals use `resource_basis="mixed"`: completed historical panels retain
+their nominal SVGs, future tape panels show expected before/step/after quantities
+from the current balance, and sheet quantities remain planned. The BOM names
+current, future-use and expected remaining connector quantities separately.
+For 500 mm initial, 80 mm completed and 20 mm lost, 400 mm available minus 160 mm
+future use forecasts 240 mm, rather than the nominal 260 mm. Forecast text participates in panel
+hashes; neither context nor cache reuse marks a physical check passed. Original
+stock is retained for history. Context validation does not add tie-manual support.
 
 The default path requires actual user-confirmed cutting evidence and resolved
 user-observed tested tape/fold profiles; unknown dimensions block work. Synthetic

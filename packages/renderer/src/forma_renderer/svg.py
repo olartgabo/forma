@@ -11,6 +11,7 @@ from forma_compiler import CutProcess, validate_plan
 from forma_domain import models as m
 
 from .continuation import stand_continuation_blockers
+from .resources import ConnectorContext, validated_connectors
 from .template import profile_evidence_valid
 
 
@@ -42,6 +43,7 @@ class Manual:
     bill_of_materials: tuple[BillItem, ...]
     blockers: tuple[m.Blocker, ...]
     physical_verification: str = "not_attempted"
+    resource_basis: str = "plan"
 
 
 def number(value):
@@ -393,6 +395,7 @@ def render_manual(
     process: CutProcess | None = None,
     profile_evidence: tuple[m.Evidence, ...] = (),
     allow_synthetic=False,
+    connector_context: ConnectorContext | None = None,
 ) -> Manual:
     """Validate before rendering; unsupported geometry fails closed without panels."""
     result = validate_plan(plan, process=process, allow_synthetic=allow_synthetic)
@@ -458,9 +461,25 @@ def render_manual(
                 ),
             ),
         )
+    connector_state = None
+    if connector_context is not None:
+        connector_state, connector_blockers = validated_connectors(
+            plan, connector_context
+        )
+        if connector_blockers or connector_state is None:
+            status = (
+                "needs_measurement"
+                if any(
+                    blocker.code == "missing_measurement"
+                    for blocker in connector_blockers
+                )
+                else "blocked"
+            )
+            return Manual(status, (), (), connector_blockers)
     panels = []
     attached = set()
     used_by_stock: dict[str, float] = {}
+    future_used_by_stock: dict[str, float] = {}
     for index, operation in enumerate(plan.operations):
         is_supplemental = index in supplemental_indexes
         core_index = core_index_by_plan_index.get(index)
@@ -545,7 +564,29 @@ def render_manual(
             used_before = used_by_stock.get(stock.id, 0.0)
             this_step = operation.args.length_mm
             remaining_after = stock.remaining_length_mm.value - used_before - this_step
-            tape_readout = (stock.id, used_before, this_step, remaining_after)
+            if (
+                connector_state is not None
+                and operation.id not in connector_state.completed
+                and connector_state.current.get(stock.id) is not None
+            ):
+                expected_before = connector_state.current[
+                    stock.id
+                ] - future_used_by_stock.get(stock.id, 0.0)
+                tape_readout = (
+                    stock.id,
+                    expected_before,
+                    this_step,
+                    expected_before - this_step,
+                    True,
+                )
+            else:
+                tape_readout = (
+                    stock.id,
+                    used_before,
+                    this_step,
+                    remaining_after,
+                    False,
+                )
         if operation.type == "cut_rect":
             flat_view(drawing, plan, operation, selected, stock=True)
         elif operation.type in ("fold", "inspect") and not is_inspect_fit:
@@ -553,19 +594,42 @@ def render_manual(
         else:
             side_view(drawing, plan, operation, attached, active_ids)
         if tape_readout is not None:
-            stock_id, used_before, this_step, remaining_after = tape_readout
+            stock_id, used_before, this_step, remaining_after, is_forecast = (
+                tape_readout
+            )
             readout = element(drawing, "g", data_stock_id=stock_id)
-            text(
-                readout, 610, 445, f"tape used before: {dimension(used_before)} mm", 13
-            )
-            text(readout, 610, 463, f"this step: {dimension(this_step)} mm", 13)
-            text(
-                readout,
-                610,
-                481,
-                f"tape left after: {dimension(remaining_after)} mm",
-                13,
-            )
+            if is_forecast:
+                text(
+                    readout,
+                    610,
+                    445,
+                    f"expected tape before: {dimension(used_before)} mm",
+                    13,
+                )
+                text(readout, 610, 463, f"this step: {dimension(this_step)} mm", 13)
+                text(
+                    readout,
+                    610,
+                    481,
+                    f"expected tape after: {dimension(remaining_after)} mm",
+                    13,
+                )
+            else:
+                text(
+                    readout,
+                    610,
+                    445,
+                    f"tape used before: {dimension(used_before)} mm",
+                    13,
+                )
+                text(readout, 610, 463, f"this step: {dimension(this_step)} mm", 13)
+                text(
+                    readout,
+                    610,
+                    481,
+                    f"tape left after: {dimension(remaining_after)} mm",
+                    13,
+                )
         text(drawing, 35, 645, "Tools: " + ", ".join(tools_for(operation)), 15)
         text(
             drawing,
@@ -630,6 +694,14 @@ def render_manual(
                 used_by_stock.get(operation.args.stock_id, 0.0)
                 + operation.args.length_mm
             )
+            if (
+                connector_state is not None
+                and operation.id not in connector_state.completed
+            ):
+                future_used_by_stock[operation.args.stock_id] = (
+                    future_used_by_stock.get(operation.args.stock_id, 0.0)
+                    + operation.args.length_mm
+                )
     bill = tuple(
         BillItem(
             p.id,
@@ -654,26 +726,66 @@ def render_manual(
             )
             remaining = stock.remaining_length_mm
             remaining_known = remaining.value is not None and remaining.confirmed
-            bill += (
-                BillItem(
-                    f"{stock.id}-consumed",
-                    stock.id,
-                    used,
-                    "mm",
-                    f"{joints} tape joint strip(s)"
-                    if joints
-                    else "Tape not used by this plan",
-                ),
-                BillItem(
-                    f"{stock.id}-remaining",
-                    stock.id,
-                    remaining.value - used if remaining_known else None,
-                    "mm",
-                    "Remaining connector length"
-                    if remaining_known
-                    else "Remaining connector length unknown; not measured/confirmed",
-                ),
-            )
+            if connector_state is not None:
+                current = connector_state.current[stock.id]
+                future_use = connector_state.future_use[stock.id]
+                bill += (
+                    BillItem(
+                        f"{stock.id}-consumed",
+                        stock.id,
+                        used,
+                        "mm",
+                        f"{joints} tape joint strip(s); total planned use including completed steps"
+                        if joints
+                        else "Tape not used by this plan",
+                    ),
+                    BillItem(
+                        f"{stock.id}-current",
+                        stock.id,
+                        current,
+                        "mm",
+                        "Current confirmed balance"
+                        if current is not None
+                        else "Current confirmed balance unknown; not measured/confirmed",
+                    ),
+                    BillItem(
+                        f"{stock.id}-future-use",
+                        stock.id,
+                        future_use,
+                        "mm",
+                        "Expected tape use from future steps",
+                    ),
+                    BillItem(
+                        f"{stock.id}-remaining",
+                        stock.id,
+                        current - future_use if current is not None else None,
+                        "mm",
+                        "Expected remaining connector length after future steps"
+                        if current is not None
+                        else "Expected remaining connector length after future steps unknown; not measured/confirmed",
+                    ),
+                )
+            else:
+                bill += (
+                    BillItem(
+                        f"{stock.id}-consumed",
+                        stock.id,
+                        used,
+                        "mm",
+                        f"{joints} tape joint strip(s)"
+                        if joints
+                        else "Tape not used by this plan",
+                    ),
+                    BillItem(
+                        f"{stock.id}-remaining",
+                        stock.id,
+                        remaining.value - used if remaining_known else None,
+                        "mm",
+                        "Remaining connector length"
+                        if remaining_known
+                        else "Remaining connector length unknown; not measured/confirmed",
+                    ),
+                )
         if stock.kind == "sheet":
             available = {r.id: r.geometry for r in stock.usable_regions}
             waste = 0.0
@@ -719,4 +831,10 @@ def render_manual(
                     else "Remaining usable area unknown; stock dimensions not measured/confirmed",
                 ),
             )
-    return Manual("accepted", tuple(panels), bill, ())
+    return Manual(
+        "accepted",
+        tuple(panels),
+        bill,
+        (),
+        resource_basis="mixed" if connector_state is not None else "plan",
+    )

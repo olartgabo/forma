@@ -2,11 +2,13 @@
 
 from .continuation import stand_continuation_blockers
 from .diff import ManualDiff, diff_manuals
+from .resources import ConnectorContext
 from .svg import BillItem, Manual, Panel, render_manual
 from .template import StandParameters, compile_stand
 
 __all__ = [
     "BillItem",
+    "ConnectorContext",
     "Manual",
     "ManualDiff",
     "Panel",
