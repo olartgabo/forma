@@ -97,3 +97,52 @@ Generation never activates a plan. Existing manual review and explicit approval
 remain authoritative. Production synthetic acceptance stays disabled; isolated
 test injection must be visibly labelled. No new offline recovery algorithms or
 parallel concept store are part of this work.
+
+## Connected generation implemented and checked
+
+`POST /api/projects/{id}/designs/generate` now implements the producer contract
+above. The existing plan service compiles and saves accepted previews, preserving
+its two-preview capacity and separate approval path. Missing measurements are
+kind-specific: tape/cord need width and remaining length, while sheet/strip need
+width, height and thickness. Uncertain provider outcomes retain request identity;
+capacity exhaustion preserves any preview already saved in the same request.
+
+The first real browser generation exposed a pre-existing gateway incompatibility:
+named `tool_choice` is rejected by Meta Chat Completions. The gateway now uses
+supported `auto`, instructs the named read-only tool, and enforces exactly one
+valid tool call locally before accepting typed output. Direct answers and invalid
+or multiple calls cannot bypass the snapshot. See Meta's current
+[tool calling documentation](https://dev.meta.ai/docs/cookbook/tool-function-calling).
+
+After the fix, a real browser -> same-origin proxy -> authenticated API -> Muse
+Spark 1.3 request completed two model rounds and one validated snapshot-tool call
+in 6,406 ms. It returned eight questions and the missing server-context blocker;
+zero previews were saved and no plan was activated. This intentionally unknown
+synthetic test project is not evidence of a physical build or a model-produced
+accepted manual. Safe server instrumentation recorded model-reported token counts
+without provider bodies; local reservation estimates are not billing.
+
+A second real request verified cancellation: ordinary Generate stayed disabled,
+checking saved previews retained the unknown-outcome notice, and explicit fresh
+start reset consent. The server completed its original receipt. Replaying that
+exact request returned the same result with `replayed=true` and zero additional
+audited provider runs. The UI did not start a fresh provider request for those
+checks. Private DOM/evidence files and runtime state remain outside Git.
+
+The green generation feature passed 371 Python tests, including actual compiler/
+renderer integration with explicitly synthetic test inputs; 20 client tests;
+contracts, TypeScript, lint, formatting and production build checks. Independent
+reviews approved backend outcome handling, stock requirements, UI retry controls
+and the supported Meta protocol. These are software checks; measured inventory,
+reviewed physical profiles, real history and a physical attempt remain required.
+
+## Next connected diagnosis boundary (issue #9)
+
+Add a read-only saved-photo diagnosis route and browser panel using canonical
+`DiagnosisProposal`, explicit transfer consent, actual Muse diagnostics and scoped
+saved context. Photo-only diagnosis may ask questions before any active manual;
+its affected IDs must be empty and progress remains unknown. When an active plan
+and operation are supplied, resolve both from server-owned state and validate all
+references. No inventory, completion history, damage fact, repair patch or plan
+activation is created by diagnosis. Existing plan-required repair service guards
+remain unchanged. Record the exact shared contract here before implementation.
