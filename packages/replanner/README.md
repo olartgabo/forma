@@ -94,6 +94,16 @@ it cannot resurrect a consumed parent. Duplicate accounting and duplicate region
 block. After whole-plan geometry/profile checks, only unfinished operations replay
 against the actual remaining ledger, so lost stock cannot be spent again.
 
+Connector `waste`/`damage` transactions use confirmed millimetres without source
+or output regions. A known, confirmed initial length and a scoped user-confirmed
+event with current user evidence are required. The event must name the connector
+operation, and its version must match the transaction. Loss is subtracted once;
+the same event/stock pair cannot be charged again under another transaction ID
+or loss kind. Distinct confirmed events may record successive losses. Over-loss
+is rejected without clamping. Completed-use transactions remain verification
+records and are not subtracted a second time. Connector salvage/restoration is
+unsupported; future operations must fit the reconciled remainder.
+
 The result explicitly names preserved, lost, required-undo, redo, newly required
 and incomplete operations; changed/lost parts; lost regions; additional source
 usage; invalidated checkpoints and evidence; and outstanding physical checks.

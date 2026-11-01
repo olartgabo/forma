@@ -6,7 +6,7 @@ inputs, not measurements, physical builds, bench tests or G2/G3 evidence.
 
 | File | Scenario | Frozen outcome |
 | --- | --- | --- |
-| `missing_connector.json` | Tape lost after a completed front join; a same-strategy catalogue alternative does not create tape | Blocked: `stock_exhausted`, `unsupported` |
+| `missing_connector.json` | Tape lost after a completed front join; a same-strategy catalogue alternative does not create tape | Blocked: two `stock_exhausted` blockers for future joins |
 | `damaged_slot.json` | Torn support after folding/front attachment; replacement needs physical undo | Blocked: two `unsupported` blockers |
 | `size_mismatch.json` | Base-depth extension before cutting, then the same kind of change after cutting | Before cut feasible; after cut blocked: `unsupported` |
 | `impossible_request.json` | Replace a cut brace from its already consumed sheet, with purchases disallowed | Blocked: `stock_exhausted` |
@@ -14,10 +14,10 @@ inputs, not measurements, physical builds, bench tests or G2/G3 evidence.
 `damaged_slot` retains the spec's filename; this stand has no slot joint. The
 case reports a torn folded/taped support and introduces no slot profile.
 
-The connector-loss case records a current limitation: waste handling requires a
-whole current region and cannot account for the declared connector-length loss.
-Its unsupported-loss and remaining-length blockers are recorded as returned.
-The fixture does not pretend a profile change replenishes missing tape.
+The connector-loss case reconciles 500 mm initial stock, 80 mm completed use and
+420 mm confirmed loss to zero remaining. Both future joins then report exhausted
+stock. The corrected oracle follows the explicit connector-loss accounting fix;
+the fixture never pretends a profile change replenishes missing tape.
 
 Each file has top-level synthetic provenance and an explicit note. Numeric
 dimensions, kerf, margins, thicknesses, profile limits and test settings are all

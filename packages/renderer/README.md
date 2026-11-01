@@ -26,6 +26,12 @@ All hashes still cover the complete visible SVG. The replanner supports extendin
 the original uncut base depth with regenerated brace/layout; other stand resize
 variants remain blocked. No physical verification is implied.
 
+Plan-only tape balances use the original plan stock baseline. Separately recorded
+connector losses are not encoded in `BuildPlan`; these readouts must not be
+presented as observed current inventory. A resource-context rendering follow-up
+is needed to project future balances from the reconciled physical ledger without
+rewriting historical stock.
+
 The default path requires actual user-confirmed cutting evidence and resolved
 user-observed tested tape/fold profiles; unknown dimensions block work. Synthetic
 fixtures require explicit opt-in on both calls and label every panel. Neither

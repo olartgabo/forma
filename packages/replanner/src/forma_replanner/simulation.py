@@ -639,6 +639,7 @@ def simulate_patch(
                     )
 
     seen_transactions = set()
+    seen_connector_losses = set()
     lost = []
     if (
         tuple(sorted(snapshot.material_transactions, key=lambda t: t.recorded_at))
@@ -732,6 +733,93 @@ def simulate_patch(
                     "Offcut transaction must match a completed cut output.",
                     tx.id,
                 )
+        elif tx.kind in ("waste", "damage") and stocks[tx.source_stock_id].kind in (
+            "tape",
+            "cord",
+        ):
+            loss_key = (tx.physical_event_id, tx.source_stock_id)
+            if loss_key in seen_connector_losses:
+                fail(
+                    "stock_exhausted", "Duplicate physical material accounting.", tx.id
+                )
+            else:
+                seen_connector_losses.add(loss_key)
+                stock = stocks[tx.source_stock_id]
+                measurement = stock.remaining_length_mm
+                if (
+                    tx.unit != "mm"
+                    or tx.source_region_id is not None
+                    or tx.output_region is not None
+                    or op.type not in ("tape_joint", "tie_joint")
+                    or getattr(op.args, "stock_id", None) != tx.source_stock_id
+                    or tx.source_stock_id not in op.stock_ids
+                    or event.operation_id != tx.operation_id
+                    or tx.version_id != event.version_id
+                ):
+                    fail(
+                        "invalid_reference",
+                        "Connector loss must match the connector operation and physical event.",
+                        tx.id,
+                    )
+                elif measurement.value is None:
+                    fail(
+                        "missing_measurement",
+                        "Confirm the original connector length before recording loss.",
+                        tx.id,
+                    )
+                elif not measurement.confirmed:
+                    fail(
+                        "needs_confirmation",
+                        "Confirm the original connector length before recording loss.",
+                        tx.id,
+                    )
+                elif not event.evidence_ids:
+                    fail(
+                        "needs_confirmation",
+                        "Connector loss requires user evidence.",
+                        tx.id,
+                    )
+                else:
+                    bad_evidence = None
+                    for eid in event.evidence_ids:
+                        item = evidence.get(eid)
+                        if item is None or item.version_id != event.version_id:
+                            bad_evidence = "invalid_reference"
+                            break
+                        if (
+                            item.provenance != "user"
+                            or item.verification_state != "user_confirmed"
+                            or item.recorded_at > event.recorded_at
+                        ):
+                            bad_evidence = "needs_confirmation"
+                            break
+                    current = lengths.get(tx.source_stock_id)
+                    if bad_evidence == "invalid_reference":
+                        fail(
+                            "invalid_reference",
+                            "Connector loss evidence must match the physical event version.",
+                            tx.id,
+                        )
+                    elif bad_evidence is not None:
+                        fail(
+                            "needs_confirmation",
+                            "Connector loss evidence is not current user evidence.",
+                            tx.id,
+                        )
+                    elif current is None:
+                        fail(
+                            "missing_measurement",
+                            "Confirm the original connector length before recording loss.",
+                            tx.id,
+                        )
+                    elif tx.quantity > current:
+                        fail(
+                            "stock_exhausted",
+                            "Connector loss exceeds the known remaining length.",
+                            tx.id,
+                        )
+                    else:
+                        lengths[tx.source_stock_id] = current - tx.quantity
         elif tx.kind in ("waste", "damage"):
             value = regions.get(tx.source_region_id)
             if (

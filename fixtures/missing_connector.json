@@ -536,10 +536,18 @@
       },
       "expected": {
         "status": "blocked",
-        "blocker_codes": ["stock_exhausted", "unsupported"],
-        "preserved_operation_ids": [],
+        "blocker_codes": ["stock_exhausted", "stock_exhausted"],
+        "preserved_operation_ids": [
+          "stand-cut-panels",
+          "stand-inspect-cuts",
+          "stand-fold-lip",
+          "stand-joint-front-attach"
+        ],
         "required_undo_operation_ids": [],
-        "invalidated_checkpoint_ids": [],
+        "invalidated_checkpoint_ids": [
+          "stand-inspect-fit-check",
+          "stand-function-check"
+        ],
         "feasible_patch_ids": []
       },
       "mutation_input": {
