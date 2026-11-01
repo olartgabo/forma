@@ -195,3 +195,13 @@ selected, server-owned expected arguments and geometry inform reasoning without
 asserting physical completion. Each photo transfer consumes its consent. No
 state mutation or repair execution follows from a diagnosis; real history and
 separate validated repair approval remain required.
+
+## D017: Provider-reported request usage, November 1, 2026
+
+Connected intake/design/diagnosis diagnostics optionally expose request-local
+model-call and provider-reported input/output token counts. Missing or malformed
+counts remain unknown, including incomplete aggregates. Never infer actual
+billing from local reservations or present token estimates as provider charges.
+Generate the nested API type from Pydantic; emit no prompt, credential or raw
+provider response. Fresh request trace sinks preserve prior gateway history
+without counting it again.

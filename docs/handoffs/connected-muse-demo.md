@@ -67,7 +67,7 @@ runtime database, generated image or unredacted private artifact is committed.
 
 ## Composition with saved requirements and manuals
 
-The owned integration branch combines PR #70 with PRs #68Ã¢â‚¬â€œ69. Both authenticated
+The owned integration branch combines PR #70 with PRs #68ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“69. Both authenticated
 routers and both workbench panels are retained: Muse photo observations alongside
 saved requirements, immutable previews/manuals and explicit initial approval.
 Muse resolved the two source conflicts; independent integration review approved.
@@ -191,3 +191,21 @@ No prices, billed-cost claims, prompt bodies, keys or extra model requests are
 part of the response. Generate nested API TypeScript from Pydantic and preserve
 existing client compatibility. This lane owns API/runtime/contract tests; the
 parallel UI lane owns intake/design per-request consent only, with no API edits.
+
+### Usage diagnostics implemented and verified
+
+Optional diagnostics.usage now uses the canonical ProviderUsage record in all
+three connected runtimes. A request-local ProposalBudget trace sink excludes
+old gateway history. Reported input/output counts aggregate only when every
+participating count is valid; missing/malformed values remain null, never a
+partial total or invented zero. Model-call counts reflect that request's traces.
+There are no currency, billed-cost, prompt or credential fields.
+
+The parallel Muse lane passed 414 Python tests and 24 client tests, generated
+contracts, lint and formatting. Independent review approved the nine-file feature.
+The combined usage/consent tree also passed the full project check including
+TypeScript and production build. A real authenticated diagnosis request returned
+usage={model_calls:1,input_tokens:2904,output_tokens:1969}, exactly matching the
+safe trace from the actual Muse Spark1.3 response (11,859ms). Failure remained
+unknown with no affected IDs. These counts are provider-reported tokens, not a
+bill, estimated spending, physical evidence or additional inferred inventory.
