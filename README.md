@@ -6,9 +6,10 @@ FORMA helps a person turn measured reused materials into a small tabletop
 fixture, follow a deterministic assembly manual, and recover when the physical
 build disagrees with the plan.
 
-**Status: workspace and domain contracts.** Next.js serves a workbench preview and FastAPI
-serves a health endpoint. Private local project/inventory API storage is implemented; browser intake, hosted
-identity and physical results remain pending.
+**Status: offline compiler, renderer, replanner and proposal services implemented.**
+Next.js serves a workbench preview and FastAPI serves a health endpoint. Private
+local project/inventory API storage is implemented; browser intake, hosted
+identity, live-provider acceptance and physical results remain pending.
 The original [formspec.md](formspec.md) is preserved as the product source of truth.
 
 ## Start here
@@ -47,10 +48,7 @@ scripts/                Future schema export, smoke test and evaluation commands
 .github/                Contribution templates and offline CI
 ```
 
-Each module has a README describing its boundary, owner and next deliverable.
-The web preview, local project/inventory API and offline compiler, renderer,
-replanner and provider proposal services are implemented. Live-provider and
-physical gates remain unverified.
+Each module has a README describing its boundary, owner and remaining work.
 
 ## Run and verify
 

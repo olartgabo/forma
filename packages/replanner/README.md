@@ -12,8 +12,6 @@ Incompatible completed cuts require replacement stock or rejection. Consumed
 material never returns without a real salvage transaction. Changed dependencies
 invalidate downstream checks; replacements remain incomplete.
 
-First deliverable: minimal Oct 31 repair simulation, followed by Nov 1 coverage
-for irreversible loss, dependent rechecks and preserved unaffected work.
 See [revision architecture](../../docs/architecture.md).
 
 ## Interface and trusted inputs
@@ -48,8 +46,10 @@ consumers reference the replacement. The whole replacement parent region is
 consumed; unallocated area is waste, never an invented offcut. Retired parts and
 cut operations are reported as loss, not useful preservation.
 
-Changed completed joins, folds or other physical modifications require an explicit
-undo continuation and currently block with the affected operation IDs. The engine
+Changed completed work requires an explicit undo continuation. The canonical
+attached-brace tape case is supported within the documented
+[#44 bounds](../../docs/handoffs/issue-44-brace-tape-undo.md); other completed joins,
+folds and physical modifications block with the affected operation IDs. The engine
 does not invent inverses, connector rerouting, purchases or replacement stock.
 Changing joint strategy and changing stand angle require family regeneration and
 currently return `unsupported`. Pass `forma_renderer.stand_continuation_blockers`

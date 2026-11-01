@@ -20,7 +20,7 @@ remaining blockers clear so an agent can resume without repeating experiments.
 | #5    | [Compiler](issue-5-compiler.md)                    | Offline resource/operation validation implemented; actual measured process/profile inputs required                                                     |
 | #6    | [Persistence](issue-6-persistence.md), [private media](issue-6-private-media.md) | Private project/inventory/photo storage implemented; hosted identity, consented transfer, plan/history storage and revision activation pending |
 | #8    | [Stand and manual](issue-8-stand-manual.md)        | Narrow stand compiler and deterministic SVG implemented; physical acceptance pending                                                                   |
-| #9    | [Bounded proposals](issue-9-bounded-proposals.md)  | Scoped proposal service implemented; trusted runtime callbacks and live evidence pending                                                               |
+| #9    | [Bounded proposals](issue-9-bounded-proposals.md)  | Trusted offline callbacks and ranked repair previews implemented; authenticated caller integration and live evidence pending                            |
 | #10   | [Repair simulation](issue-10-repair-simulation.md) | Offline simulation implemented; listed PR #30/#32 dependencies have now merged; see [current interface and limits](../../packages/replanner/README.md) |
 
 No handoff establishes a real provider result or physical pass through fixture
@@ -28,4 +28,7 @@ checks. User-confirmed measurements, observed build/recovery outcomes and
 authenticated end-to-end integration remain separate acceptance evidence.
 
 The [stand replacement continuation](issue-39-stand-continuation.md) documents
-the shared family validator, replacement SVGs and remaining resize work for #39.
+the shared family validator, replacement SVGs, bounded original uncut-base
+extension and unsupported resize variants for #39. The
+[attached-brace recovery](issue-44-brace-tape-undo.md) handoff covers explicit tape
+undo, preserved build history and recovery manuals for #44.

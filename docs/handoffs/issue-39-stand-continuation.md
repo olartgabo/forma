@@ -31,6 +31,9 @@ The follow-up resize slice extends original uncut base depth at fixed width,
 recomputing brace length and the three-panel layout from recorded margin/kerf.
 Confirmed footprint and source bounds remain enforced. Other targets, shrinking,
 rotation, declared offcuts, replacement-bearing layouts and completed cuts block.
-No original input or material history is mutated. Angle and
-joint-strategy regeneration and completed-work undo remain unsupported. Runtime
-callback wiring is tracked separately in #40; no plan is committed by this helper.
+No original input or material history is mutated. Angle and joint-strategy
+regeneration remain unsupported. The later
+[#44 continuation](issue-44-brace-tape-undo.md) supports canonical attached-brace
+tape undo; other completed modifications remain unsupported. Trusted offline
+callback wiring is implemented in #40's adapter; authenticated caller integration
+remains separate, and this helper never commits a plan.
