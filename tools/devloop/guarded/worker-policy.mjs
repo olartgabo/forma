@@ -6,7 +6,7 @@ export const CHECKS = Object.freeze([
   "uv run --locked --offline ruff check .",
   "uv run --locked --offline ruff format --check .",
   "npm run contracts:check",
-  "node --test tools/devloop/guarded/*.test.mjs",
+  "npm run test:devloop",
   "npm run format:check",
 ]);
 
@@ -42,10 +42,10 @@ export function validateTask(task) {
   for (const file of task.files_allowed) {
     if (
       typeof file !== "string" ||
+      !/^[A-Za-z0-9_./-]+$/.test(file) ||
       !/^(packages\/(domain|compiler|replanner|renderer)\/(src|tests)\/|apps\/api\/(src\/forma_api|tests)\/|tools\/devloop\/)/.test(
         file,
       ) ||
-      /[\\:*?\[\]{}\s]/.test(file) ||
       file.split("/").some((x) => !x || x === "." || x === "..") ||
       /(^|\/)(\.env[^/]*|\.git|\.meta-budget|node_modules|__pycache__|[^/]*\.lock|[^/]*secret[^/]*|[^/]*key\.dpapi)($|\/)/i.test(
         file,

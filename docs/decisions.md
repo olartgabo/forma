@@ -137,3 +137,18 @@ uncertain requests and other clients must be reconciled before provider dispatch
 do not reset history or silently raise the existing lifetime cap. PR #33 remains
 draft until its reproduced runner defects are repaired and verified. No physical
 or live-provider acceptance is established by development-agent work.
+
+
+## D014: Muse implementation, tests and repairs; bounded premium review, November 1, 2026
+
+The user directs Muse to own implementation, regression tests, offline check
+execution and ordinary repairs. Codex or Claude plans a coherent feature, reviews
+its final green change, or diagnoses after two unsuccessful Muse repair attempts.
+This supersedes D013's routine premium implementation/test-authoring fallback.
+Use fresh feature sessions and small checkpoints with native automatic compaction;
+never replay entire supervisor transcripts or reset repair/spending counters.
+
+The guarded Node launcher uses the existing external budget authority; the legacy
+Python command exits before dispatch. Existing lifetime cap, reserve, STOP,
+uncertain-outcome accounting and finite verification window remain in force.
+No product runtime, contract, ownership, or physical acceptance changes.
