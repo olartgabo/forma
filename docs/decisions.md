@@ -121,3 +121,19 @@ Meta spend is capped at $90 by a local ledger. The loop opens draft PRs only;
 humans review and merge. No product scope changes; CI gains one job (handoff to
 @olartgabo for `.github/workflows/checks.yml`).
 
+
+## D013: Codex coding fallback and Muse preference, October 31, 2026
+
+The user authorizes Codex agents to implement code as well as plan and review.
+Muse remains preferred for raw implementation to use promotional Meta credits;
+Codex handles architecture, task selection, integration context and independent
+review. This supersedes D012's exclusive code-author rule without changing the
+product's bounded runtime flow or ownership lanes.
+
+The user reports roughly $130 remaining Meta credit and wants to use almost $100
+while retaining $30. These are an intended reserve and approximate account
+balance, not a new per-run allowance. Existing usage across both local ledgers,
+uncertain requests and other clients must be reconciled before provider dispatch;
+do not reset history or silently raise the existing lifetime cap. PR #33 remains
+draft until its reproduced runner defects are repaired and verified. No physical
+or live-provider acceptance is established by development-agent work.

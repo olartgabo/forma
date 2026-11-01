@@ -13,7 +13,7 @@ from pathlib import Path
 from budget import Budget, BudgetExhausted
 from judge import ClaudeLimitReached, Goals, Judge, JudgeError, Review, TaskSpec
 from muse import DevMetaHTTP, MetaError, Muse, MuseError
-from scope import LANE, ScopeError, check_path, touches_contract
+from scope import LANE, ScopeError, check_path, resolve_path, touches_contract
 
 ROOT = Path(__file__).resolve().parents[2]
 STATE_DIR = ROOT / ".devloop"
@@ -21,6 +21,7 @@ WORKTREE = STATE_DIR / "worktree"
 REPAIRS = 2  # Claude review rounds after the first (3 candidates max)
 MUSE_FIXES = 3  # Muse-only retries on failing checks per candidate
 MAX_FILE = 60_000
+MAX_TOTAL = 240_000  # UTF-8 bytes across unique context files
 SENIOR, JUNIOR = "opus", "sonnet"
 LOOP_LABEL = "loop-proposed"
 PARTNER = "olartgabo"
@@ -100,11 +101,27 @@ def checkout(task: dict):
 
 
 def read_files(paths: list[str]) -> dict[str, str]:
+    # Validate the complete request before opening any file. Missing allowed
+    # paths are expected for new files; invalid paths must never be skipped.
+    requested = {check_path(rel): resolve_path(WORKTREE, rel) for rel in paths}
     files = {}
-    for rel in paths:
-        path = WORKTREE / rel
+    total = 0
+    for rel, path in requested.items():
         if path.is_file():
-            files[rel] = path.read_text(encoding="utf-8")[:MAX_FILE]
+            if path.stat().st_size > MAX_FILE:
+                raise ScopeError(f"context file exceeds {MAX_FILE} bytes: {rel}")
+            # Bound the actual read too, in case the file grew after stat().
+            with path.open("rb") as source:
+                content = source.read(min(MAX_FILE, MAX_TOTAL - total) + 1)
+            if len(content) > MAX_FILE:
+                raise ScopeError(f"context file exceeds {MAX_FILE} bytes: {rel}")
+            total += len(content)
+            if total > MAX_TOTAL:
+                raise ScopeError(f"context exceeds {MAX_TOTAL} total bytes")
+            try:
+                files[rel] = content.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise ScopeError(f"context file is not UTF-8: {rel}") from exc
     return files
 
 
@@ -183,7 +200,7 @@ def work_on(task: dict, judge: Judge, muse: Muse, dry_run: bool) -> str:
             for edit in change.files:
                 if check_path(edit.path) not in allowed:
                     raise ScopeError(f"Muse wrote unlisted file {edit.path}")
-                target = WORKTREE / edit.path
+                target = resolve_path(WORKTREE, edit.path)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(edit.content, encoding="utf-8", newline="\n")
             ok, checks = run_checks(contract)

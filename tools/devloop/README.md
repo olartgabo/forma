@@ -1,9 +1,18 @@
 # Dev loop (@ResniDev lane)
 
-Development tooling, not part of the product. Meta Muse Spark writes every code
+Development tooling, not part of the product. The original runner has Muse Spark write every code
 change. Claude acts as architect and judge through headless `claude -p`, with
 read-only tools: Sonnet handles routine work and Opus handles hard or
 contract-affecting work. Claude's text is never applied as code.
+
+The runner remains draft: do not dispatch provider calls until PR #33's accounting,
+worktree ownership, path containment and complete-review blockers are resolved.
+Budget descriptions below state intended behavior, not a verified account-wide
+spending guarantee.
+
+On October 31 the user authorized Codex coding agents as a fallback, while
+preferring Muse implementation and Codex architecture/review. Provider accounting
+requirements still apply. See decision D013.
 
 ## Per iteration
 
@@ -60,4 +69,4 @@ There are three checks:
    `.githooks/attribution-patterns.txt`.
 3. The `attribution` CI job scans PR commits and the PR body.
 
-Claude's review role is disclosed in docs/decisions.md D011.
+The original Claude review role is disclosed in docs/decisions.md D012.
