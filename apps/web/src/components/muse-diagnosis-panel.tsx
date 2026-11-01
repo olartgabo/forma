@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ApiError, loadPlan, requestDiagnosis } from "../lib/api";
+import MuseRequestDetails from "./muse-request-details";
 import type {
   DiagnosisResult,
   Media,
@@ -404,11 +405,12 @@ export default function MuseDiagnosisPanel({
                 A photo does not confirm measurements or that a physical check
                 passed; measure and check yourself.
               </p>
-              <p className="help">
-                Request diagnostics — status: {result.diagnostics.status};
-                model: {result.diagnostics.model}; duration:{" "}
-                {result.diagnostics.elapsed_ms} ms.
-              </p>
+              <MuseRequestDetails
+                status={result.diagnostics.status}
+                model={result.diagnostics.model}
+                elapsedMs={result.diagnostics.elapsed_ms}
+                usage={result.diagnostics.usage}
+              />
             </div>
           )}
         </>

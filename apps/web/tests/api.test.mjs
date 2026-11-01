@@ -22,6 +22,69 @@ import {
   emptyRequirements,
   requirementsError,
 } from "../src/lib/build-requirements.ts";
+import { formatProviderUsage } from "../src/lib/provider-usage.ts";
+
+test("provider usage formats only provider-reported bounded counts", () => {
+  assert.equal(
+    formatProviderUsage({
+      model_calls: 1,
+      input_tokens: 1234,
+      output_tokens: 56,
+    }),
+    "Provider-reported usage — model calls: 1; input tokens: 1,234; output tokens: 56.",
+  );
+  assert.equal(
+    formatProviderUsage({
+      model_calls: 2,
+      input_tokens: 1234567,
+      output_tokens: 89012,
+    }),
+    "Provider-reported usage — model calls: 2; input tokens: 1,234,567; output tokens: 89,012.",
+  );
+  for (const missing of [null, undefined, "PRIVATE", 42, true, []])
+    assert.equal(
+      formatProviderUsage(missing),
+      "Provider-reported usage: not reported.",
+    );
+  assert.equal(
+    formatProviderUsage({ model_calls: 1, input_tokens: null }),
+    "Provider-reported usage — model calls: 1; input tokens: not reported; output tokens: not reported.",
+  );
+  assert.equal(
+    formatProviderUsage({
+      model_calls: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+    }),
+    "Provider-reported usage — model calls: 0; input tokens: 0; output tokens: 0.",
+  );
+  for (const malformed of [
+    { model_calls: "1", input_tokens: 10, output_tokens: 5 },
+    { model_calls: 1.5, input_tokens: 10, output_tokens: 5 },
+    { model_calls: -1, input_tokens: 10, output_tokens: 5 },
+    { model_calls: 17, input_tokens: 10, output_tokens: 5 },
+    { model_calls: 1, input_tokens: Number.NaN, output_tokens: 5 },
+    {
+      model_calls: 1,
+      input_tokens: Number.POSITIVE_INFINITY,
+      output_tokens: 5,
+    },
+    { model_calls: 1, input_tokens: 16_000_000_001, output_tokens: 5 },
+    { model_calls: true, input_tokens: { value: 10 }, output_tokens: "5" },
+  ]) {
+    const formatted = formatProviderUsage(malformed);
+    assert.match(formatted, /not reported/);
+    assert.doesNotMatch(formatted, /PRIVATE|NaN|Infinity|\[object/);
+  }
+  assert.equal(
+    formatProviderUsage({
+      model_calls: 1,
+      input_tokens: "PRIVATE_TOKEN_COUNT",
+      output_tokens: 5,
+    }),
+    "Provider-reported usage — model calls: 1; input tokens: not reported; output tokens: 5.",
+  );
+});
 
 const token = "synthetic-owner-credential";
 const savedProject = {
