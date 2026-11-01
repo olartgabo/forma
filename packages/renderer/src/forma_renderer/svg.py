@@ -78,6 +78,7 @@ def tools_for(operation):
         "cut_rect": ("ruler", "confirmed cutting tool", "cutting mat"),
         "fold": ("ruler", "confirmed folding tool"),
         "tape_joint": ("ruler", "tape", "confirmed cutting tool"),
+        "detach": ("device removed", "confirmed support", "hands"),
         "inspect": ("ruler", "protractor", "camera"),
         "functional_test": ("named device", "timer", "camera"),
     }[operation.type]
@@ -101,6 +102,12 @@ def instruction(operation, plan):
             f"Attach {operation.args.joint_id} using {number(operation.args.length_mm)} mm of {operation.args.stock_id}. "
             + " ".join(operation.preconditions.human_checks)
             + " Removal may damage sheet material."
+        )
+    if operation.type == "detach":
+        return (
+            f"Peel tape to detach {operation.args.joint_id}; the peeled tape "
+            f"({', '.join(operation.args.material_loss_stock_ids)}) is lost and not reused. "
+            + " ".join(operation.preconditions.human_checks)
         )
     if operation.type == "functional_test":
         a = operation.args
@@ -334,7 +341,17 @@ def side_view(root, plan, operation, attached_before, active_ids):
         f"Support angle {number(plan.constraints.support_angle_deg.value)} deg; width {number(support.geometry.width)} mm; retaining lip {number(lip_length)} mm",
         15,
     )
-    current = operation.args.joint_id if operation.type == "tape_joint" else None
+
+    def canonical(joint_id):
+        return next(
+            (name for name in ("front", "rear", "apex") if name in joint_id), None
+        )
+
+    current = (
+        operation.args.joint_id if operation.type in ("tape_joint", "detach") else None
+    )
+    current_name = canonical(current) if current else None
+    attached_names = {canonical(jid) for jid in attached_before}
     for index, (joint, point) in enumerate(
         (
             ("stand-joint-front", start),
@@ -342,8 +359,9 @@ def side_view(root, plan, operation, attached_before, active_ids):
             ("stand-joint-apex", apex),
         )
     ):
+        name = canonical(joint)
         group = element(root, "g", data_joint_id=joint)
-        active = joint in attached_before or joint == current
+        active = name in attached_names or joint == current or name == current_name
         element(
             group,
             "circle",
@@ -362,15 +380,17 @@ def side_view(root, plan, operation, attached_before, active_ids):
             610,
             300 + index * 65,
             (
-                ": attach now"
-                if joint == current
+                ": detach now"
+                if name == current_name and operation.type == "detach"
+                else ": attach now"
+                if name == current_name
                 else ": previously attached"
                 if active
                 else ": not yet joined"
             ),
             13,
         )
-        if joint == current:
+        if name == current_name:
             element(
                 group,
                 "line",
@@ -430,12 +450,43 @@ def render_manual(
     plan = result.plan
     joints_by_id = {j.id: j for j in plan.joints}
     support_id, base_id = joints_by_id["stand-joint-front"].part_ids
-    brace_id = joints_by_id["stand-joint-rear"].part_ids[1]
-    active_ids = (support_id, base_id, brace_id)
+    historical_ids = (
+        support_id,
+        base_id,
+        joints_by_id["stand-joint-rear"].part_ids[1],
+    )
+    new_rear = next(
+        (
+            j
+            for jid, j in joints_by_id.items()
+            if jid not in {"stand-joint-front", "stand-joint-rear", "stand-joint-apex"}
+            and j.part_ids[0] == base_id
+        ),
+        None,
+    )
+    active_ids = (
+        (support_id, base_id, new_rear.part_ids[1])
+        if new_rear is not None
+        else historical_ids
+    )
     core_child_ids = ("stand-support", "stand-base", "stand-brace")
+    first_detach = next(
+        (i for i, o in enumerate(plan.operations) if o.type == "detach"), None
+    )
+    continuation_indexes: set[int] = set()
+    if first_detach is not None:
+        reattach_indexes = [
+            i
+            for i, o in enumerate(plan.operations)
+            if i > first_detach and o.type == "tape_joint"
+        ]
+        if reattach_indexes:
+            continuation_indexes = set(range(first_detach, max(reattach_indexes) + 1))
     core_index_by_plan_index: dict[int, int] = {}
     supplemental_indexes: set[int] = set()
     for plan_index, candidate in enumerate(plan.operations):
+        if plan_index in continuation_indexes:
+            continue
         if (
             candidate.type == "cut_rect"
             and tuple(candidate.args.child_part_ids) != core_child_ids
@@ -482,12 +533,20 @@ def render_manual(
     future_used_by_stock: dict[str, float] = {}
     for index, operation in enumerate(plan.operations):
         is_supplemental = index in supplemental_indexes
+        is_continuation = index in continuation_indexes
         core_index = core_index_by_plan_index.get(index)
         is_inspect_fit = operation.type == "inspect" and core_index == 6
+        panel_active_ids = active_ids
+        if operation.type == "detach" or (
+            operation.type == "tape_joint"
+            and operation.args.joint_id
+            in ("stand-joint-front", "stand-joint-rear", "stand-joint-apex")
+        ):
+            panel_active_ids = historical_ids
         if operation.type == "cut_rect":
             selected = tuple(operation.args.child_part_ids)
         elif operation.type in ("tape_joint", "functional_test"):
-            selected = active_ids
+            selected = panel_active_ids
         else:
             selected = operation.part_ids
         checkpoints = tuple(
@@ -513,7 +572,9 @@ def render_manual(
         )
         text_title = element(root, "title", id="title")
         text_title.text = (
-            f"Replacement cut: {operation.type} - {operation.id}"
+            f"Continuation: {operation.type} - {operation.id}"
+            if is_continuation
+            else f"Replacement cut: {operation.type} - {operation.id}"
             if is_supplemental
             else f"Step {core_index + 1}: {operation.type} - {operation.id}"
         )
@@ -537,7 +598,9 @@ def render_manual(
             35,
             38,
             (
-                f"Replacement cut - {operation.type.replace('_', ' ')}"
+                f"Continuation - {operation.type.replace('_', ' ')}"
+                if is_continuation
+                else f"Replacement cut - {operation.type.replace('_', ' ')}"
                 if is_supplemental
                 else f"Step {core_index + 1}/{core_count} - {operation.type.replace('_', ' ')}"
             ),
@@ -592,7 +655,7 @@ def render_manual(
         elif operation.type in ("fold", "inspect") and not is_inspect_fit:
             flat_view(drawing, plan, operation, selected)
         else:
-            side_view(drawing, plan, operation, attached, active_ids)
+            side_view(drawing, plan, operation, attached, panel_active_ids)
         if tape_readout is not None:
             stock_id, used_before, this_step, remaining_after, is_forecast = (
                 tape_readout
@@ -682,13 +745,16 @@ def render_manual(
                 svg,
                 tools_for(operation),
                 step_key=(
-                    f"replacement:{operation.id}"
+                    f"continuation:{operation.id}"
+                    if is_continuation
+                    else f"replacement:{operation.id}"
                     if is_supplemental
                     else f"core:{core_index}:{operation.type}"
                 ),
             )
         )
         attached.update(operation.effects.attached_joint_ids)
+        attached.difference_update(operation.effects.detached_joint_ids)
         if operation.type == "tape_joint":
             used_by_stock[operation.args.stock_id] = (
                 used_by_stock.get(operation.args.stock_id, 0.0)

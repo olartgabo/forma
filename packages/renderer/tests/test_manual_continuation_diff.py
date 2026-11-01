@@ -188,6 +188,27 @@ def simulate(plan, process, candidate):
     return result
 
 
+def test_tape_undo_diff_keeps_historical_panels_and_adds_continuation():
+    from test_stand_continuation import _attached_brace_replacement
+
+    _base, _snapshot, result, _process = _attached_brace_replacement()
+    assert result.status == "feasible", result.blockers
+    _, parameters, process = build()
+    old_plan, _p, _pr = build()
+    old = render(old_plan, parameters, process)
+    new = render(result.plan, parameters, process)
+    assert len(old.panels) == 8 and len(new.panels) == 14
+    assert [p.svg for p in new.panels[:6]] == [p.svg for p in old.panels[:6]]
+    keys = [p.step_key for p in new.panels]
+    assert len(keys) == len(set(keys))
+    assert all(k.startswith("continuation:") for k in keys[6:12])
+    outcome = diff(old, new)
+    assert outcome.unchanged == tuple(range(6))
+    assert outcome.added == tuple(range(6, 12))
+    assert outcome.changed == (12, 13)
+    assert outcome.removed == ()
+
+
 def test_noop_resize_is_blocked_while_identical_visible_manuals_have_zero_diff():
     plan, parameters, process = build()
     base = next(p for p in plan.parts if p.id == "stand-base")

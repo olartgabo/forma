@@ -9,6 +9,8 @@ from pydantic import ValidationError, model_validator
 
 from forma_domain.models import Blocker, BuildPlan, Record, ReplannerInput
 
+from .tape_undo import build_tape_undo_candidate
+
 
 class RepairCost(Record):
     """Known heuristic terms, never a fabricated complete cost estimate."""
@@ -927,6 +929,8 @@ def simulate_patch(
         return blocked(lost_region_ids=tuple(lost))
 
     data = base.model_dump(mode="python")
+    tape_peel_ids: tuple[str, ...] = ()
+    tape_peeled_ids: tuple[str, ...] = ()
     if patch.kind == "resize_part":
         target = next((p for p in data["parts"] if p["id"] == patch.target_id), None)
         if target is None:
@@ -1001,6 +1005,16 @@ def simulate_patch(
             )
         else:
             original = next(p for p in base.parts if p.id == patch.target_id)
+            tape_handled, tape_blocker, peel_ids, peeled_ids = (
+                build_tape_undo_candidate(
+                    data, base, patch, completed, remaining, process
+                )
+            )
+            if tape_handled:
+                if tape_blocker is not None:
+                    blockers.append(tape_blocker)
+                else:
+                    tape_peel_ids, tape_peeled_ids = peel_ids, peeled_ids
             creator = next(
                 (
                     o
@@ -1009,7 +1023,9 @@ def simulate_patch(
                 ),
                 None,
             )
-            if creator is None or creator.id not in completed:
+            if tape_handled:
+                pass
+            elif creator is None or creator.id not in completed:
                 fail(
                     "unsupported",
                     "Part replacement currently requires an existing physically cut part; resize unfinished parts instead.",
@@ -1196,6 +1212,8 @@ def simulate_patch(
         for o in base.operations
         if o.id in incompatible and o.reversible in ("reversible", "lossy")
     )
+    if tape_peel_ids:
+        undo = tape_peel_ids
     for oid in incompatible:
         op = operations[oid]
         code = (
@@ -1228,12 +1246,18 @@ def simulate_patch(
         and o.type == "cut_rect"
         and set(o.effects.created_part_ids) <= set(lost_parts)
     )
+    reported_lost_operations = tuple(
+        dict.fromkeys((*lost_operations, *tape_peeled_ids))
+    )
     # Retained legacy cuts remain historically complete, but discarded work is
-    # not advertised as usable preservation.
+    # not advertised as usable preservation. Peeled tape joins are lost work,
+    # not preserved, even though their historical operations stay in the plan.
     kept = tuple(
         o.id
         for o in base.operations
-        if o.id in completed and o.id not in affected and o.id not in lost_operations
+        if o.id in completed
+        and o.id not in affected
+        and o.id not in reported_lost_operations
     )
     changed_parts.update(lost_parts)
     invalid_checks = tuple(
@@ -1243,7 +1267,24 @@ def simulate_patch(
                 *(
                     c.id
                     for c in base.checkpoints
-                    if c.after_operation_id in lost_operations
+                    if c.after_operation_id in reported_lost_operations
+                ),
+                *(
+                    c.id
+                    for c in base.checkpoints
+                    if tape_peeled_ids
+                    and (
+                        set(operations[c.after_operation_id].part_ids)
+                        | set(
+                            getattr(
+                                operations[c.after_operation_id].args,
+                                "target_ids",
+                                (),
+                            )
+                            or ()
+                        )
+                    )
+                    & changed_parts
                 ),
             )
         )
@@ -1251,7 +1292,7 @@ def simulate_patch(
     invalid_evidence = tuple(
         e.id
         for e in snapshot.evidence
-        if set(e.operation_ids) & (affected | set(lost_operations))
+        if set(e.operation_ids) & (affected | set(reported_lost_operations))
         or set(e.part_ids) & changed_parts
         or set(e.checkpoint_ids) & set(invalid_checks)
     )
@@ -1455,9 +1496,11 @@ def simulate_patch(
     )
     cost = RepairCost(
         irreversible_completed_actions_lost=len(lost_operations),
-        required_physical_undos=0,
+        required_physical_undos=len(undo),
         new_irreversible_actions=new_irreversible,
-        known_weighted_cost=5 * len(lost_operations) + 2 * new_irreversible,
+        known_weighted_cost=5 * len(lost_operations)
+        + 3 * len(undo)
+        + 2 * new_irreversible,
     )
     unknown_checks = tuple(
         dict.fromkeys(
@@ -1477,6 +1520,7 @@ def simulate_patch(
         status="feasible",
         plan=candidate,
         preserved_operation_ids=kept,
+        required_undo_operation_ids=undo,
         redo_operation_ids=tuple(
             renamed[o.id] for o in base.operations if o.id in completed & affected
         ),
@@ -1491,7 +1535,7 @@ def simulate_patch(
         invalidated_evidence_ids=invalid_evidence,
         lost_region_ids=tuple(lost),
         lost_part_ids=lost_parts,
-        lost_operation_ids=lost_operations,
+        lost_operation_ids=reported_lost_operations,
         additional_material_stock_ids=additional,
         proposed_material_deltas=tuple(material_deltas),
         cost=cost,

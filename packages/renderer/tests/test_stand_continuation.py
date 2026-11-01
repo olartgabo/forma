@@ -167,6 +167,104 @@ def _replacement(target_id="stand-brace"):
     return base, snapshot, before, result
 
 
+def _attached_brace_replacement(
+    tape_length=500, target_id="stand-brace", mutate_plan=None
+):
+    plan, _parameters, process = build()
+    sheet = next(s for s in plan.stocks if s.kind == "sheet")
+    tape = next(s for s in plan.stocks if s.kind == "tape")
+    if tape_length != 500:
+        tape = tape.model_copy(
+            update={
+                "remaining_length_mm": tape.remaining_length_mm.model_copy(
+                    update={"value": tape_length}
+                )
+            }
+        )
+        plan = plan.model_copy(
+            update={
+                "stocks": tuple(tape if s.id == tape.id else s for s in plan.stocks)
+            }
+        )
+    spare = sheet.model_copy(
+        update={
+            "id": "spare",
+            "usable_regions": (
+                m.Region(
+                    id="spare-region",
+                    geometry=sheet.usable_regions[0].geometry,
+                ),
+            ),
+        }
+    )
+    base = plan.model_copy(update={"stocks": plan.stocks + (spare,)})
+    if mutate_plan is not None:
+        base = mutate_plan(base)
+    completed_ids = tuple(o.id for o in base.operations[:6])
+    events = tuple(
+        m.PhysicalEvent(
+            id=f"synthetic-attached-{op_id}",
+            project_id=base.project_id,
+            version_id=base.version_id,
+            operation_id=op_id,
+            kind="operation_confirmed",
+            evidence_ids=(),
+            recorded_at=base.created_at,
+            actor="user",
+            observation=(
+                "SYNTHETIC user-confirmed attached stand operation; "
+                "no physical build was performed."
+            ),
+            verification_state="user_confirmed",
+        )
+        for op_id in completed_ids
+    )
+    remaining = []
+    for stock in base.stocks:
+        if stock.id == sheet.id:
+            remaining.append(stock.model_copy(update={"usable_regions": ()}))
+        elif stock.id == tape.id:
+            remaining.append(
+                stock.model_copy(
+                    update={
+                        "remaining_length_mm": stock.remaining_length_mm.model_copy(
+                            update={"value": tape_length - 240}
+                        )
+                    }
+                )
+            )
+        else:
+            remaining.append(stock)
+    snapshot = m.ReplannerInput(
+        base_plan=base,
+        events=events,
+        evidence=(),
+        material_transactions=(),
+        remaining_stock=tuple(remaining),
+        patch=m.RepairPatch(
+            id="replace-attached-stand-brace",
+            base_version_id=base.version_id,
+            kind="replace_part",
+            target_id=target_id,
+            replacement_stock_id="spare",
+            replacement_profile_id=None,
+            width_mm=None,
+            height_mm=None,
+            angle_deg=None,
+            rationale="SYNTHETIC replacement of the attached stand brace.",
+        ),
+    )
+    before = copy.deepcopy(snapshot)
+    result = simulate_patch(
+        snapshot,
+        process=process,
+        allow_synthetic=True,
+        family_validator=stand_continuation_blockers,
+    )
+    assert snapshot.model_dump() == before.model_dump()
+    return base, snapshot, result, process
+
+
 def _new_brace_id(base, result):
     new_ids = {p.id for p in result.plan.parts} - {p.id for p in base.parts}
     assert len(new_ids) == 1
@@ -536,6 +634,156 @@ def test_historical_v1_all_panel_hashes():
         )
         assert result.status == "accepted", result.blockers
         assert tuple(p.dependency_hash for p in result.panels) == expected
+
+
+def test_attached_brace_tape_undo_is_feasible_cost8_and_rendered():
+    from forma_replanner import rank_feasible
+
+    base, _snapshot, result, process = _attached_brace_replacement()
+    assert result.status == "feasible", result.blockers
+    assert result.cost is not None
+    assert result.cost.known_weighted_cost == 8
+    assert result.cost.required_physical_undos == 2
+    assert result.cost.irreversible_completed_actions_lost == 0
+    assert rank_feasible((result,)) == (result,)
+    assert stand_continuation_blockers(result.plan) == ()
+
+    plan = result.plan
+    new_id = _new_brace_id(base, result)
+    peels = [o for o in plan.operations if o.type == "detach"]
+    assert len(peels) == 2
+    assert tuple(result.required_undo_operation_ids) == tuple(o.id for o in peels)
+    assert [o.args.joint_id for o in peels] == [
+        "stand-joint-rear",
+        "stand-joint-apex",
+    ]
+    tape_id = next(s.id for s in base.stocks if s.kind == "tape")
+    for peel in peels:
+        assert peel.args.supported_inverse == "peel_tape"
+        assert peel.args.material_loss_stock_ids == (tape_id,)
+        checks = " ".join(peel.preconditions.human_checks).lower()
+        assert all(
+            word in checks for word in ("device", "support", "access", "undamaged")
+        )
+    # Historical completed prefix, parts, joints and checkpoints are retained.
+    assert plan.operations[:6] == base.operations[:6]
+    assert {p.id: p for p in plan.parts if p.id != new_id} == {
+        p.id: p for p in base.parts
+    }
+    assert tuple(j for j in plan.joints if j.id.startswith("stand-joint-"))[:3] == (
+        base.joints
+    )
+    assert "stand-joint-front-attach" in result.preserved_operation_ids
+    assert "stand-joint-rear-attach" not in result.preserved_operation_ids
+    assert "stand-joint-apex-attach" not in result.preserved_operation_ids
+    assert set(result.lost_operation_ids) == {
+        "stand-joint-rear-attach",
+        "stand-joint-apex-attach",
+    }
+    assert {c.id for c in base.checkpoints} <= {c.id for c in plan.checkpoints}
+    assert set(result.invalidated_checkpoint_ids) == {c.id for c in base.checkpoints}
+    assert all(
+        o.id not in {e.operation_id for e in _snapshot.events}
+        for o in plan.operations
+        if o.id in result.incomplete_operation_ids and o.type == "detach"
+    )
+    # No tape refund: 500 - 240 historical - 160 reattachment = 100.
+    _plan, parameters, _p = build()
+    rendered = render_manual(
+        plan,
+        process=process,
+        profile_evidence=parameters.profile_evidence,
+        allow_synthetic=True,
+    )
+    assert rendered.status == "accepted", rendered.blockers
+    assert rendered.physical_verification == "not_attempted"
+    assert len(rendered.panels) == 14
+    keys = [p.step_key for p in rendered.panels]
+    assert len(keys) == len(set(keys))
+    assert keys[:6] == [
+        f"core:{i}:{t}"
+        for i, t in enumerate(
+            ("cut_rect", "inspect", "fold", "tape_joint", "tape_joint", "tape_joint")
+        )
+    ]
+    assert all(k.startswith("continuation:") for k in keys[6:12])
+    assert keys[12:] == ["core:6:inspect", "core:7:functional_test"]
+    original_plan, _params, _proc = build()
+    original = render_manual(
+        original_plan,
+        process=process,
+        profile_evidence=parameters.profile_evidence,
+        allow_synthetic=True,
+    )
+    assert [p.svg for p in rendered.panels[:6]] == [p.svg for p in original.panels[:6]]
+    tape_bill = next(
+        item for item in rendered.bill_of_materials if item.id == f"{tape_id}-remaining"
+    )
+    assert tape_bill.quantity == 100
+
+
+def test_attached_brace_tape_undo_insufficient_tape_blocks():
+    _base, _snapshot, result, _process = _attached_brace_replacement(tape_length=399)
+    assert result.status == "blocked"
+    assert result.plan is None and result.cost is None
+    assert any(b.code == "stock_exhausted" for b in result.blockers)
+
+
+@pytest.mark.parametrize("target", ["stand-base", "stand-support"])
+def test_attached_non_brace_targets_block(target):
+    _base, _snapshot, result, _process = _attached_brace_replacement(target_id=target)
+    assert result.status == "blocked"
+    assert result.plan is None
+
+
+def test_attached_brace_irreversible_touching_tape_blocks():
+    def mutate(plan):
+        ops = tuple(
+            o.model_copy(update={"reversible": "irreversible"})
+            if o.id == "stand-joint-rear-attach"
+            else o
+            for o in plan.operations
+        )
+        return plan.model_copy(update={"operations": ops})
+
+    _base, _snapshot, result, _process = _attached_brace_replacement(mutate_plan=mutate)
+    assert result.status == "blocked"
+    assert any(b.code == "irreversible_conflict" for b in result.blockers)
+
+
+def test_attached_brace_missing_scoped_access_blocks():
+    def mutate(plan):
+        joints = tuple(
+            j.model_copy(update={"confirmed_accessible": None})
+            if j.id == "stand-joint-apex"
+            else j
+            for j in plan.joints
+        )
+        return plan.model_copy(update={"joints": joints})
+
+    _base, _snapshot, result, _process = _attached_brace_replacement(mutate_plan=mutate)
+    assert result.status == "blocked"
+    assert any(b.code == "needs_confirmation" for b in result.blockers)
+
+
+def test_tape_undo_plan_missing_peel_confirmation_is_blocked():
+    _base, _snapshot, result, _process = _attached_brace_replacement()
+    assert result.status == "feasible", result.blockers
+    plan = result.plan
+    ops = tuple(
+        o.model_copy(
+            update={
+                "preconditions": o.preconditions.model_copy(
+                    update={"human_checks": ("Peel it.",)}
+                )
+            }
+        )
+        if o.type == "detach"
+        else o
+        for o in plan.operations
+    )
+    changed = plan.model_copy(update={"operations": ops})
+    _assert_blocker(changed, "needs_confirmation", "device removal")
 
 
 def test_replacement_with_base_depth_not_exceeding_reach_is_blocked():
