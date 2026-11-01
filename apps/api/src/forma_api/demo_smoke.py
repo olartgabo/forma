@@ -170,9 +170,7 @@ def _http_transport(request: HttpRequest) -> HttpResponse:
                 connection.sock.settimeout(remaining())
             else:
                 remaining()
-            chunk = response.read1(
-                min(65536, MAX_RESPONSE_BYTES + 1 - len(raw))
-            )
+            chunk = response.read1(min(65536, MAX_RESPONSE_BYTES + 1 - len(raw)))
             if not chunk:
                 break
             raw.extend(chunk)
