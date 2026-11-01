@@ -109,3 +109,59 @@ the project removes its photos. Deletion is logical and does not promise
 forensic erasure or backup deletion. Provider transfer and public sharing are
 unavailable in this slice; their consent and external-retention policy remain
 pending. No measurements or physical outcomes are inferred from uploads.
+
+## D012: Muse-written code with a Claude review loop, October 31, 2026
+
+Owner: @ResniDev. `tools/devloop` is development tooling for the @ResniDev
+lane. Meta Muse Spark writes the code changes. Claude models are used only as
+planners and reviewers (task specs, approve/revise verdicts, proposed issues);
+their output is never applied as code. Commits and PRs carry no assistant
+attribution, enforced by `.githooks/commit-msg` and the `attribution` CI job.
+Meta spend is capped at $90 by a local ledger. The loop opens draft PRs only;
+humans review and merge. No product scope changes; CI gains one job (handoff to
+@olartgabo for `.github/workflows/checks.yml`).
+
+
+## D013: Codex coding fallback and Muse preference, October 31, 2026
+
+The user authorizes Codex agents to implement code as well as plan and review.
+Muse remains preferred for raw implementation to use promotional Meta credits;
+Codex handles architecture, task selection, integration context and independent
+review. This supersedes D012's exclusive code-author rule without changing the
+product's bounded runtime flow or ownership lanes.
+
+The user reports roughly $130 remaining Meta credit and wants to use almost $100
+while retaining $30. These are an intended reserve and approximate account
+balance, not a new per-run allowance. Existing usage across both local ledgers,
+uncertain requests and other clients must be reconciled before provider dispatch;
+do not reset history or silently raise the existing lifetime cap. PR #33 remains
+draft until its reproduced runner defects are repaired and verified. No physical
+or live-provider acceptance is established by development-agent work.
+
+
+## D014: Muse implementation, tests and repairs; bounded premium review, November 1, 2026
+
+The user directs Muse to own implementation, regression tests, offline check
+execution and ordinary repairs. Codex or Claude plans a coherent feature, reviews
+its final green change, or diagnoses after two unsuccessful Muse repair attempts.
+This supersedes D013's routine premium implementation/test-authoring fallback.
+Use fresh feature sessions and small checkpoints with native automatic compaction;
+never replay entire supervisor transcripts or reset repair/spending counters.
+
+The guarded Node launcher uses the existing external budget authority; the legacy
+Python command exits before dispatch. Existing lifetime cap, reserve, STOP,
+uncertain-outcome accounting and finite verification window remain in force.
+No product runtime, contract, ownership, or physical acceptance changes.
+
+
+## D015: Monitored own-work loop without the fixed90 cap, November1,2026
+
+The user removes the fixed90USD limit while monitoring and asks for continued
+Muse development, delegation, review of their submissions and code cleanup.
+The external guard retains append-only accounting, durable reservations, STOP,
+finite verified funding and no paid fallback. Its allowance is based on current
+verified free credits with the existing30USD reserve and a billing-lag buffer;
+the original ledger is never reset or rewritten. Development roles in D014 stay.
+Continue ResniDev-owned issues/PRs and open only concrete useful followups. Reuse
+original issues instead of multiplying equivalent loop-proposed tickets. Product
+runtime bounds, ownership and physical-evidence requirements are unchanged.

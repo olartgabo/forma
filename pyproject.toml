@@ -25,7 +25,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["apps/api/tests", "packages/domain/tests", "packages/compiler/tests", "packages/renderer/tests", "packages/replanner/tests"]
+testpaths = ["apps/api/tests", "packages/domain/tests", "packages/compiler/tests", "packages/renderer/tests", "packages/replanner/tests", "tools/devloop/tests"]
 addopts = "-ra --strict-markers -m 'not live'"
 markers = ["live: requires explicit provider access; excluded from offline checks"]
 
