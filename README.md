@@ -8,8 +8,10 @@ build disagrees with the plan.
 
 **Status: offline services and local intake.** Next.js supports goal intake,
 private photos and confirmed inventory editing through the scoped FastAPI API.
-The offline compiler, renderer, replanner and proposal service are implemented;
-design/manual integration, hosted identity and physical results remain pending.
+The compiler, renderer, replanner and proposal service are implemented. Saved
+plan previews, explicit initial approval and immutable manual viewing are connected;
+live design generation, physical event recording, hosted identity and physical
+results remain pending.
 The original [formspec.md](formspec.md) is preserved as the product source of truth.
 
 ## Start here

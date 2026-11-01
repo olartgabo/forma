@@ -1,6 +1,10 @@
 import type { Stock } from "./generated/contracts";
 import type {
   BuildRequirements,
+  ActivationResult,
+  PlanActivation,
+  PlanList,
+  PlanVersion,
   CreateProject,
   InventoryUpdate,
   MediaList,
@@ -187,6 +191,55 @@ export function saveInventory(
       body: JSON.stringify(body),
     },
     json<ProjectResult>,
+    signal,
+  );
+}
+
+export function listPlans(
+  token: string,
+  id: string,
+  signal?: AbortSignal,
+): Promise<PlanList> {
+  return request(
+    token,
+    `${projectPath(id)}/plans`,
+    { method: "GET" },
+    json<PlanList>,
+    signal,
+  );
+}
+
+export function loadPlan(
+  token: string,
+  id: string,
+  versionId: string,
+  signal?: AbortSignal,
+): Promise<PlanVersion> {
+  return request(
+    token,
+    `${projectPath(id)}/versions/${encodeURIComponent(versionId)}`,
+    { method: "GET" },
+    json<PlanVersion>,
+    signal,
+  );
+}
+
+export function activatePlan(
+  token: string,
+  id: string,
+  versionId: string,
+  body: PlanActivation,
+  signal?: AbortSignal,
+): Promise<ActivationResult> {
+  return request(
+    token,
+    `${projectPath(id)}/plans/${encodeURIComponent(versionId)}/activate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    json<ActivationResult>,
     signal,
   );
 }

@@ -124,6 +124,13 @@ class ProjectStore:
                 "content_type TEXT NOT NULL, width_px INTEGER NOT NULL, "
                 "height_px INTEGER NOT NULL, body BLOB NOT NULL)"
             )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS plans "
+                "(version_id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
+                "REFERENCES projects(id) ON DELETE CASCADE, "
+                "inventory_revision_id TEXT NOT NULL, body TEXT NOT NULL, "
+                "process TEXT NOT NULL, parameters TEXT NOT NULL)"
+            )
             yield connection
             connection.commit()
         except BaseException:
@@ -315,6 +322,10 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 (owner, project_id + ":media:%"),
             )
             connection.execute(
+                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?)",
+                (owner, project_id + ":plan-preview", project_id + ":plan-activation"),
+            )
+            connection.execute(
                 "UPDATE requests SET response=? WHERE owner=? AND scope='create' "
                 "AND json_extract(response, '$.project.id')=?",
                 (json.dumps({"deleted_project_id": project_id}), owner, project_id),
@@ -325,6 +336,8 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
             return result
 
     from forma_api.media import media_router
+    from forma_api.plans import plan_router
 
     router.include_router(media_router(store, authenticate))
+    router.include_router(plan_router(store, authenticate))
     return router

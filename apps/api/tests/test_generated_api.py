@@ -9,7 +9,10 @@ from forma_api.generate import API_RECORDS, OUTPUT, artifacts
 def test_api_artifact_reuses_domain_types_and_reflects_route_models():
     content = artifacts()[OUTPUT]
     assert artifacts() == artifacts()
-    assert 'import type { Constraints, Stock } from "./contracts";' in content
+    assert (
+        'import type { Blocker, BuildPlan, Constraints, DesignCandidate, Stock } from "./contracts";'
+        in content
+    )
     assert "export type Stock" not in content
     assert "export type Constraints" not in content
     for record in API_RECORDS:

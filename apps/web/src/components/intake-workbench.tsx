@@ -18,6 +18,7 @@ import type {
 } from "../lib/generated/api-contracts";
 import type { Measurement, Stock } from "../lib/generated/contracts";
 import BuildRequirementsFields from "./build-requirements-fields";
+import PlanWorkbench from "./plan-workbench";
 import {
   emptyRequirements,
   requirementsError,
@@ -241,6 +242,7 @@ function ProjectWorkbench({
   const [checked, setChecked] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
+  const [planPending, setPlanPending] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [stale, setStale] = useState(false);
@@ -254,7 +256,8 @@ function ProjectWorkbench({
     (JSON.stringify(stocks) !== JSON.stringify(project.stocks ?? []) ||
       JSON.stringify(requirements) !==
         JSON.stringify(project.requirements ?? emptyRequirements()));
-  const locked = busy || pending !== null;
+  const intakeLocked = busy || pending !== null;
+  const locked = intakeLocked || planPending;
 
   useEffect(() => {
     const lifetime = new AbortController();
@@ -303,7 +306,7 @@ function ProjectWorkbench({
     rememberProject(next.id);
   }
   async function openProject(id: string) {
-    if (busy || pending) return;
+    if (locked) return;
     if (
       dirty &&
       !window.confirm(
@@ -330,7 +333,7 @@ function ProjectWorkbench({
     }
   }
   async function execute(request: Pending) {
-    if (busy) return;
+    if (busy || planPending) return;
     const requestEpoch = epoch.current;
     const signal = controller.current.signal;
     const changesPhotos =
@@ -491,7 +494,7 @@ function ProjectWorkbench({
   }
   function leave() {
     if (
-      (dirty || pending) &&
+      (dirty || pending || planPending) &&
       !window.confirm(
         "Disconnect and discard unsaved changes? An unfinished request may already have reached the server; reopen the project to check it.",
       )
@@ -1066,13 +1069,27 @@ function ProjectWorkbench({
               )}
             </section>
           </div>
+          <PlanWorkbench
+            key={project.id}
+            token={token}
+            project={project}
+            approvalDisabled={intakeLocked || dirty}
+            onLockChange={setPlanPending}
+            onActivated={(next) => {
+              install(next);
+              setNotice(
+                "Plan approved. Review its instructions and required checks before building.",
+              );
+            }}
+            onReload={() => void openProject(project.id)}
+          />
           <aside className="next-step-note">
             <h2>What comes next</h2>
             <p>
-              Design generation and assembly instructions are still being
-              connected. Saving inventory records your measurements and
-              materials; it does not validate a design or authorize a cut.
-              Model-assisted image review remains pending.
+              Live design generation and physical progress recording are still
+              being connected. Saved plan previews can be reviewed above. Saving
+              inventory records materials and requirements; it does not validate
+              a design. Model-assisted image review remains pending.
             </p>
           </aside>
         </>

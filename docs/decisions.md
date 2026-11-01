@@ -145,3 +145,17 @@ This extends D012 without changing compiler or proposal contracts. See the
 The product has one connected planning/build journey. Running deterministic
 validation without provider access is an implementation/testing property, not a
 separate product mode. Live interpretation/design remains integration work.
+
+## D014: Immutable initial plans and manual review, November 1, 2026
+
+Issue #6/#11 stores only accepted compiler/renderer output through an internal
+trusted producer boundary. The browser can read scoped previews and explicitly
+approve one against the current inventory revision; it cannot upload a plan or
+mark a supplied plan valid. Plan/manual bytes stay immutable while a transaction
+sets the active pointer. Physical work remains separate and is never inferred
+from approval or navigation.
+
+Manuals include written instructions, checkpoints, BOM and authoritative SVG with
+an enlarged view for inspecting dimensions on phones. Live model production,
+real measured process/profile intake, physical history and repair activation remain
+separate work. See the [handoff](handoffs/issue-6-plan-activation.md).

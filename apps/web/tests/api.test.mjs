@@ -3,10 +3,13 @@ import { test } from "node:test";
 
 import {
   ApiError,
+  activatePlan,
   createProject,
   deletePhoto,
   fetchPhoto,
   listPhotos,
+  listPlans,
+  loadPlan,
   loadProject,
   saveInventory,
   uploadPhoto,
@@ -24,6 +27,37 @@ const savedProject = {
   revision_id: "inventory-1",
   stocks: [],
 };
+
+test("plan reads stay scoped and approval sends only a version reference", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json({ project: savedProject });
+  });
+  await listPlans(token, "project-a");
+  await loadPlan(token, "project-a", "version-a");
+  const approval = {
+    expected_revision_id: "inventory-1",
+    idempotency_key: "approve-key",
+    user_approved: true,
+  };
+  await activatePlan(token, "project-a", "version-a", approval);
+  assert.deepEqual(
+    calls.map(({ path }) => path),
+    [
+      "/api/projects/project-a/plans",
+      "/api/projects/project-a/versions/version-a",
+      "/api/projects/project-a/plans/version-a/activate",
+    ],
+  );
+  assert.equal(calls[2].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[2].options.body), approval);
+  for (const { options } of calls) {
+    assert.equal(options.headers.get("Authorization"), `Bearer ${token}`);
+    assert.equal(options.cache, "no-store");
+    assert.equal(options.redirect, "error");
+  }
+});
 
 test("requirements retain unknowns and edited measurements require confirmation", () => {
   const requirements = emptyRequirements();

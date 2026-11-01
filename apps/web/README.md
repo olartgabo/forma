@@ -38,7 +38,7 @@ device mass/viewing angle/footprint limits and willingness to get more material.
 Blank measurements stay unknown; editing a value or its source clears confirmation.
 Requirements and stock share one revision and retry payload. Photos do not produce
 measurements or physical evidence. Segmentation boxes,
-live proposals and assembly/revision/proof screens remain
+live proposals, physical progress recording and revision/proof screens remain
 pending. See the [intake handoff](../../docs/handoffs/issue-7-intake.md).
 The [requirements handoff](../../docs/handoffs/issue-7-requirements.md) documents
 the persisted planning inputs and consumer boundary.
@@ -48,5 +48,14 @@ key. Root `npm run check` includes those tests, API/domain contract freshness,
 formatting, Python tests, TypeScript and production build. Client request/response
 types come from the API Pydantic exporter; do not hand-edit generated files.
 
-Later connect authoritative SVG steps and the computed adaptation diff.
+Saved plan previews and immutable SVG manuals are available below intake. The
+owner reviews the manual and explicitly approves a current preview; stale
+approvals return a conflict, and ambiguous approvals retain their retry payload.
+Approval freezes pre-plan inventory editing. Navigation records no completed work.
+Diagrams have written instructions/checkpoints and an enlarged scrollable view.
+The trusted preview producer is an internal service; live design generation is
+not exposed through HTTP yet. Empty projects show no invented plan. See the
+[plan handoff](../../docs/handoffs/issue-6-plan-activation.md).
+
+Next connect physical events and the computed adaptation diff.
 See [contracts](../../docs/contracts.md) and [development](../../docs/development.md).

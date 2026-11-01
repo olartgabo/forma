@@ -32,7 +32,8 @@ exposes FastAPI's OpenAPI UI. No database or provider readiness is implied.
 needed. See the [root README](../../README.md) for pinned tools and setup.
 
 Project/inventory routes and local development authentication are implemented.
-Plan/event persistence and hosted authentication remain #6 work. The
+Initial plan/manual persistence is implemented; event persistence and hosted
+authentication remain #6 work. The
 [#1 handoff](../../docs/handoffs/issue-1-workspace.md) reserves the service/domain
 boundary for review before those changes.
 
@@ -52,7 +53,7 @@ inventory records there. POST `/api/projects` accepts `goal` and
 `expected_revision_id` and `idempotency_key`. Every accepted edit advances the
 inventory revision. Stale edits and changed-payload key reuse return 409; exact
 retries return the original outcome with `replayed: true`. An inventory revision
-is separate from `active_version_id`, which stays null until plan storage exists.
+is separate from `active_version_id`, which stays null until explicit initial plan approval.
 Unknown measurements remain unknown. Photo IDs must resolve to private media in
 the same project; evidence IDs remain rejected until evidence storage exists.
 OpenAPI documents the actual envelopes.
@@ -70,8 +71,8 @@ DELETE `/api/projects/{id}` takes `Idempotency-Key` in a header, removes the
 inventory and stored replay snapshots, and retains only a scoped deletion receipt.
 This is logical deletion; SQLite free pages and local backup copies are outside
 this deletion mechanism. These routes do not send
-data to providers. Consent/transfer, immutable plan/event/material history
-and revision activation remain open in #6/#12. See the
+data to providers. Consent/transfer, physical event/material history
+and repair revision activation remain open in #6/#12. See the
 [contract handoff](../../docs/handoffs/issue-6-persistence.md).
 
 ## Private photos (#6)
@@ -97,3 +98,33 @@ GET `/api/projects/{id}/media` lists private image metadata for that project,
 including uploads not yet linked to stock. It returns `{media: [...]}` with
 cache prevention, and checks project ownership before reading rows. Image bytes
 still require the authenticated individual media endpoint.
+
+## Initial plan previews and approval (#6/#11)
+
+`PlanService.compile_preview` is an internal producer boundary. A trusted runtime
+supplies a candidate, selected kerf/margin, measured process, stand parameters and
+reviewed profiles. The service loads scoped saved stock/requirements, generates
+version/time IDs, compiles and renders, then stores accepted immutable outputs
+against the exact inventory revision. It stores the process/stand context and
+binds the complete invocation to its retry key. At most two previews can be saved
+per revision. Production calls reject synthetic evidence by default. This is not
+an HTTP model-generation or arbitrary-plan upload endpoint.
+
+Authenticated routes:
+
+- GET `/api/projects/{id}/plans` lists saved version summaries.
+- GET `/api/projects/{id}/versions/{version}` reads the immutable plan/manual.
+- GET `/api/projects/{id}/manual/{version}` reads the immutable manual alone.
+- POST `/api/projects/{id}/plans/{version}/activate` requires
+  `expected_revision_id`, `idempotency_key` and `user_approved: true`.
+
+Approval atomically checks the saved preview, current revision and absence of an
+active plan before setting the active pointer. It never accepts plan JSON. Exact
+retries replay; changed keys/payloads or stale activation conflict. Read/approval
+responses prevent caching. Project deletion cascades plan/manual rows and purges
+their receipts. Approval creates no events, material consumption or test results.
+
+Provider-driven preview production, measured process/profile intake, physical
+events and repair activation remain pending. The browser can inspect and approve
+existing previews, navigate instructions and enlarge dimensions. See the
+[contract and evidence handoff](../../docs/handoffs/issue-6-plan-activation.md).
