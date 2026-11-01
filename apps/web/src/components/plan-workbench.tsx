@@ -210,6 +210,10 @@ export default function PlanWorkbench({
 
   async function runDesign(body: DesignGenerateRequest) {
     if (designBusy || approvalDisabled || pending !== null) return;
+    // Consent covers this one request only: consume it on dispatch so any
+    // later success, failure or cancellation requires a fresh opt-in. The
+    // in-flight request keeps the body captured by the caller unchanged.
+    setDesignConsented(false);
     const requestEpoch = ++designEpoch.current;
     const requestController = new AbortController();
     designController.current = requestController;
@@ -297,6 +301,14 @@ export default function PlanWorkbench({
     setDesignNotice(
       "The previous request outcome may be unknown. Check saved previews, then consent again and use Generate with Muse to start a new request with a fresh key.",
     );
+  }
+
+  function retryDesign() {
+    // Retrying may start a provider run when the previous request failed
+    // before dispatch was recorded, so it needs a fresh consent too. The
+    // saved body and its idempotency key are reused unchanged.
+    if (!designConsented || !designPending || designUnknown) return;
+    void runDesign(designPending);
   }
 
   function startDesign() {
@@ -505,7 +517,9 @@ export default function PlanWorkbench({
               again. That replays a saved result or reports the request state
               when one is saved; it does not resume provider work. If the
               previous request failed before any result was saved, sending it
-              again may start a new provider run.
+              again may start a new provider run. Consent was used by the
+              previous request, so tick the consent box above again before
+              retrying.
             </p>
             <button
               type="button"
@@ -517,8 +531,10 @@ export default function PlanWorkbench({
             </button>{" "}
             <button
               type="button"
-              disabled={approvalDisabled || pending !== null}
-              onClick={() => void runDesign(designPending)}
+              disabled={
+                !designConsented || approvalDisabled || pending !== null
+              }
+              onClick={retryDesign}
             >
               Retry same Muse request
             </button>

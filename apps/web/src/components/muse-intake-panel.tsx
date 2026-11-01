@@ -119,6 +119,10 @@ export default function MuseIntakePanel({
     controller.current = requestController;
     const mediaId = selected.id;
     const revisionId = project.revision_id;
+    // Consent covers this one request only: consume it on dispatch so any
+    // later success, failure or cancellation requires a fresh opt-in. The
+    // in-flight request keeps the payload captured above.
+    setConsented(false);
     setBusy(true);
     setError("");
     setNotice("");
