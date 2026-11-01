@@ -3,13 +3,14 @@
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from hashlib import sha256
-from math import cos, hypot, radians, sin
+from math import cos, radians, sin
 from textwrap import wrap
 
 from forma_compiler import CutProcess, validate_plan
 
 from forma_domain import models as m
 
+from .continuation import stand_continuation_blockers
 from .template import profile_evidence_valid
 
 
@@ -81,12 +82,17 @@ def tools_for(operation):
 
 def instruction(operation, plan):
     if operation.type == "cut_rect":
+        panels_phrase = (
+            "the one labelled panel"
+            if len(operation.args.child_part_ids) == 1
+            else "the three labelled panels"
+        )
         if operation.effects.created_offcuts:
-            return f"Confirm all measurements and safe tools. Cut the three labelled panels; kerf {number(operation.args.kerf_mm)} mm, edge margin {number(operation.args.edge_margin_mm)} mm. Labelled offcut regions are remaining stock; other unallocated sheet material is waste."
-        return f"Confirm all measurements and safe tools. Cut the three labelled panels; kerf {number(operation.args.kerf_mm)} mm, edge margin {number(operation.args.edge_margin_mm)} mm. Unallocated sheet material is waste, not available offcut stock."
+            return f"Confirm all measurements and safe tools. Cut {panels_phrase}; kerf {number(operation.args.kerf_mm)} mm, edge margin {number(operation.args.edge_margin_mm)} mm. Labelled offcut regions are remaining stock; other unallocated sheet material is waste."
+        return f"Confirm all measurements and safe tools. Cut {panels_phrase}; kerf {number(operation.args.kerf_mm)} mm, edge margin {number(operation.args.edge_margin_mm)} mm. Unallocated sheet material is waste, not available offcut stock."
     if operation.type == "fold":
         a = operation.args
-        return f"Fold stand-support on stand-lip-fold at {number(a.start_y_mm)} mm from the top, {number(a.angle_deg)} deg valley toward front. Check cracking and actual fold allowance manually."
+        return f"Fold {a.part_id} on {a.feature_id} at {number(a.start_y_mm)} mm from the top, {number(a.angle_deg)} deg valley toward front. Check cracking and actual fold allowance manually."
     if operation.type == "tape_joint":
         return (
             f"Attach {operation.args.joint_id} using {number(operation.args.length_mm)} mm of {operation.args.stock_id}. "
@@ -251,11 +257,12 @@ def flat_view(root, plan, operation, selected, *, stock=False):
                     )
 
 
-def side_view(root, plan, operation, attached_before):
+def side_view(root, plan, operation, attached_before, active_ids):
     parts = {p.id: p for p in plan.parts}
-    support = parts["stand-support"]
+    support_id, base_id, brace_id = active_ids
+    support = parts[support_id]
     length = support.features[0].geometry.y
-    depth = parts["stand-base"].geometry.height
+    depth = parts[base_id].geometry.height
     theta = radians(plan.constraints.support_angle_deg.value)
     reach, rise = length * cos(theta), length * sin(theta)
     scale = min(400 / depth, 300 / rise)
@@ -271,9 +278,9 @@ def side_view(root, plan, operation, attached_before):
     )
     for index, (pid, p1, p2) in enumerate(
         (
-            ("stand-base", start, rear),
-            ("stand-support", start, apex),
-            ("stand-brace", apex, rear),
+            (base_id, start, rear),
+            (support_id, start, apex),
+            (brace_id, apex, rear),
         )
     ):
         group = element(root, "g", data_part_id=pid)
@@ -298,7 +305,7 @@ def side_view(root, plan, operation, attached_before):
             root,
             610,
             500 + index * 30,
-            f"P{index + 1} {pid}: {dimension(length if pid == 'stand-support' else parts[pid].geometry.height)} mm",
+            f"P{index + 1} {pid}: {dimension(length if pid == support_id else parts[pid].geometry.height)} mm",
             13,
         )
     lip_length = support.geometry.height - length
@@ -315,7 +322,7 @@ def side_view(root, plan, operation, attached_before):
         y2=number(lip_end[1]),
         stroke="#111",
         stroke_width=5,
-        data_feature_id="stand-lip-fold",
+        data_feature_id=support.features[0].id,
     )
     text(
         root,
@@ -376,98 +383,7 @@ def side_view(root, plan, operation, attached_before):
 
 def template_valid(plan):
     """Check the renderer's exact supported geometry/sequence before SVG math."""
-    parts = {p.id: p for p in plan.parts}
-    if set(parts) != {"stand-support", "stand-base", "stand-brace"}:
-        return False
-    support_part = parts["stand-support"]
-    if len(support_part.features) != 1:
-        return False
-    feature = support_part.features[0]
-    support = feature.geometry.y
-    lip = support_part.geometry.height - support
-    angle_m = plan.constraints.support_angle_deg
-    if (
-        feature.id != "stand-lip-fold"
-        or feature.kind != "fold"
-        or feature.geometry.x != 0
-        or feature.geometry.width != support_part.geometry.width
-        or abs(feature.geometry.height - lip) > 1e-7
-    ):
-        return False
-    if (
-        support <= 0
-        or lip <= 0
-        or angle_m.value is None
-        or not angle_m.confirmed
-        or not 0 < angle_m.value < 90
-    ):
-        return False
-    angle = radians(angle_m.value)
-    depth = parts["stand-base"].geometry.height
-    if depth <= support * cos(angle) or any(
-        p.geometry.width != support_part.geometry.width for p in parts.values()
-    ):
-        return False
-    expected_brace = hypot(depth - support * cos(angle), support * sin(angle))
-    if abs(parts["stand-brace"].geometry.height - expected_brace) > 1e-6:
-        return False
-    expected = (
-        ("stand-cut-panels", "cut_rect"),
-        ("stand-inspect-cuts", "inspect"),
-        ("stand-fold-lip", "fold"),
-        ("stand-joint-front-attach", "tape_joint"),
-        ("stand-joint-rear-attach", "tape_joint"),
-        ("stand-joint-apex-attach", "tape_joint"),
-        ("stand-inspect-fit", "inspect"),
-        ("stand-functional-test", "functional_test"),
-    )
-    if tuple((o.id, o.type) for o in plan.operations) != expected:
-        return False
-    all_parts = tuple(p.id for p in plan.parts)
-    if any(
-        plan.operations[index].part_ids != all_parts for index in (1, 6, 7)
-    ) or plan.operations[2].part_ids != ("stand-support",):
-        return False
-    if any(
-        not any(
-            c.after_operation_id == o.id and c.id == o.args.checkpoint_id
-            for c in plan.checkpoints
-        )
-        for o in plan.operations
-        if o.type in ("inspect", "functional_test")
-    ):
-        return False
-    fold = plan.operations[2].args
-    if (
-        fold.part_id != support_part.id
-        or fold.feature_id != feature.id
-        or fold.start_x_mm != 0
-        or fold.end_x_mm != support_part.geometry.width
-        or fold.start_y_mm != support
-        or fold.end_y_mm != support
-        or fold.angle_deg != 90
-        or fold.direction != "valley"
-        or fold.reachable_face != "front"
-    ):
-        return False
-    topology = {
-        "stand-joint-front": ("stand-support", "stand-base"),
-        "stand-joint-rear": ("stand-base", "stand-brace"),
-        "stand-joint-apex": ("stand-support", "stand-brace"),
-    }
-    if {j.id: j.part_ids for j in plan.joints} != topology:
-        return False
-    for operation in plan.operations[3:6]:
-        if (
-            operation.args.joint_id != operation.id.removesuffix("-attach")
-            or operation.args.length_mm != support_part.geometry.width
-            or operation.part_ids != topology[operation.args.joint_id]
-        ):
-            return False
-    test = plan.operations[-1].args
-    if test.mass_g is None or test.mass_g != plan.constraints.device_mass_g.value:
-        return False
-    return True
+    return not stand_continuation_blockers(plan)
 
 
 def render_manual(
@@ -508,6 +424,22 @@ def render_manual(
             ),
         )
     plan = result.plan
+    joints_by_id = {j.id: j for j in plan.joints}
+    support_id, base_id = joints_by_id["stand-joint-front"].part_ids
+    brace_id = joints_by_id["stand-joint-rear"].part_ids[1]
+    active_ids = (support_id, base_id, brace_id)
+    core_child_ids = ("stand-support", "stand-base", "stand-brace")
+    core_index_by_plan_index: dict[int, int] = {}
+    supplemental_indexes: set[int] = set()
+    for plan_index, candidate in enumerate(plan.operations):
+        if (
+            candidate.type == "cut_rect"
+            and tuple(candidate.args.child_part_ids) != core_child_ids
+        ):
+            supplemental_indexes.add(plan_index)
+        else:
+            core_index_by_plan_index[plan_index] = len(core_index_by_plan_index)
+    core_count = len(core_index_by_plan_index)
     if not profile_evidence_valid(
         plan.joint_profiles,
         profile_evidence,
@@ -529,11 +461,15 @@ def render_manual(
     attached = set()
     used_by_stock: dict[str, float] = {}
     for index, operation in enumerate(plan.operations):
-        selected = (
-            tuple(p.id for p in plan.parts)
-            if operation.type in ("cut_rect", "tape_joint", "functional_test")
-            else operation.part_ids
-        )
+        is_supplemental = index in supplemental_indexes
+        core_index = core_index_by_plan_index.get(index)
+        is_inspect_fit = operation.type == "inspect" and core_index == 6
+        if operation.type == "cut_rect":
+            selected = tuple(operation.args.child_part_ids)
+        elif operation.type in ("tape_joint", "functional_test"):
+            selected = active_ids
+        else:
+            selected = operation.part_ids
         checkpoints = tuple(
             c for c in plan.checkpoints if c.after_operation_id == operation.id
         )
@@ -556,7 +492,11 @@ def render_manual(
             },
         )
         text_title = element(root, "title", id="title")
-        text_title.text = f"Step {index + 1}: {operation.type} - {operation.id}"
+        text_title.text = (
+            f"Replacement cut: {operation.type} - {operation.id}"
+            if is_supplemental
+            else f"Step {core_index + 1}: {operation.type} - {operation.id}"
+        )
         description = element(root, "desc", id="description")
         description.text = instructions
         element(root, "rect", width=900, height=panel_height, fill="white")
@@ -576,7 +516,11 @@ def render_manual(
             root,
             35,
             38,
-            f"Step {index + 1}/{len(plan.operations)} - {operation.type.replace('_', ' ')}",
+            (
+                f"Replacement cut - {operation.type.replace('_', ' ')}"
+                if is_supplemental
+                else f"Step {core_index + 1}/{core_count} - {operation.type.replace('_', ' ')}"
+            ),
             25,
         )
         text(root, 35, 66, operation.id, 15)
@@ -603,13 +547,10 @@ def render_manual(
             tape_readout = (stock.id, used_before, this_step, remaining_after)
         if operation.type == "cut_rect":
             flat_view(drawing, plan, operation, selected, stock=True)
-        elif (
-            operation.type in ("fold", "inspect")
-            and operation.id != "stand-inspect-fit"
-        ):
+        elif operation.type in ("fold", "inspect") and not is_inspect_fit:
             flat_view(drawing, plan, operation, selected)
         else:
-            side_view(drawing, plan, operation, attached)
+            side_view(drawing, plan, operation, attached, active_ids)
         if tape_readout is not None:
             stock_id, used_before, this_step, remaining_after = tape_readout
             readout = element(drawing, "g", data_stock_id=stock_id)

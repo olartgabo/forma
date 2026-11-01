@@ -814,8 +814,15 @@ def simulate_patch(
                         if op["type"] == "cut_rect":
                             continue
                         refs_old = original.id in op["part_ids"]
+                        refs_old |= original.id in op["preconditions"].get(
+                            "accessible_part_ids", ()
+                        )
                         op["part_ids"] = tuple(
                             new_pid if p == original.id else p for p in op["part_ids"]
+                        )
+                        op["preconditions"]["accessible_part_ids"] = tuple(
+                            new_pid if p == original.id else p
+                            for p in op["preconditions"].get("accessible_part_ids", ())
                         )
                         for name in ("part_id", "brace_part_id", "target_id"):
                             if op["args"].get(name) == original.id:

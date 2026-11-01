@@ -52,9 +52,17 @@ Changed completed joins, folds or other physical modifications require an explic
 undo continuation and currently block with the affected operation IDs. The engine
 does not invent inverses, connector rerouting, purchases or replacement stock.
 Changing joint strategy and changing stand angle require family regeneration and
-currently return `unsupported`. A known `triangular-tape-stand-v1` plan requires
-the injected geometry/manual continuation validator before it can be feasible;
-resource checks alone cannot validate a new support triangle or printable manual.
+currently return `unsupported`. Pass `forma_renderer.stand_continuation_blockers`
+as `family_validator` for `triangular-tape-stand-v1` plans. It supports replacement
+of a cut, unjoined panel with the same dimensions from measured remaining stock.
+The retired panel and original cut remain historical records. A grouped cut stays
+preserved while any of its other outputs remain useful; the retired panel's area
+is reported separately. Future access checks reference the replacement and depend
+on its new cut. Resource checks alone cannot validate the support triangle.
+
+Stand resizing still requires coherent family regeneration: the generic single-part
+resize does not recompute brace length or fold geometry and is rejected when those
+invariants disagree. This validator does not mutate a plan to make a patch feasible.
 
 A `family_validator` result is fully materialized and each item validated as a `Blocker`
 before any of it is added. A validator that raises an ordinary `Exception` (including during

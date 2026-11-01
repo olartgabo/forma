@@ -109,3 +109,13 @@ the project removes its photos. Deletion is logical and does not promise
 forensic erasure or backup deletion. Provider transfer and public sharing are
 unavailable in this slice; their consent and external-retention policy remain
 pending. No measurements or physical outcomes are inferred from uploads.
+
+## D014: Stand replacement roles and stable core manual steps, October 31, 2026
+
+Stand continuation validates active panel roles through joint topology while
+retaining retired parts and their original cuts as history. The renderer and
+replanner callback share the same family checks. Supplemental replacement cuts
+use separate headings; the original eight core slots keep stable numbering so
+unchanged visible panels retain their hashes. Hashes still cover the entire SVG.
+Grouped cuts are preserved while their other outputs remain useful; retired-part
+material loss is explicit. This changes no schema, physical claim or approval flow.

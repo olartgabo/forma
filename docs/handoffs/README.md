@@ -26,3 +26,6 @@ remaining blockers clear so an agent can resume without repeating experiments.
 No handoff establishes a real provider result or physical pass through fixture
 checks. User-confirmed measurements, observed build/recovery outcomes and
 authenticated end-to-end integration remain separate acceptance evidence.
+
+The [stand replacement continuation](issue-39-stand-continuation.md) documents
+the shared family validator, replacement SVGs and remaining resize work for #39.

@@ -515,6 +515,49 @@ def test_replacement_may_not_spend_already_consumed_original_sheet():
     assert "stock_exhausted" in codes(run(data))
 
 
+def test_replacement_accessibility_only_reference_waits_for_new_cut():
+    data = input_data(("cut", "cut_brace"))
+    spare = deepcopy(data["base_plan"]["stocks"][0])
+    spare["id"] = "spare"
+    spare["usable_regions"][0]["id"] = "spare_region"
+    data["base_plan"]["stocks"].append(spare)
+    data["remaining_stock"].append(deepcopy(spare))
+    data["base_plan"]["operations"].append(
+        dict(
+            id="inspect_base",
+            type="inspect",
+            part_ids=["base"],
+            depends_on=["cut"],
+            expected_state_id="inspected_base",
+            preconditions=dict(accessible_part_ids=["brace"]),
+            effects={},
+            args=dict(target_ids=["base"], checkpoint_id="base_check", method="ruler"),
+        )
+    )
+    data["base_plan"]["checkpoints"].append(
+        dict(
+            id="base_check",
+            after_operation_id="inspect_base",
+            method="ruler",
+            description="SYNTHETIC base inspection with brace access",
+        )
+    )
+    data["patch"].update(
+        kind="replace_part", replacement_stock_id="spare", width_mm=None, height_mm=None
+    )
+    result = run(data)
+    assert result.status == "feasible", result.blockers
+    replacement = next(p for p in result.plan.parts if p.id not in {"base", "brace"})
+    new_cut = next(
+        o
+        for o in result.plan.operations
+        if replacement.id in o.effects.created_part_ids
+    )
+    inspection = next(o for o in result.plan.operations if o.type == "inspect")
+    assert inspection.preconditions.accessible_part_ids == (replacement.id,)
+    assert new_cut.id in inspection.depends_on
+
+
 def test_ancestor_completion_requires_exact_compatible_original_plan():
     data = input_data()
     old = BuildPlan.model_validate(data["base_plan"])
