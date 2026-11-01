@@ -1,6 +1,7 @@
 # Contract handoff
 
-Status: Pydantic contracts implemented in #3; API routes remain planned.
+Status: Pydantic domain contracts and private project/inventory/media routes are
+implemented. Plan, execution, evidence and model HTTP integration remain pending.
 @ResniDev owns domain models; @olartgabo consumes generated contracts in API
 services and web. Source: formspec.md sections 4, 5 and 12.
 
@@ -34,12 +35,20 @@ preconditions, effects and reversibility. Unknown operations are rejected.
 Agree exact signatures and error codes in #3/#5 before consumers implement them.
 Keep proposal schemas flat/bounded for model structured output.
 
-## API surface to implement
+## API surface
 
-Reserve `/api/projects` and project-scoped routes for photos, interpret,
-inventory, candidates, compile, versions, manual, events, diagnose,
-adapt/simulate, adapt/commit, functional-test and proof. Reserve `/api/jobs/{id}`
-and `/api/health` as in spec section 12. Exact routes are finalized with OpenAPI.
+Implemented routes are POST `/api/projects`, GET/DELETE `/api/projects/{id}`,
+PUT `/api/projects/{id}/inventory`, POST `/api/projects/{id}/media` and
+GET/DELETE `/api/projects/{id}/media/{media_id}`. Health remains public at
+`/api/health`; project routes require configured owner credentials. API-local
+Pydantic envelopes reuse domain Stock records. Inventory revisions remain
+separate from active plan versions. See the [persistence handoff](handoffs/issue-6-persistence.md)
+and [media handoff](handoffs/issue-6-private-media.md); runtime OpenAPI documents
+these envelopes. Domain-generated OpenAPI contains components only.
+
+Project-scoped interpret, candidates, compile, versions, manual, events,
+diagnose, adapt/simulate, adapt/commit, functional-test, proof and job-status
+routes remain pending. Offline service implementations do not imply HTTP wiring.
 
 Every mutation validates authenticated project scope, runtime input and
 idempotency. `adapt/commit` checks expected active version and returns 409 for
@@ -64,4 +73,5 @@ Historical observations remain true as reports even when invalidated for a new p
 Import runtime contracts from `forma_domain.models`. The exact schemas, error
 codes, mutation wrappers and deferred enforcement duties are in the
 [issue #3 handoff](handoffs/issue-3-domain.md). Requirements above are backed
-by Pydantic records and generated components; API routes remain planned.
+by Pydantic records and generated components. Only the project/inventory/media
+HTTP surfaces above are implemented.
