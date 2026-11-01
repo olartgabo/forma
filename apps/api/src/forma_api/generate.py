@@ -5,6 +5,12 @@ from pathlib import Path
 
 from pydantic.json_schema import models_json_schema
 
+from forma_api.intake_runtime import (
+    IntakeDiagnostics,
+    IntakeErrorResponse,
+    IntakeRequest,
+    IntakeResult,
+)
 from forma_api.media import Media, MediaDeleteResult, MediaList, MediaResult
 from forma_api.projects import (
     CreateProject,
@@ -13,12 +19,18 @@ from forma_api.projects import (
     Project,
     ProjectResult,
 )
+from forma_api.proposal_service import IntakeObservation
 from forma_domain import models
 from forma_domain.generate import typescript
 
 API_RECORDS = (
     CreateProject,
     DeleteResult,
+    IntakeDiagnostics,
+    IntakeErrorResponse,
+    IntakeObservation,
+    IntakeRequest,
+    IntakeResult,
     InventoryUpdate,
     Media,
     MediaDeleteResult,

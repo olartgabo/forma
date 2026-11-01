@@ -13,6 +13,37 @@ export type DeleteResult = {
   readonly "replayed"?: boolean;
 };
 
+export type IntakeDiagnostics = {
+  readonly "status": "ok";
+  readonly "model": string;
+  readonly "elapsed_ms": number;
+};
+
+export type IntakeErrorResponse = {
+  readonly "code": "validation_error" | "not_found" | "stale_version" | "consent_required" | "provider_not_configured" | "provider_authentication" | "access_denied" | "rate_limit" | "timeout" | "network_error" | "invalid_response" | "provider_http_error" | "provider_error";
+  readonly "message": string;
+};
+
+export type IntakeObservation = {
+  readonly "labels": ReadonlyArray<string>;
+  readonly "measurement_source": "unknown";
+  readonly "questions": ReadonlyArray<string>;
+};
+
+export type IntakeRequest = {
+  readonly "media_id": string;
+  readonly "expected_revision_id": string;
+  readonly "provider_transfer_consented"?: boolean;
+};
+
+export type IntakeResult = {
+  readonly "project_id": string;
+  readonly "revision_id": string;
+  readonly "media_id": string;
+  readonly "observation": IntakeObservation;
+  readonly "diagnostics": IntakeDiagnostics;
+};
+
 export type InventoryUpdate = {
   readonly "expected_revision_id": string;
   readonly "idempotency_key": string;

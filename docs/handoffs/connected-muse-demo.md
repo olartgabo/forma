@@ -37,3 +37,30 @@ Automated fake-transport checks verify request boundaries. Acceptance additional
 requires an actual consented photo and a real Muse response shown in the browser;
 until then the live path is unverified. Generated labels never become confirmed
 measurements, available stock or physical results automatically.
+
+## Implemented API boundary
+
+The route is wired through the existing project router and authentication. It
+uses the real `MetaGateway.from_env()` at request time, keeping `MODEL_API_KEY`
+server-only. `META_SPARK_MODEL` selects the configured Muse text/vision model;
+the existing default is Muse Spark. Missing configuration returns a safe 503.
+No model call happens at application import or for denied requests.
+
+Consent accepts literal booleans only. Intake-specific validation errors omit
+rejected values, and typed API-local errors cover provider access, rate limits,
+timeouts and unusable output without widening the domain error schema. Project
+ownership errors retain the existing handler. Transactions close before the
+provider request; project revision and media existence are checked again after it.
+
+Independent API and UI reviews approved the completed intake boundary. Full
+`npm run check` passed 297 Python tests, 13 browser-client tests, formatting,
+lint, generated contracts, TypeScript and the production build.
+
+A real Muse Spark 1.3 call with the labelled OpenAI-generated material photo
+returned five candidate labels and four questions in 7,797 ms. A separate actual
+browser request through the web proxy displayed five labels, four questions,
+`measurement_source="unknown"` and real model/status/duration diagnostics
+(8,453 ms). These are two software observations, not a latency benchmark or
+physical inventory evidence. The isolated browser reused saved project/photo
+state, explicit consent and the existing owner session. No provider credential,
+runtime database, generated image or unredacted private artifact is committed.

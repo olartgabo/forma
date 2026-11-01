@@ -11,6 +11,7 @@ import {
   saveInventory,
   uploadPhoto,
 } from "../lib/api";
+import MuseIntakePanel from "./muse-intake-panel";
 import type { Media, Project } from "../lib/generated/api-contracts";
 import type { Measurement, Stock } from "../lib/generated/contracts";
 
@@ -618,7 +619,7 @@ function ProjectWorkbench({
               </div>
               <p>
                 Keep sheets, strips and connectors visible. Photos stay private
-                in this project and are not sent to a model.
+                in this project unless you explicitly ask Muse about one below.
               </p>
               <form
                 onSubmit={(event) => {
@@ -1028,14 +1029,20 @@ function ProjectWorkbench({
               )}
             </section>
           </div>
+          <MuseIntakePanel
+            token={token}
+            project={project}
+            photos={photos}
+            inventoryStale={stale || dirty}
+            disabled={locked}
+          />
           <aside className="next-step-note">
             <h2>What comes next</h2>
             <p>
               Design generation and assembly instructions are still being
               connected. Saving inventory records your measurements and
-              materials; it does not validate a design or authorize a cut.
-              Tools, device constraints and model-assisted image review remain
-              pending.
+              materials; it does not validate a design or authorize a cut. Tools
+              and device constraints remain pending.
             </p>
           </aside>
         </>

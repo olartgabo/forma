@@ -8,6 +8,7 @@ import {
   fetchPhoto,
   listPhotos,
   loadProject,
+  requestIntakeObservation,
   saveInventory,
   uploadPhoto,
 } from "../src/lib/api.ts";
@@ -152,6 +153,176 @@ test("caller cancellation aborts the in-flight request", async (t) => {
     return true;
   });
   assert.equal(requestSignal.aborted, true);
+});
+
+const intakeResult = {
+  project_id: "project-a",
+  revision_id: "inventory-1",
+  media_id: "media-a",
+  observation: {
+    labels: ["cardboard sheet"],
+    measurement_source: "unknown",
+    questions: ["How thick is it?"],
+  },
+  diagnostics: { status: "ok", model: "muse-spark-test", elapsed_ms: 12 },
+};
+
+test("intake request sends exactly the scoped body with caller auth", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json(intakeResult);
+  });
+  const result = await requestIntakeObservation(
+    token,
+    "project-a",
+    "media-a",
+    "inventory-1",
+  );
+  assert.deepEqual(result, intakeResult);
+  assert.equal(calls[0].path, "/api/projects/project-a/intake");
+  assert.equal(calls[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    media_id: "media-a",
+    expected_revision_id: "inventory-1",
+    provider_transfer_consented: true,
+  });
+  assert.equal(
+    calls[0].options.headers.get("Authorization"),
+    `Bearer ${token}`,
+  );
+  assert.equal(calls[0].options.credentials, "omit");
+  assert.equal(calls[0].options.redirect, "error");
+  assert.equal(calls[0].options.cache, "no-store");
+});
+
+test("intake provider errors use safe local messages and preserve codes", async (t) => {
+  const cases = [
+    [503, "provider_not_configured", /not configured/],
+    [502, "provider_authentication", /credential was rejected/],
+    [502, "access_denied", /denied access/],
+    [429, "rate_limit", /rate limit/],
+    [504, "timeout", /timed out/],
+    [502, "network_error", /could not be reached/],
+    [502, "invalid_response", /unusable response/],
+    [422, "consent_required", /Consent to send/],
+    [409, "stale_version", /Reload the project/],
+  ];
+  for (const [status, code, pattern] of cases) {
+    t.mock.method(globalThis, "fetch", async () =>
+      Response.json(
+        { code, message: "PRIVATE_PROVIDER_BODY sk-secret" },
+        { status },
+      ),
+    );
+    await assert.rejects(
+      requestIntakeObservation(token, "project-a", "media-a", "inventory-1"),
+      (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.status, status);
+        assert.equal(error.code, code);
+        assert.match(error.message, pattern);
+        assert.doesNotMatch(error.message, /PRIVATE|sk-secret/);
+        return true;
+      },
+    );
+    t.mock.restoreAll();
+  }
+});
+
+test("intake 413/415 guidance differs from unchanged upload guidance", async (t) => {
+  for (const [status, intakePattern, uploadPattern] of [
+    [413, /5,000,000 bytes/, /8 MiB/],
+    [415, /JPEG or PNG/, /JPEG, PNG or WebP/],
+  ]) {
+    t.mock.method(globalThis, "fetch", async () =>
+      Response.json(
+        { code: "validation_error", message: "PRIVATE_TEXT" },
+        { status },
+      ),
+    );
+    await assert.rejects(
+      requestIntakeObservation(token, "project-a", "media-a", "inventory-1"),
+      (error) => {
+        assert.match(error.message, intakePattern);
+        assert.doesNotMatch(error.message, /PRIVATE_TEXT/);
+        return true;
+      },
+    );
+    const file = new File(["pixels"], "private.webp", { type: "image/webp" });
+    await assert.rejects(
+      uploadPhoto(token, "project-a", file, "upload-key"),
+      (error) => {
+        assert.match(error.message, uploadPattern);
+        assert.doesNotMatch(error.message, /PRIVATE_TEXT/);
+        return true;
+      },
+    );
+    t.mock.restoreAll();
+  }
+});
+
+test("intake cancellation aborts without leaking abort details", async (t) => {
+  let requestSignal;
+  t.mock.method(globalThis, "fetch", (path, options) => {
+    requestSignal = options.signal;
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener(
+        "abort",
+        () => reject(new DOMException("PRIVATE_ABORT_DETAIL", "AbortError")),
+        { once: true },
+      );
+    });
+  });
+  const controller = new AbortController();
+  const pending = requestIntakeObservation(
+    token,
+    "project-a",
+    "media-a",
+    "inventory-1",
+    controller.signal,
+  );
+  controller.abort();
+  await assert.rejects(pending, (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.code, "cancelled");
+    assert.doesNotMatch(error.message, /PRIVATE_ABORT_DETAIL/);
+    return true;
+  });
+  assert.equal(requestSignal.aborted, true);
+});
+
+test("intake scoped mismatch and unreadable shapes are rejected safely", async (t) => {
+  const payloads = [
+    { ...intakeResult, project_id: "project-other" },
+    { ...intakeResult, revision_id: "inventory-2" },
+    { ...intakeResult, media_id: "media-other" },
+    {
+      ...intakeResult,
+      observation: {
+        labels: "PRIVATE",
+        measurement_source: "unknown",
+        questions: [],
+      },
+    },
+    {
+      ...intakeResult,
+      observation: { labels: [], measurement_source: "photo", questions: [] },
+    },
+  ];
+  for (const payload of payloads) {
+    t.mock.method(globalThis, "fetch", async () => Response.json(payload));
+    await assert.rejects(
+      requestIntakeObservation(token, "project-a", "media-a", "inventory-1"),
+      (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.code, "invalid_response");
+        assert.doesNotMatch(error.message, /PRIVATE/);
+        return true;
+      },
+    );
+    t.mock.restoreAll();
+  }
 });
 
 test("deadline also aborts a stalled response body", async (t) => {

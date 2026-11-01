@@ -532,6 +532,38 @@ figcaption span {
 .retry-panel p {
   max-width: 65ch;
 }
+.muse-panel {
+  margin: 3rem 0 0;
+  border-top: 1px solid var(--line);
+  padding-top: 1.5rem;
+  min-width: 0;
+}
+.muse-panel > p {
+  color: var(--muted);
+  max-width: 80ch;
+}
+.muse-panel select {
+  max-width: 36rem;
+}
+.muse-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.muse-result {
+  margin-top: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 1.25rem;
+  overflow-wrap: anywhere;
+}
+.muse-result ul {
+  line-height: 1.6;
+  margin-top: 0;
+  padding-left: 1.4rem;
+}
 .next-step-note {
   margin: 3rem 0 0;
   border-top: 1px solid var(--line);
@@ -621,5 +653,12 @@ figcaption span {
   }
   .save-row .primary {
     width: 100%;
+  }
+  .muse-actions .primary,
+  .muse-actions .secondary {
+    width: 100%;
+  }
+  .muse-result {
+    padding: 1rem;
   }
 }

@@ -1,6 +1,8 @@
 import type { Stock } from "./generated/contracts";
 import type {
   CreateProject,
+  IntakeRequest,
+  IntakeResult,
   InventoryUpdate,
   MediaList,
   MediaResult,
@@ -20,17 +22,84 @@ export class ApiError extends Error {
   }
 }
 
-async function responseError(response: Response): Promise<ApiError> {
+const INTAKE_CODES = [
+  "validation_error",
+  "not_found",
+  "stale_version",
+  "consent_required",
+  "provider_not_configured",
+  "provider_authentication",
+  "access_denied",
+  "rate_limit",
+  "timeout",
+  "network_error",
+  "invalid_response",
+  "provider_http_error",
+  "provider_error",
+];
+
+const INTAKE_CODE_MESSAGES: Record<string, string> = {
+  provider_not_configured:
+    "Muse is not configured on the server. Ask the project operator to configure it, then try again.",
+  provider_authentication:
+    "The server Muse credential was rejected. Ask the project operator to check it, then try again.",
+  access_denied:
+    "Muse denied access to the configured model. Ask the project operator to check access, then try again.",
+  rate_limit: "Muse rate limit reached. Wait a while, then try again.",
+  timeout: "The Muse request timed out. Try again later.",
+  network_error: "Muse could not be reached from the server. Try again later.",
+  invalid_response: "Muse returned an unusable response. Try again.",
+  consent_required:
+    "Consent to send the selected photo and saved project goal to Meta is required before asking Muse.",
+  stale_version:
+    "Inventory changed in another session. Reload the project before asking Muse again.",
+  provider_http_error: "The Muse request failed. Try again later.",
+  provider_error: "The Muse request failed. Try again later.",
+  not_found:
+    "This project or photo is unavailable. Check the project ID or reload.",
+};
+
+async function responseError(
+  response: Response,
+  intake = false,
+): Promise<ApiError> {
   let code = "request_failed";
   try {
     const body: unknown = await response.json();
     if (typeof body === "object" && body !== null && "code" in body) {
-      const known = ["stale_version", "idempotency_conflict", "blocked"];
+      const known = intake
+        ? INTAKE_CODES
+        : ["stale_version", "idempotency_conflict", "blocked"];
       if (typeof body.code === "string" && known.includes(body.code))
         code = body.code;
     }
   } catch {
     // Proxy failures may contain HTML; only local messages reach the UI.
+  }
+  if (intake) {
+    const intakeStatusMessages: Record<number, string> = {
+      401: "Check your development access key and reconnect.",
+      403: "This access key cannot open this project.",
+      404: "This project or photo is unavailable. Check the project ID or reload.",
+      409: "Inventory changed in another session. Reload the project before asking Muse again.",
+      413: "The selected photo is too large for Muse. Choose a saved JPEG or PNG photo of 5,000,000 bytes or smaller.",
+      415: "Muse can only read JPEG or PNG photos. Choose a saved JPEG or PNG photo for this project.",
+      422:
+        code === "consent_required"
+          ? INTAKE_CODE_MESSAGES.consent_required
+          : "The selected photo could not be accepted for Muse. Choose a saved JPEG or PNG photo of 5,000,000 bytes or smaller.",
+      429: INTAKE_CODE_MESSAGES.rate_limit,
+      502: "The Muse request failed. Try again later.",
+      503: INTAKE_CODE_MESSAGES.provider_not_configured,
+      504: INTAKE_CODE_MESSAGES.timeout,
+    };
+    return new ApiError(
+      response.status,
+      code,
+      INTAKE_CODE_MESSAGES[code] ??
+        intakeStatusMessages[response.status] ??
+        "FORMA could not complete this request. Try again shortly.",
+    );
   }
   const messages: Record<number, string> = {
     401: "Check your development access key and reconnect.",
@@ -60,6 +129,7 @@ async function request<T>(
   init: RequestInit,
   read: (response: Response) => Promise<T>,
   signal?: AbortSignal,
+  intake = false,
 ): Promise<T> {
   const controller = new AbortController();
   const cancel = () => controller.abort();
@@ -77,7 +147,7 @@ async function request<T>(
       redirect: "error",
       signal: controller.signal,
     });
-    if (!response.ok) throw await responseError(response);
+    if (!response.ok) throw await responseError(response, intake);
     return await read(response);
   } catch (error) {
     if (error instanceof ApiError) throw error;
@@ -234,6 +304,81 @@ export function listPhotos(
     { method: "GET" },
     json<MediaList>,
     signal,
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
+}
+
+function checkedIntakeResult(
+  value: unknown,
+  projectId: string,
+  revisionId: string,
+  mediaId: string,
+): IntakeResult {
+  const invalid = () =>
+    new ApiError(
+      200,
+      "invalid_response",
+      "FORMA returned an intake result that does not match this project, revision or photo. Reload the project and try again.",
+    );
+  if (!isRecord(value)) throw invalid();
+  if (
+    value.project_id !== projectId ||
+    value.revision_id !== revisionId ||
+    value.media_id !== mediaId ||
+    !isRecord(value.observation) ||
+    !isStringArray(value.observation.labels) ||
+    !isStringArray(value.observation.questions) ||
+    value.observation.measurement_source !== "unknown" ||
+    !isRecord(value.diagnostics) ||
+    value.diagnostics.status !== "ok" ||
+    typeof value.diagnostics.model !== "string" ||
+    value.diagnostics.model.length === 0 ||
+    typeof value.diagnostics.elapsed_ms !== "number" ||
+    !Number.isFinite(value.diagnostics.elapsed_ms) ||
+    value.diagnostics.elapsed_ms < 0
+  )
+    throw invalid();
+  return value as unknown as IntakeResult;
+}
+
+export function requestIntakeObservation(
+  token: string,
+  id: string,
+  mediaId: string,
+  expectedRevision: string,
+  signal?: AbortSignal,
+): Promise<IntakeResult> {
+  const body: IntakeRequest = {
+    media_id: mediaId,
+    expected_revision_id: expectedRevision,
+    provider_transfer_consented: true,
+  };
+  return request(
+    token,
+    `${projectPath(id)}/intake`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    async (response) =>
+      checkedIntakeResult(
+        await json<unknown>(response),
+        id,
+        expectedRevision,
+        mediaId,
+      ),
+    signal,
+    true,
   );
 }
 
