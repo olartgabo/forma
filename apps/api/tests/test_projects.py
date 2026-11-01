@@ -91,6 +91,162 @@ def test_credentials_and_owner_scope(client):
     assert client.get(path, headers=AUTH).status_code == 200
 
 
+def create_as(client, headers, key, goal="A phone stand"):
+    response = client.post(
+        "/api/projects",
+        json={"goal": goal, "idempotency_key": key},
+        headers=headers,
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["project"]
+
+
+def test_list_projects_empty_owner_and_auth(client):
+    assert client.get("/api/projects").status_code == 401
+    assert (
+        client.get(
+            "/api/projects", headers={"Authorization": "Bearer forged"}
+        ).status_code
+        == 401
+    )
+    assert client.get("/api/projects", headers=OTHER).json() == {
+        "projects": [],
+        "next_cursor": None,
+    }
+    create(client)
+    # Bob still sees an empty owner-scoped list.
+    assert client.get("/api/projects", headers=OTHER).json() == {
+        "projects": [],
+        "next_cursor": None,
+    }
+
+
+def test_list_projects_pagination_no_duplicates_and_summary_only(client):
+    created = [create_as(client, AUTH, f"list-{index:03d}") for index in range(5)]
+    create_as(client, OTHER, "list-other-001", goal="Bob project")
+    create_as(client, OTHER, "list-other-002", goal="Bob project")
+    # Reflect a confirmed inventory in exactly one summary.
+    target = created[0]
+    updated = client.put(
+        "/api/projects/" + target["id"] + "/inventory",
+        json=update(target),
+        headers=AUTH,
+    )
+    assert updated.status_code == 200, updated.text
+    expected_by_id = {project["id"]: project for project in created}
+    expected_by_id[target["id"]] = updated.json()["project"]
+
+    seen = []
+    cursor = None
+    pages = 0
+    while True:
+        params = {"limit": 2}
+        if cursor is not None:
+            params["cursor"] = cursor
+        response = client.get("/api/projects", params=params, headers=AUTH)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert set(body) == {"projects", "next_cursor"}
+        assert len(body["projects"]) <= 2
+        for summary in body["projects"]:
+            assert set(summary) == {
+                "id",
+                "goal",
+                "revision_id",
+                "inventory_confirmed",
+                "active_version_id",
+            }
+            expected = expected_by_id[summary["id"]]
+            assert summary == {
+                "id": expected["id"],
+                "goal": expected["goal"],
+                "revision_id": expected["revision_id"],
+                "inventory_confirmed": expected["inventory_confirmed"],
+                "active_version_id": expected["active_version_id"],
+            }
+        seen.extend(summary["id"] for summary in body["projects"])
+        pages += 1
+        cursor = body["next_cursor"]
+        if cursor is None:
+            break
+        # More owned rows must remain whenever a cursor is offered.
+        assert cursor == body["projects"][-1]["id"]
+        assert len(seen) < len(created)
+        assert pages < 10
+
+    assert seen == sorted(expected_by_id)
+    assert len(seen) == len(set(seen)) == 5
+    assert pages == 3
+    # Listing is read-only and does not change the stored project.
+    assert client.get("/api/projects", headers=AUTH).status_code == 200
+    assert (
+        client.get("/api/projects/" + target["id"], headers=AUTH).json()
+        == expected_by_id[target["id"]]
+    )
+    # Default limit returns all five with no cursor (well under 20).
+    default = client.get("/api/projects", headers=AUTH).json()
+    assert [p["id"] for p in default["projects"]] == sorted(expected_by_id)
+    assert default["next_cursor"] is None
+
+
+def test_list_projects_cross_owner_and_foreign_cursor(client):
+    own = [create_as(client, AUTH, f"ownkey-{index:03d}") for index in range(3)]
+    foreign = create_as(client, OTHER, "foreign-001", goal="Bob secret goal")
+    body = client.get("/api/projects", headers=AUTH).json()
+    assert {p["id"] for p in body["projects"]} == {p["id"] for p in own}
+    assert all(p["goal"] != "Bob secret goal" for p in body["projects"])
+    # A foreign project's ID used as a cursor is only an ID threshold for
+    # the caller: it can never surface the other owner's rows.
+    response = client.get(
+        "/api/projects", params={"cursor": foreign["id"]}, headers=AUTH
+    )
+    assert response.status_code == 200, response.text
+    leaked = response.json()
+    assert all(p["id"] in {p["id"] for p in own} for p in leaked["projects"])
+    assert all(p["id"] > foreign["id"] for p in leaked["projects"])
+    assert foreign["id"] not in {p["id"] for p in leaked["projects"]}
+    # Bob likewise cannot see Alice's projects through her cursor.
+    bob = client.get(
+        "/api/projects", params={"cursor": own[0]["id"]}, headers=OTHER
+    ).json()
+    assert {p["id"] for p in bob["projects"]} <= {foreign["id"]}
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"limit": 0},
+        {"limit": -1},
+        {"limit": 51},
+        {"limit": "abc"},
+        {"limit": 2.5},
+        {"cursor": "!!!"},
+        {"cursor": ""},
+        {"cursor": "' OR '1'='1"},
+        {"cursor": "x" * 200},
+    ],
+)
+def test_list_projects_invalid_cursor_and_limit_are_safe(client, params):
+    project = create(client)
+    foreign = create_as(client, OTHER, "foreign-safe", goal="Bob secret goal")
+    response = client.get("/api/projects", params=params, headers=AUTH)
+    assert response.status_code == 422, response.text
+    assert foreign["goal"] not in response.text
+    assert project["id"] not in response.text
+    # State is unchanged and a valid bounded request still works.
+    assert client.get("/api/projects/" + project["id"], headers=AUTH).json() == project
+    assert (
+        client.get("/api/projects", params={"limit": 1}, headers=AUTH).json()[
+            "projects"
+        ][0]["id"]
+        == project["id"]
+    )
+    assert (
+        client.get("/api/projects", params={"limit": 50}, headers=AUTH).status_code
+        == 200
+    )
+
+
 def test_restart_and_unknown_measurements(tmp_path):
     with TestClient(create_app(tmp_path, TOKENS)) as client:
         project = create(client)
