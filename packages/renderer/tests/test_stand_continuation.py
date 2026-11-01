@@ -68,7 +68,10 @@ def test_incorrect_test_mass_is_blocked():
     plan, _parameters, _process = build()
     changed = _with_op_args(plan, "stand-functional-test", mass_g=999)
     blockers = stand_continuation_blockers(changed)
-    assert any("mass" in b.message.lower() for b in blockers)
+    assert any(
+        b.code == "geometry_invalid" and "confirmed device mass" in b.message
+        for b in blockers
+    )
 
 
 def test_missing_matching_checkpoint_is_blocked():
@@ -88,7 +91,10 @@ def test_extra_operation_is_blocked():
     extra = plan.operations[1].model_copy(update={"id": "extra-inspect"})
     changed = plan.model_copy(update={"operations": plan.operations + (extra,)})
     blockers = stand_continuation_blockers(changed)
-    assert any(b.code == "unsupported" for b in blockers)
+    assert any(
+        b.code == "unsupported" and "Core operations must be exactly" in b.message
+        for b in blockers
+    )
 
 
 def test_validation_does_not_mutate_plan():

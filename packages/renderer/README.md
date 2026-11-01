@@ -22,8 +22,9 @@ checkpoint checks. A cut, unjoined panel may be replaced with an equivalent pane
 from measured remaining stock. Retired parts and cuts remain in the plan and BOM;
 assembly views use active parts and feature IDs. Supplemental cuts have separate
 headings while the eight core step slots stay stable, preserving unchanged panels.
-All hashes still cover the complete visible SVG. Resizing that requires dependent
-geometry regeneration remains blocked; no physical verification is implied.
+All hashes still cover the complete visible SVG. The replanner supports extending
+the original uncut base depth with regenerated brace/layout; other stand resize
+variants remain blocked. No physical verification is implied.
 
 The default path requires actual user-confirmed cutting evidence and resolved
 user-observed tested tape/fold profiles; unknown dimensions block work. Synthetic

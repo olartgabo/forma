@@ -27,7 +27,10 @@ all sixteen panels of two original parameterizations.
 Validation results are recorded in the PR. Tests use labelled synthetic stock and
 user-report fixtures only; they establish no physical or live-provider pass.
 
-Remaining #39 acceptance: meaningful future resizing needs family-aware brace and
-layout regeneration; the existing generic resize changes only one part. Angle and
+The follow-up resize slice extends original uncut base depth at fixed width,
+recomputing brace length and the three-panel layout from recorded margin/kerf.
+Confirmed footprint and source bounds remain enforced. Other targets, shrinking,
+rotation, declared offcuts, replacement-bearing layouts and completed cuts block.
+No original input or material history is mutated. Angle and
 joint-strategy regeneration and completed-work undo remain unsupported. Runtime
 callback wiring is tracked separately in #40; no plan is committed by this helper.

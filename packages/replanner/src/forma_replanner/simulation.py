@@ -1,6 +1,7 @@
 """Conservative repair simulation over immutable execution snapshots."""
 
 from hashlib import sha256
+from math import cos, hypot, radians, sin
 from typing import Callable, Literal
 
 from forma_compiler import CutProcess, validate_plan
@@ -150,6 +151,186 @@ def _affected(base, candidate):
         ):
             affected.add(op.id)
     return affected, changed_parts
+
+
+_STAND_PART_IDS = ("stand-support", "stand-base", "stand-brace")
+_STAND_CORE_TYPES = (
+    "cut_rect",
+    "inspect",
+    "fold",
+    "tape_joint",
+    "tape_joint",
+    "tape_joint",
+    "inspect",
+    "functional_test",
+)
+
+
+def _stand_base_resize(base, patch, completed, regions):
+    """Return regenerated stand geometries, or a specific stand blocker.
+
+    Only an unfinished, canonical triangular tape stand may extend its base
+    depth. Unsupported stand variants return blockers; only non-stand plans
+    fall through to the unchanged generic resize path.
+    """
+    if base.compiler_version != "triangular-tape-stand-v1":
+        return False, None, None
+
+    def unsupported(message, *ids):
+        return True, Blocker(code="unsupported", message=message, target_ids=ids), None
+
+    def invalid(message, *ids):
+        return (
+            True,
+            Blocker(code="geometry_invalid", message=message, target_ids=ids),
+            None,
+        )
+
+    if patch.target_id != "stand-base":
+        return unsupported(
+            "Stand resize only supports extending stand-base; other stand parts cannot be resized.",
+            patch.target_id,
+        )
+    parts = {part.id: part for part in base.parts}
+    if set(parts) != set(_STAND_PART_IDS) or len(base.parts) != len(_STAND_PART_IDS):
+        return unsupported(
+            "Stand base extension requires exactly the original stand-support, stand-base and stand-brace parts.",
+            *_STAND_PART_IDS,
+        )
+    if tuple(operation.type for operation in base.operations) != _STAND_CORE_TYPES:
+        return unsupported(
+            "Stand base extension requires exactly the eight original stand operations with no supplemental cuts.",
+            *(operation.id for operation in base.operations),
+        )
+    cuts = [operation for operation in base.operations if operation.type == "cut_rect"]
+    if (
+        len(cuts) != 1
+        or cuts[0].id != "stand-cut-panels"
+        or tuple(cuts[0].args.child_part_ids) != _STAND_PART_IDS
+    ):
+        return unsupported(
+            "Stand base extension requires the original stand-cut-panels cut producing stand-support, stand-base and stand-brace.",
+            *(operation.id for operation in cuts),
+        )
+    cut = cuts[0]
+    if cut.effects.created_offcuts:
+        return unsupported(
+            "Stand base extension does not support plans with declared offcuts.",
+            cut.id,
+        )
+    if cut.id in completed:
+        return unsupported(
+            "Stand base extension requires the original stand-cut-panels cut to be unfinished; completed cuts cannot be resized.",
+            cut.id,
+        )
+
+    support_part = parts["stand-support"]
+    base_part = parts["stand-base"]
+    brace_part = parts["stand-brace"]
+    ordered_parts = (support_part, base_part, brace_part)
+    stock_id = support_part.source_stock_id
+    region_id = support_part.source_region_id
+    if any(
+        part.source_stock_id != stock_id
+        or part.source_region_id != region_id
+        or part.geometry.rotation_deg != 0
+        for part in ordered_parts
+    ):
+        return unsupported(
+            "Stand base extension requires all original parts to share one unrotated original source region.",
+            *_STAND_PART_IDS,
+        )
+    stock = next((item for item in base.stocks if item.id == stock_id), None)
+    source_region = (
+        next(
+            (region for region in stock.usable_regions if region.id == region_id),
+            None,
+        )
+        if stock is not None
+        else None
+    )
+    if source_region is None or regions.get(region_id) != (
+        stock_id,
+        source_region.geometry,
+    ):
+        return unsupported(
+            "Stand base extension requires the original source region to remain in reconciled remaining stock.",
+            region_id,
+        )
+    if patch.width_mm != base_part.geometry.width:
+        return unsupported(
+            "Stand base extension requires the requested width to equal the current stand base width.",
+            base_part.id,
+        )
+    if patch.height_mm <= base_part.geometry.height:
+        return unsupported(
+            "Stand base extension only supports increasing the stand base depth.",
+            base_part.id,
+        )
+    footprint = base.constraints.max_footprint_height_mm
+    if footprint.value is None or not footprint.confirmed:
+        return (
+            True,
+            Blocker(
+                code="missing_measurement",
+                message="Stand base extension requires a confirmed max footprint height.",
+                target_ids=(base_part.id,),
+            ),
+            None,
+        )
+    if patch.height_mm > footprint.value:
+        return invalid(
+            "Requested stand base depth exceeds the confirmed max footprint height.",
+            base_part.id,
+        )
+    angle = base.constraints.support_angle_deg
+    if angle.value is None or not angle.confirmed or not 0 < angle.value < 90:
+        return invalid(
+            "Stand base extension requires a confirmed support angle strictly between 0 and 90 degrees.",
+            support_part.id,
+        )
+    if len(support_part.features) != 1 or support_part.features[0].kind != "fold":
+        return unsupported(
+            "Stand base extension requires the support to have exactly one fold feature.",
+            support_part.id,
+        )
+    support_length = support_part.features[0].geometry.y
+    if support_length <= 0 or support_length >= support_part.geometry.height:
+        return invalid(
+            "Stand support fold must leave positive support and lip heights.",
+            support_part.id,
+        )
+    theta = radians(angle.value)
+    reach = support_length * cos(theta)
+    rise = support_length * sin(theta)
+    if patch.height_mm <= reach:
+        return invalid(
+            "Requested stand base depth must exceed the horizontal reach of the support.",
+            base_part.id,
+            support_part.id,
+        )
+    heights = {
+        "stand-support": support_part.geometry.height,
+        "stand-base": patch.height_mm,
+        "stand-brace": hypot(patch.height_mm - reach, rise),
+    }
+    source = source_region.geometry
+    margin = cut.args.edge_margin_mm
+    kerf = cut.args.kerf_mm
+    x = source.x + margin
+    y = source.y + margin
+    geometries = {}
+    for part_id in _STAND_PART_IDS:
+        part = parts[part_id]
+        geometries[part_id] = {
+            "x": x,
+            "y": y,
+            "width": patch.width_mm if part_id == "stand-base" else part.geometry.width,
+            "height": heights[part_id],
+            "rotation_deg": 0,
+        }
+        y += heights[part_id] + kerf
+    return True, None, geometries
 
 
 def _safe_result_id(value: object, fallback: str) -> str:
@@ -667,7 +848,18 @@ def simulate_patch(
                 patch.target_id,
             )
         else:
-            target["geometry"].update(width=patch.width_mm, height=patch.height_mm)
+            stand_handled, stand_blocker, stand_geometries = _stand_base_resize(
+                base, patch, completed, regions
+            )
+            if stand_blocker is not None:
+                blockers.append(stand_blocker)
+            elif stand_handled:
+                for part in data["parts"]:
+                    geometry = stand_geometries.get(part["id"])
+                    if geometry is not None:
+                        part["geometry"].update(geometry)
+            else:
+                target["geometry"].update(width=patch.width_mm, height=patch.height_mm)
     elif patch.kind == "replace_joint_profile":
         target = next((j for j in data["joints"] if j["id"] == patch.target_id), None)
         catalogue = {p.id: p for p in base.joint_profiles}

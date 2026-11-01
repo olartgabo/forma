@@ -583,7 +583,9 @@ def test_ancestor_completion_requires_exact_compatible_original_plan():
 
 
 def test_stand_repair_requires_family_manual_geometry_validation():
-    data = input_data()
+    # Exercise the callback gate independently of stand resize regeneration.
+    # This deliberately generic fixture uses a test-only accepting validator.
+    data = joint_data()
     data["base_plan"]["compiler_version"] = "triangular-tape-stand-v1"
     assert "unsupported" in codes(run(data))
     result = simulate_patch(

@@ -60,9 +60,12 @@ preserved while any of its other outputs remain useful; the retired panel's area
 is reported separately. Future access checks reference the replacement and depend
 on its new cut. Resource checks alone cannot validate the support triangle.
 
-Stand resizing still requires coherent family regeneration: the generic single-part
-resize does not recompute brace length or fold geometry and is rejected when those
-invariants disagree. This validator does not mutate a plan to make a patch feasible.
+For the original uncut stand, `resize_part` can extend `stand-base` depth while
+keeping its width fixed. The replanner recomputes brace length and the original
+three-panel cut layout using the recorded margin and kerf. Confirmed footprint
+and stock bounds still gate the result. Shrinking, other panel targets, rotated
+or replacement-bearing layouts, declared offcuts and completed cuts remain
+unsupported. The family validator checks the result without mutating it.
 
 A `family_validator` result is fully materialized and each item validated as a `Blocker`
 before any of it is added. A validator that raises an ordinary `Exception` (including during
