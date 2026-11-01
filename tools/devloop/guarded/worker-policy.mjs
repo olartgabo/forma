@@ -54,7 +54,10 @@ export function validateTask(task) {
       throw Error("Task edit path must be an exact lane source/test file");
   }
   if (
-    !task.files_allowed.some((x) => /(^|\/)(tests\/|test_[^/]+\.py$)/.test(x))
+    !task.files_allowed.some(
+      (x) =>
+        /(^|\/)(tests\/|test_[^/]+\.py$)/.test(x) || /\.test\.mjs$/.test(x),
+    )
   )
     throw Error("Muse must own at least one regression test file");
   return task;
