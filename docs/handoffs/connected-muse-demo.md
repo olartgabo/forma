@@ -67,7 +67,7 @@ runtime database, generated image or unredacted private artifact is committed.
 
 ## Composition with saved requirements and manuals
 
-The owned integration branch combines PR #70 with PRs #68â€“69. Both authenticated
+The owned integration branch combines PR #70 with PRs #68Ã¢â‚¬â€œ69. Both authenticated
 routers and both workbench panels are retained: Muse photo observations alongside
 saved requirements, immutable previews/manuals and explicit initial approval.
 Muse resolved the two source conflicts; independent integration review approved.
@@ -178,3 +178,16 @@ TypeScript, Ruff, formatting and production build checks. A typed Fold regressio
 checks expected operation arguments and actual geometry in diagnosis context;
 route tests cover scope, consent, image gates, stale state and immutable data.
 Private evidence, owner credentials, generated images and runtime DB stay out of Git.
+
+## Planned request-local usage diagnostics contract
+
+The user requests visible evidence of actual Muse usage. Add optional `usage`
+to the existing intake, design and diagnosis diagnostic records, using one
+canonical API-owned ProviderUsage record. Its input_tokens/output_tokens are
+provider-reported nonnegative integers or null when unavailable; model_calls
+counts only this request's trace entries. Missing usage stays unknown, including
+an aggregate with missing counts. Reused gateway history must not be included.
+No prices, billed-cost claims, prompt bodies, keys or extra model requests are
+part of the response. Generate nested API TypeScript from Pydantic and preserve
+existing client compatibility. This lane owns API/runtime/contract tests; the
+parallel UI lane owns intake/design per-request consent only, with no API edits.
