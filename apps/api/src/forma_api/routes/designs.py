@@ -16,6 +16,22 @@ from forma_api.projects import ProjectError, ProjectStore
 from forma_domain.models import ID
 
 _PENDING = json.dumps({"pending": True})
+# Gateway codes whose provider outcome may already have been processed and
+# therefore cannot be demonstrated to be a zero-effect failure.
+_UNCERTAIN_CODES = {"timeout", "network_error", "budget_exhausted"}
+
+
+def _uncertain_marker(safe_code: str) -> str:
+    # Safe metadata only: a stable local code, never a provider body or key.
+    return json.dumps({"pending": True, "uncertain": True, "error_code": safe_code})
+
+
+def _is_uncertain(response: str) -> bool:
+    try:
+        value = json.loads(response)
+    except ValueError:
+        return False
+    return isinstance(value, dict) and value.get("uncertain") is True
 
 
 class DesignError(Exception):
@@ -133,6 +149,12 @@ def designs_router(
                         "generation_in_progress",
                         "Design generation is already in progress for this request; check saved previews before retrying",
                     )
+                if _is_uncertain(row[1]):
+                    raise DesignError(
+                        409,
+                        "generation_outcome_unknown",
+                        "Design generation outcome is unknown for this request; check saved previews before starting a new request",
+                    )
                 replay = design_runtime.DesignGenerateResult.model_validate_json(row[1])
                 return replay.model_copy(update={"replayed": True})
             count = connection.execute(
@@ -155,6 +177,26 @@ def designs_router(
                     connection.execute(
                         "DELETE FROM requests WHERE owner=? AND scope=? AND key=? AND digest=? AND response=?",
                         (owner, scope, body.idempotency_key, digest, _PENDING),
+                    )
+            except Exception:
+                pass
+
+        def mark_uncertain(exc: GatewayError):
+            # Convert the claim, never delete it: an identical retry must not
+            # start another paid run when dispatch outcome is ambiguous.
+            marker = _uncertain_marker(_provider_error(exc).body.code)
+            try:
+                with store.transaction() as connection:
+                    connection.execute(
+                        "UPDATE requests SET response=? WHERE owner=? AND scope=? AND key=? AND digest=? AND response=?",
+                        (
+                            marker,
+                            owner,
+                            scope,
+                            body.idempotency_key,
+                            digest,
+                            _PENDING,
+                        ),
                     )
             except Exception:
                 pass
@@ -185,7 +227,10 @@ def designs_router(
                 idempotency_key=body.idempotency_key,
             )
         except GatewayError as exc:
-            clear_pending()
+            if exc.code in _UNCERTAIN_CODES:
+                mark_uncertain(exc)
+            else:
+                clear_pending()
             raise _provider_error(exc) from None
         except ProjectError:
             clear_pending()

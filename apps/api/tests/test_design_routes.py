@@ -321,6 +321,115 @@ def test_provider_error_is_safe_and_retryable_with_same_key(setup):
     assert second.json()["status"] == "proposed"
 
 
+@pytest.mark.parametrize(
+    "gateway_code,status,expected_code",
+    [
+        ("timeout", 504, "timeout"),
+        ("network_error", 502, "network_error"),
+        ("budget_exhausted", 504, "timeout"),
+    ],
+)
+def test_second_round_uncertain_outcome_never_redispatches_same_key(
+    setup, gateway_code, status, expected_code
+):
+    client, project, candidate, context, monkeypatch, tmp_path = setup
+    fake = Fake(
+        tool_call(project["id"], project["revision_id"]),
+        GatewayError(gateway_code),
+        tool_call(project["id"], project["revision_id"]),
+        final({"candidates": [candidate.model_dump(mode="json")], "questions": []}),
+    )
+    install(monkeypatch, fake, context_for(project, context))
+    first = generate(client, project)
+    assert (first.status_code, first.json()["code"]) == (status, expected_code)
+    assert len(fake.calls) == 2
+    retry = generate(client, project)
+    assert retry.status_code == 409
+    assert retry.json()["code"] == "generation_outcome_unknown"
+    # Identical retry started no provider work and saved no duplicate preview.
+    assert len(fake.calls) == 2
+    assert (
+        client.get(f"/api/projects/{project['id']}/plans", headers=AUTH).json()["plans"]
+        == []
+    )
+    with sqlite3.connect(tmp_path / "projects.sqlite3") as connection:
+        rows = connection.execute(
+            "SELECT response FROM requests WHERE scope LIKE '%design-generation'"
+        ).fetchall()
+    assert len(rows) == 1
+    receipt = json.loads(rows[0][0])
+    assert receipt["uncertain"] is True
+    assert receipt["error_code"] == expected_code
+    assert "PRIVATE" not in rows[0][0]
+    changed = generate(client, project, body(project, user_notes="different"))
+    assert changed.status_code == 409
+    assert changed.json()["code"] == "idempotency_conflict"
+    assert len(fake.calls) == 2
+
+
+def test_existing_preview_plus_two_candidates_bounds_capacity_and_replays(setup):
+    client, project, candidate, context, monkeypatch, tmp_path = setup
+    store_service = PlanService(ProjectStore(tmp_path), allow_synthetic=True)
+    compile_context = dict(
+        process=context["process"],
+        parameters=context["parameters"],
+        joint_profiles=context["joint_profiles"],
+        kerf_mm=context["kerf_mm"],
+        edge_margin_mm=context["edge_margin_mm"],
+    )
+    existing = store_service.compile_preview(
+        "alice",
+        project["id"],
+        CompilePreview(
+            expected_revision_id=project["revision_id"],
+            idempotency_key="preview-existing",
+            candidate=candidate,
+        ),
+        **compile_context,
+    )
+    assert existing.status == "accepted"
+    second_candidate = candidate.model_copy(update={"id": "synthetic-candidate-2"})
+    fake = Fake(
+        tool_call(project["id"], project["revision_id"]),
+        final(
+            {
+                "candidates": [
+                    candidate.model_dump(mode="json"),
+                    second_candidate.model_dump(mode="json"),
+                ],
+                "questions": [],
+            }
+        ),
+    )
+    install(monkeypatch, fake, context_for(project, context))
+    response = generate(client, project)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["status"] == "proposed"
+    assert result["candidates"][0]["status"] == "accepted"
+    saved_version = result["candidates"][0]["version"]["version_id"]
+    assert saved_version != existing.version.version_id
+    assert result["candidates"][1]["status"] == "blocked"
+    assert "capacity" in result["candidates"][1]["blockers"][0]["message"]
+    plans = client.get(f"/api/projects/{project['id']}/plans", headers=AUTH).json()[
+        "plans"
+    ]
+    assert len(plans) == 2
+    replay = generate(client, project)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["replayed"] is True
+    assert replay.json()["candidates"] == result["candidates"]
+    assert len(fake.calls) == 2
+    assert (
+        len(
+            client.get(f"/api/projects/{project['id']}/plans", headers=AUTH).json()[
+                "plans"
+            ]
+        )
+        == 2
+    )
+
+
 def test_revision_change_on_final_round_returns_stale_without_receipt(setup):
     client, project, candidate, context, monkeypatch, tmp_path = setup
 

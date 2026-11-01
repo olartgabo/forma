@@ -46,7 +46,7 @@ export type DesignDiagnostics = {
 };
 
 export type DesignErrorResponse = {
-  readonly "code": "validation_error" | "not_found" | "stale_version" | "consent_required" | "blocked" | "idempotency_conflict" | "generation_in_progress" | "provider_not_configured" | "provider_authentication" | "access_denied" | "rate_limit" | "timeout" | "network_error" | "invalid_response" | "provider_http_error" | "provider_error";
+  readonly "code": "validation_error" | "not_found" | "stale_version" | "consent_required" | "blocked" | "idempotency_conflict" | "generation_in_progress" | "generation_outcome_unknown" | "provider_not_configured" | "provider_authentication" | "access_denied" | "rate_limit" | "timeout" | "network_error" | "invalid_response" | "provider_http_error" | "provider_error";
   readonly "message": string;
 };
 

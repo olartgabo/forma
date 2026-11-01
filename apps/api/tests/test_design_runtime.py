@@ -161,6 +161,51 @@ def test_runtime_tool_snapshot_and_real_compile(tmp_path):
         assert connection.execute("SELECT COUNT(*) FROM plans").fetchone()[0] == 1
 
 
+def test_missing_inputs_match_compiler_valid_fixture_by_stock_kind(tmp_path):
+    store, project, candidate, context = seeded(tmp_path)
+    resolved = resolve(context, project)
+    snapshot = design_runtime.build_snapshot(project, resolved)
+    # Compiler-valid fixture: sheet remaining length and tape
+    # height/thickness are unknown but irrelevant for their kinds.
+    assert snapshot.missing_inputs == ()
+    sheet, tape = project.stocks
+    unknown_sheet_thickness = project.model_copy(
+        update={
+            "stocks": (
+                sheet.model_copy(
+                    update={
+                        "thickness_mm": sheet.thickness_mm.model_copy(
+                            update={"value": None, "confirmed": False}
+                        )
+                    }
+                ),
+                tape,
+            )
+        }
+    )
+    missing = design_runtime.missing_inputs(unknown_sheet_thickness, resolved)
+    assert any("thickness of stock synthetic-sheet" in item for item in missing)
+    unknown_tape_length = project.model_copy(
+        update={
+            "stocks": (
+                sheet,
+                tape.model_copy(
+                    update={
+                        "remaining_length_mm": tape.remaining_length_mm.model_copy(
+                            update={"value": None, "confirmed": False}
+                        )
+                    }
+                ),
+            )
+        }
+    )
+    missing = design_runtime.missing_inputs(unknown_tape_length, resolved)
+    assert any(
+        "remaining length of stock synthetic-tape-stock" in item for item in missing
+    )
+    assert not any("height of stock synthetic-tape-stock" in item for item in missing)
+
+
 def test_runtime_missing_context_returns_questions_without_preview(tmp_path):
     store, project, candidate, context = seeded(tmp_path)
     fake = Fake(

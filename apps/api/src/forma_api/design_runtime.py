@@ -11,7 +11,7 @@ from forma_api.design_context import ResolvedDesignContext
 from forma_api.intake_runtime import gateway_error_details
 from forma_api.model_gateway import GatewayError, MetaGateway, ProposalBudget, Tool
 from forma_api.plans import PlanService, PlanSummary
-from forma_api.projects import BuildRequirements, ProjectStore
+from forma_api.projects import BuildRequirements, ProjectError, ProjectStore
 from forma_api.proposal_prompts import instructions
 from forma_domain.models import (
     ID,
@@ -91,6 +91,7 @@ class DesignErrorResponse(Record):
         "blocked",
         "idempotency_conflict",
         "generation_in_progress",
+        "generation_outcome_unknown",
         "provider_not_configured",
         "provider_authentication",
         "access_denied",
@@ -154,12 +155,22 @@ def missing_inputs(project, resolved: ResolvedDesignContext) -> list[str]:
     if not project.stocks:
         missing.append("Save at least one confirmed stock item.")
     for stock in project.stocks:
-        for label, measurement in (
-            ("width", stock.width_mm),
-            ("height", stock.height_mm),
-            ("thickness", stock.thickness_mm),
-            ("remaining length", stock.remaining_length_mm),
-        ):
+        # Match compiler/template requirements by kind: planar sheet/strip
+        # stock needs width, height and thickness (not remaining length);
+        # linear tape/cord needs width and remaining length (not
+        # height/thickness). Selected-candidate validation stays in compile.
+        if stock.kind in ("tape", "cord"):
+            required = (
+                ("width", stock.width_mm),
+                ("remaining length", stock.remaining_length_mm),
+            )
+        else:
+            required = (
+                ("width", stock.width_mm),
+                ("height", stock.height_mm),
+                ("thickness", stock.thickness_mm),
+            )
+        for label, measurement in required:
             if measurement.value is None:
                 missing.append(f"Measure the {label} of stock {stock.id}.")
     if project.requirements is None:
@@ -285,6 +296,13 @@ def generate_designs(
         tool_executions=executions["count"],
     )
     snapshot = build_snapshot(project, resolved)
+    with store.transaction() as connection:
+        existing = connection.execute(
+            "SELECT COUNT(*) FROM plans WHERE project_id=? AND inventory_revision_id=?",
+            (project.id, project.revision_id),
+        ).fetchone()[0]
+    capacity_left = max(0, 2 - existing)
+    saved = 0
     results: list[DesignCandidateResult] = []
     for candidate in proposals.candidates[:2]:
         blockers = validate_candidate_references(candidate, snapshot)
@@ -295,27 +313,75 @@ def generate_designs(
                 )
             )
             continue
+        if saved >= capacity_left:
+            results.append(
+                DesignCandidateResult(
+                    candidate_id=candidate.id,
+                    status="blocked",
+                    blockers=(
+                        Blocker(
+                            code="unsupported",
+                            message=(
+                                "Preview capacity for this inventory revision is "
+                                "reached; this candidate was not compiled or saved."
+                            ),
+                            target_ids=(candidate.id,),
+                        ),
+                    ),
+                )
+            )
+            continue
         from forma_api.plans import CompilePreview
 
-        compiled = plan_service.compile_preview(
-            owner,
-            project.id,
-            CompilePreview(
-                expected_revision_id=project.revision_id,
-                idempotency_key=child_key(idempotency_key, candidate.id),
-                candidate=candidate,
-            ),
-            process=resolved.process,
-            parameters=resolved.parameters,
-            joint_profiles=resolved.joint_profiles,
-            kerf_mm=resolved.kerf_mm,
-            edge_margin_mm=resolved.edge_margin_mm,
-        )
+        try:
+            compiled = plan_service.compile_preview(
+                owner,
+                project.id,
+                CompilePreview(
+                    expected_revision_id=project.revision_id,
+                    idempotency_key=child_key(idempotency_key, candidate.id),
+                    candidate=candidate,
+                ),
+                process=resolved.process,
+                parameters=resolved.parameters,
+                joint_profiles=resolved.joint_profiles,
+                kerf_mm=resolved.kerf_mm,
+                edge_margin_mm=resolved.edge_margin_mm,
+            )
+        except ProjectError as exc:
+            # Only the two-preview capacity conflict becomes a candidate
+            # review; stale/deletion/auth/active failures keep propagating.
+            if not (
+                exc.status == 409
+                and exc.envelope.code == "blocked"
+                and "At most two designs" in exc.envelope.message
+            ):
+                raise
+            saved = capacity_left
+            results.append(
+                DesignCandidateResult(
+                    candidate_id=candidate.id,
+                    status="blocked",
+                    blockers=(
+                        Blocker(
+                            code="unsupported",
+                            message=(
+                                "Preview capacity for this inventory revision is "
+                                "reached; this candidate was not compiled or saved."
+                            ),
+                            target_ids=(candidate.id,),
+                        ),
+                    ),
+                )
+            )
+            continue
         summary = None
         if compiled.version is not None:
             summary = PlanSummary(
                 **compiled.version.model_dump(exclude={"plan", "manual"})
             )
+            if not compiled.replayed:
+                saved += 1
         results.append(
             DesignCandidateResult(
                 candidate_id=candidate.id,

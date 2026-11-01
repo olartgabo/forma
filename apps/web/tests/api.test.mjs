@@ -518,6 +518,12 @@ test("design provider errors use safe local messages and preserve codes", async 
     [429, "rate_limit", /rate limit/],
     [422, "consent_required", /Consent to share/],
     [409, "generation_in_progress", /already in progress/],
+    [
+      409,
+      "generation_outcome_unknown",
+      /outcome of this design request is unknown/,
+    ],
+    [504, "timeout", /outcome is unknown/],
     [409, "idempotency_conflict", /differs from the original/],
   ];
   for (const [status, code, pattern] of cases) {

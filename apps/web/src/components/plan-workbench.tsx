@@ -113,6 +113,7 @@ export default function PlanWorkbench({
   const [designNotice, setDesignNotice] = useState("");
   const [designPending, setDesignPending] =
     useState<DesignGenerateRequest | null>(null);
+  const [designUnknown, setDesignUnknown] = useState(false);
   const designController = useRef<AbortController | null>(null);
   const designEpoch = useRef(0);
   const controller = useRef(new AbortController());
@@ -133,6 +134,7 @@ export default function PlanWorkbench({
     setDesignError("");
     setDesignNotice("");
     setDesignPending(null);
+    setDesignUnknown(false);
     setDesignBusy(false);
   }, [token, project.id, project.revision_id]);
 
@@ -200,8 +202,9 @@ export default function PlanWorkbench({
     designController.current = null;
     setDesignBusy(false);
     setDesignError("");
+    setDesignUnknown(true);
     setDesignNotice(
-      "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the request, so check saved previews or retry the same request to learn the outcome.",
+      "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the request. Its outcome is unknown, so check saved previews before starting a new request.",
     );
   }
 
@@ -213,6 +216,7 @@ export default function PlanWorkbench({
     const requestProject = project.id;
     const requestRevision = project.revision_id;
     setDesignPending(body);
+    setDesignUnknown(false);
     setDesignBusy(true);
     setDesignError("");
     setDesignNotice("");
@@ -233,6 +237,7 @@ export default function PlanWorkbench({
         return;
       setDesignResult(next);
       setDesignPending(null);
+      setDesignUnknown(false);
       const accepted = (next.candidates ?? []).find(
         (candidate) => candidate.status === "accepted" && candidate.version,
       );
@@ -245,11 +250,23 @@ export default function PlanWorkbench({
       )
         return;
       if (error instanceof ApiError && error.code === "cancelled") {
+        setDesignUnknown(true);
         setDesignNotice(
-          "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the request, so check saved previews or retry the same request to learn the outcome.",
+          "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the request. Its outcome is unknown, so check saved previews before starting a new request.",
         );
         return;
       }
+      if (
+        error instanceof ApiError &&
+        [
+          "timeout",
+          "network_error",
+          "generation_outcome_unknown",
+          "request_timeout",
+          "connection_failed",
+        ].includes(error.code)
+      )
+        setDesignUnknown(true);
       setDesignError(message(error));
       if (
         error instanceof ApiError &&
@@ -267,6 +284,18 @@ export default function PlanWorkbench({
         setDesignBusy(false);
       }
     }
+  }
+
+  function startNewDesignRequest() {
+    // Explicit fresh start only: discard the old key, reset consent, and let
+    // the user consent again before Generate creates a fresh key.
+    setDesignPending(null);
+    setDesignUnknown(false);
+    setDesignError("");
+    setDesignConsented(false);
+    setDesignNotice(
+      "The previous request outcome may be unknown. Check saved previews, then consent again and use Generate with Muse to start a new request with a fresh key.",
+    );
   }
 
   function startDesign() {
@@ -437,13 +466,43 @@ export default function PlanWorkbench({
             {designError}
           </p>
         )}
-        {designPending && !designBusy && (
+        {designPending && !designBusy && designUnknown && (
+          <aside className="retry-panel">
+            <h3>Generation outcome unknown</h3>
+            <p>
+              The previous Muse request may already have been processed, so its
+              outcome is unknown. Check saved previews first; checking does not
+              start a new run. Reusing the same request will not resume provider
+              work or start another run. To start again, explicitly start a new
+              request: consent is reset and a fresh key is created only when you
+              generate again.
+            </p>
+            <button
+              type="button"
+              className="secondary"
+              disabled={approvalDisabled}
+              onClick={() => setAttempt((value) => value + 1)}
+            >
+              Check saved previews
+            </button>{" "}
+            <button
+              type="button"
+              disabled={approvalDisabled || pending !== null}
+              onClick={startNewDesignRequest}
+            >
+              Start a new request
+            </button>
+          </aside>
+        )}
+        {designPending && !designBusy && !designUnknown && (
           <aside className="retry-panel">
             <h3>Check the generation result</h3>
             <p>
-              The outcome is unknown. Check saved previews first, or retry the
-              identical Muse request; FORMA will not start a new paid run
-              automatically.
+              Check saved previews first, or send the identical Muse request
+              again. That replays a saved result or reports the request state
+              when one is saved; it does not resume provider work. If the
+              previous request failed before any result was saved, sending it
+              again may start a new provider run.
             </p>
             <button
               type="button"

@@ -71,6 +71,7 @@ const DESIGN_CODES = [
   "blocked",
   "idempotency_conflict",
   "generation_in_progress",
+  "generation_outcome_unknown",
 ];
 
 const DESIGN_CODE_MESSAGES: Record<string, string> = {
@@ -85,6 +86,12 @@ const DESIGN_CODE_MESSAGES: Record<string, string> = {
     "This retry differs from the original design request. Start a new request after checking saved previews.",
   generation_in_progress:
     "This design request is already in progress. Check saved previews before retrying.",
+  generation_outcome_unknown:
+    "The outcome of this design request is unknown. Check saved previews before starting a new request.",
+  timeout:
+    "The Muse request timed out and its outcome is unknown. Check saved previews before starting a new request.",
+  network_error:
+    "Muse could not be reached and the outcome of this design request is unknown. Check saved previews before starting a new request.",
   not_found: "This project is unavailable. Check the project ID or reload.",
 };
 
