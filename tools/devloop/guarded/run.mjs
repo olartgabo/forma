@@ -60,13 +60,41 @@ export function checkStatus(state, stopped, now = Date.now()) {
   if (
     stopped ||
     state.halted ||
-    state.pending !== 0 ||
     !Number.isFinite(Date.parse(state.expires)) ||
     now >= Date.parse(state.expires)
   )
     throw Error(
       "Guard paused: STOP, pending usage or expired billing verification",
     );
+  if (!Number.isSafeInteger(state.pending) || state.pending < 0)
+    throw Error(
+      "Guard paused: STOP, pending usage or expired billing verification",
+    );
+  const hasActive = state.activeRequests !== undefined;
+  const hasMax = state.maxConcurrent !== undefined;
+  if (!hasActive && !hasMax) {
+    // Idle legacy compatibility only: uncertain legacy pending is never accepted.
+    if (state.pending !== 0)
+      throw Error(
+        "Guard paused: STOP, pending usage or expired billing verification",
+      );
+  } else {
+    if (
+      !hasActive ||
+      !hasMax ||
+      !Number.isSafeInteger(state.activeRequests) ||
+      state.activeRequests < 0 ||
+      !Number.isSafeInteger(state.maxConcurrent) ||
+      (state.maxConcurrent !== 1 && state.maxConcurrent !== 2) ||
+      state.activeRequests > state.maxConcurrent ||
+      state.pending > state.activeRequests
+    )
+      throw Error(
+        "Guard paused: STOP, pending usage or expired billing verification",
+      );
+    if (state.activeRequests >= state.maxConcurrent)
+      throw Error("Guard at concurrent capacity; no free slot");
+  }
   if (
     !Number.isSafeInteger(state.cap) ||
     state.cap < 6_000_000 ||

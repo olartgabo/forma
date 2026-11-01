@@ -48,17 +48,20 @@ export function usageCost(u) {
   // USD micros: input $4/M, output (including reasoning) $20/M. No cache discount assumed.
   return u.input_tokens*4+u.output_tokens*20;
 }
-export function createGuard({ledger,externalLedger=SPARK_LEDGER,token,key,expires,request=fetch,upstream='https://api.meta.ai/v1/responses',cap=CAP}) {
+export function createGuard({ledger,externalLedger=SPARK_LEDGER,token,key,expires,request=fetch,upstream='https://api.meta.ai/v1/responses',cap=CAP,maxConcurrent=1}) {
   if(!Number.isSafeInteger(cap)||cap<RESERVE)throw Error('Verified funding ceiling invalid');
-  let busy=false, halted=false;
+  if(!Number.isSafeInteger(maxConcurrent)||(maxConcurrent!==1&&maxConcurrent!==2))throw Error('maxConcurrent must be 1 or 2');
+  let activeRequests=0, halted=false;
+  const usageFile=path.join(path.dirname(ledger),'usage.jsonl');
   const reply=(r,code,message)=>{r.writeHead(code,{'content-type':'application/json'});r.end(JSON.stringify({error:{message,type:'budget_guard'}}));};
   return http.createServer(async(req,res)=>{
     if(req.headers.authorization!==`Bearer ${token}`)return reply(res,401,'Local access token required');
-    if(req.method==='GET'&&req.url==='/status') {try{const local=readLedger(ledger),externalSpent=readExternalSpend(externalLedger);res.end(JSON.stringify({...local,pending:local.pending.size,externalSpent,combinedSpent:local.spent+externalSpent,cap,expires,halted}));}catch{reply(res,503,'Budget record unavailable');}return;}
+    if(req.method==='GET'&&req.url==='/status') {try{const local=readLedger(ledger),externalSpent=readExternalSpend(externalLedger);res.end(JSON.stringify({...local,pending:local.pending.size,externalSpent,combinedSpent:local.spent+externalSpent,cap,expires,halted,activeRequests,maxConcurrent}));}catch{reply(res,503,'Budget record unavailable');}return;}
     if(req.method!=='POST'||!['/v1/responses','/responses'].includes(req.url))return reply(res,403,'Only guarded Responses requests are allowed');
     if(halted||fs.existsSync(path.join(path.dirname(ledger),'STOP'))||!Number.isFinite(Date.parse(expires))||Date.now()>=Date.parse(expires))return reply(res,403,'Usage paused: stop switch active or account credit/pricing recheck required');
-    if(busy)return reply(res,429,'One request at a time; concurrent calls blocked');
-    busy=true; let reserved=false, id=crypto.randomUUID();
+    if(activeRequests>=maxConcurrent)return reply(res,429,'Concurrent request limit reached; concurrent calls blocked');
+    // Synchronous admission in the shared event loop: hold the slot before any await.
+    activeRequests++; let reserved=false, id=crypto.randomUUID();
     try {
       let raw='';for await(const chunk of req){raw+=chunk.toString('utf8');if(Buffer.byteLength(raw)>8_000_000)throw Error('Request too large');}
       const body=validate(JSON.parse(raw));
@@ -78,18 +81,28 @@ export function createGuard({ledger,externalLedger=SPARK_LEDGER,token,key,expire
         } else {try{usage=JSON.parse(text).usage;}catch{}}
       }
       const actual=usageCost(usage);
-      if(actual!==null)append(ledger,{kind:'settle',id,amount:actual,at:new Date().toISOString()});
+      if(actual!==null) {
+        // Audit first, then settle exactly once. If either append fails the
+        // catch below halts and the reservation is retained (no retry).
+        append(usageFile,{id,at:new Date().toISOString(),model:MODEL,input_tokens:usage.input_tokens,output_tokens:usage.output_tokens});
+        append(ledger,{kind:'settle',id,amount:actual,at:new Date().toISOString()});
+      } else {
+        // Missing/invalid usage: outcome cost unknown, retain full reservation and halt.
+        halted=true;
+      }
       // Unknown outcomes retain the entire durable reservation; never automatically refund failures.
       if(!res.destroyed)res.end();
     } catch(e) {
       if(reserved){
         halted=true;
-        const safeCode=v=>typeof v==='string'&&/^[A-Z0-9_]{1,64}$/.test(v)?v:null;
-        const diagnostic={at:new Date().toISOString(),requestId:id,errorName:['TypeError','TimeoutError','AbortError','RangeError','Error'].includes(e?.name)?e.name:'OtherError',code:safeCode(e?.code)||safeCode(e?.cause?.code),stage:res.headersSent?'stream':'dispatch',message:['Request too large','Response too large; full reservation retained'].includes(e?.message)?e.message:undefined};
-        const fd=fs.openSync(path.join(path.dirname(ledger),'guard-diagnostics.jsonl'),'a');try{fs.writeSync(fd,JSON.stringify(diagnostic)+'\n');fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+        try{
+          const safeCode=v=>typeof v==='string'&&/^[A-Z0-9_]{1,64}$/.test(v)?v:null;
+          const diagnostic={at:new Date().toISOString(),requestId:id,errorName:['TypeError','TimeoutError','AbortError','RangeError','Error'].includes(e?.name)?e.name:'OtherError',code:safeCode(e?.code)||safeCode(e?.cause?.code),stage:res.headersSent?'stream':'dispatch',message:['Request too large','Response too large; full reservation retained'].includes(e?.message)?e.message:undefined};
+          const fd=fs.openSync(path.join(path.dirname(ledger),'guard-diagnostics.jsonl'),'a');try{fs.writeSync(fd,JSON.stringify(diagnostic)+'\n');fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
+        }catch{/* ledger reservation is the durable fail-closed record */}
       }
       if(!res.headersSent)reply(res,503,reserved?'Request outcome uncertain; full reservation retained and usage paused':String(e.message));else res.destroy();
-    } finally {busy=false;}
+    } finally {activeRequests--;}
   });
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
@@ -100,7 +113,7 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
   const decrypted=spawnSync('powershell.exe',['-NoProfile','-Command',"$s=Get-Content -Raw -LiteralPath 'C:/Users/axolo/.meta-budget/key.dpapi' | ConvertTo-SecureString; $p=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($s); try {[Console]::Write([Runtime.InteropServices.Marshal]::PtrToStringBSTR($p))} finally {[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($p)}"],{encoding:'utf8',windowsHide:true,env:decryptEnv});
   if(decrypted.status!==0||!decrypted.stdout.startsWith('LLM_'))throw Error('Cannot decrypt API credential: '+decrypted.stderr);
   const {freshMetaHTTPS}=await import('./fresh-https.mjs');
-  const server=createGuard({ledger:path.join(ROOT,'ledger.jsonl'),token:settings.localToken,key:decrypted.stdout,expires:settings.expires,cap:settings.verifiedFundingCapMicros??CAP,request:freshMetaHTTPS});
+  const server=createGuard({ledger:path.join(ROOT,'ledger.jsonl'),token:settings.localToken,key:decrypted.stdout,expires:settings.expires,cap:settings.verifiedFundingCapMicros??CAP,maxConcurrent:settings.maxConcurrent,request:freshMetaHTTPS});
   server.on('error',()=>process.exit(1));
   server.listen(18765,'127.0.0.1',()=>console.log('Muse Wonder budget guard ready on localhost:18765.'));
 }
