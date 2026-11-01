@@ -7,6 +7,7 @@ from pydantic.json_schema import models_json_schema
 
 from forma_api.media import Media, MediaDeleteResult, MediaList, MediaResult
 from forma_api.projects import (
+    BuildRequirements,
     CreateProject,
     DeleteResult,
     InventoryUpdate,
@@ -17,6 +18,7 @@ from forma_domain import models
 from forma_domain.generate import typescript
 
 API_RECORDS = (
+    BuildRequirements,
     CreateProject,
     DeleteResult,
     InventoryUpdate,

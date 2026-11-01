@@ -11,6 +11,11 @@ import {
   saveInventory,
   uploadPhoto,
 } from "../src/lib/api.ts";
+import {
+  editConstraint,
+  emptyRequirements,
+  requirementsError,
+} from "../src/lib/build-requirements.ts";
 
 const token = "synthetic-owner-credential";
 const savedProject = {
@@ -19,6 +24,97 @@ const savedProject = {
   revision_id: "inventory-1",
   stocks: [],
 };
+
+test("requirements retain unknowns and edited measurements require confirmation", () => {
+  const requirements = emptyRequirements();
+  assert.equal(requirementsError(requirements), null);
+  for (const field of [
+    "device_mass_g",
+    "support_angle_deg",
+    "max_footprint_width_mm",
+    "max_footprint_height_mm",
+  ])
+    assert.equal(requirements.constraints[field].value, null);
+  const confirmed = {
+    ...requirements.constraints,
+    device_mass_g: {
+      value: 190,
+      unit: "g",
+      source: "known_reference",
+      confirmed: true,
+    },
+  };
+  const changed = editConstraint(confirmed, "device_mass_g", "200");
+  assert.equal(changed.device_mass_g.confirmed, false);
+  assert.equal(changed.device_mass_g.source, "user_ruler");
+  assert.match(
+    requirementsError({ ...requirements, constraints: changed }),
+    /Confirm device mass/,
+  );
+  assert.equal(confirmed.device_mass_g.value, 190);
+  assert.deepEqual(editConstraint(changed, "device_mass_g", "").device_mass_g, {
+    value: null,
+    unit: "g",
+    source: "unknown",
+    confirmed: false,
+  });
+  assert.match(
+    requirementsError({ ...requirements, tools: ["Ruler", "ruler"] }),
+    /once/,
+  );
+  assert.match(
+    requirementsError({
+      ...requirements,
+      constraints: {
+        ...requirements.constraints,
+        support_angle_deg: {
+          value: 90,
+          unit: "deg",
+          source: "user_ruler",
+          confirmed: true,
+        },
+      },
+    }),
+    /between 0 and 90/,
+  );
+});
+
+test("inventory requests carry requirements and distinguish omission from clearing", async (t) => {
+  const bodies = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    bodies.push(JSON.parse(options.body));
+    return Response.json({ project: savedProject });
+  });
+  const requirements = {
+    ...emptyRequirements(),
+    tools: ["Ruler"],
+    device_description: "Phone with case",
+  };
+  await saveInventory(
+    token,
+    "project-a",
+    [],
+    "inventory-1",
+    "save-key",
+    undefined,
+    requirements,
+  );
+  await saveInventory(
+    token,
+    "project-a",
+    [],
+    "inventory-1",
+    "clear-key",
+    undefined,
+    null,
+  );
+  await saveInventory(token, "project-a", [], "inventory-1", "legacy-key");
+  assert.deepEqual(bodies[0].requirements, requirements);
+  assert.equal(bodies[0].expected_revision_id, "inventory-1");
+  assert.equal(bodies[0].idempotency_key, "save-key");
+  assert.equal(bodies[1].requirements, null);
+  assert.equal(Object.hasOwn(bodies[2], "requirements"), false);
+});
 
 test("project requests preserve caller scope, explicit confirmations and retry keys", async (t) => {
   const calls = [];

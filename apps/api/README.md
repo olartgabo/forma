@@ -57,6 +57,15 @@ Unknown measurements remain unknown. Photo IDs must resolve to private media in
 the same project; evidence IDs remain rejected until evidence storage exists.
 OpenAPI documents the actual envelopes.
 
+Inventory confirmation can include `requirements` with available `tools`, nullable
+`device_description` and the domain `Constraints` record. Requirements and stock
+advance the same revision atomically. Omitting requirements preserves them;
+explicit null clears them. Known mass/footprint measurements must be positive and
+confirmed; a known angle must be greater than 0 and less than 90 degrees. Evidence
+references and profile selection remain unavailable until trusted evidence/catalogue
+integration. Tool names record reported availability and grant no execution permission.
+See the [requirements handoff](../../docs/handoffs/issue-7-requirements.md).
+
 DELETE `/api/projects/{id}` takes `Idempotency-Key` in a header, removes the
 inventory and stored replay snapshots, and retains only a scoped deletion receipt.
 This is logical deletion; SQLite free pages and local backup copies are outside

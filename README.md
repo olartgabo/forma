@@ -119,7 +119,10 @@ development access.
 Add one inventory row per physical item. Leave unknown dimensions blank and
 explicitly confirm measurements you took. Private photos can be uploaded and
 linked to stock; they are not sent to a model or used to infer dimensions.
-Saving inventory does not generate instructions or authorize cutting. See the
+The same form saves available tools, a device description, confirmed device mass,
+viewing angle and footprint limits. Requirements and materials share one revision;
+blank measurements remain unknown. Saving inventory does not generate instructions
+or authorize cutting. See the
 [intake handoff](docs/handoffs/issue-7-intake.md) for scope and remaining work.
 
 Dependency updates use `npm install` and `uv add`; commit the generated

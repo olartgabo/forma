@@ -33,9 +33,15 @@ The workbench creates/reopens projects, uploads and links private photos, and
 edits one physical stock item per row. Empty dimensions stay unknown; entered
 measurements have explicit confirmation. Saving retains the inventory revision
 and uses retry keys; stale saves require reloading and reviewing the inventory.
-Photos do not produce measurements or physical evidence. Segmentation boxes,
-tools/constraints, live proposals and assembly/revision/proof screens remain
+The inventory form also saves available tools, a device description, confirmed
+device mass/viewing angle/footprint limits and willingness to get more material.
+Blank measurements stay unknown; editing a value or its source clears confirmation.
+Requirements and stock share one revision and retry payload. Photos do not produce
+measurements or physical evidence. Segmentation boxes,
+live proposals and assembly/revision/proof screens remain
 pending. See the [intake handoff](../../docs/handoffs/issue-7-intake.md).
+The [requirements handoff](../../docs/handoffs/issue-7-requirements.md) documents
+the persisted planning inputs and consumer boundary.
 
 `npm run test:web` runs the native Node client tests without a browser or model
 key. Root `npm run check` includes those tests, API/domain contract freshness,

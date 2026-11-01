@@ -468,6 +468,26 @@ figcaption span {
 .measurement {
   min-width: 0;
 }
+.build-requirements {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+.build-requirements > textarea {
+  margin-bottom: 1rem;
+}
+.measurement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 1.5rem;
+  margin: 1.5rem 0;
+}
+.measurement-grid select {
+  margin-bottom: 0.7rem;
+}
+.measurement-grid input[type="number"] {
+  margin-bottom: 0.7rem;
+}
 .measurement .checkbox-label {
   font-size: 0.8rem;
   margin-top: 0.7rem;

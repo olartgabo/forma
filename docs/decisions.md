@@ -130,3 +130,18 @@ a design, authorize cutting or establish a physical test result. Manual stock
 editing and photo linking work without a model. Segmentation boxes, tools and
 design constraints require later contracts; they are not represented by guessed
 fields in this slice.
+
+## D013: Persisted build requirements, November 1, 2026
+
+Issue #7 now records available tools, a device description and existing domain
+constraints with inventory confirmation. They share the inventory revision so
+planning can consume a consistent set of user-confirmed inputs. Older projects
+have null requirements; older clients preserve requirements when omitting them.
+Known values require confirmation and the same provenance categories as stock;
+unknown values remain unknown. The API rejects unresolved evidence/profile IDs.
+This extends D012 without changing compiler or proposal contracts. See the
+[requirements handoff](handoffs/issue-7-requirements.md).
+
+The product has one connected planning/build journey. Running deterministic
+validation without provider access is an implementation/testing property, not a
+separate product mode. Live interpretation/design remains integration work.

@@ -1,5 +1,6 @@
 import type { Stock } from "./generated/contracts";
 import type {
+  BuildRequirements,
   CreateProject,
   InventoryUpdate,
   MediaList,
@@ -38,7 +39,7 @@ async function responseError(response: Response): Promise<ApiError> {
     404: "This project or photo is unavailable. Check the project ID or reload.",
     409:
       code === "stale_version"
-        ? "Inventory changed in another session. Reload before saving again."
+        ? "Materials or requirements changed in another session. Reload before saving again."
         : code === "idempotency_conflict"
           ? "This retry differs from the original request. Review your changes and try again."
           : "This change is blocked. Remove photo references or reload the project.",
@@ -168,12 +169,14 @@ export function saveInventory(
   expectedRevision: string,
   key: string,
   signal?: AbortSignal,
+  requirements?: BuildRequirements | null,
 ): Promise<ProjectResult> {
   const body: InventoryUpdate = {
     stocks,
     expected_revision_id: expectedRevision,
     idempotency_key: key,
     user_confirmed: true,
+    ...(requirements !== undefined ? { requirements } : {}),
   };
   return request(
     token,

@@ -11,8 +11,17 @@ import {
   saveInventory,
   uploadPhoto,
 } from "../lib/api";
-import type { Media, Project } from "../lib/generated/api-contracts";
+import type {
+  BuildRequirements,
+  Media,
+  Project,
+} from "../lib/generated/api-contracts";
 import type { Measurement, Stock } from "../lib/generated/contracts";
+import BuildRequirementsFields from "./build-requirements-fields";
+import {
+  emptyRequirements,
+  requirementsError,
+} from "../lib/build-requirements";
 
 type Row = { key: string; stock: Stock; saved: boolean };
 type MeasurementField =
@@ -25,6 +34,7 @@ type Pending =
       projectId: string;
       revision: string;
       stocks: readonly Stock[];
+      requirements: BuildRequirements;
     }
   | { kind: "upload"; key: string; projectId: string; file: File }
   | { kind: "delete"; key: string; projectId: string; mediaId: string };
@@ -222,6 +232,8 @@ function ProjectWorkbench({
   const [goal, setGoal] = useState("");
   const [openId, setOpenId] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
+  const [requirements, setRequirements] =
+    useState<BuildRequirements>(emptyRequirements);
   const [photos, setPhotos] = useState<Media[]>([]);
   const [photoError, setPhotoError] = useState("");
   const [photosLoading, setPhotosLoading] = useState(false);
@@ -239,7 +251,9 @@ function ProjectWorkbench({
   const stocks = rows.map((row) => row.stock);
   const dirty =
     project !== null &&
-    JSON.stringify(stocks) !== JSON.stringify(project.stocks ?? []);
+    (JSON.stringify(stocks) !== JSON.stringify(project.stocks ?? []) ||
+      JSON.stringify(requirements) !==
+        JSON.stringify(project.requirements ?? emptyRequirements()));
   const locked = busy || pending !== null;
 
   useEffect(() => {
@@ -282,6 +296,7 @@ function ProjectWorkbench({
   function install(next: Project) {
     setProject(next);
     setRows(rowsFor(next));
+    setRequirements(next.requirements ?? emptyRequirements());
     setChecked(false);
     setStale(false);
     setOpenId(next.id);
@@ -292,7 +307,7 @@ function ProjectWorkbench({
     if (
       dirty &&
       !window.confirm(
-        "Reload this project and discard unsaved inventory changes?",
+        "Reload this project and discard unsaved materials and requirements?",
       )
     )
       return;
@@ -345,11 +360,12 @@ function ProjectWorkbench({
           request.revision,
           request.key,
           signal,
+          request.requirements,
         );
         if (signal.aborted || requestEpoch !== epoch.current) return;
         install(result.project);
         setNotice(
-          "Inventory saved. Unknown measurements remain open. Design compilation is still being connected.",
+          "Materials and build requirements saved. Unknown measurements remain open.",
         );
       } else if (request.kind === "upload") {
         const result = await uploadPhoto(
@@ -428,6 +444,18 @@ function ProjectWorkbench({
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!project || locked || !checked) return;
+    const confirmedRequirements: BuildRequirements = {
+      ...requirements,
+      tools: (requirements.tools ?? [])
+        .map((tool) => tool.trim())
+        .filter(Boolean),
+      device_description: requirements.device_description?.trim() || null,
+    };
+    const requirementError = requirementsError(confirmedRequirements);
+    if (requirementError) {
+      setError(requirementError);
+      return;
+    }
     if (stocks.some((stock) => !ID_PATTERN.test(stock.id))) {
       setError(
         "Item IDs must start with a letter and use up to 96 letters, numbers, underscores or hyphens.",
@@ -458,6 +486,7 @@ function ProjectWorkbench({
       projectId: project.id,
       revision: project.revision_id,
       stocks: structuredClone(stocks),
+      requirements: structuredClone(confirmedRequirements),
     });
   }
   function leave() {
@@ -560,7 +589,7 @@ function ProjectWorkbench({
                 <input
                   id="open-project"
                   required
-                  pattern="[A-Za-z][A-Za-z0-9_-]{0,95}"
+                  pattern={"[A-Za-z][A-Za-z0-9_\\-]{0,95}"}
                   value={openId}
                   onChange={(event) => setOpenId(event.target.value)}
                 />
@@ -592,13 +621,14 @@ function ProjectWorkbench({
                 if (
                   dirty &&
                   !window.confirm(
-                    "Start another project and discard unsaved inventory changes?",
+                    "Start another project and discard unsaved materials and requirements?",
                   )
                 )
                   return;
                 epoch.current += 1;
                 setProject(null);
                 setRows([]);
+                setRequirements(emptyRequirements());
                 setPhotos([]);
                 setError("");
                 setNotice("");
@@ -781,7 +811,7 @@ function ProjectWorkbench({
                               readOnly={row.saved}
                               required
                               maxLength={96}
-                              pattern="[A-Za-z][A-Za-z0-9_-]{0,95}"
+                              pattern={"[A-Za-z][A-Za-z0-9_\\-]{0,95}"}
                               onChange={(event) =>
                                 changeStock(row.key, { id: event.target.value })
                               }
@@ -974,6 +1004,14 @@ function ProjectWorkbench({
                       This project supports up to 32 material records.
                     </p>
                   )}
+                  <BuildRequirementsFields
+                    value={requirements}
+                    onChange={(next) => {
+                      setRequirements(next);
+                      setChecked(false);
+                      setNotice("");
+                    }}
+                  />
                   <div className="save-inventory">
                     <label className="checkbox-label">
                       <input
@@ -981,8 +1019,8 @@ function ProjectWorkbench({
                         checked={checked}
                         onChange={(event) => setChecked(event.target.checked)}
                       />
-                      I checked this inventory. Blank measurements are still
-                      unknown.
+                      I checked these materials, tools and requirements. Blank
+                      measurements are still unknown.
                     </label>
                     <div className="save-row">
                       <button
@@ -990,7 +1028,7 @@ function ProjectWorkbench({
                         className="primary"
                         disabled={!checked || rows.length === 0 || stale}
                       >
-                        Save confirmed inventory
+                        Save materials and requirements
                       </button>
                       <span className="help">
                         {dirty
@@ -1011,10 +1049,10 @@ function ProjectWorkbench({
               )}
               {stale && (
                 <aside className="retry-panel">
-                  <h3>The saved inventory changed</h3>
+                  <h3>The saved materials or requirements changed</h3>
                   <p>
-                    Reload the latest inventory before saving again. Reloading
-                    replaces your unsaved edits.
+                    Reload the latest materials and requirements before saving
+                    again. Reloading replaces your unsaved edits.
                   </p>
                   <button
                     type="button"
@@ -1022,7 +1060,7 @@ function ProjectWorkbench({
                     disabled={busy}
                     onClick={() => void openProject(project.id)}
                   >
-                    Reload latest inventory
+                    Reload latest materials and requirements
                   </button>
                 </aside>
               )}
@@ -1034,8 +1072,7 @@ function ProjectWorkbench({
               Design generation and assembly instructions are still being
               connected. Saving inventory records your measurements and
               materials; it does not validate a design or authorize a cut.
-              Tools, device constraints and model-assisted image review remain
-              pending.
+              Model-assisted image review remains pending.
             </p>
           </aside>
         </>
