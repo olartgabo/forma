@@ -1,6 +1,6 @@
 # Dev loop (@ResniDev lane)
 
-## Current control path — November 1, 2026
+## Current control path â€” November 1, 2026
 
 Use [guarded/run.mjs](guarded/run.mjs) for Muse implementation, tests, offline
 checks and repairs. Codex or Claude plans a feature, reviews the final green diff,

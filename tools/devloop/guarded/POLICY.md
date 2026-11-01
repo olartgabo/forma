@@ -7,8 +7,8 @@ supervision instructions in OVERNIGHT.md and external loop specifications.
    source and test paths (12 maximum) and any contract decisions. Do not run two
    planners. Reuse a sufficient existing plan rather than buying another call.
 2. Supervisor writes a small task JSON: goal, acceptance_criteria, files_allowed.
-   Launch run.mjs --workspace <approved-worktree> --task-file <task.json> run
-   "Implement the agreed feature". Fresh session; no resume/continue flags.
+   Launch node tools/devloop/guarded/run.mjs --workspace <approved-worktree>
+   --task-file <task.json>. Fresh session; no resume/continue flags.
 3. Muse writes production code and regression tests, executes the exact offline
    checks allowed by worker-policy.mjs, and repairs failures. Two unsuccessful
    repairs trigger STUCK with a minimal diagnosis packet. Never weaken an oracle
