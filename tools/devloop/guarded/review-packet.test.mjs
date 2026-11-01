@@ -205,10 +205,14 @@ test("directory junction escape is rejected before reading outside contents", (t
     path.join(root, "linked"),
     process.platform === "win32" ? "junction" : "dir",
   );
-  // Stage through the junction so git reports the escaped relative path.
-  git(root, "add", "-f", "linked/escaped.txt");
+  // Stage the link parent entry: adding the child through a Linux symlink
+  // fails in git ("pathspec is beyond a symbolic link") before the packet
+  // builder runs. Linux records the symlink itself as "linked"; Windows
+  // traverses the junction and records "linked/escaped.txt". Allow both so
+  // either entry reaches the linked-path rejection in buildReviewPacket.
+  git(root, "add", "-f", "linked");
   assert.throws(
-    () => buildReviewPacket(root, ["linked/escaped.txt"]),
+    () => buildReviewPacket(root, ["linked", "linked/escaped.txt"]),
     /linked|escapes|not allowed/i,
   );
 });

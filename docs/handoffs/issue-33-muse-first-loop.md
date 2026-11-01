@@ -35,3 +35,11 @@ coding tasks are evidence that the development workflow runs, not product proof.
 Final publication uses ordinary fast-forward pushes to the existing draft PR.
 Remaining legacy queue/accounting/worktree cleanup work stays disabled; the active
 supervised path does not depend on those functions. No force push or main merge.
+
+
+The first Ubuntu CI run passed all 305 Python tests and found a test-fixture
+portability error: Git cannot stage a child through a Linux symlink. Muse changed
+only the fixture to stage the link parent and explicitly allow both platform
+status paths before the same rejection assertion. Windows Node suite17/17 and
+format checks passed with no skips; independent narrow review approved the fix.
+The follow-up GitHub run is the Linux verification for that correction.
