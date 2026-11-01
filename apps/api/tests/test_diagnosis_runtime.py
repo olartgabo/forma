@@ -1,11 +1,28 @@
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
 
 from forma_api import diagnosis_runtime
 from forma_api.model_gateway import GatewayError, MetaGateway
-from forma_domain.models import DiagnosisProposal
+from forma_domain.models import (
+    BuildPlan,
+    Constraints,
+    DiagnosisProposal,
+    Effects,
+    Feature,
+    Fold,
+    FoldArgs,
+    Joint,
+    JointProfile,
+    Measurement,
+    Part,
+    Preconditions,
+    Rect,
+    Region,
+    Stock,
+)
 
 PNG = b"\x89PNG\r\n\x1a\nsynthetic"
 JPEG = b"\xff\xd8\xffsynthetic"
@@ -150,6 +167,172 @@ def test_invalid_image_rejected_before_transport(data, mime):
             plan=None,
         )
     assert fake.calls == []
+
+
+def _real_plan():
+    def mm(value):
+        return Measurement(value=value, unit="mm", source="user_ruler", confirmed=True)
+
+    def unknown(unit):
+        return Measurement(value=None, unit=unit, source="unknown", confirmed=False)
+
+    stock = Stock(
+        id="stock-1",
+        kind="sheet",
+        material="cardboard",
+        width_mm=mm(300),
+        height_mm=mm(200),
+        thickness_mm=mm(2),
+        remaining_length_mm=mm(300),
+        condition="usable",
+        usable_regions=(
+            Region(id="region-1", geometry=Rect(x=0, y=0, width=300, height=200)),
+        ),
+    )
+    fold_feature = Feature(
+        id="feature-fold-1",
+        kind="fold",
+        geometry=Rect(x=10, y=20, width=80, height=2),
+    )
+    slot_feature = Feature(
+        id="feature-slot-1",
+        kind="slot",
+        geometry=Rect(x=30, y=40, width=12, height=3),
+    )
+    tab_feature = Feature(
+        id="feature-tab-1",
+        kind="tab",
+        geometry=Rect(x=5, y=6, width=11, height=7),
+    )
+    part = Part(
+        id="part-1",
+        source_stock_id="stock-1",
+        source_region_id="region-1",
+        geometry=Rect(x=0, y=0, width=100, height=80),
+        features=(fold_feature, slot_feature),
+        condition="usable",
+    )
+    other = Part(
+        id="part-2",
+        source_stock_id="stock-1",
+        source_region_id="region-1",
+        geometry=Rect(x=100, y=0, width=90, height=80),
+        features=(tab_feature,),
+        condition="usable",
+    )
+    operation = Fold(
+        id="op-fold-1",
+        type="fold",
+        part_ids=("part-1",),
+        stock_ids=(),
+        depends_on=(),
+        expected_state_id="state-after-fold",
+        requires_user_confirmation=True,
+        preconditions=Preconditions(
+            accessible_part_ids=("part-1",),
+            required_joint_ids=("joint-1",),
+            human_checks=("Check the fold line is reachable",),
+        ),
+        effects=Effects(changed_part_ids=("part-1",), attached_joint_ids=("joint-1",)),
+        args=FoldArgs(
+            part_id="part-1",
+            feature_id="feature-fold-1",
+            start_x_mm=10,
+            start_y_mm=20,
+            end_x_mm=90,
+            end_y_mm=20,
+            angle_deg=67.5,
+            direction="valley",
+            reachable_face="front",
+        ),
+    )
+    return BuildPlan(
+        project_id="project-a",
+        version_id="version-1",
+        status="active",
+        stocks=(stock,),
+        parts=(part, other),
+        joint_profiles=(
+            JointProfile(
+                id="profile-1",
+                strategy="tab_slot",
+                status="experimental",
+                material="cardboard",
+            ),
+        ),
+        joints=(
+            Joint(
+                id="joint-1",
+                profile_id="profile-1",
+                part_ids=("part-1", "part-2"),
+                interface_feature_ids=("feature-slot-1", "feature-tab-1"),
+            ),
+        ),
+        operations=(operation,),
+        checkpoints=(),
+        constraints=Constraints(
+            device_mass_g=unknown("g"),
+            support_angle_deg=unknown("deg"),
+            max_footprint_width_mm=unknown("mm"),
+            max_footprint_height_mm=unknown("mm"),
+        ),
+        compiler_version="test-compiler",
+        created_at=datetime(2026, 11, 1, tzinfo=UTC),
+    )
+
+
+def test_context_includes_stored_operation_facts_and_geometry():
+    plan = _real_plan()
+    context = diagnosis_runtime.build_context(
+        project_id="project-a",
+        revision_id="inventory-1",
+        project_goal="A stand",
+        reported_problem="The fold looks wrong",
+        stocks=plan.stocks,
+        plan=plan,
+        current_operation_id="op-fold-1",
+    )
+    assert context["completion_history_supplied"] is False
+    active = context["active_plan"]
+    current = active["current_operation"]
+    # Stored expected (intended) operation facts, not completion history.
+    assert current["args"]["angle_deg"] == 67.5
+    assert current["args"]["direction"] == "valley"
+    assert current["args"]["feature_id"] == "feature-fold-1"
+    assert current["preconditions"]["accessible_part_ids"] == ["part-1"]
+    assert current["preconditions"]["required_joint_ids"] == ["joint-1"]
+    assert current["effects"]["changed_part_ids"] == ["part-1"]
+    assert current["effects"]["attached_joint_ids"] == ["joint-1"]
+    assert current["expected_state_id"] == "state-after-fold"
+    assert "completed" not in current
+    # Referenced part / feature geometry Muse can compare with the photo.
+    part = next(item for item in active["parts"] if item["id"] == "part-1")
+    assert part["geometry"] == {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 100.0,
+        "height": 80.0,
+        "rotation_deg": 0,
+    }
+    features = {item["id"]: item for item in part["features"]}
+    assert features["feature-fold-1"]["kind"] == "fold"
+    assert features["feature-fold-1"]["geometry"]["width"] == 80.0
+    assert features["feature-slot-1"]["geometry"] == {
+        "x": 30.0,
+        "y": 40.0,
+        "width": 12.0,
+        "height": 3.0,
+        "rotation_deg": 0,
+    }
+    joint = active["joints"][0]
+    interface = {item["id"]: item for item in joint["interface_features"]}
+    assert interface["feature-slot-1"]["part_id"] == "part-1"
+    assert interface["feature-slot-1"]["geometry"]["width"] == 12.0
+    assert interface["feature-tab-1"]["geometry"]["width"] == 11.0
+    # Scoped IDs unchanged and no unrelated blobs are introduced.
+    assert "op-fold-1" in active["allowed_affected_ids"]
+    assert "evidence" not in active
+    assert "physical_events" not in active
 
 
 def test_request_requires_paired_operation_context():

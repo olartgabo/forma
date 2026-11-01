@@ -150,9 +150,14 @@ export default function MuseDiagnosisPanel({
       (hasActive && (!activePlan || !operationId))
     )
       return;
+    const consentedPayload = consented;
     const requestEpoch = ++epoch.current;
     const requestController = new AbortController();
     controller.current = requestController;
+    // Consent covers this one request only: consume it on dispatch so any
+    // later success, failure or cancellation requires a fresh opt-in. The
+    // in-flight request keeps the payload captured above.
+    setConsented(false);
     setBusy(true);
     setError("");
     setNotice("");
@@ -165,7 +170,7 @@ export default function MuseDiagnosisPanel({
           media_id: selected.id,
           expected_revision_id: project.revision_id,
           reported_problem: problem.trim(),
-          provider_transfer_consented: true,
+          provider_transfer_consented: consentedPayload,
           ...(hasActive && project.active_version_id
             ? {
                 expected_active_version_id: project.active_version_id,

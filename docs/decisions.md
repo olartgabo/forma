@@ -185,3 +185,13 @@ Meta Chat Completions supports automatic tool selection only. Request a tool
 with the supported protocol, then enforce its name, arguments, count and result
 locally before accepting final typed output. A skipped or invalid tool blocks
 the request; it never becomes a successful proposal through a fallback.
+
+## D016: Read-only connected failure-photo diagnosis, November 1, 2026
+
+Issue #9 permits consented photo-only diagnosis before a calibrated plan exists.
+The canonical DiagnosisProposal separates observations, hypotheses and questions;
+without a plan, affected IDs must be empty. When an active plan/operation is
+selected, server-owned expected arguments and geometry inform reasoning without
+asserting physical completion. Each photo transfer consumes its consent. No
+state mutation or repair execution follows from a diagnosis; real history and
+separate validated repair approval remain required.

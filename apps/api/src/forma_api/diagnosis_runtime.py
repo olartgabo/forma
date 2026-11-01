@@ -120,6 +120,25 @@ def allowed_affected_ids(plan) -> set[str]:
     return ids
 
 
+def _json_value(value):
+    """Serialize canonical typed stored values without inventing fields."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if isinstance(value, (tuple, list)):
+        return [_json_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _json_value(item) for key, item in value.items()}
+    if hasattr(value, "__dict__"):
+        return {
+            key: _json_value(item)
+            for key, item in vars(value).items()
+            if not key.startswith("_")
+        }
+    return value
+
+
 def build_context(
     *,
     project_id: str,
@@ -136,22 +155,17 @@ def build_context(
             (item for item in plan.operations if item.id == current_operation_id),
             None,
         )
+        feature_by_id = {
+            feature.id: (part.id, feature)
+            for part in plan.parts
+            for feature in part.features
+        }
         active_plan = {
             "version_id": plan.version_id,
             "family": plan.family,
             "status": plan.status,
             "current_operation": (
-                {
-                    "id": operation.id,
-                    "type": operation.type,
-                    "part_ids": list(operation.part_ids),
-                    "stock_ids": list(operation.stock_ids),
-                    "depends_on": list(operation.depends_on),
-                    "expected_state_id": operation.expected_state_id,
-                    "requires_user_confirmation": operation.requires_user_confirmation,
-                }
-                if operation is not None
-                else None
+                _json_value(operation) if operation is not None else None
             ),
             "operations": [
                 {
@@ -166,8 +180,18 @@ def build_context(
                 {
                     "id": part.id,
                     "source_stock_id": part.source_stock_id,
+                    "source_region_id": getattr(part, "source_region_id", None),
+                    "geometry": _json_value(getattr(part, "geometry", None)),
                     "condition": part.condition,
                     "feature_ids": [feature.id for feature in part.features],
+                    "features": [
+                        {
+                            "id": feature.id,
+                            "kind": getattr(feature, "kind", None),
+                            "geometry": _json_value(getattr(feature, "geometry", None)),
+                        }
+                        for feature in part.features
+                    ],
                 }
                 for part in plan.parts
             ],
@@ -177,6 +201,17 @@ def build_context(
                     "profile_id": joint.profile_id,
                     "part_ids": list(joint.part_ids),
                     "interface_feature_ids": list(joint.interface_feature_ids),
+                    "interface_features": [
+                        {
+                            "id": feature.id,
+                            "part_id": feature_by_id[feature_id][0],
+                            "kind": getattr(feature, "kind", None),
+                            "geometry": _json_value(getattr(feature, "geometry", None)),
+                        }
+                        for feature_id in joint.interface_feature_ids
+                        if feature_id in feature_by_id
+                        for feature in (feature_by_id[feature_id][1],)
+                    ],
                 }
                 for joint in plan.joints
             ],

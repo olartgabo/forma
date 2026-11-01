@@ -67,7 +67,7 @@ runtime database, generated image or unredacted private artifact is committed.
 
 ## Composition with saved requirements and manuals
 
-The owned integration branch combines PR #70 with PRs #68–69. Both authenticated
+The owned integration branch combines PR #70 with PRs #68â€“69. Both authenticated
 routers and both workbench panels are retained: Muse photo observations alongside
 saved requirements, immutable previews/manuals and explicit initial approval.
 Muse resolved the two source conflicts; independent integration review approved.
@@ -146,3 +146,35 @@ and operation are supplied, resolve both from server-owned state and validate al
 references. No inventory, completion history, damage fact, repair patch or plan
 activation is created by diagnosis. Existing plan-required repair service guards
 remain unchanged. Record the exact shared contract here before implementation.
+
+## Connected diagnosis implemented and checked
+
+`POST /api/projects/{id}/diagnose` now loads an authorized private saved photo
+and bounded reported problem after literal transfer consent, image eligibility
+and revision gates. Photo-only diagnosis uses no plan IDs or assumed completion
+history. Optional active-plan/operation context resolves server-owned state;
+selected operation arguments, preconditions, effects and referenced geometry
+are intended plan facts, never completion evidence. Affected IDs are validated.
+Project revision, photo existence and active context are rechecked after Muse.
+The route writes no inventory, plans, physical events or repair patches.
+
+The browser's Something went wrong panel separates visible observations,
+hypotheses and measurement questions. Dispatch consumes consent; a subsequent
+success, failure or cancellation requires fresh consent for another transfer.
+Repair execution remains unavailable pending authenticated physical history and
+existing deterministic repair validation. Independent final review approved both
+context completeness and per-request consent repairs.
+
+A real browser -> proxy -> authenticated API -> Muse Spark1.3 request with the
+labelled synthetic materials photo completed in 9,750ms. It returned six visible
+observations, three hypotheses and four questions, failure_type=unknown and zero
+affected IDs. The response correctly noted that no assembled stand was visible.
+The checkbox cleared and the repeat-request button remained disabled. Safe local
+instrumentation captured model-reported usage without raw provider responses.
+No physical failure, completed operation, successful build or repair was claimed.
+
+Validation passed 395 Python tests, 24 client tests, generated contracts,
+TypeScript, Ruff, formatting and production build checks. A typed Fold regression
+checks expected operation arguments and actual geometry in diagnosis context;
+route tests cover scope, consent, image gates, stale state and immutable data.
+Private evidence, owner credentials, generated images and runtime DB stay out of Git.
