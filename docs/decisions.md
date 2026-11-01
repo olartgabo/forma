@@ -143,9 +143,14 @@ appends explicit recovery work and new fit/function checks with unique state and
 checkpoint IDs. Old dependent evidence/checks invalidate; they are not treated as
 useful current verification. No event/evidence/transaction/salvage is created.
 
-This supersedes the initial slice's completed-final-check gate for the full
-canonical eight-operation prefix only. The intermediate seven-operation prefix
-and base/support changes remain blocked. Validation and rendering share a narrow
-14/16-stage resolver instead of duplicating the validator. Original checkpoint
+This supersedes the initial slice's completed-final-check gate. Six, seven and
+eight completed original operations use 14-, 15- and 16-step layouts; base/support
+changes remain blocked. Validation and rendering share a narrow stage resolver
+instead of duplicating the validator. Original checkpoint
 references must match their operations before construction; malformed history
 returns blockers. Synthetic replay/manual evidence is not a physical pass.
+
+Unfinished final operations can receive replacement identities only when no
+persisted event, evidence or transaction references the retired operation or its
+checkpoint. Otherwise the proposal blocks before mutation. The same rule applies
+to the original six-operation path; saved history is never silently dropped.

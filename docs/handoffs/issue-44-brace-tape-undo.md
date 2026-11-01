@@ -1,40 +1,33 @@
-# Issue44: attached-brace tape continuation
+# Issue #44: attached-brace tape recovery
 
-Owner:@ResniDev. Branch:agent/muse-peel-tape-undo; stacked on PR65.
+Owner: @ResniDev. Draft PR #67, branch `agent/muse-peel-tape-undo`, stacked on
+PR #65. Muse owns implementation, regression tests and repairs; independent final
+review covers history, accounting and rendering.
 
-Muse implemented and tested brace-only explicit rear/apex peels, measured-region
-replacement, connector accounting, lost/preserved work, evidence invalidation,
-ranking and stage-specific manuals. Inputs/history stay unchanged; new work is
-incomplete; no physical events/transactions/salvage or bench success are created.
-The positive synthetic fixture reaches real simulation/family validation/render
-and rank cost8;500-240-160 leaves100mm tape,399mm blocks. Six historical panels
-and16legacy SVG goldens stay unchanged; continuation keys are unique.
+The canonical stand supports brace replacement after six, seven or all eight
+original operations. It retains completed definitions, checkpoints and history,
+then adds eight incomplete steps: two rear/apex peels, replacement cut/inspection,
+two reattachments and new fit/function checks. The front hinge stays attached.
+The resulting plans/manuals have 14, 15 or 16 steps. Historical panels retain their
+SVGs, hashes and core keys; new panels have unique continuation keys. Old final
+checks draw the original brace; new checks use the replacement and new joints.
 
-Independent final review found two real gaps: exact fold validation and loss of
-already-completed final-check IDs. Muse restored fold invariants and rejects
-completed fit/function cases before candidate mutation. Targeted reviewer
-verification10passed; narrow final review approved. Full Muse pytest424passed,
-Ruff/format/contracts passed. Parent full project check is recorded in the PR.
+Original peeled joins are lost work. Their tape is never refunded. Replacement
+uses a confirmed remaining sheet region and reconciled tape. The synthetic
+fixture has weighted cost 8 and 500 - 240 - 160 = 100 mm remaining tape; 399 mm
+initial tape blocks. Dependent checkpoints/evidence invalidate. No physical event,
+transaction, salvage, measurement or bench pass is created.
 
-Supported prefix is original cut/inspection/fold/threejoins only. Base/support,
-irreversible joins, unsupported folds and completed final checks remain blocked.
-Issue44 stays open for broader supported recovery/evidence; do not infer live
-product-provider or physical acceptance. No shared schema/API/partner edits.
+Saved references to an unfinished final operation/checkpoint that would be renamed
+block before candidate mutation. This protects partial builds without discarding
+observations, evidence or transactions. Original checkpoint references must match
+their operations; malformed mappings return blockers. Exact fold geometry remains
+required. Base/support replacement, target folds and irreversible joins are
+outside this slice.
 
-
-## Completed eight-operation extension
-
-Full-build recovery now retains all eight original definitions/IDs/checkpoints,
-then appends eight incomplete operations (two peels, cut/inspection, two joins,
-new fit/function checks). The first eight SVGs/hashes/core keys stay identical;
-new panels use unique continuation keys. Old final checks show the original
-brace; new checks use the replacement and new joints. Existing14-op layout,
-ordinary replacements and16legacy goldens remain unchanged;7-prefix stays blocked.
-
-Real replay tests use original history/ancestor plan and one/two confirmed peels:
-remaining tape stays260mm before reattachment; wrong remaining tape and duplicate
-completion block. Cost8 and500-240-160=100 remain;399 blocks. No history is stripped.
-A final review caught missing historical-checkpoint lookup guards; Muse fixed
-referenced-ID/operation matching before mutation and added3 real simulation
-regressions.434pytest tests and lint/format/contracts pass; focused reviewer3pass
-and final review approved. Final full project check is recorded in PR67.
+Regression coverage uses real simulation, validation, ranking, rendering and
+replay with the original ancestor/history plus one or two confirmed peels. Wrong
+tape balances and duplicate peel completion block. Six-, seven- and eight-prefix
+cases, ordinary replacements and 16 legacy SVG goldens remain covered. Actual
+final check results and review status are recorded in PR #67. Issue #44 stays open
+for broader recovery; these offline fixtures do not establish physical acceptance.

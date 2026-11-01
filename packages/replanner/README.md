@@ -130,8 +130,8 @@ Before packaging integration, add `packages/replanner/src`,
 
 ## Attached-brace tape continuation
 
-For the original canonical tape stand after its cut, inspection, lip fold and
-three joins, or after all eight original operations completed, `replace_part` can replace the attached brace from a confirmed
+For the original canonical tape stand after six, seven or eight operations,
+`replace_part` can replace the attached brace from a confirmed
 remaining measured sheet region. A pure helper emits two new incomplete
 `peel_tape` operations for rear/apex, then replacement cut/inspection and new
 reattachment joints. The front hinge and original completed definitions remain
@@ -146,10 +146,15 @@ are created. The synthetic positive case has known weighted cost8 and consumes
 not measured user evidence.
 
 The family validator and renderer must accept the staged graph. Exact original
-fold invariants still apply. Base/support replacements, target folds, irreversible
-joins and the intermediate seven-operation prefix remain blocked. For the full
-eight-operation case, original fit/function operations and checkpoints remain
-unchanged; new final checks receive new IDs and remain incomplete. Replaying one
-or both confirmed peels retains the original completion history and never refunds
-tape. Historical checkpoint references are checked before candidate construction;
-malformed mappings return blockers rather than exceptions.
+fold invariants still apply. Base/support replacements, target folds and
+irreversible joins remain blocked. Completed fit/function operations and their
+checkpoints remain unchanged; new final checks receive new IDs and remain
+incomplete. The resulting layouts have 14, 15 or 16 operations, respectively.
+Replaying one or both confirmed peels retains original completion history and
+never refunds tape. Historical checkpoint references are checked before candidate
+construction; malformed mappings return blockers rather than exceptions.
+
+An unfinished final operation can be renamed only when persisted events, evidence
+and transactions do not reference its old operation/checkpoint identity. Such
+references block the proposal before mutation; history is never stripped to make
+a candidate pass. This also protects the six-operation path.

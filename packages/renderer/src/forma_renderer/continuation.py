@@ -480,9 +480,7 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 (op.id, op.args.checkpoint_id),
             )
     mass = plan.constraints.device_mass_g
-    test_ops = (
-        (historical_test, test_op) if historical_test is not None else (test_op,)
-    )
+    test_ops = (historical_test, test_op) if historical_test is not None else (test_op,)
     for checked_test in test_ops:
         if (
             checked_test.args.mass_g is None

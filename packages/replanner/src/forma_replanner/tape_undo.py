@@ -97,7 +97,6 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
     )
     fit_completed = "stand-inspect-fit" in completed
     test_completed = "stand-functional-test" in completed
-    full_build = fit_completed and test_completed
     seven_build = fit_completed and not test_completed
     if test_completed and not fit_completed:
         return blocked(
@@ -243,8 +242,7 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
                 # retargeted rather than left pointing at the old operation.
                 original_id = original_final_checkpoints[old_op_id].id
                 data["checkpoints"] = tuple(
-                    cloned if c["id"] == original_id else c
-                    for c in data["checkpoints"]
+                    cloned if c["id"] == original_id else c for c in data["checkpoints"]
                 )
             else:
                 data["checkpoints"] = (*data["checkpoints"], cloned)

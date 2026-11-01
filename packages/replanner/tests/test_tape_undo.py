@@ -444,7 +444,6 @@ def test_seven_prefix_tape_undo_preserves_fit_and_regenerates_finals():
     assert tuple(j for j in plan.joints if j.id.startswith("stand-joint-"))[:3] == (
         base.joints
     )
-    base_checks = {c.id: c for c in base.checkpoints}
     plan_checks = {c.id: c for c in plan.checkpoints}
     fit_check = next(
         c for c in base.checkpoints if c.after_operation_id == "stand-inspect-fit"
@@ -521,9 +520,7 @@ def _extra_event(base, event_id, operation_id, **updates):
 
 def test_persisted_observation_on_unfinished_fit_blocks_six_prefix():
     base, snapshot, process = attached_snapshot()
-    event = _extra_event(
-        base, "synthetic-obs-fit", "stand-inspect-fit"
-    )
+    event = _extra_event(base, "synthetic-obs-fit", "stand-inspect-fit")
     changed = snapshot.model_copy(update={"events": snapshot.events + (event,)})
     result = simulate(changed, process)
     assert result.status == "blocked"
@@ -550,8 +547,7 @@ def test_persisted_not_attempted_test_on_unfinished_function_blocks_six_prefix()
     assert result.status == "blocked"
     assert result.plan is None and result.cost is None
     assert any(
-        b.code == "invalid_reference"
-        and b.target_ids == ("stand-functional-test",)
+        b.code == "invalid_reference" and b.target_ids == ("stand-functional-test",)
         for b in result.blockers
     ), result.blockers
 
@@ -559,7 +555,9 @@ def test_persisted_not_attempted_test_on_unfinished_function_blocks_six_prefix()
 def test_persisted_future_function_checkpoint_evidence_blocks_six_prefix():
     base, snapshot, process = attached_snapshot()
     check_id = next(
-        c.id for c in base.checkpoints if c.after_operation_id == "stand-functional-test"
+        c.id
+        for c in base.checkpoints
+        if c.after_operation_id == "stand-functional-test"
     )
     evidence = m.Evidence(
         id="synthetic-future-function-check-evidence",
@@ -577,8 +575,7 @@ def test_persisted_future_function_checkpoint_evidence_blocks_six_prefix():
     assert result.status == "blocked"
     assert result.plan is None
     assert any(
-        b.code == "invalid_reference"
-        and b.target_ids == ("stand-functional-test",)
+        b.code == "invalid_reference" and b.target_ids == ("stand-functional-test",)
         for b in result.blockers
     ), result.blockers
     assert changed.evidence == (evidence,)
@@ -599,8 +596,7 @@ def test_persisted_reference_to_unfinished_function_blocks_seven_prefix():
     assert result.status == "blocked"
     assert result.plan is None
     assert any(
-        b.code == "invalid_reference"
-        and b.target_ids == ("stand-functional-test",)
+        b.code == "invalid_reference" and b.target_ids == ("stand-functional-test",)
         for b in result.blockers
     ), result.blockers
 
@@ -628,9 +624,7 @@ def test_persisted_transaction_on_unfinished_fit_blocks_six_prefix():
             "events": snapshot.events + (event,),
             "material_transactions": (tx,),
             "remaining_stock": tuple(
-                s.model_copy(update={"usable_regions": ()})
-                if s.id == "spare"
-                else s
+                s.model_copy(update={"usable_regions": ()}) if s.id == "spare" else s
                 for s in snapshot.remaining_stock
             ),
         }
