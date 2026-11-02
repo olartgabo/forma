@@ -10,7 +10,7 @@ from forma_api import design_context
 from forma_api.design_context import ResolvedDesignContext
 from forma_api.intake_runtime import gateway_error_details
 from forma_api.model_gateway import GatewayError, MetaGateway, ProposalBudget, Tool
-from forma_api.plans import PlanService, PlanSummary
+from forma_api.plans import CompilePreview, PlanService, PlanSummary
 from forma_api.projects import BuildRequirements, ProjectError, ProjectStore
 from forma_api.proposal_prompts import instructions
 from forma_api.provider_diagnostics import ProviderUsage, summarize_usage
@@ -341,7 +341,26 @@ def generate_designs(
     capacity_left = max(0, 2 - existing)
     saved = 0
     results: list[DesignCandidateResult] = []
+    seen_ids: set[str] = set()
     for candidate in proposals.candidates[:2]:
+        if candidate.id in seen_ids:
+            # Child idempotency keys derive from candidate IDs; a repeated ID
+            # would collide with the first candidate's saved preview.
+            results.append(
+                DesignCandidateResult(
+                    candidate_id=candidate.id,
+                    status="blocked",
+                    blockers=(
+                        Blocker(
+                            code="invalid_reference",
+                            message="Candidate ID repeats an earlier candidate; it was not compiled or saved.",
+                            target_ids=(candidate.id,),
+                        ),
+                    ),
+                )
+            )
+            continue
+        seen_ids.add(candidate.id)
         blockers = validate_candidate_references(candidate, snapshot)
         if blockers:
             results.append(
@@ -368,8 +387,6 @@ def generate_designs(
                 )
             )
             continue
-        from forma_api.plans import CompilePreview
-
         try:
             compiled = plan_service.compile_preview(
                 owner,

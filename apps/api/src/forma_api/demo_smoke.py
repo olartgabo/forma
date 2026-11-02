@@ -253,7 +253,7 @@ def _http_transport_once(
         if connection is not None:
             try:
                 connection.close()
-            except Exception:
+            except OSError:
                 pass
 
 
@@ -426,9 +426,8 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
             # Missing consent rejects before any request, including health.
             _fail(report, "intake", "consent_required")
             return emit(2)
-    elif args.transfer_consent:
-        # Consent alone never triggers inference without --live-intake.
-        pass
+    # Consent alone (--transfer-consent without --live-intake) never
+    # triggers inference.
 
     needs_credential = args.project_id is not None
     token: str | None = None

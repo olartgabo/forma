@@ -599,3 +599,49 @@ def test_project_deletion_purges_generation_receipt(setup):
             == 0
         )
         assert connection.execute("SELECT COUNT(*) FROM plans").fetchone()[0] == 0
+
+
+def test_repeated_candidate_id_is_blocked_without_conflicting_saved_preview(setup):
+    client, project, candidate, context, monkeypatch, _ = setup
+    twin = candidate.model_copy(update={"support_angle_deg": 50})
+    fake = Fake(
+        tool_call(project["id"], project["revision_id"]),
+        final(
+            {
+                "candidates": [
+                    candidate.model_dump(mode="json"),
+                    twin.model_dump(mode="json"),
+                ],
+                "questions": [],
+            }
+        ),
+    )
+    install(monkeypatch, fake, context_for(project, context))
+    response = generate(client, project)
+    assert response.status_code == 200, response.text
+    first, second = response.json()["candidates"]
+    assert first["status"] == "accepted"
+    assert second["status"] == "blocked"
+    assert second["blockers"][0]["code"] == "invalid_reference"
+    plans = client.get(f"/api/projects/{project['id']}/plans", headers=AUTH).json()
+    assert len(plans["plans"]) == 1
+    replay = generate(client, project)
+    assert replay.json()["replayed"] is True
+    assert len(fake.calls) == 2
+
+
+def test_unexpected_failure_marks_outcome_unknown_instead_of_pending(setup):
+    client, project, candidate, context, monkeypatch, _ = setup
+    fake = success_fake(project, candidate)
+    install(monkeypatch, fake, context_for(project, context))
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("compile crashed")
+
+    monkeypatch.setattr(PlanService, "compile_preview", broken)
+    with pytest.raises(RuntimeError):
+        generate(client, project)
+    retry = generate(client, project)
+    assert retry.status_code == 409
+    assert retry.json()["code"] == "generation_outcome_unknown"
+    assert len(fake.calls) == 2

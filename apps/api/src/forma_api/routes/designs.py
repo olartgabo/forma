@@ -205,34 +205,27 @@ def designs_router(
             project = current
 
         def clear_pending():
-            try:
-                with store.transaction() as connection:
-                    connection.execute(
-                        "DELETE FROM requests WHERE owner=? AND scope=? AND key=? AND digest=? AND response=?",
-                        (owner, scope, body.idempotency_key, digest, _PENDING),
-                    )
-            except Exception:
-                pass
+            with store.transaction() as connection:
+                connection.execute(
+                    "DELETE FROM requests WHERE owner=? AND scope=? AND key=? AND digest=? AND response=?",
+                    (owner, scope, body.idempotency_key, digest, _PENDING),
+                )
 
-        def mark_uncertain(exc: GatewayError):
+        def mark_uncertain(safe_code: str):
             # Convert the claim, never delete it: an identical retry must not
             # start another paid run when dispatch outcome is ambiguous.
-            marker = _uncertain_marker(_provider_error(exc).body.code)
-            try:
-                with store.transaction() as connection:
-                    connection.execute(
-                        "UPDATE requests SET response=? WHERE owner=? AND scope=? AND key=? AND digest=? AND response=?",
-                        (
-                            marker,
-                            owner,
-                            scope,
-                            body.idempotency_key,
-                            digest,
-                            _PENDING,
-                        ),
-                    )
-            except Exception:
-                pass
+            with store.transaction() as connection:
+                connection.execute(
+                    "UPDATE requests SET response=? WHERE owner=? AND scope=? AND key=? AND digest=? AND response=?",
+                    (
+                        _uncertain_marker(safe_code),
+                        owner,
+                        scope,
+                        body.idempotency_key,
+                        digest,
+                        _PENDING,
+                    ),
+                )
 
         factory = gateway_factory or design_runtime.default_gateway_factory
         try:
@@ -261,12 +254,17 @@ def designs_router(
             )
         except GatewayError as exc:
             if exc.code in _UNCERTAIN_CODES:
-                mark_uncertain(exc)
+                mark_uncertain(_provider_error(exc).body.code)
             else:
                 clear_pending()
             raise _provider_error(exc) from None
         except ProjectError:
             clear_pending()
+            raise
+        except Exception:
+            # A preview may already be saved, so the outcome is unknown; a
+            # pending claim would otherwise block this key forever.
+            mark_uncertain("server_error")
             raise
 
         # Recheck scope/revision before remembering; deletion must not resurrect.

@@ -266,6 +266,7 @@ export default function PlanWorkbench({
         [
           "timeout",
           "network_error",
+          "generation_in_progress",
           "generation_outcome_unknown",
           "request_timeout",
           "connection_failed",

@@ -181,12 +181,8 @@ def diagnosis_router(
                     store, connection, project_id, body.expected_active_version_id
                 )
                 _resolve_operation(version.plan, body.current_operation_id)
-            elif current.active_version_id is not None and plan is None:
-                # Photo-only request remains valid only if it was photo-only
-                # at dispatch; a newly activated plan does not invalidate a
-                # diagnosis that referenced no plan. Revision/media checks
-                # above are the stale gates for this mode.
-                pass
+            # A photo-only request stays valid if a plan was activated during
+            # the call; the revision and media checks above are its stale gates.
         return diagnosis_runtime.DiagnosisResult(
             project_id=project_id,
             revision_id=current.revision_id,
