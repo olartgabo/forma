@@ -13,6 +13,7 @@ boundaries and handoffs easier to act on; they do not establish completed work.
 | [model-compatibility.md](model-compatibility.md) | Live provider access and request evidence       |
 | [joint-profiles.md](joint-profiles.md)           | Measured physical profile requirements          |
 | [evaluation-protocol.md](evaluation-protocol.md) | Cases, baselines, metrics and actual outcomes   |
+| [demo-runbook.md](demo-runbook.md)               | Step-by-step connected Muse demo and smoke CLI  |
 | [demo-script.md](demo-script.md)                 | Evidence-led recording sequence                 |
 | [submission.md](submission.md)                   | Release and portal checklist                    |
 | [handoffs/README.md](handoffs/README.md)         | Per-issue implementation handoffs               |
