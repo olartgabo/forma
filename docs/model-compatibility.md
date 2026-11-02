@@ -1,6 +1,6 @@
 # Model compatibility
 
-Owner: @ResniDev. Issue #4. **G0 is open.** Two narrow server-only runtime receipts exist (November 2, 2026); full live compatibility is not verified.
+Owner: @ResniDev. Issue #4. **G0 is open.** Two separate narrow server-only runtime receipt sets exist (both November 2, 2026): a historical software-image pair and a later realistic synthetic-photo pair. Full live compatibility is not verified.
 
 ## Documentation checked October 30, 2026
 
@@ -31,21 +31,37 @@ Source: sanitized server-only runtime acceptance reports and a reservation/settl
 - Input was one PNG image (about 2.6 MB, accepted as eligible), labelled **SYNTHETIC SOFTWARE IMAGE**. It is not a team photo and not a physical build.
 - State after both calls: no active plan, inventory not confirmed, no stock rows, measurements `unknown`, design readiness `needs_input` (blocker `missing_measurement`), physical verification `not_checked`. Design and repair were not requested.
 - Authentication succeeded at that time. This does not show that a key is available or funded now; key presence was not checked for this document.
-- The runtime verification window has since expired and the bounded harness has used both allowed attempts. No new provider call was made for this document. Further live calls need a new explicit authorization and the existing server-only key, reservation, journal and unknown-outcome controls.
+- The runtime verification window for these two calls has since expired and that harness has used both allowed attempts. The later photo harness below also used both of its attempts and its window ended at 21:14:57 UTC. No provider call was made for this document. Further live calls need a new explicit authorization and the existing server-only key, reservation, journal and unknown-outcome controls.
+
+### Realistic synthetic-photo receipts, November 2, 2026
+
+A second, separate set. It is not merged into the table above; its counts are not added to the 5,393 / 3,636 totals. Source: sanitized private acceptance receipts and ledger from a new bounded harness, read at main `8d713154`. Project, revision and media identifiers, local paths, raw responses and the image are not reproduced. Full detail: [handoff](handoffs/issue-4-realistic-synthetic-photo.md).
+
+| Receipt | Route | Model | Reserved to settled (UTC) | Elapsed | Input tokens | Output tokens | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 3 | Photo intake | `muse-spark-1.3` | 20:45:43 to 20:45:52 | 9,484 ms | 2,442 | 1,716 | HTTP 200, `ok`: 4 candidate labels, 5 questions, measurement source `unknown` |
+| 4 | Photo diagnosis | `muse-spark-1.3` | 20:45:52 to 20:46:03 | 11,219 ms | 3,033 | 1,584 | HTTP 200, `ok`: 8 observations, 3 hypotheses, 4 questions or measurements, `affected_ids` empty, `failure_type` `unknown` |
+| Total | | | | | 5,475 | 3,300 | 2 settled attempts, 2 model calls, no pending or unknown entries |
+
+- Sums: 2,442 + 3,033 = 5,475 input; 1,716 + 1,584 = 3,300 output. Tokens are provider-reported usage, not a charge; no billed amount is recorded or claimed.
+- These were actual app API calls to the configured provider, not an intercept or mock. Input was one ChatGPT-generated realistic synthetic photograph (SHA-256 `e2ca67b40670767b35ba3a254472eed43dd757e20262739b1ffb6ff3f53a354d`) of overlapping cardboard, tape, craft sticks, scissors and a folded cardboard stand, with no ruler or scale. It is not an inventory or a build and is not physical evidence.
+- Scope: manual user authorization, independent Terra review of the harness, 18 offline control checks, two lifetime attempts (one per stage), no retries, reservations with unknown-outcome halt, and one 30-minute window (20:44:57 to 21:14:57 UTC). The server was stopped after the sequence. No automatic renewal.
+- Observed behavior matched the contract: no measurement was inferred, intake asked for actual availability and material identity, and diagnosis separated an irregular front edge from a possible fold, cut or synthetic-image artifact without confirming damage, strength, load or a physical test. No active plan or operation existed. Output remains untrusted proposal data.
 
 ### Gate coverage
 
 | Check | State | Evidence |
 | --- | --- | --- |
 | Official protocol documentation | Checked | Links above, October 30, 2026; not re-verified since |
-| Server-side key accepted by provider | Observed twice | Receipts 1 and 2; current availability and funding unknown |
-| Spark image input with typed observations | Observed on a synthetic image | Receipts 1 and 2 |
+| Server-side key accepted by provider | Observed four times | Receipts 1 to 4; current availability and funding unknown |
+| Spark image input with typed observations | Observed on synthetic images | Receipts 1 and 2 (software image), 3 and 4 (realistic synthetic photo) |
+| Photo-to-app API flow, configured provider | Observed once, synthetic photo | Receipts 3 and 4; no physical or team-photo claim |
 | Forced structured tool roundtrip | Not proven | Each receipt shows one model call; a tool roundtrip needs at least two |
 | SAM on any image | Not attempted | No SAM call in the receipts |
 | Consented real team photo | Missing | fixtures/ and data/ contain documentation/templates only |
 | Account, deployment region, allowed use, privacy mode | Not checked | No account/dashboard verification |
 | Hosted deployment | Not checked | Receipts came from a local server |
-| Latency, usage and billed cost | Two samples only | Not a distribution; no billed cost recorded |
+| Latency, usage and billed cost | Four samples (two per route) | Not a distribution; no billed cost recorded |
 | Design, repair and replanning with a live model | Not requested | Receipts cover intake and diagnosis only |
 | Manual box/label fallback primitive | Offline tested | Box validates label and inclusive image bounds without key/network |
 | SAM masks/overlay UI | Not implemented | Caller must implement image review/correction |
