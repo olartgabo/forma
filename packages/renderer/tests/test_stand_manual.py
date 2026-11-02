@@ -342,9 +342,40 @@ def test_geometry_change_changes_affected_panels_but_reuses_fold():
     assert first.status == second.status == "accepted"
     a = manual(first.plan, parameters, process)
     b = manual(second.plan, changed, process)
-    assert a.panels[0].dependency_hash != b.panels[0].dependency_hash
-    assert a.panels[2].svg == b.panels[2].svg  # support fold geometry unchanged
-    assert a.panels[3].dependency_hash != b.panels[3].dependency_hash
+    assert len(a.panels) == len(b.panels) == 8
+    assert [p.operation_id for p in a.panels] == [p.operation_id for p in b.panels]
+    # Footprint depth drives base/brace and side views; fold panel 2 is
+    # support-only and must reuse both hash and bytes.
+    for index, (panel_a, panel_b) in enumerate(zip(a.panels, b.panels)):
+        assert (panel_a.dependency_hash == panel_b.dependency_hash) == (
+            panel_a.svg == panel_b.svg
+        ), f"hash/bytes drift at panel {index}"
+        if index == 2:
+            assert panel_a.dependency_hash == panel_b.dependency_hash
+            assert panel_a.svg == panel_b.svg
+        else:
+            assert panel_a.dependency_hash != panel_b.dependency_hash
+            assert panel_a.svg != panel_b.svg
+
+
+def test_alternate_support_geometry_invalidates_fold_panel():
+    base_plan, base_parameters, base_process = build()
+    alt_plan, alt_parameters, alt_process = build(alternate=True)
+    assert (
+        alt_plan.constraints.support_angle_deg.value
+        != base_plan.constraints.support_angle_deg.value
+    )
+    base_support = next(p for p in base_plan.parts if p.id == "stand-support")
+    alt_support = next(p for p in alt_plan.parts if p.id == "stand-support")
+    assert alt_support.geometry.height != base_support.geometry.height
+    base_manual = manual(base_plan, base_parameters, base_process)
+    alt_manual = manual(alt_plan, alt_parameters, alt_process)
+    assert base_manual.status == alt_manual.status == "accepted"
+    assert len(base_manual.panels) == len(alt_manual.panels) == 8
+    # Depth-only change leaves panel 2 unchanged, so this difference proves
+    # the fold panel hash follows support angle/blank height and is not stuck.
+    assert base_manual.panels[2].dependency_hash != alt_manual.panels[2].dependency_hash
+    assert base_manual.panels[2].svg != alt_manual.panels[2].svg
 
 
 def test_default_rejects_synthetic_evidence_and_missing_process():
