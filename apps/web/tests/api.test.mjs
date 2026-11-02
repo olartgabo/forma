@@ -24,6 +24,7 @@ import {
   emptyRequirements,
   requirementsError,
 } from "../src/lib/build-requirements.ts";
+import { createDiagnosisPlanLoader } from "../src/lib/diagnosis-plan-loader.ts";
 import { formatProviderUsage } from "../src/lib/provider-usage.ts";
 
 test("provider usage formats only provider-reported bounded counts", () => {
@@ -86,6 +87,102 @@ test("provider usage formats only provider-reported bounded counts", () => {
     }),
     "Provider-reported usage — model calls: 1; input tokens: not reported; output tokens: 5.",
   );
+});
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+const flushAsync = () => new Promise((resolve) => setImmediate(resolve));
+
+test("diagnosis plan loader retries only the current manual after failure", async () => {
+  const key = {
+    token: "token-a",
+    projectId: "project-a",
+    activeVersionId: "version-a",
+  };
+  const plan = { project_id: "project-a", version_id: "version-a" };
+  const calls = [];
+  const loader = createDiagnosisPlanLoader({
+    load: async (loadKey) => {
+      calls.push(loadKey);
+      if (calls.length === 1) throw new Error("transient");
+      return plan;
+    },
+    errorMessage: () => "The manual could not be loaded.",
+  });
+  loader.setKey(key);
+  assert.equal(loader.getState().loading, true);
+  assert.equal(loader.getState().plan, null);
+  await flushAsync();
+  assert.equal(loader.getState().loading, false);
+  assert.equal(loader.getState().plan, null);
+  assert.equal(loader.getState().error, "The manual could not be loaded.");
+  loader.retry();
+  assert.equal(loader.getState().loading, true);
+  assert.equal(loader.getState().error, "");
+  await flushAsync();
+  assert.deepEqual(loader.getState().plan, plan);
+  assert.equal(loader.getState().error, "");
+  assert.equal(loader.getState().loading, false);
+  assert.deepEqual(calls, [key, key]);
+  loader.dispose();
+});
+
+test("diagnosis plan loader ignores a retry result after session and version change", async () => {
+  const keyA = {
+    token: "token-a",
+    projectId: "project-a",
+    activeVersionId: "version-a",
+  };
+  const keyB = {
+    token: "token-b",
+    projectId: "project-a",
+    activeVersionId: "version-b",
+  };
+  const planA = { project_id: "project-a", version_id: "version-a" };
+  const planB = { project_id: "project-a", version_id: "version-b" };
+  const pending = [];
+  const signals = [];
+  const loader = createDiagnosisPlanLoader({
+    load: (loadKey, signal) => {
+      signals.push(signal);
+      const next = deferred();
+      pending.push(next);
+      return next.promise;
+    },
+    errorMessage: () => "The manual could not be loaded.",
+  });
+  loader.setKey(keyA);
+  pending[0].reject(new Error("transient"));
+  await flushAsync();
+  assert.equal(loader.getState().error, "The manual could not be loaded.");
+  loader.retry();
+  loader.retry();
+  assert.equal(pending.length, 2);
+  loader.setKey(keyB);
+  assert.deepEqual(loader.getState().key, keyB);
+  assert.equal(loader.getState().plan, null);
+  assert.equal(loader.getState().error, "");
+  assert.equal(loader.getState().loading, true);
+  assert.equal(signals[1].aborted, true);
+  pending[1].resolve(planA);
+  await flushAsync();
+  assert.deepEqual(loader.getState().key, keyB);
+  assert.equal(loader.getState().plan, null);
+  assert.equal(loader.getState().loading, true);
+  pending[2].resolve(planB);
+  await flushAsync();
+  assert.deepEqual(loader.getState().plan, planB);
+  assert.equal(loader.getState().loading, false);
+  loader.dispose();
+  assert.equal(loader.getState().plan, null);
 });
 
 const token = "synthetic-owner-credential";
