@@ -15,6 +15,9 @@ from typing import Callable, Literal, Protocol, TypeVar
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 T = TypeVar("T", bound=BaseModel)
+DEFAULT_SPARK_MODEL = "muse-spark-1.3"
+DEFAULT_SAM_MODEL = "sam-3.1"
+MODEL_ID_RE = re.compile(r"[a-z0-9.-]{1,80}")
 MAX_RESPONSE = 2_000_000
 MAX_TIMEOUT_SECONDS = 30.0
 # Short grace for a worker that can cooperatively clean up after expiry.
@@ -306,15 +309,15 @@ class MetaGateway:
         self,
         transport: Transport,
         *,
-        spark="muse-spark-1.3",
-        sam="sam-3.1",
+        spark=DEFAULT_SPARK_MODEL,
+        sam=DEFAULT_SAM_MODEL,
         timeout: float = 20,
         budget: float = 60,
         max_rounds: int = 4,
     ):
         if not (0 < timeout <= 30 and 0 < budget <= 120 and 1 <= max_rounds <= 4):
             raise ValueError("invalid gateway bounds")
-        if not all(re.fullmatch(r"[a-z0-9.-]{1,80}", name) for name in (spark, sam)):
+        if not all(MODEL_ID_RE.fullmatch(name) for name in (spark, sam)):
             raise ValueError("invalid model ID")
         self.transport, self.spark, self.sam = transport, spark, sam
         self.timeout, self.budget, self.max_rounds = timeout, budget, max_rounds
@@ -324,8 +327,8 @@ class MetaGateway:
     def from_env(cls):
         return cls(
             MetaHTTP(os.environ.get("MODEL_API_KEY", "")),
-            spark=os.environ.get("META_SPARK_MODEL", "muse-spark-1.3"),
-            sam=os.environ.get("META_SAM_MODEL", "sam-3.1"),
+            spark=os.environ.get("META_SPARK_MODEL", DEFAULT_SPARK_MODEL),
+            sam=os.environ.get("META_SAM_MODEL", DEFAULT_SAM_MODEL),
         )
 
     def _post(self, path, payload, deadline, trace_sink=None):

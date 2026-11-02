@@ -66,23 +66,22 @@ Synthetic opt-in adds visible watermarks and changes panel bytes/hash.
 
 ## Checks and next action
 
-19 renderer regression tests cover two distinct synthetic inventories/dimensions/
+Renderer regression tests cover two distinct synthetic inventories/dimensions/
 angles, full XML IDs/checkpoints/tools, byte identity, version-independent cache,
-affected-only hash change, physical-default rejection, unknown measurements,
-short stock, incompatible device contact, XML escaping, malformed supported IDs,
-missing checkpoints/mass/fold/topology, duplicate IDs/evidence and long text.
-All fixtures are labelled software-only; no actual physical build/test attempted.
+per-panel hash/bytes equivalence for all eight panels under a footprint-depth
+change with fold panel 2 reused and the other seven panels invalidated,
+alternate-fixture coverage showing fold panel 2 invalidates on support angle/blank-height change,
+physical-default rejection, unknown measurements, short stock, incompatible device contact,
+XML escaping, malformed supported IDs, missing checkpoints/mass/fold/topology,
+duplicate IDs/evidence and long text. All fixtures are labelled software-only; no
+actual physical build/test attempted.
 
-All eight synthetic panels were generated and rasterized using headless Edge
-into work/manual-preview2. Visual inspection of cuts, all-part inspection, lip
-fold, front join and final test found legible separate legends, dimensions,
-checks and instructions. Preview assets are local scratch, not physical evidence.
+A one-off local visual inspection of synthetic panels was performed using headless Edge.
+It is not reproduced by any repository test and is not physical evidence.
 
 Next: @olartgabo supplies measured stock and actual tested profile/process
 records; both engineers perform the exact build and document observed deviations.
 Do not close physical #8 acceptance or claim buildability from fixture checks.
-Parent reviews the implementation and records final repository checks before
-publication. Full exact check results follow in the commit/report.
 
 Verification actually run: uv sync --locked exit0 (25 packages, Python3.12.14);
 Ruff lint All checks passed; Ruff format completed (53 Python files); pytest

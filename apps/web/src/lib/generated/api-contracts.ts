@@ -387,6 +387,11 @@ export type ProofVersion = {
   readonly "progress": ProgressSnapshot;
 };
 
+export type ProviderStatusResponse = {
+  readonly "configured": boolean;
+  readonly "model": string;
+};
+
 export type ProviderUsage = {
   readonly "model_calls": number;
   readonly "input_tokens"?: (number | null);
