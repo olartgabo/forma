@@ -194,8 +194,6 @@ def test_real_rejection_is_exact_and_replayed_to_model(task):
         ("process", "design", "process"),
         ("process", "repair", "process"),
         ("stand_parameters", "design", "parameters"),
-        ("base_plan", "repair", "base plan"),
-        ("created_at", "design", "creation"),
     ],
 )
 def test_missing_trusted_input_needs_specific_measurement(
@@ -223,6 +221,35 @@ def test_missing_trusted_input_needs_specific_measurement(
     assert replayed_feedback(fake) == feedback.model_dump(mode="json")
 
 
+@pytest.mark.parametrize(
+    "missing,task", [("base_plan", "repair"), ("created_at", "design")]
+)
+def test_missing_server_configuration_stops_without_asking_for_measurement(
+    missing, task, monkeypatch
+):
+    request, state, kwargs = setup_case()
+    kwargs.pop(missing)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("missing server configuration reached compiler or simulator")
+
+    monkeypatch.setattr(adapter, "compile_stand", forbidden)
+    monkeypatch.setattr(adapter, "simulate_patch", forbidden)
+    candidate = request.candidate if task == "design" else patch(state)
+    with pytest.raises(TypeError):
+        adapter.build_validator(**kwargs)(candidate, state)
+    fake = FakeTransport(state, batch(candidate), batch())
+    outcome = ProposalService(MetaGateway(fake), adapter.build_validator(**kwargs)).run(
+        task, state, "propose"
+    )
+    assert outcome.status == "stopped"
+    assert outcome.error_code == "compiler_failed"
+    assert outcome.questions == ()
+    assert outcome.reviews == ()
+    # One tool call and one proposal; no compiler feedback round is spent.
+    assert len(fake.calls) == 2
+
+
 def test_repair_uses_bound_plan_without_design_parameters_or_creation_time():
     _, state, kwargs = setup_case()
     kwargs.pop("stand_parameters")
@@ -247,6 +274,61 @@ def test_profile_evidence_must_agree_with_bound_history(monkeypatch):
         m.Blocker(
             code="invalid_reference",
             message="Trusted profile evidence conflicts with the bound history.",
+        ),
+    )
+
+
+def test_design_profile_evidence_must_agree_with_snapshot(monkeypatch):
+    # User provenance here is synthetic test data, never physical evidence.
+    request, state, kwargs = setup_case()
+    confirmed = tuple(
+        e.model_copy(
+            update={
+                "kind": "physical_test",
+                "provenance": "user",
+                "verification_state": "user_confirmed",
+            }
+        )
+        for e in kwargs["profile_evidence"]
+    )
+    kwargs["profile_evidence"] = confirmed
+    kwargs["allow_synthetic"] = False
+    process_evidence = (
+        kwargs["process"]
+        .evidence[0]
+        .model_copy(
+            update={"provenance": "user", "verification_state": "user_confirmed"}
+        )
+    )
+    kwargs["process"] = kwargs["process"].model_copy(
+        update={"evidence": (process_evidence,)}
+    )
+    bound = state.model_copy(update={"evidence": (process_evidence, *confirmed)})
+    validate = adapter.build_validator(**kwargs)
+    assert validate(request.candidate, bound).status == "accepted"
+    invalidated = state.model_copy(
+        update={
+            "evidence": (
+                process_evidence,
+                *(
+                    e.model_copy(update={"verification_state": "invalidated"})
+                    for e in confirmed
+                ),
+            )
+        }
+    )
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("conflicting profile evidence reached compiler")
+
+    monkeypatch.setattr(adapter, "compile_stand", forbidden)
+    assert validate(request.candidate, invalidated) == adapter.CandidateFeedback(
+        status="blocked",
+        blockers=(
+            m.Blocker(
+                code="invalid_reference",
+                message="Trusted profile evidence conflicts with the snapshot evidence.",
+            ),
         ),
     )
 

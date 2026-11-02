@@ -61,10 +61,18 @@ def build_validator(
                     "Missing trusted stand parameters: provide measured "
                     "stand parameters before compiling a design."
                 )
+            # Server configuration gaps, not user measurements: fail instead of
+            # asking the model or the user for a value neither can supply.
             if trusted_created_at is None:
-                return _needs_measurement(
-                    "Missing trusted creation time: provide a server-side "
-                    "creation time before compiling a design."
+                raise TypeError("validator requires a server-side creation time")
+            snapshot_evidence = {item.id: item for item in snapshot.evidence}
+            if any(
+                snapshot_evidence.get(item.id) != item
+                for item in trusted_profile_evidence
+            ):
+                return _blocked(
+                    "invalid_reference",
+                    "Trusted profile evidence conflicts with the snapshot evidence.",
                 )
             compiler_input = m.CompilerInput(
                 project_id=snapshot.project_id,
@@ -91,10 +99,7 @@ def build_validator(
 
         if isinstance(candidate, m.RepairPatch):
             if trusted_base is None:
-                return _needs_measurement(
-                    "Missing trusted base plan: provide the bound base plan "
-                    "before simulating a repair."
-                )
+                raise TypeError("validator requires a bound base plan")
             if process is None:
                 return _needs_measurement(
                     "Missing trusted cutting process: provide a measured "
