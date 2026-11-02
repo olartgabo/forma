@@ -369,3 +369,14 @@ available balance remain unverified. This records the preferred provider without
 provisioning resources, committing spending or selecting a deployment region.
 Continue connected-flow work before spending more time on hosting. Hosted
 identity, storage, retention and actual deployment verification remain pending.
+
+## D031: Reconfirm remaining repair materials after changes, November 2, 2026
+
+Editing a remaining connector measurement or withdrawing its confirmation clears
+earlier repair previews and simulation retries. Reloading recorded work clears
+all entered connector lengths and their confirmation before fetching, including
+on read failure. A fresh simulation requires fresh physical confirmation; no
+previously calculated or user-entered length is silently promoted for new history.
+Pending activation locks the material inputs and retains its exact retry payload
+because approval may have already committed. This changes browser freshness gates, not server stock
+accounting, model authority or the evidence required for a physical pass.

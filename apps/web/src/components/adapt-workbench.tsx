@@ -369,7 +369,7 @@ export default function AdaptWorkbench({
       (stock) =>
         stock.kind === "sheet" && (stock.usable_regions?.length ?? 0) > 0,
     ) ?? [];
-  const locked = disabled || busy;
+  const locked = disabled || busy || pendingApproval !== null;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -469,8 +469,17 @@ export default function AdaptWorkbench({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handoff, handoffTargetId, projectId, version.version_id]);
 
+  function invalidateRemainingStock() {
+    setRemainingConfirmed(false);
+    dispatch({ type: "remainingStockChanged" });
+  }
+
   async function refresh() {
     const signal = lifetime.current.signal;
+    // Reloading history requires fresh physical measurements even if the read
+    // fails. Old previews and simulation retries cannot use earlier inputs.
+    setLengths({});
+    invalidateRemainingStock();
     setBusy(true);
     setError("");
     try {
@@ -482,7 +491,6 @@ export default function AdaptWorkbench({
       );
       if (signal.aborted) return;
       setProgress(next);
-      dispatch({ type: "previewsRefreshed" });
       setStale(false);
     } catch (failure) {
       if (!signal.aborted) setError(message(failure));
@@ -852,12 +860,13 @@ export default function AdaptWorkbench({
                         inputMode="decimal"
                         required
                         value={lengths[stock.id] ?? ""}
-                        onChange={(event) =>
+                        onChange={(event) => {
                           setLengths({
                             ...lengths,
                             [stock.id]: event.target.value,
-                          })
-                        }
+                          });
+                          invalidateRemainingStock();
+                        }}
                       />
                     </label>
                   ))}
@@ -875,9 +884,10 @@ export default function AdaptWorkbench({
                     <input
                       type="checkbox"
                       checked={remainingConfirmed}
-                      onChange={(event) =>
-                        setRemainingConfirmed(event.target.checked)
-                      }
+                      onChange={(event) => {
+                        if (event.target.checked) setRemainingConfirmed(true);
+                        else invalidateRemainingStock();
+                      }}
                     />
                     I checked the remaining materials and measured the
                     connectors above.

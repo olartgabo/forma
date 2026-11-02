@@ -96,3 +96,9 @@ The runner requires a local server URL and an explicit Playwright module path;
 missing prerequisites fail rather than skip. It is a separate browser check,
 not included in `npm run check`. Synthetic responses are UI regression data,
 not compiler validation, live-provider evidence or a physical pass.
+
+The same runner checks repair-stock confirmation: changing a connector length,
+withdrawing confirmation or reloading recorded work clears earlier previews and
+simulation retries. Reloading requires fresh measurements even if the read fails.
+An uncertain activation locks these inputs and retains its exact approval retry
+to resolve its outcome.
