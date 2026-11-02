@@ -38,12 +38,14 @@ IDs; repair patches remain restricted to current targets.
 ## Compiler/replanner injection
 
 The injected synchronous validator takes `(DesignCandidate | RepairPatch,
-ProposalSnapshot)` and returns a runtime-valid `CompilerResult` or private service
-`CandidateFeedback(status, blockers)`. A missing validator stops design/repair
+ProposalSnapshot)` and returns a runtime-valid `CompilerResult`, private service
+`CandidateFeedback(status, blockers)`, or repair-only `SimulationResult`.
+A missing validator stops design/repair
 before calling a provider. Arbitrary return shapes or callback exceptions stop
 with `compiler_failed`; exception strings never enter traces. Accepted compiler
-plans must retain the project scope. The service returns flat proposals, never
-activates a callback plan or interprets compiler acceptance as physical success.
+plans must retain the project scope. The service returns proposals and computed
+repair previews, never activates a callback plan or interprets compiler acceptance
+as physical success.
 
 #5 supplies `forma_compiler.validate_plan`. The supported #8 template adapter
 constructs `CompilerInput` plus measured `StandParameters`, then calls
@@ -53,6 +55,37 @@ The adapter does not invent kerf, tolerances, process evidence or measurements
 to make that callback available. Callbacks must be fast, read-only and
 deterministic; Python callbacks are not forcibly preempted, but an expired job
 rejects their output and never makes a further model call.
+
+`forma_api.compiler_adapter.build_validator(...)` now supplies this callback.
+Bind authorized `process`, `stand_parameters`, `profile_evidence`, `base_plan`,
+`events`, `evidence`, `material_transactions`, `historical_plans` and explicit
+`allow_synthetic` at construction. Design also requires a trusted `created_at`;
+the snapshot has no timestamp and the adapter never reads a clock to invent one.
+Cut geometry uses the supplied process's recorded minimum kerf and edge margin.
+Missing trusted inputs return distinct `needs_measurement` feedback.
+
+Design candidates run through `compile_stand`. Repair patches run through
+`simulate_patch` with `stand_continuation_blockers`; exact blockers are preserved.
+Repair scope, exact base plan, profiles and history must agree with the bound
+server state. Profile evidence must agree with history and pass the same
+provenance checks as rendering. Synthetic profile evidence requires explicit
+opt-in even when the cutting process is otherwise verified. Design parameters
+and creation time do not gate repairs, which use the bound plan's geometry.
+
+The factory is available for callers; no authenticated route is added here.
+
+For repairs the adapter returns the original `SimulationResult`. Accepted repair
+feedback without that typed result is rejected with `compiler_failed`. The
+service strictly revalidates patch/base identity and the new plan's project,
+parent and version scope. `ProposalOutcome.repair_results` contains one feasible
+result per accepted patch, ordered by `rank_feasible`; proposal candidates have
+the same order. Results come from the accepting callback invocation and are
+never re-simulated by the service. Blocked candidates remain in reviews only.
+Partial cost terms stay partial, with unmeasured estimates null.
+
+Repair diffs are outside `SafeProposalTrace` and outside feedback replay. This
+is an API-local outcome field; exposing it through OpenAPI or web requires a
+separate consumer contract handoff. No generated contract changes are implied.
 
 Repair target mapping: resize/replace part -> current part ID; replace profile ->
 current joint ID; change angle -> current version ID. Replacement stock/profile
@@ -103,6 +136,8 @@ uv run --locked python -m forma_domain.generate --check
 ```
 
 Checks actually run: proposal-service tests 40 passed; full offline suite 89 passed; Ruff check passed; Ruff format --check reported 52 files formatted; generated contracts current; git diff --check clean. Python 3.12.6, Pydantic 2.14.2, pytest 9.2.0, Ruff 0.17.3. No root package/lock
-or generated files changed. Follow up with #5/#10 callbacks and authenticated #6
-routes. Live Meta key/account/region/privacy/quota and consented team-photo
+or generated files changed. Those counts describe the original service slice.
+The #40 adapter adds real compiler/replanner service integration tests; current
+checks are recorded in its PR. Authenticated #6 routes remain follow-up work.
+Live Meta key/account/region/privacy/quota and consented team-photo
 blockers from #4 still apply. No fixture pass establishes G0/G2/G3.

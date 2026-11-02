@@ -12,8 +12,6 @@ Incompatible completed cuts require replacement stock or rejection. Consumed
 material never returns without a real salvage transaction. Changed dependencies
 invalidate downstream checks; replacements remain incomplete.
 
-First deliverable: minimal Oct 31 repair simulation, followed by Nov 1 coverage
-for irreversible loss, dependent rechecks and preserved unaffected work.
 See [revision architecture](../../docs/architecture.md).
 
 ## Interface and trusted inputs
@@ -48,13 +46,26 @@ consumers reference the replacement. The whole replacement parent region is
 consumed; unallocated area is waste, never an invented offcut. Retired parts and
 cut operations are reported as loss, not useful preservation.
 
-Changed completed joins, folds or other physical modifications require an explicit
-undo continuation and currently block with the affected operation IDs. The engine
+Changed completed work requires an explicit undo continuation. The canonical
+attached-brace tape case is supported within the documented
+[#44 bounds](../../docs/handoffs/issue-44-brace-tape-undo.md); other completed joins,
+folds and physical modifications block with the affected operation IDs. The engine
 does not invent inverses, connector rerouting, purchases or replacement stock.
 Changing joint strategy and changing stand angle require family regeneration and
-currently return `unsupported`. A known `triangular-tape-stand-v1` plan requires
-the injected geometry/manual continuation validator before it can be feasible;
-resource checks alone cannot validate a new support triangle or printable manual.
+currently return `unsupported`. Pass `forma_renderer.stand_continuation_blockers`
+as `family_validator` for `triangular-tape-stand-v1` plans. It supports replacement
+of a cut, unjoined panel with the same dimensions from measured remaining stock.
+The retired panel and original cut remain historical records. A grouped cut stays
+preserved while any of its other outputs remain useful; the retired panel's area
+is reported separately. Future access checks reference the replacement and depend
+on its new cut. Resource checks alone cannot validate the support triangle.
+
+For the original uncut stand, `resize_part` can extend `stand-base` depth while
+keeping its width fixed. The replanner recomputes brace length and the original
+three-panel cut layout using the recorded margin and kerf. Confirmed footprint
+and stock bounds still gate the result. Shrinking, other panel targets, rotated
+or replacement-bearing layouts, declared offcuts and completed cuts remain
+unsupported. The family validator checks the result without mutating it.
 
 A `family_validator` result is fully materialized and each item validated as a `Blocker`
 before any of it is added. A validator that raises an ordinary `Exception` (including during
@@ -83,6 +94,16 @@ it cannot resurrect a consumed parent. Duplicate accounting and duplicate region
 block. After whole-plan geometry/profile checks, only unfinished operations replay
 against the actual remaining ledger, so lost stock cannot be spent again.
 
+Connector `waste`/`damage` transactions use confirmed millimetres without source
+or output regions. A known, confirmed initial length and a scoped user-confirmed
+event with current user evidence are required. The event must name the connector
+operation, and its version must match the transaction. Loss is subtracted once;
+the same event/stock pair cannot be charged again under another transaction ID
+or loss kind. Distinct confirmed events may record successive losses. Over-loss
+is rejected without clamping. Completed-use transactions remain verification
+records and are not subtracted a second time. Connector salvage/restoration is
+unsupported; future operations must fit the reconciled remainder.
+
 The result explicitly names preserved, lost, required-undo, redo, newly required
 and incomplete operations; changed/lost parts; lost regions; additional source
 usage; invalidated checkpoints and evidence; and outstanding physical checks.
@@ -105,3 +126,38 @@ After the parent integrates package/test discovery, run
 `python -m ruff check packages/replanner` in the repository environment.
 Before packaging integration, add `packages/replanner/src`,
 `packages/compiler/src` and `packages/domain/src` to `PYTHONPATH`.
+
+
+## Attached-brace tape continuation
+
+For the original canonical tape stand after six, seven or eight operations,
+`replace_part` can replace the attached brace from a confirmed
+remaining measured sheet region. A pure helper emits two new incomplete
+`peel_tape` operations for rear/apex, then replacement cut/inspection and new
+reattachment joints. The front hinge and original completed definitions remain
+historical; peeled joins are lost work and their tape is never refunded.
+
+`required_undo_operation_ids` names the new peel operations. New work carries
+explicit device-removal, support, access and undamaged-partner human checks;
+scoped access and remaining-stock limits still gate the proposal. Dependent
+checks/evidence invalidate, and each invalidated checkpoint has an incomplete
+recheck in the new plan. The preserved cut inspection keeps its checkpoint for
+the unchanged support/base; evidence naming the retired brace still invalidates
+and the replacement brace gets its own inspection. No events, transactions,
+salvage or physical passes are created. The synthetic positive case has known weighted cost8 and consumes
+160mm of new tape after240mm historic consumption. These are fixture values,
+not measured user evidence.
+
+The family validator and renderer must accept the staged graph. Exact original
+fold invariants still apply. Base/support replacements, target folds and
+irreversible joins remain blocked. Completed fit/function operations and their
+checkpoints remain unchanged; new final checks receive new IDs and remain
+incomplete. The resulting layouts have 14, 15 or 16 operations, respectively.
+Replaying one or both confirmed peels retains original completion history and
+never refunds tape. Historical checkpoint references are checked before candidate
+construction; malformed mappings return blockers rather than exceptions.
+
+An unfinished final operation can be renamed only when persisted events, evidence
+and transactions do not reference its old operation/checkpoint identity. Such
+references block the proposal before mutation; history is never stripped to make
+a candidate pass. This also protects the six-operation path.

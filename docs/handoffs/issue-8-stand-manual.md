@@ -91,3 +91,45 @@ check current; git diff --check exit0. Node/web source unchanged; full npm check
 will run on the combined publication branch. No live model or physical tests.
 
 Parent integration: full npm run check passed with62tests before independent-review fixes. Independent review then found unused sheet waste misreporting and malformed model_copy handling; resource replay BOM and runtime revalidation fixes pass65totaltests, including21renderer tests. Eight rasterized panels were visually inspected; cut/joint label collisions were corrected. No physical or live-provider check ran.
+
+## Stable manual comparison (#48)
+
+Renderer-local `Panel.step_key` is an optional final dataclass field; old six-argument
+construction remains valid. Rendered stand core slots use stable ordinal/type keys,
+while supplemental cuts use operation keys. This metadata is excluded from SVG and
+hash inputs. `diff_manuals` aligns keyed panels and compares full hashes. Generic
+all-unkeyed manuals keep positional behavior; ambiguous metadata raises `ValueError`.
+Unchanged/changed/added indices refer to the new manual, removed indices to the old.
+
+Real replacement tests assert new indices unchanged1, changed2–8, added0, removednone,
+including byte-identical retained cut panels and all three replacement roles.
+No-op requests remain blocked by simulation even though identical visible manuals
+compare unchanged. Angle history cannot be inferred from a standalone valid plan;
+unsupported angle patches are rejected by the replanner. No domain/generated
+contract or route changes; consumers should review this renderer metadata/index
+contract before exposing it in API/UI. Cache reuse is not evidence validity.
+
+## Reconciled connector forecasts (#8/#10)
+
+`ConnectorContext` is a renderer-local typed wrapper around existing Stock records:
+project_id, plan_version_id, observed_version_id, remaining_connectors, and
+completed_operation_ids are required. Pass it as render_manual(connector_context=...).
+The target version must match; the observation is scoped to current/parent version.
+Source identities and completed IDs must be known, unique and dependency-closed.
+Used current lengths must be confirmed and usable, fit the baseline after completed
+use, and cover future use. Unknown unused sources stay unknown; no length is clamped.
+
+The authorized server caller supplies a reconciled physical snapshot and actual
+historically completed IDs still defined in the plan, including spent work that
+is no longer useful. Never include proposed/redo operations as completed. Rendering
+checks shape/scope/capacity, not authentication, provenance or ancestry replay;
+those remain the validated history service's responsibility. It creates no events,
+transactions, salvage or physical passes.
+
+Manual.resource_basis is plan by default and mixed with context. Mixed means old
+historical panels and sheet balances remain nominal while future tape forecasts
+use the current connector balance without charging completed use again. BOM rows
+identify current, future-use and expected remaining lengths. No-context output,
+including all sixteen original SVG/hash goldens, is unchanged. This optional
+renderer input/metadata needs consumer review before API/UI exposure; no shared
+domain/generated schema or route is changed. It does not advertise tie manuals.

@@ -5,6 +5,7 @@ import time
 from dataclasses import asdict
 from typing import Callable, Literal
 
+from forma_replanner import SimulationResult, rank_feasible
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from forma_api.model_gateway import (
@@ -200,12 +201,13 @@ class ProposalOutcome(Record):
     reviews: tuple[CandidateReview, ...] = ()
     questions: tuple[Text, ...] = ()
     error_code: str | None = None
+    repair_results: tuple[SimulationResult, ...] = ()
     trace: SafeProposalTrace
 
 
 Validator = Callable[
     [DesignCandidate | RepairPatch, ProposalSnapshot],
-    CompilerResult | CandidateFeedback,
+    CompilerResult | CandidateFeedback | SimulationResult,
 ]
 
 
@@ -245,7 +247,7 @@ class ProposalService:
         reviews: list[CandidateReview] = []
         executions = 0
 
-        def finish(status, proposal=None, questions=(), error=None):
+        def finish(status, proposal=None, questions=(), error=None, repair_results=()):
             transport_codes = {
                 "ok",
                 "timeout",
@@ -273,6 +275,7 @@ class ProposalService:
                 reviews=tuple(reviews),
                 questions=questions,
                 error_code=error,
+                repair_results=repair_results,
                 trace=SafeProposalTrace(
                     task=task,
                     elapsed_ms=round((time.monotonic() - start) * 1000),
@@ -412,6 +415,7 @@ class ProposalService:
                 if attempted + len(proposal.candidates) > cap:
                     raise GatewayError("candidate_limit")
                 accepted = []
+                feasible_results: list[SimulationResult] = []
                 for candidate in proposal.candidates:
                     budget.check()
                     if candidate.id in seen_ids:
@@ -426,7 +430,43 @@ class ProposalService:
                     else:
                         try:
                             checked = self.validator(candidate, snapshot)
-                            if isinstance(checked, CompilerResult):
+                            if isinstance(checked, SimulationResult):
+                                if not isinstance(candidate, RepairPatch):
+                                    raise ValueError(
+                                        "simulation result only valid for repair"
+                                    )
+                                checked = SimulationResult.model_validate_json(
+                                    checked.model_dump_json(), strict=True
+                                )
+                                if (
+                                    checked.patch_id != candidate.id
+                                    or checked.base_version_id
+                                    != candidate.base_version_id
+                                    or candidate.base_version_id != snapshot.version_id
+                                ):
+                                    raise ValueError("simulation result scope mismatch")
+                                if checked.status == "feasible":
+                                    if (
+                                        checked.plan is None
+                                        or checked.plan.project_id
+                                        != snapshot.project_id
+                                        or checked.plan.parent_version_id
+                                        != snapshot.version_id
+                                        or checked.plan.version_id
+                                        == snapshot.version_id
+                                    ):
+                                        raise ValueError(
+                                            "simulation plan scope mismatch"
+                                        )
+                                    feedback = CandidateFeedback(
+                                        status="accepted", blockers=()
+                                    )
+                                    feasible_results.append(checked)
+                                else:
+                                    feedback = CandidateFeedback(
+                                        status="blocked", blockers=checked.blockers
+                                    )
+                            elif isinstance(checked, CompilerResult):
                                 checked = CompilerResult.model_validate_json(
                                     checked.model_dump_json(), strict=True
                                 )
@@ -438,10 +478,24 @@ class ProposalService:
                                 feedback = CandidateFeedback(
                                     status=checked.status, blockers=checked.blockers
                                 )
+                                if (
+                                    isinstance(candidate, RepairPatch)
+                                    and feedback.status == "accepted"
+                                ):
+                                    raise ValueError(
+                                        "accepted repair requires simulation result"
+                                    )
                             elif isinstance(checked, CandidateFeedback):
                                 feedback = CandidateFeedback.model_validate_json(
                                     checked.model_dump_json(), strict=True
                                 )
+                                if (
+                                    isinstance(candidate, RepairPatch)
+                                    and feedback.status == "accepted"
+                                ):
+                                    raise ValueError(
+                                        "accepted repair requires simulation result"
+                                    )
                             else:
                                 raise ValueError(
                                     "compiler callback must return typed feedback"
@@ -456,6 +510,22 @@ class ProposalService:
                         accepted.append(candidate)
                 if accepted:
                     # Never return rejected candidates as the usable proposal.
+                    if task == "repair":
+                        try:
+                            ranked = rank_feasible(tuple(feasible_results))
+                            by_id = {candidate.id: candidate for candidate in accepted}
+                            ordered = tuple(by_id[result.patch_id] for result in ranked)
+                        except Exception:
+                            raise GatewayError("compiler_failed") from None
+                        filtered = schema(
+                            candidates=ordered, questions=proposal.questions
+                        )
+                        return finish(
+                            "proposed",
+                            filtered,
+                            proposal.questions,
+                            repair_results=ranked,
+                        )
                     filtered = schema(
                         candidates=tuple(accepted), questions=proposal.questions
                     )

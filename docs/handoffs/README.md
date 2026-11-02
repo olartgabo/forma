@@ -21,7 +21,7 @@ remaining blockers clear so an agent can resume without repeating experiments.
 | #6    | [Persistence](issue-6-persistence.md), [private media](issue-6-private-media.md), [initial plans](issue-6-plan-activation.md) | Private project/inventory/photo and immutable plan/manual storage with initial approval implemented; user-report/evidence/material history in #11; live producer, hosted identity, consented transfer and repair activation pending |
 | #7    | [Local intake](issue-7-intake.md), [requirements](issue-7-requirements.md) | Goal/project reopening, private gallery, measured/unknown inventory, tools and device constraints implemented; segmentation and provider interpretation pending |
 | #8    | [Stand and manual](issue-8-stand-manual.md)        | Narrow stand compiler and deterministic SVG implemented; physical acceptance pending                                                                   |
-| #9    | [Bounded proposals](issue-9-bounded-proposals.md)  | Scoped proposal service implemented; trusted runtime callbacks and live evidence pending                                                               |
+| #9    | [Bounded proposals](issue-9-bounded-proposals.md)  | Trusted offline callbacks and ranked repair previews implemented; authenticated caller integration and live evidence pending                            |
 | #10   | [Repair simulation](issue-10-repair-simulation.md) | Offline simulation implemented; listed PR #30/#32 dependencies have now merged; see [current interface and limits](../../packages/replanner/README.md) |
 | #11   | [Physical progress](issue-11-physical-progress.md) | Explicit active-plan reports, checks, photo evidence and material receipts implemented; failed checks pause reports pending diagnosis/revision; expected stock needs physical reconciliation |
 | #14   | [Proof summary](issue-14-proof-summary.md) | Consistent initial-plan/report snapshots, provenance and photo-excluded text/JSON exports implemented; repair/invalidation and physical verification remain pending |
@@ -29,3 +29,9 @@ remaining blockers clear so an agent can resume without repeating experiments.
 No handoff establishes a real provider result or physical pass through fixture
 checks. User-confirmed measurements, observed build/recovery outcomes and
 authenticated end-to-end integration remain separate acceptance evidence.
+
+The [stand replacement continuation](issue-39-stand-continuation.md) documents
+the shared family validator, replacement SVGs, bounded original uncut-base
+extension and unsupported resize variants for #39. The
+[attached-brace recovery](issue-44-brace-tape-undo.md) handoff covers explicit tape
+undo, preserved build history and recovery manuals for #44.

@@ -231,3 +231,47 @@ Coverage is limited to initial plans and user reports. Repair diffs, evidence
 invalidation/freshness and measured waste/salvage totals remain unavailable.
 Pending downloads are invalidated by known report changes, including while the
 panel is closed. See the [handoff](handoffs/issue-14-proof-summary.md).
+## D020: Stand replacement roles and stable core manual steps, October 31, 2026
+
+Stand continuation validates active panel roles through joint topology while
+retaining retired parts and their original cuts as history. The renderer and
+replanner callback share the same family checks. Supplemental replacement cuts
+use separate headings; the original eight core slots keep stable numbering so
+unchanged visible panels retain their hashes. Hashes still cover the entire SVG.
+Grouped cuts are preserved while their other outputs remain useful; retired-part
+material loss is explicit. This changes no schema, physical claim or approval flow.
+
+
+## D021: Brace-only explicit tape undo, November 1, 2026
+
+Issue44 adds an offline continuation for the canonical attached brace after the
+original six-operation construction prefix. Rear/apex peels are new incomplete
+operations; old definitions/consumption remain immutable, front hinge is kept,
+and remaining measured stock funds replacement. The manual validates historical
+and active stages separately. Exact fold invariants apply to both paths.
+
+Completed final fit/function checks block before construction of this candidate;
+the current slice does not rewrite or drop their completion history. Base/support
+replacement and generic physical inverses remain unsupported. Synthetic
+compile/simulate/rank/render regression evidence does not establish a bench pass.
+
+
+## D022: Completed-build brace history, November 1, 2026
+
+The attached-brace continuation also supports all eight original operations
+completed. It retains all original operation/checkpoint definitions and IDs and
+appends explicit recovery work and new fit/function checks with unique state and
+checkpoint IDs. Old dependent evidence/checks invalidate; they are not treated as
+useful current verification. No event/evidence/transaction/salvage is created.
+
+This supersedes the initial slice's completed-final-check gate. Six, seven and
+eight completed original operations use 14-, 15- and 16-step layouts; base/support
+changes remain blocked. Validation and rendering share a narrow stage resolver
+instead of duplicating the validator. Original checkpoint
+references must match their operations before construction; malformed history
+returns blockers. Synthetic replay/manual evidence is not a physical pass.
+
+Unfinished final operations can receive replacement identities only when no
+persisted event, evidence or transaction references the retired operation or its
+checkpoint. Otherwise the proposal blocks before mutation. The same rule applies
+to the original six-operation path; saved history is never silently dropped.
