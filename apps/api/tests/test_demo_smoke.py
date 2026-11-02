@@ -1977,6 +1977,8 @@ def test_live_repair_diagnosis_failure_no_repair_call():
     )
     assert code == 1
     assert report["diagnosis"] == {"status": "failed"}
+    # Repair was requested; it must not be reported as not_requested.
+    assert report["repair"] == {"status": "failed"}
     assert report["errors"] == [
         {"check": "diagnosis", "code": "provider_not_configured", "http_status": 503}
     ]
