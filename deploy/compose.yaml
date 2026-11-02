@@ -1,0 +1,39 @@
+name: forma
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/api.Dockerfile
+    environment:
+      FORMA_API_TOKENS: ${FORMA_API_TOKENS:?Set owner bearer tokens in deploy/.env}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+    volumes:
+      - forma-data:/data
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.10.2
+    environment:
+      FORMA_HOST: ${FORMA_HOST:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - web
+    restart: unless-stopped
+
+volumes:
+  forma-data:
+  caddy-data:
