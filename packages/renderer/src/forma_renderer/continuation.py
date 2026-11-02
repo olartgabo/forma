@@ -105,7 +105,7 @@ class _TapeStage:
         return self.cut + 2
 
 
-def _resolve_tape_stage(operations):
+def resolve_tape_stage(operations):
     """Map historical/recovery/active-final roles for exact tape layouts."""
     types = tuple(o.type for o in operations)
     ids = tuple(o.id for o in operations)
@@ -269,7 +269,7 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 (brace_part.id,),
             )
 
-    stage = _resolve_tape_stage(operations)
+    stage = resolve_tape_stage(operations)
     if stage is None:
         add(
             "unsupported",
@@ -278,12 +278,6 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
             tuple(o.id for o in operations),
         )
         return tuple(blockers)
-    if tuple(o.id for o in operations[:6]) != _HISTORICAL_OP_IDS:
-        add(
-            "unsupported",
-            "Tape-undo continuation must keep the six historical stand operations.",
-            tuple(o.id for o in operations[:6]),
-        )
     core_cut, inspect_cuts, fold_op = operations[0], operations[1], operations[2]
     if tuple(core_cut.args.child_part_ids) != _ORIGINALS:
         add(
@@ -620,6 +614,32 @@ def stand_continuation_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
     if blockers:
         return tuple(blockers)
 
+    # A cut, inactive part shaped like a replaced role is an earlier
+    # replacement that was itself replaced; chained replacement is not modelled.
+    retired_shapes = {
+        (parts[r].geometry.width, parts[r].geometry.height) for r in retired_ids
+    }
+    retired_replacements = tuple(
+        sorted(
+            child
+            for o in plan.operations
+            if o.type == "cut_rect" and tuple(o.args.child_part_ids) != _ORIGINALS
+            for child in o.args.child_part_ids
+            if child in parts
+            and child not in _ORIGINALS
+            and child not in active_ids.values()
+            and (parts[child].geometry.width, parts[child].geometry.height)
+            in retired_shapes
+        )
+    )
+    if retired_replacements:
+        add(
+            "unsupported",
+            "A replacement panel cannot itself be replaced yet.",
+            retired_replacements,
+        )
+        return tuple(blockers)
+
     # --- Geometry of the active roles. ---
     feature = None
     support = lip = None
@@ -840,13 +860,6 @@ def stand_continuation_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 f"Plan part {part_id} is not produced by any stand cut.",
                 (part_id,),
             )
-    for child, op_id in produced_by.items():
-        if child not in parts:
-            add(
-                "invalid_reference",
-                f"Cut {op_id} produces part {child} missing from plan parts.",
-                (op_id, child),
-            )
     extra_parts = set(parts) - set(_ORIGINALS)
     for part_id in sorted(extra_parts):
         if part_id not in active_ids.values():
@@ -983,4 +996,4 @@ def stand_continuation_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
     return tuple(blockers)
 
 
-__all__ = ["stand_continuation_blockers"]
+__all__ = ["resolve_tape_stage", "stand_continuation_blockers"]

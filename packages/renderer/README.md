@@ -20,9 +20,12 @@ incomplete inputs yield blockers and no panels. No provider, HTTP or persistence
 callbacks. It shares the manual's geometry, active-role topology, operation and
 checkpoint checks. A cut, unjoined panel may be replaced with an equivalent panel
 from measured remaining stock. Retired parts and cuts remain in the plan and BOM;
-assembly views use active parts and feature IDs. Supplemental cuts have separate
+the BOM lists a retired part with quantity 0 and the ID that replaced it.
+Assembly views use active parts and feature IDs. Supplemental cuts have separate
 headings while the eight core step slots stay stable, preserving unchanged panels.
-All hashes still cover the complete visible SVG. The replanner supports extending
+A replacement panel cannot itself be replaced yet: a plan that retires an earlier
+replacement is blocked as `unsupported`. All hashes still cover the complete
+visible SVG. The replanner supports extending
 the original uncut base depth with regenerated brace/layout; other stand resize
 variants remain blocked. No physical verification is implied.
 

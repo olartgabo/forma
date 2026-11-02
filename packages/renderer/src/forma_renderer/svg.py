@@ -10,7 +10,7 @@ from forma_compiler import CutProcess, validate_plan
 
 from forma_domain import models as m
 
-from .continuation import _resolve_tape_stage, stand_continuation_blockers
+from .continuation import resolve_tape_stage, stand_continuation_blockers
 from .resources import ConnectorContext, validated_connectors
 from .template import profile_evidence_valid
 
@@ -476,22 +476,11 @@ def render_manual(
         else historical_ids
     )
     core_child_ids = ("stand-support", "stand-base", "stand-brace")
-    stage = _resolve_tape_stage(plan.operations)
-    first_detach = next(
-        (i for i, o in enumerate(plan.operations) if o.type == "detach"), None
-    )
+    stage = resolve_tape_stage(plan.operations)
     continuation_indexes: set[int] = set()
     if stage is not None:
         end = len(plan.operations) if stage.has_new_finals else stage.fit
         continuation_indexes = set(range(stage.peel, end))
-    elif first_detach is not None:
-        reattach_indexes = [
-            i
-            for i, o in enumerate(plan.operations)
-            if i > first_detach and o.type == "tape_joint"
-        ]
-        if reattach_indexes:
-            continuation_indexes = set(range(first_detach, max(reattach_indexes) + 1))
     core_index_by_plan_index: dict[int, int] = {}
     supplemental_indexes: set[int] = set()
     for plan_index, candidate in enumerate(plan.operations):
@@ -788,13 +777,24 @@ def render_manual(
                     future_used_by_stock.get(operation.args.stock_id, 0.0)
                     + operation.args.length_mm
                 )
+    # Retired parts stay listed for history but are not needed for the build.
+    replaced_by = {
+        old: new
+        for old, new in zip(core_child_ids, active_ids, strict=True)
+        if old != new
+    }
     bill = tuple(
         BillItem(
             p.id,
             p.source_stock_id,
-            1,
+            0 if p.id in replaced_by else 1,
             "part",
-            f"{number(p.geometry.width)} x {number(p.geometry.height)} mm",
+            f"{number(p.geometry.width)} x {number(p.geometry.height)} mm"
+            + (
+                f"; retired, replaced by {replaced_by[p.id]}"
+                if p.id in replaced_by
+                else ""
+            ),
         )
         for p in plan.parts
     )

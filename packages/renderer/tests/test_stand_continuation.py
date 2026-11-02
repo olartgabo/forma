@@ -399,7 +399,15 @@ def test_replacement_with_unrelated_part_and_cut_is_blocked():
         for o in plan.operations
         if o.type == "cut_rect" and tuple(o.args.child_part_ids) == (new_id,)
     )
-    unrelated_part = brace.model_copy(update={"id": "unrelated-part"})
+    # A brace-shaped extra part would read as a retired replacement brace.
+    unrelated_part = brace.model_copy(
+        update={
+            "id": "unrelated-part",
+            "geometry": brace.geometry.model_copy(
+                update={"height": brace.geometry.height + 5}
+            ),
+        }
+    )
     unrelated_cut = cut.model_copy(
         update={
             "id": "unrelated-cut",
@@ -413,6 +421,89 @@ def test_replacement_with_unrelated_part_and_cut_is_blocked():
         }
     )
     _assert_blocker(changed, "invalid_reference", "not an active replacement part")
+
+
+def test_replacing_a_completed_replacement_brace_is_unsupported():
+    base, _snapshot, _before, result = _replacement()
+    assert result.status == "feasible", result.blockers
+    first_id = _new_brace_id(base, result)
+    plan = result.plan
+    first_cut = next(
+        o
+        for o in plan.operations
+        if o.type == "cut_rect" and tuple(o.args.child_part_ids) == (first_id,)
+    )
+    spare = next(s for s in plan.stocks if s.id == "spare")
+    spare2 = spare.model_copy(
+        update={
+            "id": "spare2",
+            "usable_regions": (
+                m.Region(id="spare2-region", geometry=spare.usable_regions[0].geometry),
+            ),
+        }
+    )
+    plan = plan.model_copy(update={"stocks": plan.stocks + (spare2,)})
+    events = tuple(
+        m.PhysicalEvent(
+            id=f"synthetic-confirmed-{op_id}",
+            project_id=plan.project_id,
+            version_id=version_id,
+            operation_id=op_id,
+            kind="operation_confirmed",
+            evidence_ids=(),
+            recorded_at=plan.created_at,
+            actor="user",
+            observation=(
+                "SYNTHETIC user-confirmed cut for a software fixture; "
+                "no physical build was performed."
+            ),
+            verification_state="user_confirmed",
+        )
+        for version_id, op_id in (
+            (base.version_id, "stand-cut-panels"),
+            (plan.version_id, first_cut.id),
+        )
+    )
+    snapshot = m.ReplannerInput(
+        base_plan=plan,
+        events=events,
+        evidence=(),
+        material_transactions=(),
+        remaining_stock=tuple(
+            s.model_copy(update={"usable_regions": ()})
+            if s.kind == "sheet" and s.id != "spare2"
+            else s
+            for s in plan.stocks
+        ),
+        patch=m.RepairPatch(
+            id="replace-replacement-brace",
+            base_version_id=plan.version_id,
+            kind="replace_part",
+            target_id=first_id,
+            replacement_stock_id="spare2",
+            replacement_profile_id=None,
+            width_mm=None,
+            height_mm=None,
+            angle_deg=None,
+            rationale="SYNTHETIC replacement of the replacement brace.",
+        ),
+    )
+    _plan, _parameters, process = build()
+    second = simulate_patch(
+        snapshot,
+        process=process,
+        allow_synthetic=True,
+        historical_plans=(base,),
+        family_validator=stand_continuation_blockers,
+    )
+    assert second.status == "blocked"
+    assert second.blockers == (
+        m.Blocker(
+            code="unsupported",
+            message="A replacement panel cannot itself be replaced yet.",
+            target_ids=(first_id,),
+        ),
+    )
 
 
 def test_replacement_with_wrong_joint_topology_is_blocked():
@@ -525,8 +616,14 @@ def test_render_replacement_plan():
         )
 
     # All historical parts remain in the bill of materials.
-    bill_ids = {item.id for item in rendered.bill_of_materials}
-    assert {"stand-support", "stand-base", "stand-brace", new_id} <= bill_ids
+    bill = {item.id: item for item in rendered.bill_of_materials}
+    assert {"stand-support", "stand-base", "stand-brace", new_id} <= set(bill)
+    # The retired brace is history, not a part still needed for the build.
+    assert bill["stand-brace"].quantity == 0
+    assert bill["stand-brace"].description.endswith(f"; retired, replaced by {new_id}")
+    for active_id in ("stand-support", "stand-base", new_id):
+        assert bill[active_id].quantity == 1
+        assert "retired" not in bill[active_id].description
 
 
 @pytest.mark.parametrize("target", ["stand-support", "stand-base", "stand-brace"])
