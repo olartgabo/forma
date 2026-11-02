@@ -34,6 +34,7 @@ import {
   emptyRequirements,
   requirementsError,
 } from "../lib/build-requirements";
+import type { RepairHandoff } from "../lib/repair-handoff";
 
 type Row = { key: string; stock: Stock; saved: boolean };
 type MeasurementField =
@@ -254,6 +255,10 @@ function ProjectWorkbench({
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
   const [planPending, setPlanPending] = useState(false);
+  const [pendingRepair, setPendingRepair] = useState<{
+    handoff: RepairHandoff;
+    targetId: string;
+  } | null>(null);
   const [proofRevision, setProofRevision] = useState(0);
   const physicalProgressChanged = useCallback(
     () => setProofRevision((value) => value + 1),
@@ -289,6 +294,22 @@ function ProjectWorkbench({
       lifetime.abort();
     };
   }, []);
+
+  // A diagnosis handoff is only valid for the project, active version and
+  // inventory revision it was created against.
+  useEffect(() => {
+    setPendingRepair(null);
+  }, [project?.id, project?.active_version_id, project?.revision_id]);
+
+  useEffect(() => {
+    if (!pendingRepair) return;
+    const frame = requestAnimationFrame(() => {
+      const region = document.getElementById("repair-review");
+      region?.scrollIntoView({ block: "start" });
+      region?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pendingRepair]);
 
   useEffect(() => {
     if (!project) return;
@@ -1103,6 +1124,9 @@ function ProjectWorkbench({
             photos={photos}
             inventoryStale={stale || dirty}
             disabled={locked}
+            onRepairHandoff={(handoff, targetId) =>
+              setPendingRepair({ handoff, targetId })
+            }
           />
           <DesignReadinessPanel
             token={token}
@@ -1124,6 +1148,7 @@ function ProjectWorkbench({
             onReload={() => void openProject(project.id)}
             photos={photos}
             onProgressChange={physicalProgressChanged}
+            repairHandoff={pendingRepair}
           />
           <ProofWorkbench
             key={`proof-${project.id}`}

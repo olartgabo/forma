@@ -8,6 +8,7 @@ import {
 } from "../lib/api";
 import AdaptWorkbench from "./adapt-workbench";
 import { operationTitles } from "../lib/operation-titles";
+import type { RepairHandoff } from "../lib/repair-handoff";
 import Diagram from "./manual-diagram";
 import MuseRequestDetails from "./muse-request-details";
 import PhysicalProgress from "./physical-progress";
@@ -37,6 +38,7 @@ export default function PlanWorkbench({
   onReload,
   photos,
   onProgressChange,
+  repairHandoff,
 }: {
   token: string;
   project: Project;
@@ -46,6 +48,7 @@ export default function PlanWorkbench({
   onReload: () => void;
   photos: readonly Media[];
   onProgressChange: () => void;
+  repairHandoff?: { handoff: RepairHandoff; targetId: string } | null;
 }) {
   const [plans, setPlans] = useState<readonly PlanSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -710,6 +713,8 @@ export default function PlanWorkbench({
               disabled={approvalDisabled || pending !== null || progressPending}
               onApproved={onReload}
               onLockChange={onLockChange}
+              handoff={repairHandoff?.handoff ?? null}
+              handoffTargetId={repairHandoff?.targetId}
             />
           )}
           <details className="manual-materials">
