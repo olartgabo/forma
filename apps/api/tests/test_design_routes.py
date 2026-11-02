@@ -10,7 +10,11 @@ from fastapi.testclient import TestClient
 from test_plans import AUTH, OTHER, TOKENS, prepared
 
 from forma_api import design_runtime
-from forma_api.design_context import DesignContext, StaticDesignContextResolver
+from forma_api.design_context import (
+    DesignContext,
+    FileDesignContextResolver,
+    StaticDesignContextResolver,
+)
 from forma_api.main import create_app
 from forma_api.model_gateway import GatewayError, MetaGateway
 from forma_api.plans import CompilePreview, PlanService
@@ -115,6 +119,10 @@ def body(project, **overrides):
     return value
 
 
+def readiness(client, project, auth=AUTH):
+    return client.get(f"/api/projects/{project['id']}/designs/readiness", headers=auth)
+
+
 def generate(client, project, payload=None, auth=AUTH):
     return client.post(
         f"/api/projects/{project['id']}/designs/generate",
@@ -184,6 +192,92 @@ def test_success_compiles_saved_preview_replay_and_changed_context(setup):
     conflict = generate(client, project)
     assert conflict.status_code == 409
     assert len(fake.calls) == 2
+
+
+def test_readiness_complete_missing_no_provider_and_immutable(setup):
+    client, project, candidate, context, monkeypatch, tmp_path = setup
+    fake = success_fake(project, candidate)
+    counter = install(monkeypatch, fake, context_for(project, context))
+    spec = client.get("/openapi.json")
+    assert "/api/projects/{project_id}/designs/readiness" in spec.json()["paths"]
+    before = client.get(f"/api/projects/{project['id']}", headers=AUTH).json()
+    with sqlite3.connect(tmp_path / "projects.sqlite3") as connection:
+        counts_before = {
+            table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("projects", "plans", "requests")
+        }
+    response = readiness(client, project)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["project_id"] == project["id"]
+    assert result["inventory_revision_id"] == project["revision_id"]
+    assert result["inventory_confirmed"] is True
+    # Checklist completeness only; no compiled version is claimed or created.
+    assert result["status"] == "inputs_complete"
+    assert result["missing_inputs"] == []
+    assert result["blockers"] == []
+    assert "version" not in result and "plan" not in result
+    # Missing server context: measured/calibrated facts stay missing.
+    install(monkeypatch, fake, None)
+    missing = readiness(client, project)
+    assert missing.status_code == 200, missing.text
+    missing_result = missing.json()
+    assert missing_result["status"] == "needs_input"
+    assert missing_result["blockers"][0]["code"] == "missing_measurement"
+    assert any("cutting process" in item for item in missing_result["missing_inputs"])
+    assert any("joint profiles" in item for item in missing_result["missing_inputs"])
+    assert counter["factory"] == 0 and fake.calls == []
+    assert client.get(f"/api/projects/{project['id']}", headers=AUTH).json() == before
+    assert (
+        client.get(f"/api/projects/{project['id']}/plans", headers=AUTH).json()["plans"]
+        == []
+    )
+    with sqlite3.connect(tmp_path / "projects.sqlite3") as connection:
+        counts_after = {
+            table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("projects", "plans", "requests")
+        }
+    assert counts_after == counts_before
+
+
+def test_readiness_owner_isolation(setup):
+    client, project, candidate, context, monkeypatch, _ = setup
+    fake = success_fake(project, candidate)
+    counter = install(monkeypatch, fake, context_for(project, context))
+    assert (
+        client.get(f"/api/projects/{project['id']}/designs/readiness").status_code
+        == 401
+    )
+    other = readiness(client, project, auth=OTHER)
+    assert other.status_code == 404
+    assert other.json()["code"] == "not_found"
+    missing = client.get(
+        "/api/projects/project-missing/designs/readiness", headers=AUTH
+    )
+    assert missing.status_code == 404
+    assert counter["factory"] == 0 and fake.calls == []
+
+
+def test_readiness_malformed_context_is_redacted(setup):
+    client, project, candidate, context, monkeypatch, tmp_path = setup
+    fake = success_fake(project, candidate)
+    counter = install(monkeypatch, fake, context_for(project, context))
+    path = tmp_path / "private-context.json"
+    path.write_text("{secret parser detail", encoding="utf-8")
+    monkeypatch.setattr(
+        design_runtime,
+        "default_context_resolver",
+        lambda: FileDesignContextResolver(path),
+    )
+    response = readiness(client, project)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["status"] == "needs_input"
+    assert result["blockers"][0]["code"] == "invalid_reference"
+    assert "secret" not in response.text
+    assert "private-context.json" not in response.text
+    assert str(tmp_path) not in response.text
+    assert counter["factory"] == 0 and fake.calls == []
 
 
 def test_gates_have_zero_dispatch(setup):

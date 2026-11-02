@@ -186,6 +186,8 @@ def observe_photo(
         system_prompt=INTAKE_SYSTEM_PROMPT,
         context={"project_goal": project_goal},
     )
+    if not any(item.strip() for item in (*observation.labels, *observation.questions)):
+        raise GatewayError("invalid_response")
     elapsed_ms = round((time.monotonic() - start) * 1000)
     if budget.traces:
         elapsed_ms = budget.traces[-1].elapsed_ms

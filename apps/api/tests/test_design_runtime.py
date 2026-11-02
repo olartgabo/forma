@@ -275,6 +275,65 @@ def test_missing_inputs_match_compiler_valid_fixture_by_stock_kind(tmp_path):
     assert not any("height of stock synthetic-tape-stock" in item for item in missing)
 
 
+def test_readiness_complete_is_checklist_only_and_missing_stays_missing(tmp_path):
+    store, project, candidate, context = seeded(tmp_path)
+    complete = design_runtime.build_readiness(project, resolve(context, project))
+    assert complete.project_id == project.id
+    assert complete.inventory_revision_id == project.revision_id
+    assert complete.inventory_confirmed is True
+    assert complete.status == "inputs_complete"
+    assert complete.missing_inputs == ()
+    assert complete.blockers == ()
+    # Unknown kind-relevant measurement stays missing; no value is invented.
+    sheet, tape = project.stocks
+    unknown = project.model_copy(
+        update={
+            "inventory_confirmed": False,
+            "stocks": (
+                sheet.model_copy(
+                    update={
+                        "thickness_mm": sheet.thickness_mm.model_copy(
+                            update={"value": None, "confirmed": False}
+                        )
+                    }
+                ),
+                tape,
+            ),
+        }
+    )
+    missing = design_runtime.build_readiness(unknown, resolve(context, project))
+    assert missing.status == "needs_input"
+    assert any(
+        "Confirm the saved inventory." in item for item in missing.missing_inputs
+    )
+    assert any(
+        "thickness of stock synthetic-sheet" in item for item in missing.missing_inputs
+    )
+    assert not any(
+        "height of stock synthetic-tape-stock" in item
+        for item in missing.missing_inputs
+    )
+
+
+def test_readiness_missing_and_malformed_context_blockers_are_safe(tmp_path):
+    _, project, _, context = seeded(tmp_path)
+    missing = design_runtime.build_readiness(project, resolve(None, project))
+    assert missing.status == "needs_input"
+    assert missing.blockers[0].code == "missing_measurement"
+    assert any("cutting process" in item for item in missing.missing_inputs)
+    assert any("joint profiles" in item for item in missing.missing_inputs)
+    path = tmp_path / "private-context.json"
+    path.write_text("{secret parser detail", encoding="utf-8")
+    invalid = design_runtime.build_readiness(
+        project, FileDesignContextResolver(path)(project.id, project.revision_id)
+    )
+    assert invalid.status == "needs_input"
+    assert invalid.blockers[0].code == "invalid_reference"
+    assert "secret" not in invalid.blockers[0].message
+    assert "private-context.json" not in invalid.blockers[0].message
+    assert str(tmp_path) not in invalid.model_dump_json()
+
+
 def test_runtime_missing_context_returns_questions_without_preview(tmp_path):
     store, project, candidate, context = seeded(tmp_path)
     fake = Fake(

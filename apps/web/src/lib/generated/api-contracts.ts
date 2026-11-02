@@ -69,6 +69,15 @@ export type DesignGenerateResult = {
   readonly "replayed"?: boolean;
 };
 
+export type DesignReadiness = {
+  readonly "project_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "inventory_confirmed": boolean;
+  readonly "status": "inputs_complete" | "needs_input";
+  readonly "missing_inputs": ReadonlyArray<string>;
+  readonly "blockers": ReadonlyArray<Blocker>;
+};
+
 export type DiagnosisDiagnostics = {
   readonly "status": "ok";
   readonly "model": string;
@@ -260,6 +269,19 @@ export type ProviderUsage = {
   readonly "model_calls": number;
   readonly "input_tokens"?: (number | null);
   readonly "output_tokens"?: (number | null);
+};
+
+export type SavedProjectList = {
+  readonly "projects": ReadonlyArray<SavedProjectSummary>;
+  readonly "next_cursor"?: (string | null);
+};
+
+export type SavedProjectSummary = {
+  readonly "id": string;
+  readonly "goal": string;
+  readonly "revision_id": string;
+  readonly "inventory_confirmed"?: boolean;
+  readonly "active_version_id"?: (string | null);
 };
 
 export type SnapshotToolArgs = {
