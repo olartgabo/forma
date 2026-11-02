@@ -1,0 +1,240 @@
+// Run against a local Next server. The compiled manual and readiness response come
+// from manual-mobile-fixture.py; every API response is replayed from that fixture.
+// The failed-check snapshot is injected synthetic UI state, not a persisted
+// physical event or server replay. This does not call a provider or establish
+// a physical result.
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const [modulePath, baseUrl, fixturePath] = process.argv.slice(2);
+if (!modulePath || !baseUrl || !fixturePath)
+  throw new Error(
+    "Usage: node manual-mobile.browser.mjs <playwright module path> <local web URL> <fixture JSON path>",
+  );
+const origin = new URL(baseUrl);
+if (!["127.0.0.1", "localhost", "[::1]"].includes(origin.hostname))
+  throw new Error("Use a local web server for intercepted browser tests.");
+const { project, version, readiness } = JSON.parse(
+  fs.readFileSync(fixturePath, "utf8"),
+);
+const panels = version.manual.panels;
+assert.equal(panels.length, 8, "the compiled manual has eight panels");
+for (const panel of panels)
+  assert(panel.svg.trimStart().startsWith("<svg"), "panels carry actual SVG");
+assert.equal(readiness.project_id, project.id);
+assert.equal(project.active_version_id, version.version_id);
+
+const credential = "synthetic-browser-owner";
+const base = `/api/projects/${project.id}`;
+const failureOperation = panels[7].operation_id;
+const { chromium } = await import(pathToFileURL(modulePath).href);
+const browser = await chromium.launch({
+  ...(process.env.CHROME_PATH
+    ? { executablePath: process.env.CHROME_PATH }
+    : {}),
+});
+
+function progress(failed) {
+  return {
+    project_id: project.id,
+    version_id: version.version_id,
+    last_event_id: failed ? "synthetic-failure" : null,
+    status: failed ? "needs_review" : "not_started",
+    completed_operation_ids: [],
+    failed_operation_ids: failed ? [failureOperation] : [],
+    events: [],
+    evidence: [],
+    material_transactions: [],
+    expected_remaining_stock: [],
+  };
+}
+
+async function scenario(width, failed) {
+  const context = await browser.newContext({
+    viewport: { width, height: 844 },
+    serviceWorkers: "block",
+  });
+  const page = await context.newPage();
+  page.setDefaultTimeout(30_000);
+  const errors = [];
+  const unexpected = [];
+  const writes = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const replay = new Map([
+    ["/api/provider/status", { configured: false }],
+    ["/api/projects", { projects: [], next_cursor: null }],
+    [base, project],
+    [`${base}/designs/readiness`, readiness],
+    [`${base}/media`, { media: [] }],
+    [`${base}/plans`, { plans: [version] }],
+    [`${base}/versions/${version.version_id}`, version],
+    [`${base}/versions/${version.version_id}/progress`, progress(failed)],
+  ]);
+  try {
+    await context.route("**/*", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== origin.origin) {
+        unexpected.push(`nonlocal ${url.protocol}//${url.hostname}`);
+        await route.abort("blockedbyclient");
+        return;
+      }
+      if (!url.pathname.startsWith("/api/")) {
+        if (request.method() === "GET") await route.continue();
+        else {
+          writes.push(`${request.method()} ${url.pathname}`);
+          await route.abort("blockedbyclient");
+        }
+        return;
+      }
+      if (request.method() !== "GET") {
+        writes.push(`${request.method()} ${url.pathname}`);
+        await route.fulfill({
+          status: 500,
+          json: { code: "unexpected_write" },
+        });
+        return;
+      }
+      if (!replay.has(url.pathname)) {
+        unexpected.push(url.pathname);
+        await route.fulfill({ status: 500, json: { code: "unexpected" } });
+        return;
+      }
+      if (request.headers().authorization !== `Bearer ${credential}`) {
+        unexpected.push(`unauthenticated ${url.pathname}`);
+        await route.fulfill({ status: 401, json: { code: "unauthenticated" } });
+        return;
+      }
+      await route.fulfill({ json: replay.get(url.pathname) });
+    });
+    await page.goto(`${origin.origin}/?project=${project.id}`);
+    const owner = page.getByLabel("Owner credential");
+    const open = page.getByRole("button", { name: "Open workbench" });
+    await owner.fill(credential);
+    await open.click();
+    const manual = page.locator(".manual-step");
+    await manual.waitFor();
+    await manual
+      .getByText(failed ? "A check failed." : "No physical work recorded.", {
+        exact: false,
+      })
+      .waitFor();
+    const observations = [];
+    for (let i = 0; i < panels.length; i++) {
+      const panel = panels[i];
+      const operation = version.plan.operations.find(
+        (item) => item.id === panel.operation_id,
+      );
+      await manual
+        .getByText(panel.operation_id, { exact: false })
+        .first()
+        .waitFor();
+      assert(
+        await manual.getByText(panel.instruction, { exact: true }).isVisible(),
+      );
+      const text = await manual.innerText();
+      for (const tool of panel.tools) assert(text.includes(tool), tool);
+      for (const id of panel.part_ids) assert(text.includes(id), id);
+      for (const id of panel.checkpoint_ids) {
+        const checkpoint = version.plan.checkpoints.find(
+          (item) => item.id === id,
+        );
+        assert(text.includes(checkpoint.description), id);
+      }
+      const image = manual.locator("img.manual-diagram");
+      await image.waitFor();
+      assert(await image.evaluate((el) => el.complete && el.naturalWidth > 0));
+      assert((await image.getAttribute("alt")).includes(panel.operation_id));
+      const box = await page.evaluate(() => ({
+        doc: document.documentElement.scrollWidth,
+        viewport: innerWidth,
+      }));
+      assert(box.doc <= box.viewport + 1, JSON.stringify(box));
+      observations.push({ step: i + 1, id: panel.operation_id, box });
+      const save = manual.getByRole("button", { name: "Save physical report" });
+      if (i === 0) {
+        await manual.getByRole("button", { name: "Enlarge diagram" }).click();
+        const region = manual.getByRole("region", {
+          name: "Full-size diagram; scroll to inspect dimensions",
+        });
+        assert(await region.isVisible());
+        await region.focus();
+        assert(await region.evaluate((el) => document.activeElement === el));
+        await manual
+          .getByRole("button", { name: "Fit diagram to screen" })
+          .click();
+        if (!failed) {
+          assert(await save.isDisabled());
+          assert((await manual.locator(".physical-checks input").count()) > 0);
+          await manual
+            .getByLabel("What did you do or observe?")
+            .fill("SYNTHETIC UI test only");
+          await manual
+            .getByLabel(
+              "I performed this operation or check and am reporting its actual result.",
+            )
+            .check();
+          assert(
+            await save.isDisabled(),
+            "unchecked required checks block save",
+          );
+        }
+      }
+      if (i === 1 && !failed) {
+        assert(operation.depends_on.length > 0);
+        assert(
+          await manual
+            .getByText("Confirm these prerequisite operations first:", {
+              exact: false,
+            })
+            .isVisible(),
+        );
+        assert.equal(await save.count(), 0);
+      }
+      if (i === panels.length - 1 && failed) {
+        assert(
+          await manual
+            .getByText("A check failed.", { exact: false })
+            .isVisible(),
+        );
+        assert.equal(await save.count(), 0);
+        assert(
+          await manual
+            .getByRole("button", { name: "Diagnose this failure with Muse" })
+            .isDisabled(),
+        );
+      }
+      if (i < panels.length - 1) {
+        const next = manual.getByRole("button", { name: "Next step" });
+        await next.scrollIntoViewIfNeeded();
+        const bounds = await next.boundingBox();
+        assert(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width + 1);
+        await next.click();
+      }
+    }
+    const materials = page.locator(".manual-materials");
+    await materials.locator("summary").click();
+    const materialsText = await materials.innerText();
+    for (const item of version.manual.bill_of_materials)
+      assert(materialsText.includes(item.description), item.description);
+    assert.deepEqual(writes, [], "browsing the manual writes nothing");
+    assert.deepEqual(errors, [], "the connected components must not crash");
+    assert.deepEqual(unexpected, [], "every request is explicitly replayed");
+    console.log(
+      `PASS ${width}px ${failed ? "injected synthetic failed-check UI state" : "fresh progress"}: ${panels.length} panels, ${writes.length} writes`,
+    );
+  } catch (error) {
+    console.error({ width, failed, errors, unexpected, writes });
+    throw error;
+  } finally {
+    await context.close();
+  }
+}
+
+try {
+  for (const width of [390, 320])
+    for (const failed of [false, true]) await scenario(width, failed);
+} finally {
+  await browser.close();
+}
