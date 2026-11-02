@@ -724,6 +724,7 @@ export default function PlanWorkbench({
                   onReloadProject={onReload}
                   onProgressChange={onProgressChange}
                   onDiagnoseFailure={onDiagnoseFailure}
+                  museAvailability={museAvailability}
                   refreshKey={diagnosisRefreshKey}
                   onLockChange={(locked) => {
                     setProgressPending(locked);
