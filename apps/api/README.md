@@ -31,6 +31,14 @@ exposes FastAPI's OpenAPI UI. No database or provider readiness is implied.
 `uv run --locked ruff format --check .` check Python source. No model key is
 needed. See the [root README](../../README.md) for pinned tools and setup.
 
+Muse design generation also needs a server-owned design context: set
+`FORMA_DESIGN_CONTEXT_PATH` to a JSON manifest (at most 262,144 bytes) whose
+`contexts` list has exactly one entry for the project and current inventory
+revision, with process, stand parameters, joint profiles, kerf and edge margin
+(`DesignContext` in `forma_api/design_context.py`). Without a match, generation
+returns blockers instead of inventing values. See `.env.example` for all
+variables and the [demo runbook](../../docs/demo-runbook.md).
+
 Project/inventory routes and local development authentication are implemented.
 Initial plan/manual and user-reported event/evidence/material persistence are
 implemented; hosted authentication remains #6 work. The
