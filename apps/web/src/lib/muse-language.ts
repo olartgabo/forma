@@ -88,7 +88,7 @@ const en = {
       "Save or reload the inventory first: the saved inventory is stale or has unsaved changes, so Muse is unavailable until it matches the server.",
     ask: "Ask Muse about this photo",
     pending:
-      "Asking Muse… Cancelling stops FORMA waiting; Muse may already be processing the photo. There are no automatic retries.",
+      "Asking Muse… Cancel stops FORMA waiting; Muse may still process this request. FORMA may retry a rate limit or temporary server error once by default, within the same deadline. Timeouts, network errors and unknown outcomes are not retried automatically. A new request needs fresh consent.",
     cancelled:
       "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the photo, so no result was shown.",
     requestFailed:
@@ -134,7 +134,7 @@ const en = {
       "Save or reload the inventory first: Muse diagnosis is unavailable while saved materials are stale or have unsaved changes.",
     ask: "Ask Muse what went wrong",
     pending:
-      "Asking Muse… Cancelling stops FORMA waiting; Muse may already be processing the photo. There are no automatic retries.",
+      "Asking Muse… Cancel stops FORMA waiting; Muse may still process this request. FORMA may retry a rate limit or temporary server error once by default, within the same deadline. Timeouts, network errors and unknown outcomes are not retried automatically. A new request needs fresh consent.",
     cancelled:
       "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the photo, so no result was shown.",
     requestFailed:
@@ -168,7 +168,7 @@ const en = {
       "Send my reported problem, the Muse diagnosis if present and the active plan context to Meta's Muse service for this one request.",
     ask: "Ask Muse for repair options",
     pending:
-      "Asking Muse… Cancelling stops FORMA waiting; Muse may already be processing the request. There are no automatic retries.",
+      "Asking Muse… Cancel stops FORMA waiting; Muse may still process this request. FORMA may retry a rate limit or temporary server error once by default, within the same deadline. Timeouts, network errors and unknown outcomes are not retried automatically. A new request needs fresh consent.",
     cancelled:
       "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the request, so no result was shown.",
     requestFailed:
@@ -196,7 +196,7 @@ const en = {
       "A plan is already active for this project, so Muse generation is unavailable until a revision flow is connected.",
     generate: "Generate with Muse",
     pending:
-      "Asking Muse… Cancelling stops FORMA waiting; it does not guarantee Muse stopped. There are no automatic retries.",
+      "Asking Muse… Cancel stops FORMA waiting; Muse may still process this request. FORMA may retry a rate limit or temporary server error once by default, within the same deadline. Timeouts, network errors and unknown outcomes are not retried automatically. A new request needs fresh consent.",
     cancelled:
       "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the request. Its outcome is unknown, so check saved previews before starting a new request.",
     newRequestNotice:
@@ -307,7 +307,7 @@ const es: MuseCopy = {
       "Guarda o recarga primero el inventario: el inventario guardado está desactualizado o tiene cambios sin guardar, por lo que Muse no estará disponible hasta que coincida con el servidor.",
     ask: "Preguntar a Muse sobre esta foto",
     pending:
-      "Preguntando a Muse… Cancelar hace que FORMA deje de esperar; es posible que Muse ya esté procesando la foto. No hay reintentos automáticos.",
+      "Preguntando a Muse… Cancelar hace que FORMA deje de esperar; Muse puede seguir procesando esta solicitud. FORMA puede reintentar una vez por defecto ante un límite de solicitudes o un error temporal del servidor, dentro del mismo plazo. No reintenta automáticamente los tiempos agotados, errores de red ni resultados desconocidos. Una nueva solicitud requiere un nuevo consentimiento.",
     cancelled:
       "Cancelado. FORMA dejó de esperar a Muse; es posible que Muse ya esté procesando la foto, por lo que no se mostró ningún resultado.",
     requestFailed:
@@ -354,7 +354,7 @@ const es: MuseCopy = {
       "Guarda o recarga primero el inventario: el diagnóstico de Muse no está disponible mientras los materiales guardados estén desactualizados o tengan cambios sin guardar.",
     ask: "Preguntar a Muse qué salió mal",
     pending:
-      "Preguntando a Muse… Cancelar hace que FORMA deje de esperar; es posible que Muse ya esté procesando la foto. No hay reintentos automáticos.",
+      "Preguntando a Muse… Cancelar hace que FORMA deje de esperar; Muse puede seguir procesando esta solicitud. FORMA puede reintentar una vez por defecto ante un límite de solicitudes o un error temporal del servidor, dentro del mismo plazo. No reintenta automáticamente los tiempos agotados, errores de red ni resultados desconocidos. Una nueva solicitud requiere un nuevo consentimiento.",
     cancelled:
       "Cancelado. FORMA dejó de esperar a Muse; es posible que Muse ya esté procesando la foto, por lo que no se mostró ningún resultado.",
     requestFailed:
@@ -388,7 +388,7 @@ const es: MuseCopy = {
       "Enviar el problema que informé, el diagnóstico de Muse si lo hay y el contexto del plan activo al servicio Muse de Meta solo para esta solicitud.",
     ask: "Pedir opciones de reparación a Muse",
     pending:
-      "Preguntando a Muse… Cancelar hace que FORMA deje de esperar; es posible que Muse ya esté procesando la solicitud. No hay reintentos automáticos.",
+      "Preguntando a Muse… Cancelar hace que FORMA deje de esperar; Muse puede seguir procesando esta solicitud. FORMA puede reintentar una vez por defecto ante un límite de solicitudes o un error temporal del servidor, dentro del mismo plazo. No reintenta automáticamente los tiempos agotados, errores de red ni resultados desconocidos. Una nueva solicitud requiere un nuevo consentimiento.",
     cancelled:
       "Cancelado. FORMA dejó de esperar a Muse; es posible que Muse ya esté procesando la solicitud, por lo que no se mostró ningún resultado.",
     requestFailed:
@@ -416,7 +416,7 @@ const es: MuseCopy = {
       "Ya hay un plan activo para este proyecto, por lo que la generación con Muse no está disponible hasta que se conecte un flujo de revisión.",
     generate: "Generar con Muse",
     pending:
-      "Preguntando a Muse… Cancelar hace que FORMA deje de esperar; no garantiza que Muse se haya detenido. No hay reintentos automáticos.",
+      "Preguntando a Muse… Cancelar hace que FORMA deje de esperar; Muse puede seguir procesando esta solicitud. FORMA puede reintentar una vez por defecto ante un límite de solicitudes o un error temporal del servidor, dentro del mismo plazo. No reintenta automáticamente los tiempos agotados, errores de red ni resultados desconocidos. Una nueva solicitud requiere un nuevo consentimiento.",
     cancelled:
       "Cancelado. FORMA dejó de esperar a Muse; es posible que Muse ya esté procesando la solicitud. Su resultado es desconocido, así que comprueba las vistas previas guardadas antes de iniciar una nueva solicitud.",
     newRequestNotice:
