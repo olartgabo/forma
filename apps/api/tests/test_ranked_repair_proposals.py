@@ -149,7 +149,9 @@ def test_mixed_real_repairs_keep_exact_blocked_review_and_only_rank_feasible():
     assert "repair-blocked" not in [r.patch_id for r in outcome.repair_results]
 
 
-@pytest.mark.parametrize("corruption", ["patch", "base", "project"])
+@pytest.mark.parametrize(
+    "corruption", ["patch", "base", "project", "parent", "same_version"]
+)
 def test_mismatched_typed_simulation_fails_closed(corruption):
     _, state, kwargs, candidates = ranked_case()
     candidate = candidates[0]
@@ -159,10 +161,13 @@ def test_mismatched_typed_simulation_fails_closed(corruption):
     elif corruption == "base":
         checked = checked.model_copy(update={"base_version_id": "wrong-base"})
     else:
+        plan_update = {
+            "project": {"project_id": "wrong-project"},
+            "parent": {"parent_version_id": "wrong-parent"},
+            "same_version": {"version_id": state.version_id},
+        }[corruption]
         checked = checked.model_copy(
-            update={
-                "plan": checked.plan.model_copy(update={"project_id": "wrong-project"})
-            }
+            update={"plan": checked.plan.model_copy(update=plan_update)}
         )
     fake = FakeTransport(state, batch(candidate))
     outcome = ProposalService(MetaGateway(fake), lambda c, s: checked).run(
