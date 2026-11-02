@@ -346,4 +346,3 @@ the original ledger is never reset or rewritten. Development roles in D027 stay.
 Continue ResniDev-owned issues/PRs and open only concrete useful followups. Reuse
 original issues instead of multiplying equivalent loop-proposed tickets. Product
 runtime bounds, ownership and physical-evidence requirements are unchanged.
-
