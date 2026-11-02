@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError, loadProgress, recordProgress } from "../lib/api";
+import {
+  createDiagnosisFocus,
+  hasFailedCheck,
+  latestDiagnosisEvidence,
+  selectFailedCheckPhoto,
+  type DiagnosisFocus,
+} from "../lib/build-diagnosis";
 import type {
   Media,
   PlanVersion,
@@ -23,6 +30,7 @@ export default function PhysicalProgress({
   onLockChange,
   onReloadProject,
   onProgressChange,
+  onDiagnoseFailure,
 }: {
   token: string;
   projectId: string;
@@ -33,6 +41,7 @@ export default function PhysicalProgress({
   onLockChange: (locked: boolean) => void;
   onReloadProject: () => void;
   onProgressChange: () => void;
+  onDiagnoseFailure?: (focus: DiagnosisFocus) => void;
 }) {
   const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,6 +107,27 @@ export default function PhysicalProgress({
     progress.status !== "needs_review" &&
     progress.status !== "passed";
   const locked = disabled || saving || pending !== null;
+  const currentProgress =
+    progress && progress.version_id === version.version_id ? progress : null;
+  const failedCheck = currentProgress
+    ? hasFailedCheck(currentProgress, operationId, version.version_id)
+    : false;
+  const failedPhotoId = currentProgress
+    ? selectFailedCheckPhoto(
+        currentProgress,
+        operationId,
+        photos,
+        version.version_id,
+      )
+    : null;
+  const savedDiagnoses = currentProgress
+    ? latestDiagnosisEvidence(
+        currentProgress,
+        operationId,
+        3,
+        version.version_id,
+      )
+    : [];
 
   useEffect(() => {
     const lifetime = new AbortController();
@@ -278,6 +308,44 @@ export default function PhysicalProgress({
           ? "Reload project and physical reports"
           : "Refresh physical reports"}
       </button>
+      {failedCheck && onDiagnoseFailure && (
+        <button
+          type="button"
+          className="secondary"
+          onClick={() =>
+            onDiagnoseFailure(
+              createDiagnosisFocus({
+                projectId,
+                versionId: version.version_id,
+                operationId,
+                mediaId: failedPhotoId,
+                nonce: crypto.randomUUID(),
+              }),
+            )
+          }
+        >
+          Diagnose this failure with Muse
+        </button>
+      )}
+      {savedDiagnoses.length > 0 && (
+        <section aria-label="Saved Muse diagnoses for this step">
+          <h4>Saved Muse diagnoses for this step</h4>
+          <ul>
+            {savedDiagnoses.map((item) => (
+              <li key={item.id}>
+                <p>
+                  Unverified model observation from Muse, not a confirmed fact
+                </p>
+                <p>{item.description}</p>
+                <span className="help">
+                  Recorded{" "}
+                  <time dateTime={item.recorded_at}>{item.recorded_at}</time>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {completed && (
         <p>
           {progress?.carried_operation_ids?.includes(operationId)

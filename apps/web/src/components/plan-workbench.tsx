@@ -9,6 +9,7 @@ import {
 import AdaptWorkbench from "./adapt-workbench";
 import { operationTitles } from "../lib/operation-titles";
 import type { RepairHandoff } from "../lib/repair-handoff";
+import type { DiagnosisFocus } from "../lib/build-diagnosis";
 import Diagram from "./manual-diagram";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
 import MuseRequestStatus from "./muse-request-status";
@@ -40,6 +41,7 @@ export default function PlanWorkbench({
   photos,
   onProgressChange,
   repairHandoff,
+  onDiagnoseFailure,
 }: {
   token: string;
   project: Project;
@@ -50,6 +52,7 @@ export default function PlanWorkbench({
   photos: readonly Media[];
   onProgressChange: () => void;
   repairHandoff?: { handoff: RepairHandoff; targetId: string } | null;
+  onDiagnoseFailure?: (focus: DiagnosisFocus) => void;
 }) {
   const [plans, setPlans] = useState<readonly PlanSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -688,6 +691,7 @@ export default function PlanWorkbench({
                   disabled={approvalDisabled || pending !== null}
                   onReloadProject={onReload}
                   onProgressChange={onProgressChange}
+                  onDiagnoseFailure={onDiagnoseFailure}
                   onLockChange={(locked) => {
                     setProgressPending(locked);
                     onLockChange(locked);

@@ -8,6 +8,7 @@ import {
   type RepairHandoff,
 } from "../lib/repair-handoff";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import type { DiagnosisFocus } from "../lib/build-diagnosis";
 import MuseRequestStatus from "./muse-request-status";
 import type {
   DiagnosisResult,
@@ -40,6 +41,7 @@ export default function MuseDiagnosisPanel({
   inventoryStale,
   disabled,
   onRepairHandoff,
+  prefill,
 }: {
   token: string;
   project: Project;
@@ -47,6 +49,7 @@ export default function MuseDiagnosisPanel({
   inventoryStale: boolean;
   disabled: boolean;
   onRepairHandoff?: (handoff: RepairHandoff, targetId: string) => void;
+  prefill?: DiagnosisFocus | null;
 }) {
   const [selectedId, setSelectedId] = useState("");
   const [problem, setProblem] = useState("");
@@ -151,6 +154,30 @@ export default function MuseDiagnosisPanel({
       setSelectedId("");
   }, [photos, selectedId]);
 
+  const appliedPrefillNonce = useRef<string | null>(null);
+  useEffect(() => {
+    if (!prefill || appliedPrefillNonce.current === prefill.nonce) return;
+    if (prefill.projectId !== project.id) return;
+    if (prefill.versionId !== project.active_version_id) return;
+    if (hasActive && !activePlan) return;
+    appliedPrefillNonce.current = prefill.nonce;
+    if (
+      prefill.mediaId &&
+      photos.some((photo) => photo.id === prefill.mediaId && isEligible(photo))
+    )
+      setSelectedId(prefill.mediaId);
+    if (operations.some((operation) => operation.id === prefill.operationId))
+      setOperationId(prefill.operationId);
+  }, [
+    prefill,
+    project.id,
+    project.active_version_id,
+    hasActive,
+    activePlan,
+    operations,
+    photos,
+  ]);
+
   useEffect(
     () => () => {
       epoch.current += 1;
@@ -250,7 +277,12 @@ export default function MuseDiagnosisPanel({
     result && activePlan ? handoffFromDiagnosis(result, activePlan) : null;
 
   return (
-    <section className="muse-panel" aria-labelledby="muse-diagnosis-title">
+    <section
+      className="muse-panel"
+      id="muse-diagnosis-panel"
+      tabIndex={-1}
+      aria-labelledby="muse-diagnosis-title"
+    >
       <div className="section-title">
         <span aria-hidden="true">4</span>
         <h2 id="muse-diagnosis-title">Something went wrong</h2>
