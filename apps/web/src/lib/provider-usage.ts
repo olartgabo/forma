@@ -101,6 +101,51 @@ export function museRequestStatus(input: {
   return { kind, label: museStatusLabel(kind) };
 }
 
+export type MuseDiagnosticsSummary = {
+  status: string;
+  model: string;
+  elapsedMs: number;
+  usage?: ProviderUsage | null;
+  modelRounds?: number;
+  toolExecutions?: number;
+};
+
+export function museDiagnosticsFromResult(
+  diagnostics: unknown,
+): MuseDiagnosticsSummary | null {
+  if (
+    typeof diagnostics !== "object" ||
+    diagnostics === null ||
+    Array.isArray(diagnostics)
+  )
+    return null;
+  const value = diagnostics as Record<string, unknown>;
+  if (
+    typeof value.status !== "string" ||
+    value.status.length === 0 ||
+    typeof value.model !== "string" ||
+    value.model.length === 0 ||
+    typeof value.elapsed_ms !== "number" ||
+    !Number.isFinite(value.elapsed_ms) ||
+    value.elapsed_ms < 0
+  )
+    return null;
+  return {
+    status: value.status,
+    model: value.model,
+    elapsedMs: value.elapsed_ms,
+    usage: (value.usage ?? null) as ProviderUsage | null,
+    ...(typeof value.model_rounds === "number" &&
+    Number.isFinite(value.model_rounds)
+      ? { modelRounds: value.model_rounds }
+      : {}),
+    ...(typeof value.tool_executions === "number" &&
+    Number.isFinite(value.tool_executions)
+      ? { toolExecutions: value.tool_executions }
+      : {}),
+  };
+}
+
 export function formatMuseLatency(elapsedMs: unknown): string {
   if (
     typeof elapsedMs !== "number" ||

@@ -7,7 +7,8 @@ import {
   handoffFromDiagnosis,
   type RepairHandoff,
 } from "../lib/repair-handoff";
-import MuseRequestStatus from "./muse-request-details";
+import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import MuseRequestStatus from "./muse-request-status";
 import type {
   DiagnosisResult,
   Media,
@@ -391,14 +392,7 @@ export default function MuseDiagnosisPanel({
             errorCode={failure?.code}
             errorMessage={failure?.message}
             diagnostics={
-              result
-                ? {
-                    status: result.diagnostics.status,
-                    model: result.diagnostics.model,
-                    elapsedMs: result.diagnostics.elapsed_ms,
-                    usage: result.diagnostics.usage,
-                  }
-                : null
+              result ? museDiagnosticsFromResult(result.diagnostics) : null
             }
           />
           {result && (

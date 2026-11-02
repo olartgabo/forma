@@ -21,7 +21,13 @@ import {
   isHandoffCurrent,
   type RepairHandoff,
 } from "../lib/repair-handoff";
+import {
+  isCandidateSetCurrent,
+  mergeMuseCandidates,
+  museCandidateLabel,
+} from "../lib/repair-candidates";
 import Diagram from "./manual-diagram";
+import MuseRepairPanel from "./muse-repair-panel";
 
 function message(error: unknown) {
   return error instanceof ApiError
@@ -321,6 +327,10 @@ export default function AdaptWorkbench({
     useState<AdaptSimulateRequest | null>(null);
   const [pendingApproval, setPendingApproval] =
     useState<AdaptCommitRequest | null>(null);
+  const [draftChangeNotice, setDraftChangeNotice] = useState("");
+  const [museCandidateIds, setMuseCandidateIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const [handoffNote, setHandoffNote] = useState<"started" | "replace" | null>(
     null,
   );
@@ -328,6 +338,16 @@ export default function AdaptWorkbench({
     null,
   );
   const lifetime = useRef(new AbortController());
+  const candidatesRef = useRef<readonly RepairPatch[]>([]);
+  const candidateSetVersionRef = useRef(0);
+  const [candidateSetVersion, setCandidateSetVersion] = useState(0);
+  const previewCandidateSetVersionRef = useRef<number | null>(null);
+  const [previewCandidateSetVersion, setPreviewCandidateSetVersion] = useState<
+    number | null
+  >(null);
+  const previewsRef = useRef<AdaptPreviewSet | null>(null);
+  const choiceRef = useRef("");
+  const approvedRef = useRef(false);
   const openRef = useRef(false);
   const draftRef = useRef<Draft>(emptyDraft);
   const appliedDraftRef = useRef<Draft | null>(null);
@@ -362,12 +382,86 @@ export default function AdaptWorkbench({
   }, [open]);
 
   useEffect(() => {
+    previewsRef.current = previews;
+  }, [previews]);
+
+  useEffect(() => {
+    choiceRef.current = choice;
+  }, [choice]);
+
+  useEffect(() => {
+    approvedRef.current = approved;
+  }, [approved]);
+
+  useEffect(() => {
+    candidatesRef.current = candidates;
+  }, [candidates]);
+
+  function clearStalePreviews() {
+    const had =
+      previewsRef.current !== null ||
+      choiceRef.current !== "" ||
+      approvedRef.current;
+    previewsRef.current = null;
+    choiceRef.current = "";
+    approvedRef.current = false;
+    previewCandidateSetVersionRef.current = null;
+    setPreviewCandidateSetVersion(null);
+    setPreviews(null);
+    setChoice("");
+    setApproved(false);
+    if (had)
+      setDraftChangeNotice(
+        "Earlier previews were cleared because the draft changed. Simulate again before approving a repair.",
+      );
+  }
+
+  function invalidateForCandidateChange() {
+    const had =
+      previewsRef.current !== null ||
+      choiceRef.current !== "" ||
+      approvedRef.current;
+    candidateSetVersionRef.current += 1;
+    setCandidateSetVersion(candidateSetVersionRef.current);
+    previewCandidateSetVersionRef.current = null;
+    setPreviewCandidateSetVersion(null);
+    previewsRef.current = null;
+    choiceRef.current = "";
+    approvedRef.current = false;
+    setPreviews(null);
+    setChoice("");
+    setApproved(false);
+    return had;
+  }
+
+  function handleMuseCandidates(incoming: readonly RepairPatch[]) {
+    const merged = mergeMuseCandidates(candidatesRef.current, incoming);
+    if (merged.added > 0) {
+      candidatesRef.current = merged.next;
+      setCandidates(merged.next);
+      setMuseCandidateIds(
+        (current) => new Set([...current, ...merged.addedIds]),
+      );
+      if (invalidateForCandidateChange())
+        setDraftChangeNotice(
+          "Earlier previews were cleared because the draft changed. Simulate again before approving a repair.",
+        );
+    }
+    return { added: merged.added, skipped: merged.skipped };
+  }
+
+  useEffect(() => {
     // A different active version invalidates every draft and preview.
     handledHandoffKey.current = null;
     appliedDraftRef.current = null;
     setHandoffNote(null);
     setPendingHandoffDraft(null);
     setProgress(null);
+    candidatesRef.current = [];
+    candidateSetVersionRef.current += 1;
+    setCandidateSetVersion(candidateSetVersionRef.current);
+    previewCandidateSetVersionRef.current = null;
+    setPreviewCandidateSetVersion(null);
     setCandidates([]);
     setPreviews(null);
     setChoice("");
@@ -377,6 +471,8 @@ export default function AdaptWorkbench({
     setPendingSimulation(null);
     setPendingApproval(null);
     setStale(false);
+    setDraftChangeNotice("");
+    setMuseCandidateIds(new Set());
   }, [version.version_id]);
 
   useEffect(() => {
@@ -400,6 +496,7 @@ export default function AdaptWorkbench({
     const key = `${handoff.projectId}:${handoff.versionId}:${handoff.targetIds.join(",")}:${handoff.failureType}:${target}:${handoff.nonce ?? ""}`;
     if (handledHandoffKey.current === key) return;
     handledHandoffKey.current = key;
+    if (openRef.current) clearStalePreviews();
     const nextDraft = draftFromHandoff(handoff, target);
     const currentDraft = draftRef.current;
     const untouched =
@@ -437,6 +534,8 @@ export default function AdaptWorkbench({
       );
       if (signal.aborted) return;
       setProgress(next);
+      previewCandidateSetVersionRef.current = null;
+      setPreviewCandidateSetVersion(null);
       setPreviews(null);
       setChoice("");
       setApproved(false);
@@ -457,8 +556,8 @@ export default function AdaptWorkbench({
     if (draft.kind === "replace_part" && !draft.stockId) return;
     if (draft.kind === "resize_part" && width === null && height === null)
       return;
-    setCandidates((current) => [
-      ...current,
+    const nextCandidates: readonly RepairPatch[] = [
+      ...candidatesRef.current,
       {
         id: `repair-${crypto.randomUUID()}`,
         base_version_id: version.version_id,
@@ -472,13 +571,16 @@ export default function AdaptWorkbench({
         angle_deg: null,
         rationale: draft.rationale.trim(),
       },
-    ]);
+    ];
+    candidatesRef.current = nextCandidates;
+    setCandidates(nextCandidates);
+    invalidateForCandidateChange();
     setDraft(emptyDraft);
-    setPreviews(null);
   }
 
   async function simulate(request: AdaptSimulateRequest) {
     const signal = lifetime.current.signal;
+    const startVersion = candidateSetVersionRef.current;
     setPendingSimulation(request);
     setBusy(true);
     onLockChange(true);
@@ -487,6 +589,10 @@ export default function AdaptWorkbench({
       const result = await simulateRepairs(token, projectId, request, signal);
       if (signal.aborted) return;
       setPendingSimulation(null);
+      if (!isCandidateSetCurrent(startVersion, candidateSetVersionRef.current))
+        return;
+      previewCandidateSetVersionRef.current = startVersion;
+      setPreviewCandidateSetVersion(startVersion);
       setPreviews(result);
       setChoice(result.previews.find((item) => item.version)?.preview_id ?? "");
       setApproved(false);
@@ -506,6 +612,14 @@ export default function AdaptWorkbench({
   }
 
   async function approve(request: AdaptCommitRequest) {
+    if (
+      previewCandidateSetVersionRef.current === null ||
+      !isCandidateSetCurrent(
+        previewCandidateSetVersionRef.current,
+        candidateSetVersionRef.current,
+      )
+    )
+      return;
     const signal = lifetime.current.signal;
     setPendingApproval(request);
     setBusy(true);
@@ -597,6 +711,18 @@ export default function AdaptWorkbench({
             setHandoffNote(null);
           }}
         />
+      )}
+      {draftChangeNotice && (
+        <div className="notice" role="note">
+          <p>{draftChangeNotice}</p>
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => setDraftChangeNotice("")}
+          >
+            Dismiss
+          </button>
+        </div>
       )}
       {!open ? (
         <button
@@ -744,15 +870,20 @@ export default function AdaptWorkbench({
                       {candidate.replacement_stock_id
                         ? ` from ${candidate.replacement_stock_id}`
                         : ""}{" "}
+                      {!previews
+                        ? museCandidateLabel(candidate.id, museCandidateIds)
+                        : ""}
                       <button
                         type="button"
                         className="quiet"
                         disabled={locked}
                         onClick={() => {
-                          setCandidates((current) =>
-                            current.filter((item) => item.id !== candidate.id),
+                          const nextCandidates = candidatesRef.current.filter(
+                            (item) => item.id !== candidate.id,
                           );
-                          setPreviews(null);
+                          candidatesRef.current = nextCandidates;
+                          setCandidates(nextCandidates);
+                          invalidateForCandidateChange();
                         }}
                       >
                         Remove
@@ -761,6 +892,20 @@ export default function AdaptWorkbench({
                   ))}
                 </ol>
               )}
+              <MuseRepairPanel
+                token={token}
+                projectId={projectId}
+                versionId={version.version_id}
+                lastEventId={progress.last_event_id ?? null}
+                diagnosis={
+                  isHandoffCurrent(handoff, projectId, version.version_id)
+                    ? (handoff?.diagnosis ?? null)
+                    : null
+                }
+                progressLoaded={progress !== null}
+                disabled={locked}
+                onCandidates={handleMuseCandidates}
+              />
               <form onSubmit={submitSimulation}>
                 <fieldset disabled={locked}>
                   <legend>Confirm what is left</legend>
@@ -859,7 +1004,16 @@ export default function AdaptWorkbench({
                   <button
                     type="button"
                     className="primary"
-                    disabled={!approved || locked || pendingApproval !== null}
+                    disabled={
+                      !approved ||
+                      locked ||
+                      pendingApproval !== null ||
+                      previewCandidateSetVersion === null ||
+                      !isCandidateSetCurrent(
+                        previewCandidateSetVersion,
+                        candidateSetVersion,
+                      )
+                    }
                     onClick={() =>
                       void approve({
                         expected_version_id: version.version_id,

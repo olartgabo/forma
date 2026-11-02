@@ -8,6 +8,7 @@ export type RepairHandoff = {
   failureType: DiagnosisProposal["failure_type"];
   source: "muse_diagnosis";
   nonce?: string;
+  diagnosis?: DiagnosisProposal;
 };
 
 export type RepairDraftFields = {
@@ -41,6 +42,7 @@ export function handoffFromDiagnosis(
     targetIds,
     failureType: result.diagnosis.failure_type,
     source: "muse_diagnosis",
+    diagnosis: result.diagnosis,
   };
 }
 
