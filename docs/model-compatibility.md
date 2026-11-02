@@ -1,6 +1,6 @@
 # Model compatibility
 
-Owner: @ResniDev. Issue #4. **Live compatibility remains unverified; G0 is open.**
+Owner: @ResniDev. Issue #4. **G0 is open.** Two narrow server-only runtime receipts exist (November 2, 2026); full live compatibility is not verified.
 
 ## Documentation checked October 30, 2026
 
@@ -10,22 +10,48 @@ The official [structured output recipe](https://dev.meta.ai/docs/cookbook/struct
 
 [SAM overview](https://dev.meta.ai/docs/sam/overview) documents `sam-3.1` at `POST https://api.meta.ai/v1/responses`, including nonstreaming responses. [Segmentation prompts](https://dev.meta.ai/docs/sam/segmenting) describes single-concept prompts and inclusive pixel box tokens. The spike extracts validated boxes only; mask decoding and overlays are not implemented.
 
+These facts were read on October 30, 2026 and have not been re-verified since.
+
 ## Actual evidence
+
+Two historical, server-only runtime calls to `muse-spark-1.3` succeeded on November 2, 2026 (UTC). They show that the provider accepted the server credential and returned usable output for the two app routes below, on one synthetic image. They are narrow receipts, not the full G0 acceptance.
+
+### Runtime receipts, November 2, 2026
+
+Source: sanitized server-only runtime acceptance reports and a reservation/settlement ledger from a bounded two-call harness. Raw prompts, responses, images, identifiers, notes and local paths are not reproduced here.
+
+| Receipt | Route | Model | Reserved to settled (UTC) | Elapsed | Input tokens | Output tokens | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | Photo intake | `muse-spark-1.3` | 08:03:19 to 08:03:31 | 12,140 ms | 2,418 | 1,611 | `ok`: 5 labels, 4 questions, measurement source `unknown` |
+| 2 | Photo-only diagnosis | `muse-spark-1.3` | 08:03:46 to 08:04:00 | 14,109 ms | 2,975 | 2,025 | `ok`: 8 visible observations, 3 hypotheses, 4 questions or measurements, `failure_type` `unknown` |
+| Total | | | | | 5,393 | 3,636 | 2 settled attempts, 2 model calls |
+
+- Sums: 2,418 + 2,975 = 5,393 input tokens; 1,611 + 2,025 = 3,636 output tokens. Each route made one model call.
+- Tokens are provider-reported usage and elapsed time is app-measured wall time. Token counts are not a charge. No actual billed amount, credit balance or dollar figure was recorded, and none is claimed. Live calls can consume credits; they are not free.
+- Input was one PNG image (about 2.6 MB, accepted as eligible), labelled **SYNTHETIC SOFTWARE IMAGE**. It is not a team photo and not a physical build.
+- State after both calls: no active plan, inventory not confirmed, no stock rows, measurements `unknown`, design readiness `needs_input` (blocker `missing_measurement`), physical verification `not_checked`. Design and repair were not requested.
+- Authentication succeeded at that time. This does not show that a key is available or funded now; key presence was not checked for this document.
+- The runtime verification window has since expired and the bounded harness has used both allowed attempts. No new provider call was made for this document. Further live calls need a new explicit authorization and the existing server-only key, reservation, journal and unknown-outcome controls.
+
+### Gate coverage
 
 | Check | State | Evidence |
 | --- | --- | --- |
-| Official protocol documentation | Checked | Links above, October 30, 2026 |
-| Account, deployment region, allowed use | Not checked | No account/dashboard access provided |
-| Key presence | Missing | No MODEL_API_KEY or Meta key environment names present; values never printed |
+| Official protocol documentation | Checked | Links above, October 30, 2026; not re-verified since |
+| Server-side key accepted by provider | Observed twice | Receipts 1 and 2; current availability and funding unknown |
+| Spark image input with typed observations | Observed on a synthetic image | Receipts 1 and 2 |
+| Forced structured tool roundtrip | Not proven | Each receipt shows one model call; a tool roundtrip needs at least two |
+| SAM on any image | Not attempted | No SAM call in the receipts |
 | Consented real team photo | Missing | fixtures/ and data/ contain documentation/templates only |
-| Spark image/schema/tool live call | Not attempted | Smoke preflight blocks before network |
-| SAM on real team photo | Not attempted | Same blockers |
+| Account, deployment region, allowed use, privacy mode | Not checked | No account/dashboard verification |
+| Hosted deployment | Not checked | Receipts came from a local server |
+| Latency, usage and billed cost | Two samples only | Not a distribution; no billed cost recorded |
+| Design, repair and replanning with a live model | Not requested | Receipts cover intake and diagnosis only |
 | Manual box/label fallback primitive | Offline tested | Box validates label and inclusive image bounds without key/network |
 | SAM masks/overlay UI | Not implemented | Caller must implement image review/correction |
-| Privacy mode, quota, credits, usage/cost | Unknown | Requires account verification and real calls |
 | Physical success | Not tested | Gateway has no physical-state authority |
 
-No sanitized live response sample, latency or cost is available. Mocked responses are synthetic protocol cases, not live evidence. No guessed privacy-mode field is sent. Confirm Standard account privacy/retention settings and permitted region before private media use.
+Intake and diagnosis output is untrusted proposal data. The receipts do not establish measured dimensions, stock, part identity, failure cause or any physical pass. Mocked responses in tests remain synthetic protocol cases. No guessed privacy-mode field is sent. Confirm Standard account privacy/retention settings and permitted region before private media use.
 
 ## Reproduce
 
@@ -46,6 +72,10 @@ Keep the photo outside git. PNG/JPEG input is limited to 5 MB with signature che
 
 ## Bounds and handoff
 
-The server-only adapter adds no route or state commits. No retries. Defaults: four model calls (configurable downward), 20-second call timer plus socket inactivity timeout, a checked 60-second job budget, 2 MB response, 2,048 output tokens, one tool execution and 32 SAM boxes. HTTP errors, refusals, malformed/truncated JSON and invalid tools stop the proposal. An absolute call timer shuts down the active socket, interrupting slow response headers and bodies; every timer is cancelled/joined during cleanup. DNS resolution and connection establishment before the socket is available, plus OS scheduling, may still exceed the timer; a post-connect check stops expired requests before reading headers. Hosting must enforce an outer job deadline before offering a strict total-time guarantee. Body reads also check the remaining deadline between chunks. Trusted deterministic callbacks must stay fast; the adapter cannot preempt arbitrary Python callbacks.
+The server-only adapter adds no route or state commits. Defaults, copied from `apps/api/src/forma_api/model_gateway.py`: four model rounds (configurable downward), 20-second per-call timeout (maximum 30), 60-second job budget (maximum 120), 2 MB response, `max_completion_tokens` 2,048, one tool execution and 32 SAM boxes.
 
-Only allowlisted read-only tools can be supplied. Callers own authenticated project scope, consent records, bounded domain schemas (two designs/three repairs), compiler integration and preserving the current validated manual on failure. Models cannot commit plans, complete operations or record test passes. META_SPARK_MODEL and META_SAM_MODEL override IDs server-side; changing them requires live verification. HTTP origin is fixed and redirects are rejected. Trace status describes transport; proposal validation failures surface separately through safe GatewayError.code values.
+**Retries.** `MetaGateway` retries each call at most `max_retries` times: default 1, allowed 0 to 2. Only HTTP 429, 500, 502, 503 and 504 are retryable. The wait is the valid `Retry-After` delta-seconds, otherwise 1.0 second, never more than 3.0 seconds. A retry happens only if at least 2.0 seconds of the job budget would remain after the wait; otherwise the original error is raised without sleeping. Retries do not consume model rounds and each attempt records its own trace. Never retried: timeout, network error, invalid or oversized response, authentication (401), access denied (403), budget exhausted and round limit. Refusals, malformed or truncated JSON and invalid tools also stop the proposal. When a failed attempt reports no usage, the aggregate usage is unknown, not zero. Tests: `test_retryable_rate_limit_once_then_success`, `test_retry_delay_uses_retry_after_capped`, `test_non_retryable_errors_never_retried`, `test_at_most_max_retries_per_call` and `test_no_sleep_when_remaining_after_wait_under_two_seconds`.
+
+**Deadlines and DNS.** `MetaHTTP.post` runs each request on a bounded daemon worker. The caller waits for the per-call timeout plus 0.2 seconds of cleanup grace, then raises `timeout`, including when DNS resolution or TCP/TLS connect stalls before a socket exists. An active socket is also shut down, so slow headers and bodies are interrupted, and body reads re-check the deadline between chunks. A worker stuck in an uninterruptible OS call cannot be killed and may stay blocked as a daemon thread. It re-checks the expiry flag after `connect()` and before dispatch, so a late connection sends no authorization header, payload or request and is closed. Test: `test_http_stalled_connect_no_sock_times_out_and_never_dispatches`. Hosting should still enforce its own outer job deadline for process-level limits. Trusted deterministic callbacks must stay fast; the adapter cannot preempt arbitrary Python callbacks.
+
+Only allowlisted read-only tools can be supplied. Callers own authenticated project scope, consent records, bounded domain schemas (two designs/three repairs), compiler integration and preserving the current validated manual on failure. Models cannot commit plans, complete operations or record test passes. META_SPARK_MODEL and META_SAM_MODEL override IDs server-side; changing them requires live verification. HTTP origin is fixed and redirects are rejected. Trace status describes transport; proposal validation failures surface separately through safe GatewayError.code values. API keys stay server-only.
