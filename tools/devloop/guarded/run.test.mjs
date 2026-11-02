@@ -38,3 +38,68 @@ test("preserves shared cap, reservation headroom, STOP, pending and expiry gates
   ])
     assert.throws(() => checkStatus({ ...state, ...patch }, false));
 });
+import { mkdtempSync, existsSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+test("legacy CLI always stops before settings, process or network access", async () => {
+  const home = mkdtempSync(path.join(tmpdir(), "forma-retired-"));
+  const marker = path.join(home, "forbidden-access");
+  const preload = path.join(home, "trap.cjs");
+  writeFileSync(
+    preload,
+    `
+    const fs = require("node:fs");
+    const child = require("node:child_process");
+    const net = require("node:net");
+    const http = require("node:http");
+    const https = require("node:https");
+    const marker = ${JSON.stringify(marker)};
+    const record = (name) => { fs.appendFileSync(marker, name); throw Error("forbidden " + name); };
+    const read = fs.readFileSync;
+    fs.readFileSync = function (file, ...args) {
+      if (String(file).includes("settings.json") || String(file).includes("opencode.json")) record("settings");
+      return read.call(this, file, ...args);
+    };
+    for (const name of ["spawn", "spawnSync", "execFile", "execFileSync", "exec", "execSync", "fork"]) child[name] = () => record("process");
+    net.connect = net.createConnection = () => record("network");
+    http.request = http.get = https.request = https.get = () => record("network");
+    global.fetch = () => record("network");
+    require("node:module").syncBuiltinESMExports();
+  `,
+  );
+  try {
+    const launcher = fileURLToPath(new URL("./run.mjs", import.meta.url));
+    for (const args of [
+      [],
+      ["--workspace", "unused", "--task-file", "unused"],
+    ]) {
+      const child = spawn(
+        process.execPath,
+        ["--require", preload, launcher, ...args],
+        {
+          env: { ...process.env, META_GUARD_HOME: home },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      let output = "";
+      child.stdout.on("data", (chunk) => {
+        output += chunk;
+      });
+      child.stderr.on("data", (chunk) => {
+        output += chunk;
+      });
+      const code = await new Promise((resolve, reject) =>
+        child.once("error", reject).once("exit", resolve),
+      );
+      assert.equal(code, 1);
+      assert.match(output, /retired.*native Codex Sol\/Terra.*Sonnet/i);
+      assert.doesNotMatch(output, /settings\.json|ENOENT|forbidden/);
+      assert.equal(existsSync(marker), false);
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
