@@ -1,16 +1,17 @@
 import os
-import re
 from typing import Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from forma_api.model_gateway import (
+    DEFAULT_SAM_MODEL,
+    DEFAULT_SPARK_MODEL,
+    MODEL_ID_RE,
+)
 from forma_domain.models import Record
 
 router = APIRouter()
-
-DEFAULT_SPARK_MODEL = "muse-spark-1.3"
-_MODEL_ID = re.compile(r"[a-z0-9.-]{1,80}")
 
 
 class HealthResponse(BaseModel):
@@ -31,7 +32,12 @@ def health() -> HealthResponse:
 @router.get("/provider/status", response_model=ProviderStatusResponse)
 def provider_status() -> ProviderStatusResponse:
     """Report only whether a provider key is configured; never call the provider."""
-    configured = bool(os.environ.get("MODEL_API_KEY", "").strip())
-    candidate = os.environ.get("META_SPARK_MODEL", DEFAULT_SPARK_MODEL)
-    model = candidate if _MODEL_ID.fullmatch(candidate) else DEFAULT_SPARK_MODEL
+    spark = os.environ.get("META_SPARK_MODEL", DEFAULT_SPARK_MODEL)
+    sam = os.environ.get("META_SAM_MODEL", DEFAULT_SAM_MODEL)
+    configured = bool(
+        os.environ.get("MODEL_API_KEY", "").strip()
+        and MODEL_ID_RE.fullmatch(spark)
+        and MODEL_ID_RE.fullmatch(sam)
+    )
+    model = spark if MODEL_ID_RE.fullmatch(spark) else DEFAULT_SPARK_MODEL
     return ProviderStatusResponse(configured=configured, model=model)
