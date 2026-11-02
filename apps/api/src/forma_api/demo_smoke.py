@@ -1,8 +1,19 @@
 """Reproducible connected-demo smoke command.
 
-Default operation is read-only: health, plus owner-authorized saved project,
-design-readiness and saved-media eligibility checks when selectors are
-supplied. A live saved photo intake runs only with ``--live-intake`` and
+Default operation is read-only: health, provider status, plus
+owner-authorized saved project, design-readiness, build-progress and
+saved-media eligibility checks when selectors are supplied. After a
+successful health check exactly one read-only provider-status request is
+made. In read-only mode that request is informational: an unavailable or
+unconfigured provider is reported without failing the run. When any live
+flag is set the provider must be reachable and configured, otherwise the
+run fails before any project read or POST. For a project with an active
+version, one build-progress snapshot is fetched and reported as counts,
+enums and booleans only; that same snapshot is reused by ``--live-repair``.
+``report['usage_total']`` aggregates usage and elapsed time from every
+live step run in the invocation, with any unknown token or elapsed total
+reported as null; it is null when no live step ran. ``--problem`` and
+``--operation-id`` require ``--live-diagnosis`` or ``--live-repair``. A live saved photo intake runs only with ``--live-intake`` and
 ``--transfer-consent``. A live failure-photo diagnosis runs only with
 ``--live-diagnosis``, ``--transfer-consent`` and a required ``--problem``
 text (optionally scoped to the active plan with ``--operation-id``). A live
@@ -92,7 +103,7 @@ from forma_api.media import MediaList
 from forma_api.progress import ProgressSnapshot
 from forma_api.projects import Project
 from forma_api.repair_runtime import RepairProposeRequest, RepairProposeResult
-from forma_api.routes.health import HealthResponse
+from forma_api.routes.health import HealthResponse, ProviderStatusResponse
 
 CREDENTIAL_ENV_VAR = "FORMA_SMOKE_OWNER_TOKEN"
 DEFAULT_ORIGIN = "http://127.0.0.1:8000"
@@ -135,6 +146,51 @@ def _usage_report(usage) -> dict | None:
         "model_calls": usage.model_calls,
         "input_tokens": usage.input_tokens,
         "output_tokens": usage.output_tokens,
+    }
+
+
+def _usage_total(steps: list) -> dict | None:
+    """Aggregate live-step usage; any unknown contributing value is null."""
+
+    if not steps:
+        return None
+
+    def _sum(key: str) -> int | None:
+        values = []
+        for usage, _elapsed_ms in steps:
+            if usage is None or usage.get(key) is None:
+                return None
+            values.append(usage[key])
+        return sum(values)
+
+    elapsed_values = []
+    for _usage, elapsed_ms in steps:
+        if elapsed_ms is None:
+            elapsed_values = None
+            break
+        elapsed_values.append(elapsed_ms)
+    return {
+        "model_calls": _sum("model_calls"),
+        "input_tokens": _sum("input_tokens"),
+        "output_tokens": _sum("output_tokens"),
+        "elapsed_ms": sum(elapsed_values) if elapsed_values is not None else None,
+    }
+
+
+def _progress_report(progress: ProgressSnapshot) -> dict:
+    """Counts, enums and booleans only; never observation/description text."""
+
+    return {
+        "status": progress.status,
+        "event_count": len(progress.events),
+        "completed_operation_count": len(progress.completed_operation_ids),
+        "failed_operation_count": len(progress.failed_operation_ids),
+        "diagnosis_evidence_count": sum(
+            1
+            for item in progress.evidence
+            if item.kind == "model_interpretation" and item.provenance == "model"
+        ),
+        "last_event_present": progress.last_event_id is not None,
     }
 
 
@@ -405,8 +461,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = _Parser(
         prog="python -m forma_api.demo_smoke",
         description=(
-            "Read-only connected-demo smoke checks (health, project, "
-            "design readiness, media eligibility). Live intake requires "
+            "Read-only connected-demo smoke checks (health, provider "
+            "status, project, design readiness, build progress, media "
+            "eligibility). Any live flag requires a configured provider. "
+            "--problem and --operation-id require --live-diagnosis or "
+            "--live-repair. Live intake requires "
             "--live-intake and --transfer-consent. Live diagnosis requires "
             "--live-diagnosis, --transfer-consent and --problem, and proves "
             "only one provider response for that photo, not physical repair "
@@ -457,9 +516,12 @@ def _initial_report(origin: str | None) -> dict:
         "status": "failed",
         "api_origin": origin,
         "health": {"status": "not_checked"},
+        "provider": {"status": "not_checked"},
         "project": {"status": "not_checked"},
+        "progress": {"status": "not_checked"},
         "media": {"status": "not_checked"},
         "design_readiness": {"status": "not_checked"},
+        "usage_total": None,
         "intake": {"status": "not_requested"},
         "diagnosis": {"status": "not_requested"},
         "design": {"status": "not_requested"},
@@ -501,6 +563,12 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         report["status"] = "ok" if code == 0 else "failed"
         print(json.dumps(report, sort_keys=True), file=out)
         return code
+
+    live_usage_steps: list = []
+
+    def record_usage(usage, elapsed_ms) -> None:
+        live_usage_steps.append((_usage_report(usage), elapsed_ms))
+        report["usage_total"] = _usage_total(live_usage_steps)
 
     # --- Preflight validation: no request is made on any failure here. ---
     if origin is None:
@@ -574,10 +642,10 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
             return emit(2)
     else:
         if args.problem is not None:
-            _fail(report, "arguments", "problem_requires_live_diagnosis")
+            _fail(report, "arguments", "problem_requires_live_diagnosis_or_repair")
             return emit(2)
         if args.operation_id is not None:
-            _fail(report, "arguments", "operation_id_requires_live_diagnosis")
+            _fail(report, "arguments", "operation_id_requires_live_diagnosis_or_repair")
             return emit(2)
     # Consent alone (--transfer-consent without a live flag) never
     # triggers inference.
@@ -649,6 +717,59 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         return emit(1)
     report["health"] = {"status": health.status}
 
+    # --- Provider status (read-only; exactly once, right after health). ---
+    is_live = bool(
+        args.live_intake or args.live_diagnosis or args.live_design or args.live_repair
+    )
+
+    def provider_failed(code: str, http_status: int | None = None) -> int | None:
+        """Live: record a safe error. Read-only: unavailable, no error."""
+
+        if not is_live:
+            report["provider"] = {"status": "unavailable"}
+            return None
+        report["provider"] = {"status": "failed"}
+        _fail(report, "provider", code, http_status)
+        return emit(1)
+
+    provider_result: int | None = None
+    provider_status: ProviderStatusResponse | None = None
+    try:
+        provider_response = request("GET", "/api/provider/status")
+    except TransportError as exc:
+        provider_result = provider_failed(exc.code)
+    except Exception:
+        provider_result = provider_failed("network_error")
+    else:
+        if len(provider_response.body) > MAX_RESPONSE_BYTES:
+            provider_result = provider_failed("response_too_large")
+        elif provider_response.status in (301, 302, 303, 307, 308):
+            provider_result = provider_failed(
+                "redirect_rejected", provider_response.status
+            )
+        elif not 200 <= provider_response.status < 300:
+            provider_result = provider_failed(
+                _safe_http_error_code(provider_response), provider_response.status
+            )
+        else:
+            try:
+                provider_status = ProviderStatusResponse.model_validate_json(
+                    provider_response.body
+                )
+            except ValidationError:
+                provider_result = provider_failed("invalid_response")
+    if provider_result is not None:
+        return provider_result
+    if provider_status is not None:
+        report["provider"] = {
+            "status": "ok",
+            "configured": provider_status.configured,
+            "model": provider_status.model,
+        }
+        if is_live and not provider_status.configured:
+            _fail(report, "provider", "provider_not_configured")
+            return emit(1)
+
     if args.project_id is None:
         return emit(0)
 
@@ -679,6 +800,40 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         "active_version_present": project.active_version_id is not None,
         "stock_count": len(project.stocks),
     }
+
+    # --- Build progress (read-only; one snapshot, reused by live repair). ---
+    progress: ProgressSnapshot | None = None
+    if project.active_version_id is not None:
+        active_version_id_for_progress = project.active_version_id
+        response = checked_request(
+            "progress",
+            "GET",
+            f"/api/projects/{args.project_id}/versions/"
+            f"{active_version_id_for_progress}/progress",
+        )
+        if response is None:
+            report["progress"] = {"status": "failed"}
+            if args.live_repair:
+                report["repair"] = {"status": "failed"}
+            return emit(1)
+        try:
+            progress = ProgressSnapshot.model_validate_json(response.body)
+        except ValidationError:
+            report["progress"] = {"status": "failed"}
+            if args.live_repair:
+                report["repair"] = {"status": "failed"}
+            _fail(report, "progress", "invalid_response")
+            return emit(1)
+        if (
+            progress.project_id != args.project_id
+            or progress.version_id != active_version_id_for_progress
+        ):
+            report["progress"] = {"status": "failed"}
+            if args.live_repair:
+                report["repair"] = {"status": "failed"}
+            _fail(report, "progress", "invalid_response")
+            return emit(1)
+        report["progress"] = _progress_report(progress)
 
     # Operation scope requires an active plan; refuse before any POST.
     if (args.live_diagnosis or args.live_repair) and args.operation_id is not None:
@@ -763,6 +918,7 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
             _fail(report, "design", "invalid_response")
             return emit(1)
         diag = design_result.diagnostics
+        record_usage(diag.usage, diag.elapsed_ms)
         candidate_counts = {
             "accepted": 0,
             "blocked": 0,
@@ -884,6 +1040,7 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
             return None
         proposal = diagnosis_result.diagnosis
         diag = diagnosis_result.diagnostics
+        record_usage(diag.usage, diag.elapsed_ms)
         counts = {
             "visible_observations": len(proposal.visible_observations),
             "hypotheses": len(proposal.hypotheses),
@@ -914,27 +1071,8 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         if diagnosis_result is None:
             return emit(1)
         assert problem is not None  # Validated in preflight.
+        assert progress is not None  # Fetched once for the active version.
         report["repair"] = {"status": "not_checked"}
-        response = checked_request(
-            "progress",
-            "GET",
-            f"/api/projects/{args.project_id}/versions/{active_version_id}/progress",
-        )
-        if response is None:
-            report["repair"] = {"status": "failed"}
-            return emit(1)
-        try:
-            progress = ProgressSnapshot.model_validate_json(response.body)
-        except ValidationError:
-            report["repair"] = {"status": "failed"}
-            _fail(report, "progress", "invalid_response")
-            return emit(1)
-        if progress.project_id != args.project_id or progress.version_id != (
-            active_version_id
-        ):
-            report["repair"] = {"status": "failed"}
-            _fail(report, "progress", "invalid_response")
-            return emit(1)
         repair_payload = RepairProposeRequest(
             expected_version_id=active_version_id,
             expected_last_event_id=progress.last_event_id,
@@ -966,6 +1104,7 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
             _fail(report, "repair", "invalid_response")
             return emit(1)
         rdiag = repair_result.diagnostics
+        record_usage(rdiag.usage, rdiag.elapsed_ms)
         repair_report: dict = {
             "status": rdiag.status,
             "candidate_count": len(repair_result.candidates),
@@ -1068,6 +1207,7 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         _fail(report, "intake", "invalid_response")
         return emit(1)
     diagnostics = result.diagnostics
+    record_usage(diagnostics.usage, diagnostics.elapsed_ms)
     intake_report: dict = {
         "status": diagnostics.status,
         "model": diagnostics.model,

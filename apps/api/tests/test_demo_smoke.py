@@ -37,6 +37,12 @@ def project_payload(**overrides):
     return value
 
 
+def provider_payload(**overrides):
+    value = {"configured": True, "model": "muse-spark-1.3"}
+    value.update(overrides)
+    return value
+
+
 def media_payload(**overrides):
     item = {
         "id": MEDIA_ID,
@@ -186,6 +192,59 @@ def progress_payload(**overrides):
         "expected_remaining_stock": [],
         "status": "not_started",
     }
+    value.update(overrides)
+    return value
+
+
+SECRET_EVENT_TEXT = "secret progress event observation"
+SECRET_EVIDENCE_TEXT = "secret progress evidence description"
+
+
+def _progress_event(event_id):
+    return {
+        "id": event_id,
+        "project_id": PROJECT_ID,
+        "version_id": ACTIVE_VERSION,
+        "operation_id": None,
+        "kind": "observation",
+        "evidence_ids": [],
+        "recorded_at": "2026-01-01T00:00:00Z",
+        "actor": "user",
+        "observation": SECRET_EVENT_TEXT,
+        "verification_state": "unknown",
+        "test_result": None,
+    }
+
+
+def _progress_evidence(evidence_id, kind, provenance):
+    return {
+        "id": evidence_id,
+        "project_id": PROJECT_ID,
+        "version_id": ACTIVE_VERSION,
+        "kind": kind,
+        "provenance": provenance,
+        "asset_id": None,
+        "part_ids": [],
+        "operation_ids": [],
+        "checkpoint_ids": [],
+        "recorded_at": "2026-01-01T00:00:00Z",
+        "description": SECRET_EVIDENCE_TEXT,
+        "verification_state": "vision_observed",
+    }
+
+
+def rich_progress_payload(**overrides):
+    value = progress_payload(
+        events=[_progress_event("event-abc"), _progress_event("event-def")],
+        evidence=[
+            _progress_evidence("evidence-a", "model_interpretation", "model"),
+            _progress_evidence("evidence-b", "model_interpretation", "user"),
+            _progress_evidence("evidence-c", "photo", "model"),
+        ],
+        completed_operation_ids=["operation-abc", "operation-def"],
+        failed_operation_ids=["operation-ghi"],
+        status="building",
+    )
     value.update(overrides)
     return value
 
@@ -373,6 +432,7 @@ class FakeTransport:
 def healthy_routes(overrides=None):
     routes = {
         ("GET", "/api/health"): resp(payload={"status": "ok"}),
+        ("GET", "/api/provider/status"): resp(payload=provider_payload()),
         ("GET", f"/api/projects/{PROJECT_ID}"): resp(payload=project_payload()),
         ("GET", f"/api/projects/{PROJECT_ID}/media"): resp(payload=media_payload()),
         ("GET", f"/api/projects/{PROJECT_ID}/designs/readiness"): resp(
@@ -420,13 +480,20 @@ def test_health_only_default_no_inference_no_credential():
     assert code == 0
     assert report["status"] == "ok"
     assert report["health"] == {"status": "ok"}
+    assert report["provider"] == {
+        "status": "ok",
+        "configured": True,
+        "model": "muse-spark-1.3",
+    }
+    assert report["progress"] == {"status": "not_checked"}
+    assert report["usage_total"] is None
     assert report["project"] == {"status": "not_checked"}
     assert report["media"] == {"status": "not_checked"}
     assert report["intake"] == {"status": "not_requested"}
     assert report["design"] == {"status": "not_requested"}
     assert report["physical_verification"] == "not_checked"
     assert report["measurements"] == "unknown"
-    assert fake.paths() == [("GET", "/api/health")]
+    assert fake.paths() == [("GET", "/api/health"), ("GET", "/api/provider/status")]
     assert "Authorization" not in fake.requests[0].headers
 
 
@@ -448,8 +515,8 @@ def test_readonly_project_media_eligibility_uses_env_credential():
         "eligible": True,
     }
     assert report["intake"] == {"status": "not_requested"}
-    assert [m for m, _ in fake.paths()] == ["GET", "GET", "GET", "GET"]
-    assert fake.requests[1].headers["Authorization"] == f"Bearer {TOKEN}"
+    assert [m for m, _ in fake.paths()] == ["GET", "GET", "GET", "GET", "GET"]
+    assert fake.requests[2].headers["Authorization"] == f"Bearer {TOKEN}"
     assert fake.requests[0].timeout == 5.0
     assert TOKEN not in text and "provider-secret" not in text
 
@@ -550,7 +617,7 @@ def test_credential_from_file(tmp_path):
         env={},
     )
     assert code == 0
-    assert fake.requests[1].headers["Authorization"] == f"Bearer {TOKEN}"
+    assert fake.requests[2].headers["Authorization"] == f"Bearer {TOKEN}"
     assert TOKEN not in text
     assert str(cred) not in text
 
@@ -561,7 +628,7 @@ def test_missing_credential_fails_project_without_project_request():
     assert code == 1
     assert report["project"] == {"status": "failed"}
     assert report["errors"] == [{"check": "credential", "code": "credential_missing"}]
-    assert fake.paths() == [("GET", "/api/health")]
+    assert fake.paths() == [("GET", "/api/health"), ("GET", "/api/provider/status")]
 
 
 def test_cli_secret_argument_rejected_before_request():
@@ -1075,6 +1142,12 @@ def test_live_diagnosis_success_without_operation_scope():
             "usage": {"model_calls": 1, "input_tokens": 20, "output_tokens": 7},
         },
         "live_provider_call": True,
+    }
+    assert report["usage_total"] == {
+        "model_calls": 1,
+        "input_tokens": 20,
+        "output_tokens": 7,
+        "elapsed_ms": 99,
     }
     assert PROBLEM not in text
     assert "secret visible observation" not in text
@@ -1616,26 +1689,33 @@ def test_live_repair_success_two_candidates_one_blocked():
     assert code == 0
     assert fake.paths() == [
         ("GET", "/api/health"),
+        ("GET", "/api/provider/status"),
         ("GET", f"/api/projects/{PROJECT_ID}"),
+        ("GET", f"/api/projects/{PROJECT_ID}/versions/{ACTIVE_VERSION}/progress"),
         ("GET", f"/api/projects/{PROJECT_ID}/designs/readiness"),
         ("GET", f"/api/projects/{PROJECT_ID}/media"),
         ("POST", f"/api/projects/{PROJECT_ID}/diagnose"),
-        ("GET", f"/api/projects/{PROJECT_ID}/versions/{ACTIVE_VERSION}/progress"),
         ("POST", f"/api/projects/{PROJECT_ID}/repairs/propose"),
         ("POST", f"/api/projects/{PROJECT_ID}/adapt/simulate"),
     ]
+    assert (
+        fake.paths().count(
+            ("GET", f"/api/projects/{PROJECT_ID}/versions/{ACTIVE_VERSION}/progress")
+        )
+        == 1
+    )
     assert not any(
         "commit" in path or "approve" in path or "activate" in path
         for _, path in fake.paths()
     )
-    propose = fake.requests[6]
+    propose = fake.requests[7]
     propose_body = json.loads(propose.body)
     assert propose_body["expected_version_id"] == ACTIVE_VERSION
     assert propose_body["expected_last_event_id"] == LAST_EVENT_ID
     assert propose_body["reported_problem"] == PROBLEM
     assert propose_body["diagnosis"] == diagnosis_payload()["diagnosis"]
     assert propose_body["provider_context_consented"] is True
-    simulate = fake.requests[7]
+    simulate = fake.requests[8]
     sim_body = json.loads(simulate.body)
     assert sim_body["expected_version_id"] == ACTIVE_VERSION
     assert sim_body["expected_last_event_id"] == LAST_EVENT_ID
@@ -1664,6 +1744,12 @@ def test_live_repair_success_two_candidates_one_blocked():
         "live_provider_call": True,
         "simulate": {"status": "ok", "preview_count": 2},
     }
+    assert report["usage_total"] == {
+        "model_calls": 2,
+        "input_tokens": 35,
+        "output_tokens": 16,
+        "elapsed_ms": 154,
+    }
     assert PROBLEM not in text
     assert SECRET_RATIONALE not in text
     assert SECRET_REPAIR_QUESTION not in text
@@ -1681,7 +1767,7 @@ def test_live_repair_success_with_operation_scope():
         env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
     )
     assert code == 0
-    diagnose_body = json.loads(fake.requests[4].body)
+    diagnose_body = json.loads(fake.requests[6].body)
     assert diagnose_body["expected_active_version_id"] == ACTIVE_VERSION
     assert diagnose_body["current_operation_id"] == OPERATION_ID
     assert report["repair"]["candidate_count"] == 2
@@ -1845,12 +1931,12 @@ def test_live_repair_no_active_plan_exit1_zero_posts():
         ),
         (
             ["--problem", PROBLEM],
-            "problem_requires_live_diagnosis",
+            "problem_requires_live_diagnosis_or_repair",
             "arguments",
         ),
         (
             ["--operation-id", OPERATION_ID],
-            "operation_id_requires_live_diagnosis",
+            "operation_id_requires_live_diagnosis_or_repair",
             "arguments",
         ),
     ],
@@ -2029,6 +2115,172 @@ def test_live_repair_simulate_failure():
     ]
     assert "secret detail" not in text
     assert not any("commit" in path or "approve" in path for _, path in fake.paths())
+
+
+def test_provider_not_configured_readonly_is_informational():
+    routes = healthy_routes(
+        {
+            ("GET", "/api/provider/status"): resp(
+                payload=provider_payload(configured=False)
+            )
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, _ = invoke(base_argv(), fake, env={})
+    assert code == 0
+    assert report["provider"] == {
+        "status": "ok",
+        "configured": False,
+        "model": "muse-spark-1.3",
+    }
+    assert report["errors"] == []
+    assert fake.paths() == [("GET", "/api/health"), ("GET", "/api/provider/status")]
+
+
+def test_provider_not_configured_live_blocks_before_project_or_post():
+    routes = healthy_routes(
+        {
+            ("GET", "/api/provider/status"): resp(
+                payload=provider_payload(configured=False)
+            )
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, _ = invoke(
+        _diagnosis_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 1
+    assert report["provider"] == {
+        "status": "ok",
+        "configured": False,
+        "model": "muse-spark-1.3",
+    }
+    assert report["errors"] == [
+        {"check": "provider", "code": "provider_not_configured"}
+    ]
+    assert fake.paths() == [("GET", "/api/health"), ("GET", "/api/provider/status")]
+    assert all(m == "GET" for m, _ in fake.paths())
+
+
+@pytest.mark.parametrize(
+    "handler,expected_code",
+    [
+        (TransportError("timeout"), "timeout"),
+        (
+            resp(503, payload={"code": "provider_error", "message": "secret"}),
+            "provider_error",
+        ),
+        (
+            resp(payload={"configured": "secret-malformed", "model": 1}),
+            "invalid_response",
+        ),
+    ],
+)
+def test_provider_failure_live_exits_before_post(handler, expected_code):
+    routes = healthy_routes({("GET", "/api/provider/status"): handler})
+    fake = FakeTransport(routes)
+    code, report, text = invoke(
+        _diagnosis_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 1
+    assert report["provider"] == {"status": "failed"}
+    assert report["errors"][0]["check"] == "provider"
+    assert report["errors"][0]["code"] == expected_code
+    assert fake.paths() == [("GET", "/api/health"), ("GET", "/api/provider/status")]
+    assert all(m == "GET" for m, _ in fake.paths())
+    assert "secret" not in text
+
+
+@pytest.mark.parametrize(
+    "handler",
+    [
+        TransportError("timeout"),
+        resp(503, payload={"code": "provider_error", "message": "secret"}),
+        resp(payload={"configured": "secret-malformed", "model": 1}),
+    ],
+)
+def test_provider_failure_readonly_is_unavailable_without_error(handler):
+    routes = healthy_routes({("GET", "/api/provider/status"): handler})
+    fake = FakeTransport(routes)
+    code, report, text = invoke(base_argv(), fake, env={})
+    assert code == 0
+    assert report["provider"] == {"status": "unavailable"}
+    assert report["errors"] == []
+    assert "secret" not in text
+
+
+def test_progress_summary_counts_only_for_active_version():
+    routes = _repair_routes(
+        {
+            (
+                "GET",
+                f"/api/projects/{PROJECT_ID}/versions/{ACTIVE_VERSION}/progress",
+            ): resp(payload=rich_progress_payload())
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, text = invoke(
+        base_argv("--project-id", PROJECT_ID),
+        fake,
+        env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
+    )
+    assert code == 0
+    assert report["progress"] == {
+        "status": "building",
+        "event_count": 2,
+        "completed_operation_count": 2,
+        "failed_operation_count": 1,
+        "diagnosis_evidence_count": 1,
+        "last_event_present": True,
+    }
+    assert report["usage_total"] is None
+    assert SECRET_EVENT_TEXT not in text
+    assert SECRET_EVIDENCE_TEXT not in text
+    assert TOKEN not in text
+
+
+def test_progress_not_checked_without_active_version():
+    fake = FakeTransport(healthy_routes())
+    code, report, _ = invoke(
+        base_argv("--project-id", PROJECT_ID),
+        fake,
+        env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
+    )
+    assert code == 0
+    assert report["progress"] == {"status": "not_checked"}
+    assert not any("progress" in path for _, path in fake.paths())
+
+
+def test_usage_total_null_field_when_any_step_reports_unknown():
+    routes = _repair_routes(
+        {
+            ("POST", f"/api/projects/{PROJECT_ID}/diagnose"): resp(
+                payload=diagnosis_payload(
+                    diagnostics={
+                        "status": "ok",
+                        "model": "muse-spark-1.3",
+                        "elapsed_ms": 99,
+                        "usage": {
+                            "model_calls": 1,
+                            "input_tokens": None,
+                            "output_tokens": 7,
+                        },
+                    }
+                )
+            )
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, _ = invoke(
+        _repair_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 0
+    assert report["usage_total"] == {
+        "model_calls": 2,
+        "input_tokens": None,
+        "output_tokens": 16,
+        "elapsed_ms": 154,
+    }
 
 
 def test_module_entrypoint_invalid_origin_is_json():
