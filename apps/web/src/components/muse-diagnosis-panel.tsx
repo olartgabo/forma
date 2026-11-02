@@ -8,6 +8,7 @@ import {
   type RepairHandoff,
 } from "../lib/repair-handoff";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import type { MuseAvailability } from "../lib/muse-provider";
 import type { DiagnosisFocus } from "../lib/build-diagnosis";
 import MuseRequestStatus from "./muse-request-status";
 import type {
@@ -42,6 +43,8 @@ export default function MuseDiagnosisPanel({
   disabled,
   onRepairHandoff,
   prefill,
+  museAvailability,
+  onDiagnosisSaved,
 }: {
   token: string;
   project: Project;
@@ -50,6 +53,8 @@ export default function MuseDiagnosisPanel({
   disabled: boolean;
   onRepairHandoff?: (handoff: RepairHandoff, targetId: string) => void;
   prefill?: DiagnosisFocus | null;
+  museAvailability?: MuseAvailability;
+  onDiagnosisSaved?: () => void;
 }) {
   const [selectedId, setSelectedId] = useState("");
   const [problem, setProblem] = useState("");
@@ -166,6 +171,7 @@ export default function MuseDiagnosisPanel({
       photos.some((photo) => photo.id === prefill.mediaId && isEligible(photo))
     )
       setSelectedId(prefill.mediaId);
+    else setSelectedId("");
     if (operations.some((operation) => operation.id === prefill.operationId))
       setOperationId(prefill.operationId);
   }, [
@@ -206,6 +212,7 @@ export default function MuseDiagnosisPanel({
       busy ||
       inventoryStale ||
       disabled ||
+      museAvailability?.enabled === false ||
       (hasActive && (!activePlan || !operationValid))
     )
       return;
@@ -242,6 +249,7 @@ export default function MuseDiagnosisPanel({
       if (requestController.signal.aborted || requestEpoch !== epoch.current)
         return;
       setResult(next);
+      onDiagnosisSaved?.();
     } catch (failure) {
       if (requestController.signal.aborted || requestEpoch !== epoch.current)
         return;
@@ -271,6 +279,7 @@ export default function MuseDiagnosisPanel({
     busy ||
     inventoryStale ||
     disabled ||
+    museAvailability?.enabled === false ||
     (hasActive && (!activePlan || !operationValid));
 
   const repairHandoff =
@@ -386,12 +395,17 @@ export default function MuseDiagnosisPanel({
               progress stays unknown and Muse cannot name affected plan parts.
             </p>
           )}
+          {museAvailability?.enabled === false && (
+            <p className="help" role="note">
+              {museAvailability.reason}
+            </p>
+          )}
           <label className="checkbox-label" htmlFor="diagnosis-consent">
             <input
               id="diagnosis-consent"
               type="checkbox"
               checked={consented}
-              disabled={busy}
+              disabled={busy || museAvailability?.enabled === false}
               onChange={(event) => setConsented(event.target.checked)}
             />
             Send the selected photo, my reported problem and this project&apos;s

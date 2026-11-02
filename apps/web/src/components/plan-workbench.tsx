@@ -12,6 +12,7 @@ import type { RepairHandoff } from "../lib/repair-handoff";
 import type { DiagnosisFocus } from "../lib/build-diagnosis";
 import Diagram from "./manual-diagram";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import type { MuseAvailability } from "../lib/muse-provider";
 import MuseRequestStatus from "./muse-request-status";
 import PhysicalProgress from "./physical-progress";
 import type {
@@ -42,6 +43,8 @@ export default function PlanWorkbench({
   onProgressChange,
   repairHandoff,
   onDiagnoseFailure,
+  museAvailability,
+  diagnosisRefreshKey,
 }: {
   token: string;
   project: Project;
@@ -53,6 +56,8 @@ export default function PlanWorkbench({
   onProgressChange: () => void;
   repairHandoff?: { handoff: RepairHandoff; targetId: string } | null;
   onDiagnoseFailure?: (focus: DiagnosisFocus) => void;
+  museAvailability?: MuseAvailability;
+  diagnosisRefreshKey?: number;
 }) {
   const [plans, setPlans] = useState<readonly PlanSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -186,7 +191,13 @@ export default function PlanWorkbench({
   }
 
   async function runDesign(body: DesignGenerateRequest) {
-    if (designBusy || approvalDisabled || pending !== null) return;
+    if (
+      designBusy ||
+      approvalDisabled ||
+      pending !== null ||
+      museAvailability?.enabled === false
+    )
+      return;
     // Consent covers this one request only: consume it on dispatch so any
     // later success, failure or cancellation requires a fresh opt-in. The
     // in-flight request keeps the body captured by the caller unchanged.
@@ -288,12 +299,24 @@ export default function PlanWorkbench({
     // Retrying may start a provider run when the previous request failed
     // before dispatch was recorded, so it needs a fresh consent too. The
     // saved body and its idempotency key are reused unchanged.
-    if (!designConsented || !designPending || designUnknown) return;
+    if (
+      !designConsented ||
+      !designPending ||
+      designUnknown ||
+      museAvailability?.enabled === false
+    )
+      return;
     void runDesign(designPending);
   }
 
   function startDesign() {
-    if (!designConsented || designPending !== null || designUnknown) return;
+    if (
+      !designConsented ||
+      designPending !== null ||
+      designUnknown ||
+      museAvailability?.enabled === false
+    )
+      return;
     const notes = designNotes.trim();
     void runDesign({
       expected_revision_id: project.revision_id,
@@ -357,6 +380,7 @@ export default function PlanWorkbench({
     designUnknown ||
     approvalDisabled ||
     pending !== null ||
+    museAvailability?.enabled === false ||
     project.active_version_id !== null;
   return (
     <section
@@ -415,12 +439,17 @@ export default function PlanWorkbench({
           disabled={designBusy}
           onChange={(event) => setDesignNotes(event.target.value)}
         />
+        {museAvailability?.enabled === false && (
+          <p className="help" role="note">
+            {museAvailability.reason}
+          </p>
+        )}
         <label className="checkbox-label" htmlFor="design-consent">
           <input
             id="design-consent"
             type="checkbox"
             checked={designConsented}
-            disabled={designBusy}
+            disabled={designBusy || museAvailability?.enabled === false}
             onChange={(event) => setDesignConsented(event.target.checked)}
           />
           Share this project&apos;s saved goal, materials, requirements and my
@@ -507,7 +536,10 @@ export default function PlanWorkbench({
             <button
               type="button"
               disabled={
-                !designConsented || approvalDisabled || pending !== null
+                !designConsented ||
+                approvalDisabled ||
+                pending !== null ||
+                museAvailability?.enabled === false
               }
               onClick={retryDesign}
             >
@@ -692,6 +724,7 @@ export default function PlanWorkbench({
                   onReloadProject={onReload}
                   onProgressChange={onProgressChange}
                   onDiagnoseFailure={onDiagnoseFailure}
+                  refreshKey={diagnosisRefreshKey}
                   onLockChange={(locked) => {
                     setProgressPending(locked);
                     onLockChange(locked);
@@ -710,6 +743,7 @@ export default function PlanWorkbench({
               onLockChange={onLockChange}
               handoff={repairHandoff?.handoff ?? null}
               handoffTargetId={repairHandoff?.targetId}
+              museAvailability={museAvailability}
             />
           )}
           <details className="manual-materials">

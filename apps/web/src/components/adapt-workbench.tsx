@@ -28,6 +28,7 @@ import {
 } from "../lib/repair-candidates";
 import Diagram from "./manual-diagram";
 import MuseRepairPanel from "./muse-repair-panel";
+import type { MuseAvailability } from "../lib/muse-provider";
 
 function message(error: unknown) {
   return error instanceof ApiError
@@ -301,6 +302,7 @@ export default function AdaptWorkbench({
   onLockChange,
   handoff,
   handoffTargetId,
+  museAvailability,
 }: {
   token: string;
   projectId: string;
@@ -310,6 +312,7 @@ export default function AdaptWorkbench({
   onLockChange: (locked: boolean) => void;
   handoff?: RepairHandoff | null;
   handoffTargetId?: string;
+  museAvailability?: MuseAvailability;
 }) {
   const [open, setOpen] = useState(false);
   const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
@@ -905,6 +908,7 @@ export default function AdaptWorkbench({
                 progressLoaded={progress !== null}
                 disabled={locked}
                 onCandidates={handleMuseCandidates}
+                museAvailability={museAvailability}
               />
               <form onSubmit={submitSimulation}>
                 <fieldset disabled={locked}>

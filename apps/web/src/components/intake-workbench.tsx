@@ -12,13 +12,19 @@ import {
   createProject,
   deletePhoto,
   fetchPhoto,
+  getProviderStatus,
   listPhotos,
   loadProject,
   saveInventory,
   uploadPhoto,
 } from "../lib/api";
+import {
+  museAvailability as resolveMuseAvailability,
+  type MuseProviderStatus,
+} from "../lib/muse-provider";
 import MuseIntakePanel from "./muse-intake-panel";
 import MuseDiagnosisPanel from "./muse-diagnosis-panel";
+import MuseProviderBanner from "./muse-provider-banner";
 import type {
   BuildRequirements,
   Media,
@@ -268,6 +274,49 @@ function ProjectWorkbench({
     () => setProofRevision((value) => value + 1),
     [],
   );
+  const [providerStatus, setProviderStatus] = useState<MuseProviderStatus>({
+    state: "loading",
+  });
+  const [diagnosisSavedRevision, setDiagnosisSavedRevision] = useState(0);
+  const providerRequest = useRef(0);
+  const providerController = useRef<AbortController | null>(null);
+  const loadProviderStatus = useCallback(() => {
+    const requestId = ++providerRequest.current;
+    providerController.current?.abort();
+    const requestController = new AbortController();
+    providerController.current = requestController;
+    setProviderStatus({ state: "loading" });
+    void getProviderStatus(token, requestController.signal)
+      .then((result) => {
+        if (
+          requestController.signal.aborted ||
+          requestId !== providerRequest.current
+        )
+          return;
+        setProviderStatus({
+          state: "loaded",
+          configured: result.configured,
+          model: result.model,
+        });
+      })
+      .catch(() => {
+        if (
+          requestController.signal.aborted ||
+          requestId !== providerRequest.current
+        )
+          return;
+        setProviderStatus({ state: "failed" });
+      });
+  }, [token]);
+  useEffect(() => {
+    loadProviderStatus();
+    return () => {
+      providerRequest.current += 1;
+      providerController.current?.abort();
+      providerController.current = null;
+    };
+  }, [loadProviderStatus]);
+  const museAvailability = resolveMuseAvailability(providerStatus);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [stale, setStale] = useState(false);
@@ -565,6 +614,10 @@ function ProjectWorkbench({
           Disconnect
         </button>
       </div>
+      <MuseProviderBanner
+        availability={museAvailability}
+        onRetry={loadProviderStatus}
+      />
       <div className="status-area" aria-live="polite" aria-atomic="true">
         {notice && <p className="notice">{notice}</p>}
         {error && (
@@ -1135,6 +1188,7 @@ function ProjectWorkbench({
             photos={photos}
             inventoryStale={stale || dirty}
             disabled={locked}
+            museAvailability={museAvailability}
           />
           <MuseDiagnosisPanel
             token={token}
@@ -1143,6 +1197,10 @@ function ProjectWorkbench({
             inventoryStale={stale || dirty}
             disabled={locked}
             prefill={diagnosisFocus}
+            museAvailability={museAvailability}
+            onDiagnosisSaved={() =>
+              setDiagnosisSavedRevision((value) => value + 1)
+            }
             onRepairHandoff={(handoff, targetId) =>
               setPendingRepair({ handoff, targetId })
             }
@@ -1169,6 +1227,8 @@ function ProjectWorkbench({
             onProgressChange={physicalProgressChanged}
             repairHandoff={pendingRepair}
             onDiagnoseFailure={setDiagnosisFocus}
+            museAvailability={museAvailability}
+            diagnosisRefreshKey={diagnosisSavedRevision}
           />
           <ProofWorkbench
             key={`proof-${project.id}`}

@@ -26,6 +26,7 @@ import type {
   MediaResult,
   Project,
   ProjectResult,
+  ProviderStatusResponse,
   RepairProposeRequest,
   RepairProposeResult,
   SavedProjectList,
@@ -369,6 +370,44 @@ export function createProject(
       body: JSON.stringify(body),
     },
     json<ProjectResult>,
+    signal,
+  );
+}
+
+export type ProviderStatus = Omit<ProviderStatusResponse, "model"> & {
+  model: string | null;
+};
+
+function checkedProviderStatus(value: unknown): ProviderStatus {
+  const invalid = () =>
+    new ApiError(
+      200,
+      "invalid_response",
+      "FORMA returned a Muse provider status that could not be read. Try again.",
+    );
+  if (!isRecord(value)) throw invalid();
+  if (typeof value.configured !== "boolean") throw invalid();
+  if (
+    value.model !== undefined &&
+    value.model !== null &&
+    typeof value.model !== "string"
+  )
+    throw invalid();
+  return {
+    configured: value.configured,
+    model: typeof value.model === "string" ? value.model : null,
+  };
+}
+
+export function getProviderStatus(
+  token: string,
+  signal?: AbortSignal,
+): Promise<ProviderStatus> {
+  return request(
+    token,
+    "/api/provider/status",
+    { method: "GET" },
+    async (response) => checkedProviderStatus(await json<unknown>(response)),
     signal,
   );
 }
