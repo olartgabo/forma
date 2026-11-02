@@ -1019,9 +1019,8 @@ function hasExactKeys(
 }
 
 function isBoundedText(value: unknown): value is string {
-  return (
-    typeof value === "string" && value.trim().length > 0 && value.length <= 2000
-  );
+  // Server contract (Text) is raw length 1..2000 with no whitespace stripping.
+  return typeof value === "string" && value.length > 0 && value.length <= 2000;
 }
 
 function isNullableId(value: unknown): boolean {

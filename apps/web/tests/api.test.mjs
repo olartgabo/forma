@@ -45,6 +45,11 @@ import {
   handoffFromDiagnosis,
   isHandoffCurrent,
 } from "../src/lib/repair-handoff.ts";
+import {
+  isCandidateSetCurrent,
+  mergeMuseCandidates,
+  museCandidateLabel,
+} from "../src/lib/repair-candidates.ts";
 
 test("provider usage formats only provider-reported bounded counts", () => {
   assert.equal(
@@ -1293,6 +1298,82 @@ const repairResult = {
     usage: { model_calls: 1, input_tokens: 10, output_tokens: 5 },
   },
 };
+
+test("mergeMuseCandidates preserves a hand-added candidate added during the request", () => {
+  const original = repairCandidate("repair-original");
+  const handAdded = repairCandidate("repair-hand");
+  const museA = repairCandidate("repair-muse-a");
+  const museB = repairCandidate("repair-muse-b");
+  // At click time only `original` existed; by return time the user added
+  // `handAdded` by hand. Merging against the current list keeps it.
+  const merged = mergeMuseCandidates([original, handAdded], [museA, museB]);
+  assert.deepEqual(
+    merged.next.map((candidate) => candidate.id),
+    ["repair-original", "repair-hand", "repair-muse-a"],
+  );
+  assert.equal(merged.added, 1);
+  assert.equal(merged.skipped, 1);
+  assert.deepEqual(merged.addedIds, ["repair-muse-a"]);
+});
+
+test("mergeMuseCandidates does not resurrect a removed candidate and counts duplicates and cap", () => {
+  const remaining = repairCandidate("repair-remaining");
+  const removed = repairCandidate("repair-removed");
+  const museA = repairCandidate("repair-muse-a");
+  // `removed` was deleted while Muse was in flight and is not in `incoming`.
+  const merged = mergeMuseCandidates([remaining], [museA]);
+  assert.deepEqual(
+    merged.next.map((candidate) => candidate.id),
+    ["repair-remaining", "repair-muse-a"],
+  );
+  assert.equal(merged.next.includes(removed), false);
+  // Duplicates against current and within incoming are skipped.
+  const dup = mergeMuseCandidates(
+    [remaining],
+    [remaining, museA, museA, repairCandidate("repair-muse-b")],
+    3,
+  );
+  assert.deepEqual(dup.addedIds, ["repair-muse-a", "repair-muse-b"]);
+  assert.equal(dup.added, 2);
+  assert.equal(dup.skipped, 2);
+  // Cap is on the total list size.
+  const capped = mergeMuseCandidates(
+    [remaining, repairCandidate("repair-x")],
+    [museA, repairCandidate("repair-muse-b")],
+    3,
+  );
+  assert.equal(capped.added, 1);
+  assert.equal(capped.skipped, 1);
+  assert.equal(capped.next.length, 3);
+  const full = mergeMuseCandidates(
+    [remaining, repairCandidate("repair-x"), repairCandidate("repair-y")],
+    [museA],
+  );
+  assert.equal(full.added, 0);
+  assert.equal(full.skipped, 1);
+});
+
+test("candidate-set version rejects stale simulate results and labels Muse candidates", () => {
+  assert.equal(isCandidateSetCurrent(2, 2), true);
+  assert.equal(isCandidateSetCurrent(1, 2), false);
+  assert.equal(isCandidateSetCurrent(3, 2), false);
+  const ids = new Set(["repair-muse-a"]);
+  assert.match(museCandidateLabel("repair-muse-a", ids), /unverified/);
+  assert.equal(museCandidateLabel("repair-hand", ids), "");
+});
+
+test("proposeRepairs accepts whitespace-only questions and rationale the server accepts", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({
+      ...repairResult,
+      candidates: [repairCandidate("repair-a", { rationale: "   " })],
+      questions: ["   "],
+    }),
+  );
+  const result = await proposeRepairs(token, "project-a", repairBody);
+  assert.equal(result.candidates[0].rationale, "   ");
+  assert.deepEqual(result.questions, ["   "]);
+});
 
 test("proposeRepairs sends POST to repairs/propose with exact body and auth", async (t) => {
   const calls = [];

@@ -53,6 +53,9 @@ export default function MuseRepairPanel({
   versionRef.current = versionId;
   const projectRef = useRef(projectId);
   projectRef.current = projectId;
+  const onCandidatesRef = useRef(onCandidates);
+  onCandidatesRef.current = onCandidates;
+  const diagnosisRef = useRef(diagnosis);
 
   useEffect(
     () => () => {
@@ -61,6 +64,21 @@ export default function MuseRepairPanel({
     },
     [],
   );
+
+  // A new handoff (new diagnosis) aborts an in-flight Muse request.
+  useEffect(() => {
+    if (diagnosisRef.current === diagnosis) return;
+    diagnosisRef.current = diagnosis;
+    epoch.current += 1;
+    controller.current?.abort();
+    controller.current = null;
+    setBusy(false);
+    setConsented(false);
+    setResult(null);
+    setMerge(null);
+    setFailure(null);
+    setCancelledMessage("");
+  }, [diagnosis]);
 
   // A new active version invalidates consent and any shown Muse result.
   useEffect(() => {
@@ -130,12 +148,13 @@ export default function MuseRepairPanel({
       )
         return;
       setResult(next);
-      setMerge(onCandidates(next.candidates));
+      setMerge(onCandidatesRef.current(next.candidates));
     } catch (failure) {
       if (
         requestController.signal.aborted ||
         requestEpoch !== epoch.current ||
-        versionRef.current !== requestedVersion
+        versionRef.current !== requestedVersion ||
+        projectRef.current !== requestedProject
       )
         return;
       if (failure instanceof ApiError && failure.code === "cancelled") {

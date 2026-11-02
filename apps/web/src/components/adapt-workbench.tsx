@@ -21,6 +21,11 @@ import {
   isHandoffCurrent,
   type RepairHandoff,
 } from "../lib/repair-handoff";
+import {
+  isCandidateSetCurrent,
+  mergeMuseCandidates,
+  museCandidateLabel,
+} from "../lib/repair-candidates";
 import Diagram from "./manual-diagram";
 import MuseRepairPanel from "./muse-repair-panel";
 
@@ -333,6 +338,13 @@ export default function AdaptWorkbench({
     null,
   );
   const lifetime = useRef(new AbortController());
+  const candidatesRef = useRef<readonly RepairPatch[]>([]);
+  const candidateSetVersionRef = useRef(0);
+  const [candidateSetVersion, setCandidateSetVersion] = useState(0);
+  const previewCandidateSetVersionRef = useRef<number | null>(null);
+  const [previewCandidateSetVersion, setPreviewCandidateSetVersion] = useState<
+    number | null
+  >(null);
   const previewsRef = useRef<AdaptPreviewSet | null>(null);
   const choiceRef = useRef("");
   const approvedRef = useRef(false);
@@ -381,6 +393,10 @@ export default function AdaptWorkbench({
     approvedRef.current = approved;
   }, [approved]);
 
+  useEffect(() => {
+    candidatesRef.current = candidates;
+  }, [candidates]);
+
   function clearStalePreviews() {
     const had =
       previewsRef.current !== null ||
@@ -389,6 +405,8 @@ export default function AdaptWorkbench({
     previewsRef.current = null;
     choiceRef.current = "";
     approvedRef.current = false;
+    previewCandidateSetVersionRef.current = null;
+    setPreviewCandidateSetVersion(null);
     setPreviews(null);
     setChoice("");
     setApproved(false);
@@ -398,23 +416,38 @@ export default function AdaptWorkbench({
       );
   }
 
+  function invalidateForCandidateChange() {
+    const had =
+      previewsRef.current !== null ||
+      choiceRef.current !== "" ||
+      approvedRef.current;
+    candidateSetVersionRef.current += 1;
+    setCandidateSetVersion(candidateSetVersionRef.current);
+    previewCandidateSetVersionRef.current = null;
+    setPreviewCandidateSetVersion(null);
+    previewsRef.current = null;
+    choiceRef.current = "";
+    approvedRef.current = false;
+    setPreviews(null);
+    setChoice("");
+    setApproved(false);
+    return had;
+  }
+
   function handleMuseCandidates(incoming: readonly RepairPatch[]) {
-    const existing = new Set(candidates.map((candidate) => candidate.id));
-    const fresh = incoming.filter((candidate) => !existing.has(candidate.id));
-    const capacity = Math.max(0, 3 - candidates.length);
-    const addedList = fresh.slice(0, capacity);
-    if (addedList.length > 0) {
-      setCandidates([...candidates, ...addedList]);
+    const merged = mergeMuseCandidates(candidatesRef.current, incoming);
+    if (merged.added > 0) {
+      candidatesRef.current = merged.next;
+      setCandidates(merged.next);
       setMuseCandidateIds(
-        (current) =>
-          new Set([...current, ...addedList.map((candidate) => candidate.id)]),
+        (current) => new Set([...current, ...merged.addedIds]),
       );
-      clearStalePreviews();
+      if (invalidateForCandidateChange())
+        setDraftChangeNotice(
+          "Earlier previews were cleared because the draft changed. Simulate again before approving a repair.",
+        );
     }
-    return {
-      added: addedList.length,
-      skipped: incoming.length - addedList.length,
-    };
+    return { added: merged.added, skipped: merged.skipped };
   }
 
   useEffect(() => {
@@ -424,6 +457,11 @@ export default function AdaptWorkbench({
     setHandoffNote(null);
     setPendingHandoffDraft(null);
     setProgress(null);
+    candidatesRef.current = [];
+    candidateSetVersionRef.current += 1;
+    setCandidateSetVersion(candidateSetVersionRef.current);
+    previewCandidateSetVersionRef.current = null;
+    setPreviewCandidateSetVersion(null);
     setCandidates([]);
     setPreviews(null);
     setChoice("");
@@ -496,6 +534,8 @@ export default function AdaptWorkbench({
       );
       if (signal.aborted) return;
       setProgress(next);
+      previewCandidateSetVersionRef.current = null;
+      setPreviewCandidateSetVersion(null);
       setPreviews(null);
       setChoice("");
       setApproved(false);
@@ -516,8 +556,8 @@ export default function AdaptWorkbench({
     if (draft.kind === "replace_part" && !draft.stockId) return;
     if (draft.kind === "resize_part" && width === null && height === null)
       return;
-    setCandidates((current) => [
-      ...current,
+    const nextCandidates: readonly RepairPatch[] = [
+      ...candidatesRef.current,
       {
         id: `repair-${crypto.randomUUID()}`,
         base_version_id: version.version_id,
@@ -531,13 +571,16 @@ export default function AdaptWorkbench({
         angle_deg: null,
         rationale: draft.rationale.trim(),
       },
-    ]);
+    ];
+    candidatesRef.current = nextCandidates;
+    setCandidates(nextCandidates);
+    invalidateForCandidateChange();
     setDraft(emptyDraft);
-    setPreviews(null);
   }
 
   async function simulate(request: AdaptSimulateRequest) {
     const signal = lifetime.current.signal;
+    const startVersion = candidateSetVersionRef.current;
     setPendingSimulation(request);
     setBusy(true);
     onLockChange(true);
@@ -546,6 +589,10 @@ export default function AdaptWorkbench({
       const result = await simulateRepairs(token, projectId, request, signal);
       if (signal.aborted) return;
       setPendingSimulation(null);
+      if (!isCandidateSetCurrent(startVersion, candidateSetVersionRef.current))
+        return;
+      previewCandidateSetVersionRef.current = startVersion;
+      setPreviewCandidateSetVersion(startVersion);
       setPreviews(result);
       setChoice(result.previews.find((item) => item.version)?.preview_id ?? "");
       setApproved(false);
@@ -565,6 +612,14 @@ export default function AdaptWorkbench({
   }
 
   async function approve(request: AdaptCommitRequest) {
+    if (
+      previewCandidateSetVersionRef.current === null ||
+      !isCandidateSetCurrent(
+        previewCandidateSetVersionRef.current,
+        candidateSetVersionRef.current,
+      )
+    )
+      return;
     const signal = lifetime.current.signal;
     setPendingApproval(request);
     setBusy(true);
@@ -815,18 +870,20 @@ export default function AdaptWorkbench({
                       {candidate.replacement_stock_id
                         ? ` from ${candidate.replacement_stock_id}`
                         : ""}{" "}
-                      {museCandidateIds.has(candidate.id) && !previews
-                        ? "— Muse proposal (unverified) "
+                      {!previews
+                        ? museCandidateLabel(candidate.id, museCandidateIds)
                         : ""}
                       <button
                         type="button"
                         className="quiet"
                         disabled={locked}
                         onClick={() => {
-                          setCandidates((current) =>
-                            current.filter((item) => item.id !== candidate.id),
+                          const nextCandidates = candidatesRef.current.filter(
+                            (item) => item.id !== candidate.id,
                           );
-                          setPreviews(null);
+                          candidatesRef.current = nextCandidates;
+                          setCandidates(nextCandidates);
+                          invalidateForCandidateChange();
                         }}
                       >
                         Remove
@@ -947,7 +1004,16 @@ export default function AdaptWorkbench({
                   <button
                     type="button"
                     className="primary"
-                    disabled={!approved || locked || pendingApproval !== null}
+                    disabled={
+                      !approved ||
+                      locked ||
+                      pendingApproval !== null ||
+                      previewCandidateSetVersion === null ||
+                      !isCandidateSetCurrent(
+                        previewCandidateSetVersion,
+                        candidateSetVersion,
+                      )
+                    }
                     onClick={() =>
                       void approve({
                         expected_version_id: version.version_id,
