@@ -45,12 +45,7 @@ class RepairRoute(APIRoute):
 
 def _provider_error(exc: GatewayError) -> RepairError:
     status, code, message = repair_runtime.gateway_error_details(exc.code)
-    if (
-        code
-        not in repair_runtime.RepairProposeErrorResponse.model_fields[
-            "code"
-        ].annotation.__args__
-    ):
+    if code not in repair_runtime.PROVIDER_ERROR_CODES:
         code = "provider_error"
     return RepairError(status, code, message)
 
@@ -129,7 +124,9 @@ def repairs_router(
             reported_problem=body.reported_problem,
             diagnosis=body.diagnosis,
             plan=plan,
-            progress=progress,
+            completed_operation_ids=tuple(progress.completed_operation_ids),
+            failed_operation_ids=tuple(progress.failed_operation_ids),
+            expected_remaining_stock=tuple(progress.expected_remaining_stock),
         )
         try:
             proposals, diagnostics = repair_runtime.propose_repairs(
