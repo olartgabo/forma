@@ -93,6 +93,62 @@ def diagnosis_payload(**overrides):
     return value
 
 
+DESIGN_NOTES = "Secret design notes handle with care"
+
+
+def design_payload(**overrides):
+    value = {
+        "project_id": PROJECT_ID,
+        "inventory_revision_id": REVISION,
+        "status": "proposed",
+        "candidates": [
+            {
+                "candidate_id": "candidate-a",
+                "status": "accepted",
+                "version": None,
+                "blockers": [],
+            },
+            {
+                "candidate_id": "candidate-b",
+                "status": "blocked",
+                "version": None,
+                "blockers": [],
+            },
+            {
+                "candidate_id": "candidate-c",
+                "status": "needs_measurement",
+                "version": None,
+                "blockers": [],
+            },
+            {
+                "candidate_id": "candidate-d",
+                "status": "unsupported",
+                "version": None,
+                "blockers": [],
+            },
+        ],
+        "questions": ["secret design question text"],
+        "blockers": [
+            {
+                "code": "missing_measurement",
+                "message": "secret design blocker text",
+                "target_ids": [],
+            }
+        ],
+        "diagnostics": {
+            "status": "ok",
+            "model": "muse-spark-1.3",
+            "elapsed_ms": 123,
+            "model_rounds": 2,
+            "tool_executions": 1,
+            "usage": {"model_calls": 2, "input_tokens": 30, "output_tokens": 11},
+        },
+        "replayed": False,
+    }
+    value.update(overrides)
+    return value
+
+
 def intake_payload(**overrides):
     value = {
         "project_id": PROJECT_ID,
@@ -152,6 +208,9 @@ def healthy_routes(overrides=None):
         ("POST", f"/api/projects/{PROJECT_ID}/diagnose"): resp(
             payload=diagnosis_payload()
         ),
+        ("POST", f"/api/projects/{PROJECT_ID}/designs/generate"): resp(
+            payload=design_payload()
+        ),
     }
     if overrides:
         routes.update(overrides)
@@ -180,6 +239,7 @@ def test_health_only_default_no_inference_no_credential():
     assert report["project"] == {"status": "not_checked"}
     assert report["media"] == {"status": "not_checked"}
     assert report["intake"] == {"status": "not_requested"}
+    assert report["design"] == {"status": "not_requested"}
     assert report["physical_verification"] == "not_checked"
     assert report["measurements"] == "unknown"
     assert fake.paths() == [("GET", "/api/health")]
@@ -733,8 +793,9 @@ def test_readiness_success_safe_fields_only():
     assert readiness["ready"] is False
     assert readiness["status"] == "needs_input"
     assert readiness["blocker_codes"] == ["missing_measurement"]
-    assert readiness["blocker_count"] == 1
-    assert readiness["missing_input_count"] == 1
+    assert readiness["counts"] == {"blockers": 1, "missing_inputs": 1}
+    assert "blocker_count" not in readiness
+    assert "missing_input_count" not in readiness
     assert "secret missing input text" not in text
     assert "secret blocker text" not in text
     assert TOKEN not in text
@@ -815,17 +876,22 @@ def test_live_diagnosis_success_without_operation_scope():
         "current_operation_id": None,
     }
     diag = report["diagnosis"]
-    assert diag["failure_type"] == "torn_slot"
-    assert diag["live_provider_call"] is True
-    assert diag["model"] == "muse-spark-1.3"
-    assert diag["elapsed_ms"] == 99
-    assert diag["counts"] == {
-        "visible_observations": 1,
-        "hypotheses": 1,
-        "questions_or_measurements": 1,
-        "affected_ids": 0,
+    assert diag == {
+        "status": "ok",
+        "failure_type": "torn_slot",
+        "counts": {
+            "visible_observations": 1,
+            "hypotheses": 1,
+            "questions_or_measurements": 1,
+            "affected_ids": 0,
+        },
+        "diagnostics": {
+            "model": "muse-spark-1.3",
+            "elapsed_ms": 99,
+            "usage": {"model_calls": 1, "input_tokens": 20, "output_tokens": 7},
+        },
+        "live_provider_call": True,
     }
-    assert diag["usage"] == {"model_calls": 1, "input_tokens": 20, "output_tokens": 7}
     assert PROBLEM not in text
     assert "secret visible observation" not in text
     assert "secret hypothesis text" not in text
@@ -986,6 +1052,7 @@ def test_live_diagnosis_result_mismatch_is_invalid_response():
     for overrides in (
         {"project_id": "project-other"},
         {"media_id": "media-other"},
+        {"revision_id": "inventory-other"},
     ):
         routes = healthy_routes(
             {
@@ -1002,6 +1069,42 @@ def test_live_diagnosis_result_mismatch_is_invalid_response():
         assert report["diagnosis"] == {"status": "failed"}
         assert report["errors"] == [{"check": "diagnosis", "code": "invalid_response"}]
         assert "project-other" not in text and "media-other" not in text
+        assert "inventory-other" not in text
+
+
+def test_live_diagnosis_operation_scope_mismatch_is_invalid_response():
+    for overrides in (
+        {"current_operation_id": "operation-other"},
+        {"active_version_id": "version-other"},
+        {"current_operation_id": None},
+        {"active_version_id": None},
+    ):
+        routes = healthy_routes(
+            {
+                ("GET", f"/api/projects/{PROJECT_ID}"): resp(
+                    payload=project_payload(active_version_id=ACTIVE_VERSION)
+                ),
+                ("POST", f"/api/projects/{PROJECT_ID}/diagnose"): resp(
+                    payload={
+                        **diagnosis_payload(
+                            active_version_id=ACTIVE_VERSION,
+                            current_operation_id=OPERATION_ID,
+                        ),
+                        **overrides,
+                    }
+                ),
+            }
+        )
+        fake = FakeTransport(routes)
+        code, report, text = invoke(
+            _diagnosis_argv("--operation-id", OPERATION_ID),
+            fake,
+            env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
+        )
+        assert code == 1
+        assert report["diagnosis"] == {"status": "failed"}
+        assert report["errors"] == [{"check": "diagnosis", "code": "invalid_response"}]
+        assert "operation-other" not in text and "version-other" not in text
 
 
 def test_live_diagnosis_provider_errors_surfaced():
@@ -1038,6 +1141,201 @@ def test_live_diagnosis_provider_errors_surfaced():
         ]
         assert "provider secret" not in text
         assert PROBLEM not in text and TOKEN not in text
+
+
+def _design_argv(*extra):
+    return base_argv(
+        "--project-id",
+        PROJECT_ID,
+        "--live-design",
+        "--transfer-consent",
+        *extra,
+    )
+
+
+def test_live_design_success_single_post_and_safe_report():
+    fake = FakeTransport(healthy_routes())
+    code, report, text = invoke(
+        _design_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 0
+    posts = [r for r in fake.requests if r.method == "POST"]
+    assert len(posts) == 1
+    assert posts[0].url == ORIGIN + f"/api/projects/{PROJECT_ID}/designs/generate"
+    body = json.loads(posts[0].body)
+    assert set(body) == {
+        "expected_revision_id",
+        "user_notes",
+        "idempotency_key",
+        "provider_context_consented",
+    }
+    assert body["expected_revision_id"] == REVISION
+    assert body["user_notes"] is None
+    assert body["provider_context_consented"] is True
+    assert isinstance(body["idempotency_key"], str)
+    assert len(body["idempotency_key"]) >= 8
+    assert posts[0].headers["Authorization"] == f"Bearer {TOKEN}"
+    assert report["design"] == {
+        "status": "proposed",
+        "counts": {
+            "accepted": 1,
+            "blocked": 1,
+            "needs_measurement": 1,
+            "unsupported": 1,
+        },
+        "question_count": 1,
+        "diagnostics": {
+            "model": "muse-spark-1.3",
+            "elapsed_ms": 123,
+            "model_rounds": 2,
+            "tool_executions": 1,
+            "usage": {"model_calls": 2, "input_tokens": 30, "output_tokens": 11},
+        },
+        "live_provider_call": True,
+        "replayed": False,
+    }
+    assert "secret design question text" not in text
+    assert "secret design blocker text" not in text
+    assert TOKEN not in text
+    assert report["physical_verification"] == "not_checked"
+
+
+def test_live_design_success_with_notes_stripped_and_never_echoed():
+    fake = FakeTransport(healthy_routes())
+    code, report, text = invoke(
+        _design_argv("--design-notes", f"  {DESIGN_NOTES}  "),
+        fake,
+        env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
+    )
+    assert code == 0
+    posts = [r for r in fake.requests if r.method == "POST"]
+    assert len(posts) == 1
+    assert json.loads(posts[0].body)["user_notes"] == DESIGN_NOTES
+    assert DESIGN_NOTES not in text
+    assert report["design"]["live_provider_call"] is True
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--live-design"],
+        ["--live-design", "--transfer-consent"],
+        ["--project-id", PROJECT_ID, "--live-design"],
+        [
+            "--project-id",
+            PROJECT_ID,
+            "--live-design",
+            "--transfer-consent",
+            "--live-intake",
+        ],
+        [
+            "--project-id",
+            PROJECT_ID,
+            "--live-design",
+            "--transfer-consent",
+            "--live-diagnosis",
+        ],
+        ["--project-id", PROJECT_ID, "--design-notes", DESIGN_NOTES],
+        [
+            "--project-id",
+            PROJECT_ID,
+            "--live-design",
+            "--transfer-consent",
+            "--design-notes",
+            "x" * 1001,
+        ],
+    ],
+)
+def test_live_design_parser_rejections_zero_transport(extra):
+    fake = FakeTransport(healthy_routes())
+    code, report, text = invoke(
+        base_argv(*extra), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 2
+    assert report["errors"]
+    assert fake.requests == []
+    assert DESIGN_NOTES not in text
+
+
+def test_live_design_active_plan_refused_with_zero_generate_posts():
+    routes = healthy_routes(
+        {
+            ("GET", f"/api/projects/{PROJECT_ID}"): resp(
+                payload=project_payload(active_version_id=ACTIVE_VERSION)
+            )
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, _ = invoke(
+        _design_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 1
+    assert report["design"] == {"status": "failed"}
+    assert report["errors"] == [{"check": "design", "code": "blocked"}]
+    assert all(m == "GET" for m, _ in fake.paths())
+    assert not any(p.endswith("/designs/generate") for _, p in fake.paths())
+
+
+def test_live_design_result_mismatch_is_invalid_response():
+    for overrides in (
+        {"project_id": "project-other"},
+        {"inventory_revision_id": "inventory-other"},
+    ):
+        routes = healthy_routes(
+            {
+                ("POST", f"/api/projects/{PROJECT_ID}/designs/generate"): resp(
+                    payload=design_payload(**overrides)
+                )
+            }
+        )
+        fake = FakeTransport(routes)
+        code, report, text = invoke(
+            _design_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+        )
+        assert code == 1
+        assert report["design"] == {"status": "failed"}
+        assert report["errors"] == [{"check": "design", "code": "invalid_response"}]
+        assert "project-other" not in text and "inventory-other" not in text
+
+
+def test_live_design_provider_errors_surfaced():
+    for status, payload, expected in (
+        (429, {"code": "rate_limit", "message": "provider secret"}, "rate_limit"),
+        (
+            502,
+            {"code": "provider_error", "message": "provider secret"},
+            "provider_error",
+        ),
+        (
+            503,
+            {"code": "provider_not_configured", "message": "x"},
+            "provider_not_configured",
+        ),
+        (504, {"code": "timeout", "message": "x"}, "timeout"),
+        (422, {"code": "consent_required", "message": "x"}, "consent_required"),
+        (409, {"code": "stale_version", "message": "x"}, "stale_version"),
+        (409, {"code": "blocked", "message": "x"}, "blocked"),
+    ):
+        routes = healthy_routes(
+            {
+                ("POST", f"/api/projects/{PROJECT_ID}/designs/generate"): resp(
+                    status, payload=payload
+                )
+            }
+        )
+        fake = FakeTransport(routes)
+        code, report, text = invoke(
+            _design_argv("--design-notes", DESIGN_NOTES),
+            fake,
+            env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
+        )
+        assert code == 1
+        assert report["design"] == {"status": "failed"}
+        assert report["errors"] == [
+            {"check": "design", "code": expected, "http_status": status}
+        ]
+        assert "provider secret" not in text
+        assert DESIGN_NOTES not in text and TOKEN not in text
 
 
 def test_module_entrypoint_invalid_origin_is_json():
