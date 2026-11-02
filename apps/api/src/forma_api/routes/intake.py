@@ -29,16 +29,19 @@ class IntakeRoute(APIRoute):
 
         async def intake_route_handler(request: Request):
             try:
-                return await original(request)
+                response = await original(request)
             except RequestValidationError:
                 body = intake_runtime.IntakeErrorResponse(
                     code="validation_error", message="Request validation failed"
                 )
-                return JSONResponse(body.model_dump(mode="json"), status_code=422)
+                response = JSONResponse(body.model_dump(mode="json"), status_code=422)
             except IntakeError as exc:
-                return JSONResponse(
+                response = JSONResponse(
                     exc.body.model_dump(mode="json"), status_code=exc.status
                 )
+
+            response.headers["Cache-Control"] = "no-store"
+            return response
 
         return intake_route_handler
 

@@ -27,16 +27,19 @@ class DiagnosisRoute(APIRoute):
 
         async def diagnosis_route_handler(request: Request):
             try:
-                return await original(request)
+                response = await original(request)
             except RequestValidationError:
                 body = diagnosis_runtime.DiagnosisErrorResponse(
                     code="validation_error", message="Request validation failed"
                 )
-                return JSONResponse(body.model_dump(mode="json"), status_code=422)
+                response = JSONResponse(body.model_dump(mode="json"), status_code=422)
             except DiagnosisError as exc:
-                return JSONResponse(
+                response = JSONResponse(
                     exc.body.model_dump(mode="json"), status_code=exc.status
                 )
+
+            response.headers["Cache-Control"] = "no-store"
+            return response
 
         return diagnosis_route_handler
 

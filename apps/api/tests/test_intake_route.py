@@ -113,6 +113,7 @@ def test_success_is_readonly_and_openapi_lists_route(client, monkeypatch):
     before = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
     response = call_intake(client, p, body(p, media))
     assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "no-store"
     result = response.json()
     assert result["project_id"] == p["id"]
     assert result["revision_id"] == p["revision_id"]
@@ -356,3 +357,17 @@ def test_project_deletion_during_call_is_not_returned(client, monkeypatch, tmp_p
     response = call_intake(client, p, body(p, media))
     assert response.status_code == 404
     assert "cardboard" not in response.text
+
+
+def test_private_errors_are_not_cached(client, monkeypatch):
+    p = project(client)
+    media = upload(client, p)
+    install(monkeypatch, Fake(GatewayError("authentication")))
+    for payload in (
+        {},
+        body(p, media, provider_transfer_consented=False),
+        body(p, media),
+    ):
+        response = call_intake(client, p, payload)
+        assert response.status_code in (422, 502)
+        assert response.headers["cache-control"] == "no-store"

@@ -138,6 +138,7 @@ def test_photo_only_success_is_readonly(client, monkeypatch, tmp_path):
     before = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
     response = call(client, p, body(p, media))
     assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "no-store"
     result = response.json()
     assert result["project_id"] == p["id"]
     assert result["active_version_id"] is None
@@ -610,3 +611,17 @@ def test_missing_key_is_safe_503(client, monkeypatch):
         503,
         "provider_not_configured",
     )
+
+
+def test_private_errors_are_not_cached(client, monkeypatch):
+    p = project(client)
+    media = upload(client, p)
+    install(monkeypatch, Fake(GatewayError("authentication")))
+    for payload in (
+        {},
+        body(p, media, provider_transfer_consented=False),
+        body(p, media),
+    ):
+        response = call(client, p, payload)
+        assert response.status_code in (422, 502)
+        assert response.headers["cache-control"] == "no-store"
