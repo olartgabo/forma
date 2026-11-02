@@ -12,6 +12,13 @@ import type { RepairHandoff } from "../lib/repair-handoff";
 import type { DiagnosisFocus } from "../lib/build-diagnosis";
 import Diagram from "./manual-diagram";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import {
+  museFailureText,
+  museNoticeText,
+  museStoredFailure,
+  type MuseNoticeId,
+  type MuseStoredFailure,
+} from "../lib/muse-language";
 import type { MuseAvailability } from "../lib/muse-provider";
 import MuseRequestStatus from "./muse-request-status";
 import { useMuseLanguage } from "./muse-language-provider";
@@ -84,11 +91,10 @@ export default function PlanWorkbench({
   const [designResult, setDesignResult] = useState<DesignGenerateResult | null>(
     null,
   );
-  const [designFailure, setDesignFailure] = useState<{
-    code?: string;
-    message: string;
-  } | null>(null);
-  const [designNotice, setDesignNotice] = useState("");
+  const [designFailure, setDesignFailure] = useState<MuseStoredFailure | null>(
+    null,
+  );
+  const [designNotice, setDesignNotice] = useState<MuseNoticeId | null>(null);
   const [designPending, setDesignPending] =
     useState<DesignGenerateRequest | null>(null);
   const [designUnknown, setDesignUnknown] = useState(false);
@@ -111,7 +117,7 @@ export default function PlanWorkbench({
     setDesignConsented(false);
     setDesignResult(null);
     setDesignFailure(null);
-    setDesignNotice("");
+    setDesignNotice(null);
     setDesignPending(null);
     setDesignUnknown(false);
     setDesignBusy(false);
@@ -187,7 +193,7 @@ export default function PlanWorkbench({
     setDesignBusy(false);
     setDesignFailure(null);
     setDesignUnknown(true);
-    setDesignNotice(copy.design.cancelled);
+    setDesignNotice("design-cancelled");
   }
 
   async function runDesign(body: DesignGenerateRequest) {
@@ -211,7 +217,7 @@ export default function PlanWorkbench({
     setDesignUnknown(false);
     setDesignBusy(true);
     setDesignFailure(null);
-    setDesignNotice("");
+    setDesignNotice(null);
     setDesignResult(null);
     try {
       const next = await generateDesign(
@@ -243,7 +249,7 @@ export default function PlanWorkbench({
         return;
       if (error instanceof ApiError && error.code === "cancelled") {
         setDesignUnknown(true);
-        setDesignNotice(copy.design.cancelled);
+        setDesignNotice("design-cancelled");
         return;
       }
       if (
@@ -258,10 +264,13 @@ export default function PlanWorkbench({
         ].includes(error.code)
       )
         setDesignUnknown(true);
-      setDesignFailure({
-        code: error instanceof ApiError ? error.code : undefined,
-        message: message(error),
-      });
+      setDesignFailure(
+        museStoredFailure({
+          code: error instanceof ApiError ? error.code : undefined,
+          apiMessage: error instanceof ApiError ? error.message : undefined,
+          fallbackSection: "design",
+        }),
+      );
       if (
         error instanceof ApiError &&
         error.status >= 400 &&
@@ -288,7 +297,7 @@ export default function PlanWorkbench({
     setDesignUnknown(false);
     setDesignFailure(null);
     setDesignConsented(false);
-    setDesignNotice(copy.design.newRequestNotice);
+    setDesignNotice("design-new-request");
   }
 
   function retryDesign() {
@@ -465,9 +474,11 @@ export default function PlanWorkbench({
           busy={designBusy}
           pendingMessage={copy.design.pending}
           onCancel={cancelDesign}
-          cancelledMessage={designNotice}
+          cancelledMessage={museNoticeText(designNotice, locale)}
           errorCode={designFailure?.code}
-          errorMessage={designFailure?.message}
+          errorMessage={
+            designFailure ? museFailureText(designFailure, locale) : undefined
+          }
           diagnostics={
             designResult
               ? museDiagnosticsFromResult(designResult.diagnostics)

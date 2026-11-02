@@ -8,6 +8,15 @@ import {
   type RepairHandoff,
 } from "../lib/repair-handoff";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import {
+  formatEnglishGroupedNumber,
+  museFailureText,
+  museNoticeText,
+  museStoredFailure,
+  resolveStoredFailureText,
+  type MuseNoticeId,
+  type MuseStoredFailure,
+} from "../lib/muse-language";
 import type { MuseAvailability } from "../lib/muse-provider";
 import type { DiagnosisFocus } from "../lib/build-diagnosis";
 import MuseRequestStatus from "./muse-request-status";
@@ -91,11 +100,10 @@ export default function MuseDiagnosisPanel({
     planLoader.getState,
   );
   const [result, setResult] = useState<DiagnosisResult | null>(null);
-  const [failure, setFailure] = useState<{
-    code?: string;
-    message: string;
-  } | null>(null);
-  const [cancelledMessage, setCancelledMessage] = useState("");
+  const [failure, setFailure] = useState<MuseStoredFailure | null>(null);
+  const [cancelledNotice, setCancelledNotice] = useState<MuseNoticeId | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const { locale, copy } = useMuseLanguage();
   const controller = useRef<AbortController | null>(null);
@@ -143,7 +151,7 @@ export default function MuseDiagnosisPanel({
     setConsented(false);
     setResult(null);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
     setBusy(false);
   }, [
     token,
@@ -201,7 +209,7 @@ export default function MuseDiagnosisPanel({
     controller.current = null;
     setBusy(false);
     setFailure(null);
-    setCancelledMessage(copy.diagnosis.cancelled);
+    setCancelledNotice("diagnosis-cancelled");
   }
 
   async function ask() {
@@ -227,7 +235,7 @@ export default function MuseDiagnosisPanel({
     setConsented(false);
     setBusy(true);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
     setResult(null);
     try {
       const next = await requestDiagnosis(
@@ -255,13 +263,16 @@ export default function MuseDiagnosisPanel({
       if (requestController.signal.aborted || requestEpoch !== epoch.current)
         return;
       if (failure instanceof ApiError && failure.code === "cancelled") {
-        setCancelledMessage(copy.diagnosis.cancelled);
+        setCancelledNotice("diagnosis-cancelled");
         return;
       }
-      setFailure({
-        code: failure instanceof ApiError ? failure.code : undefined,
-        message: errorMessage(failure, copy.diagnosis.requestFailed),
-      });
+      setFailure(
+        museStoredFailure({
+          code: failure instanceof ApiError ? failure.code : undefined,
+          apiMessage: failure instanceof ApiError ? failure.message : undefined,
+          fallbackSection: "diagnosis",
+        }),
+      );
     } finally {
       if (!requestController.signal.aborted && requestEpoch === epoch.current) {
         controller.current = null;
@@ -317,9 +328,7 @@ export default function MuseDiagnosisPanel({
                 disabled={!isEligible(photo)}
               >
                 {copy.diagnosis.photo} {index + 1} — {photo.content_type},{" "}
-                {photo.byte_count.toLocaleString(
-                  locale === "es" ? "es" : "en-US",
-                )}{" "}
+                {formatEnglishGroupedNumber(photo.byte_count)}{" "}
                 {copy.diagnosis.bytes}
                 {isEligible(photo) ? "" : ` ${copy.diagnosis.cannotSend}`}
               </option>
@@ -365,7 +374,7 @@ export default function MuseDiagnosisPanel({
               {planError && (
                 <>
                   <p className="error" role="alert">
-                    {planError}
+                    {resolveStoredFailureText(planError, "diagnosis", locale)}
                   </p>
                   <button
                     type="button"
@@ -416,9 +425,11 @@ export default function MuseDiagnosisPanel({
             busy={busy}
             pendingMessage={copy.diagnosis.pending}
             onCancel={cancel}
-            cancelledMessage={cancelledMessage}
+            cancelledMessage={museNoticeText(cancelledNotice, locale)}
             errorCode={failure?.code}
-            errorMessage={failure?.message}
+            errorMessage={
+              failure ? museFailureText(failure, locale) : undefined
+            }
             diagnostics={
               result ? museDiagnosticsFromResult(result.diagnostics) : null
             }

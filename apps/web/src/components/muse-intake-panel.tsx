@@ -3,6 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, requestIntakeObservation } from "../lib/api";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import {
+  formatEnglishGroupedNumber,
+  museFailureText,
+  museNoticeText,
+  museStoredFailure,
+  type MuseNoticeId,
+  type MuseStoredFailure,
+} from "../lib/muse-language";
 import type { MuseAvailability } from "../lib/muse-provider";
 import MuseRequestStatus from "./muse-request-status";
 import { useMuseLanguage } from "./muse-language-provider";
@@ -32,13 +40,6 @@ function ineligibleReason(
   return copy.intake.ineligibleSize;
 }
 
-function errorMessage(error: unknown, fallback?: string) {
-  return error instanceof ApiError
-    ? error.message
-    : (fallback ??
-        "The request could not finish. Check the API connection and try again.");
-}
-
 export default function MuseIntakePanel({
   token,
   project,
@@ -57,11 +58,10 @@ export default function MuseIntakePanel({
   const [selectedId, setSelectedId] = useState("");
   const [consented, setConsented] = useState(false);
   const [result, setResult] = useState<IntakeResult | null>(null);
-  const [failure, setFailure] = useState<{
-    code?: string;
-    message: string;
-  } | null>(null);
-  const [cancelledMessage, setCancelledMessage] = useState("");
+  const [failure, setFailure] = useState<MuseStoredFailure | null>(null);
+  const [cancelledNotice, setCancelledNotice] = useState<MuseNoticeId | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const { locale, copy } = useMuseLanguage();
   const controller = useRef<AbortController | null>(null);
@@ -82,7 +82,7 @@ export default function MuseIntakePanel({
     setConsented(false);
     setResult(null);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
     setBusy(false);
   }, [
     token,
@@ -113,7 +113,7 @@ export default function MuseIntakePanel({
     controller.current = null;
     setBusy(false);
     setFailure(null);
-    setCancelledMessage(copy.intake.cancelled);
+    setCancelledNotice("intake-cancelled");
   }
 
   async function ask() {
@@ -138,7 +138,7 @@ export default function MuseIntakePanel({
     setConsented(false);
     setBusy(true);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
     setResult(null);
     try {
       const next = await requestIntakeObservation(
@@ -155,13 +155,16 @@ export default function MuseIntakePanel({
       if (requestController.signal.aborted || requestEpoch !== epoch.current)
         return;
       if (failure instanceof ApiError && failure.code === "cancelled") {
-        setCancelledMessage(copy.intake.cancelled);
+        setCancelledNotice("intake-cancelled");
         return;
       }
-      setFailure({
-        code: failure instanceof ApiError ? failure.code : undefined,
-        message: errorMessage(failure, copy.intake.requestFailed),
-      });
+      setFailure(
+        museStoredFailure({
+          code: failure instanceof ApiError ? failure.code : undefined,
+          apiMessage: failure instanceof ApiError ? failure.message : undefined,
+          fallbackSection: "intake",
+        }),
+      );
     } finally {
       if (!requestController.signal.aborted && requestEpoch === epoch.current) {
         controller.current = null;
@@ -209,9 +212,7 @@ export default function MuseIntakePanel({
                 disabled={!isEligible(photo)}
               >
                 {copy.intake.photo} {index + 1} — {photo.content_type},{" "}
-                {photo.byte_count.toLocaleString(
-                  locale === "es" ? "es" : "en-US",
-                )}{" "}
+                {formatEnglishGroupedNumber(photo.byte_count)}{" "}
                 {copy.intake.bytes}
                 {isEligible(photo) ? "" : ` ${copy.intake.cannotSend}`}
               </option>
@@ -257,9 +258,11 @@ export default function MuseIntakePanel({
             busy={busy}
             pendingMessage={copy.intake.pending}
             onCancel={cancel}
-            cancelledMessage={cancelledMessage}
+            cancelledMessage={museNoticeText(cancelledNotice, locale)}
             errorCode={failure?.code}
-            errorMessage={failure?.message}
+            errorMessage={
+              failure ? museFailureText(failure, locale) : undefined
+            }
             diagnostics={
               result ? museDiagnosticsFromResult(result.diagnostics) : null
             }

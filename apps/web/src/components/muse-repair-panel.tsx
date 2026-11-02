@@ -8,16 +8,16 @@ import type {
   RepairPatch,
 } from "../lib/generated/contracts";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import {
+  museFailureText,
+  museNoticeText,
+  museStoredFailure,
+  type MuseNoticeId,
+  type MuseStoredFailure,
+} from "../lib/muse-language";
 import type { MuseAvailability } from "../lib/muse-provider";
 import MuseRequestStatus from "./muse-request-status";
 import { useMuseLanguage } from "./muse-language-provider";
-
-function errorMessage(error: unknown, fallback?: string) {
-  return error instanceof ApiError
-    ? error.message
-    : (fallback ??
-        "The request could not finish. Check the API connection and try again.");
-}
 
 export type MuseCandidateMerge = { added: number; skipped: number };
 
@@ -45,11 +45,10 @@ export default function MuseRepairPanel({
   const [problem, setProblem] = useState("");
   const [consented, setConsented] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<{
-    code?: string;
-    message: string;
-  } | null>(null);
-  const [cancelledMessage, setCancelledMessage] = useState("");
+  const [failure, setFailure] = useState<MuseStoredFailure | null>(null);
+  const [cancelledNotice, setCancelledNotice] = useState<MuseNoticeId | null>(
+    null,
+  );
   const [result, setResult] = useState<RepairProposeResult | null>(null);
   const [merge, setMerge] = useState<MuseCandidateMerge | null>(null);
   const { locale, copy } = useMuseLanguage();
@@ -83,7 +82,7 @@ export default function MuseRepairPanel({
     setResult(null);
     setMerge(null);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
   }, [diagnosis]);
 
   // A new active version invalidates consent and any shown Muse result.
@@ -95,7 +94,7 @@ export default function MuseRepairPanel({
     setResult(null);
     setMerge(null);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
     setBusy(false);
   }, [token, projectId, versionId]);
 
@@ -105,7 +104,7 @@ export default function MuseRepairPanel({
     controller.current = null;
     setBusy(false);
     setFailure(null);
-    setCancelledMessage(copy.repair.cancelled);
+    setCancelledNotice("repair-cancelled");
   }
 
   async function ask() {
@@ -129,7 +128,7 @@ export default function MuseRepairPanel({
     setConsented(false);
     setBusy(true);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
     setResult(null);
     setMerge(null);
     try {
@@ -163,13 +162,16 @@ export default function MuseRepairPanel({
       )
         return;
       if (failure instanceof ApiError && failure.code === "cancelled") {
-        setCancelledMessage(copy.repair.cancelled);
+        setCancelledNotice("repair-cancelled");
         return;
       }
-      setFailure({
-        code: failure instanceof ApiError ? failure.code : undefined,
-        message: errorMessage(failure, copy.repair.requestFailed),
-      });
+      setFailure(
+        museStoredFailure({
+          code: failure instanceof ApiError ? failure.code : undefined,
+          apiMessage: failure instanceof ApiError ? failure.message : undefined,
+          fallbackSection: "repair",
+        }),
+      );
     } finally {
       setConsented(false);
       if (!requestController.signal.aborted && requestEpoch === epoch.current) {
@@ -244,9 +246,9 @@ export default function MuseRepairPanel({
         busy={busy}
         pendingMessage={copy.repair.pending}
         onCancel={cancel}
-        cancelledMessage={cancelledMessage}
+        cancelledMessage={museNoticeText(cancelledNotice, locale)}
         errorCode={failure?.code}
-        errorMessage={failure?.message}
+        errorMessage={failure ? museFailureText(failure, locale) : undefined}
         diagnostics={
           result ? museDiagnosticsFromResult(result.diagnostics) : null
         }

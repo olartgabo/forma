@@ -1,7 +1,7 @@
 import type { ProviderUsage } from "./generated/api-contracts";
 // prettier-ignore
 // @ts-expect-error -- Node type-stripping (tests import .ts directly) requires the explicit .ts extension; tsconfig lacks allowImportingTsExtensions, so TS5097 is expected here.
-import { museCopyFor, normalizeMuseLocale } from "./muse-language.ts";
+import { formatEnglishGroupedNumber, museCopyFor } from "./muse-language.ts";
 
 // Bounds mirror the canonical ProviderUsage contract: at most 16 model
 // calls and at most 1,000,000,000 tokens per call, aggregated per request.
@@ -17,9 +17,8 @@ function formatCount(value: unknown, max: number, locale: unknown): string {
     value > max
   )
     return copy.usage.notReported;
-  return value.toLocaleString(
-    normalizeMuseLocale(locale) === "es" ? "es" : "en-US",
-  );
+  // Labels are localized; numeric grouping stays English in every locale.
+  return formatEnglishGroupedNumber(value);
 }
 
 export function formatProviderUsage(

@@ -47,7 +47,15 @@ import {
   isHandoffCurrent,
 } from "../src/lib/repair-handoff.ts";
 import { museAvailability } from "../src/lib/muse-provider.ts";
-import { museCopyFor, normalizeMuseLocale } from "../src/lib/muse-language.ts";
+import {
+  formatEnglishGroupedNumber,
+  museCopyFor,
+  museFailureText,
+  museNoticeText,
+  museStoredFailure,
+  normalizeMuseLocale,
+  resolveStoredFailureText,
+} from "../src/lib/muse-language.ts";
 import {
   isCandidateSetCurrent,
   mergeMuseCandidates,
@@ -285,6 +293,100 @@ test("muse Spanish status, latency and usage keep unknown and zero honest", () =
   );
   assert.match(malformed, /no informado/);
   assert.doesNotMatch(malformed, /PRIVATE/);
+});
+
+test("grouped counts keep English formatting after Spanish toggle", () => {
+  const usage = {
+    model_calls: 2,
+    input_tokens: 12345,
+    output_tokens: 1234567,
+  };
+  const english = formatProviderUsage(usage, "en");
+  assert.equal(
+    english,
+    "Provider-reported usage — model calls: 2; input tokens: 12,345; output tokens: 1,234,567.",
+  );
+  // Same retained values in Spanish: labels translate, numbers do not.
+  assert.equal(
+    formatProviderUsage(usage, "es"),
+    "Uso informado por el proveedor — llamadas al modelo: 2; tokens de entrada: 12,345; tokens de salida: 1,234,567.",
+  );
+  assert.equal(formatEnglishGroupedNumber(12345), "12,345");
+  assert.equal(formatEnglishGroupedNumber(0), "0");
+});
+
+test("retained notice identity renders in the current locale", () => {
+  for (const [notice, enText, esText] of [
+    [
+      "intake-cancelled",
+      museCopyFor("en").intake.cancelled,
+      museCopyFor("es").intake.cancelled,
+    ],
+    [
+      "diagnosis-cancelled",
+      museCopyFor("en").diagnosis.cancelled,
+      museCopyFor("es").diagnosis.cancelled,
+    ],
+    [
+      "repair-cancelled",
+      museCopyFor("en").repair.cancelled,
+      museCopyFor("es").repair.cancelled,
+    ],
+    [
+      "design-cancelled",
+      museCopyFor("en").design.cancelled,
+      museCopyFor("es").design.cancelled,
+    ],
+    [
+      "design-new-request",
+      museCopyFor("en").design.newRequestNotice,
+      museCopyFor("es").design.newRequestNotice,
+    ],
+  ]) {
+    // One retained identity, rendered first in EN then after ES toggle.
+    assert.equal(museNoticeText(notice, "en"), enText);
+    assert.equal(museNoticeText(notice, "es"), esText);
+    assert.notEqual(enText, esText);
+  }
+  assert.equal(museNoticeText(null, "es"), "");
+  assert.equal(museNoticeText("unknown-notice", "es"), "");
+});
+
+test("stored failure fallback follows locale while API text stays verbatim", () => {
+  const fallback = museStoredFailure({ fallbackSection: "intake" });
+  assert.equal(
+    museFailureText(fallback, "en"),
+    museCopyFor("en").intake.requestFailed,
+  );
+  assert.equal(
+    museFailureText(fallback, "es"),
+    museCopyFor("es").intake.requestFailed,
+  );
+  const designFallback = museStoredFailure({ fallbackSection: "design" });
+  assert.equal(
+    museFailureText(designFallback, "en"),
+    "Could not load this plan. Try again.",
+  );
+  assert.equal(
+    museFailureText(designFallback, "es"),
+    museCopyFor("es").design.requestFailed,
+  );
+  const apiText = "API supplied failure: Reload the project and try again.";
+  const apiFailure = museStoredFailure({
+    code: "stale_version",
+    apiMessage: apiText,
+    fallbackSection: "intake",
+  });
+  assert.equal(apiFailure.code, "stale_version");
+  assert.equal(museFailureText(apiFailure, "en"), apiText);
+  assert.equal(museFailureText(apiFailure, "es"), apiText);
+  // String-stored generic fallback (plan loader) also re-derives locale.
+  const storedEnglish = museCopyFor("en").diagnosis.requestFailed;
+  assert.equal(
+    resolveStoredFailureText(storedEnglish, "diagnosis", "es"),
+    museCopyFor("es").diagnosis.requestFailed,
+  );
+  assert.equal(resolveStoredFailureText(apiText, "diagnosis", "es"), apiText);
 });
 
 test("museDiagnosticsFromResult maps diagnostics or returns null", () => {

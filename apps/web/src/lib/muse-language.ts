@@ -206,6 +206,7 @@ const en = {
     retryBody:
       "Check saved previews first, or send the identical Muse request again. That replays a saved result or reports the request state when one is saved; it does not resume provider work. If the previous request failed before any result was saved, sending it again may start a new provider run. Consent was used by the previous request, so tick the consent box above again before retrying.",
     retrySame: "Retry same Muse request",
+    requestFailed: "Could not load this plan. Try again.",
     resultTitle: "Muse design result",
     status: "Status:",
     statusNote: "Saved previews below still require separate approval.",
@@ -419,6 +420,7 @@ const es: MuseCopy = {
     retryBody:
       "Comprueba primero las vistas previas guardadas, o envía de nuevo la misma solicitud a Muse. Eso reproduce un resultado guardado o informa del estado de la solicitud cuando hay uno guardado; no reanuda el trabajo del proveedor. Si la solicitud anterior falló antes de que se guardara algún resultado, enviarla de nuevo puede iniciar una nueva ejecución del proveedor. La solicitud anterior ya usó el consentimiento, así que marca de nuevo la casilla de consentimiento de arriba antes de reintentar.",
     retrySame: "Reintentar la misma solicitud a Muse",
+    requestFailed: "No se pudo cargar este plan. Inténtalo de nuevo.",
     resultTitle: "Resultado del diseño de Muse",
     status: "Estado:",
     statusNote:
@@ -435,4 +437,97 @@ export const museCopy: Record<MuseLocale, MuseCopy> = { en, es };
 
 export function museCopyFor(locale: unknown): MuseCopy {
   return museCopy[normalizeMuseLocale(locale)];
+}
+
+// Numbers keep English grouping regardless of UI locale; only labels
+// are translated. This preserves values such as 12,345 after a toggle.
+export function formatEnglishGroupedNumber(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "";
+  return value.toLocaleString("en-US");
+}
+
+export type MuseNoticeId =
+  | "intake-cancelled"
+  | "diagnosis-cancelled"
+  | "repair-cancelled"
+  | "design-cancelled"
+  | "design-new-request";
+
+// Notices are stored by identity, not by already-translated text, so a
+// retained notice renders in the locale current at render time.
+export function museNoticeText(notice: unknown, locale: unknown): string {
+  const copy = museCopyFor(locale);
+  switch (notice) {
+    case "intake-cancelled":
+      return copy.intake.cancelled;
+    case "diagnosis-cancelled":
+      return copy.diagnosis.cancelled;
+    case "repair-cancelled":
+      return copy.repair.cancelled;
+    case "design-cancelled":
+      return copy.design.cancelled;
+    case "design-new-request":
+      return copy.design.newRequestNotice;
+    default:
+      return "";
+  }
+}
+
+export type MuseFailureSection = "intake" | "diagnosis" | "repair" | "design";
+
+export type MuseStoredFailure = {
+  code?: string;
+  apiMessage?: string;
+  fallbackSection?: MuseFailureSection;
+};
+
+function fallbackText(section: unknown, locale: unknown): string {
+  const copy = museCopyFor(locale);
+  switch (section) {
+    case "diagnosis":
+      return copy.diagnosis.requestFailed;
+    case "repair":
+      return copy.repair.requestFailed;
+    case "design":
+      return copy.design.requestFailed;
+    default:
+      return copy.intake.requestFailed;
+  }
+}
+
+// API-provided (already sanitized) messages stay verbatim; only the
+// generic local fallback is derived from the current locale.
+export function museFailureText(failure: unknown, locale: unknown): string {
+  if (typeof failure !== "object" || failure === null) return "";
+  const stored = failure as Record<string, unknown>;
+  if (typeof stored.apiMessage === "string" && stored.apiMessage)
+    return stored.apiMessage;
+  return fallbackText(stored.fallbackSection, locale);
+}
+
+export function museStoredFailure(input: {
+  apiMessage?: unknown;
+  code?: unknown;
+  fallbackSection: MuseFailureSection;
+}): MuseStoredFailure {
+  return {
+    ...(typeof input.code === "string" ? { code: input.code } : {}),
+    ...(typeof input.apiMessage === "string" && input.apiMessage
+      ? { apiMessage: input.apiMessage }
+      : { fallbackSection: input.fallbackSection }),
+  };
+}
+
+// For string state owned by helpers that cannot retain an object (the
+// diagnosis plan loader), a stored English generic fallback is re-derived
+// in the current locale, while any other (API-provided) text is verbatim.
+export function resolveStoredFailureText(
+  text: unknown,
+  fallbackSection: MuseFailureSection,
+  locale: unknown,
+): string {
+  if (typeof text !== "string") return "";
+  if (text === fallbackText(fallbackSection, "en"))
+    return fallbackText(fallbackSection, locale);
+  return text;
 }
