@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, requestIntakeObservation } from "../lib/api";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import type { MuseAvailability } from "../lib/muse-provider";
 import MuseRequestStatus from "./muse-request-status";
 import type {
   IntakeResult,
@@ -39,12 +40,14 @@ export default function MuseIntakePanel({
   photos,
   inventoryStale,
   disabled,
+  museAvailability,
 }: {
   token: string;
   project: Project;
   photos: Media[];
   inventoryStale: boolean;
   disabled: boolean;
+  museAvailability?: MuseAvailability;
 }) {
   const [selectedId, setSelectedId] = useState("");
   const [consented, setConsented] = useState(false);
@@ -116,7 +119,8 @@ export default function MuseIntakePanel({
       !consented ||
       busy ||
       inventoryStale ||
-      disabled
+      disabled ||
+      museAvailability?.enabled === false
     )
       return;
     const requestEpoch = ++epoch.current;
@@ -165,7 +169,13 @@ export default function MuseIntakePanel({
   }
 
   const actionDisabled =
-    !selected || !eligible || !consented || busy || inventoryStale || disabled;
+    !selected ||
+    !eligible ||
+    !consented ||
+    busy ||
+    inventoryStale ||
+    disabled ||
+    museAvailability?.enabled === false;
 
   return (
     <section className="muse-panel" aria-labelledby="muse-intake-title">
@@ -217,12 +227,17 @@ export default function MuseIntakePanel({
               selected; save a JPEG or PNG photo instead.
             </p>
           )}
+          {museAvailability?.enabled === false && (
+            <p className="help" role="note">
+              {museAvailability.reason}
+            </p>
+          )}
           <label className="checkbox-label" htmlFor="muse-consent">
             <input
               id="muse-consent"
               type="checkbox"
               checked={consented}
-              disabled={busy}
+              disabled={busy || museAvailability?.enabled === false}
               onChange={(event) => setConsented(event.target.checked)}
             />
             Send the selected photo and this project&apos;s saved goal to
