@@ -74,6 +74,25 @@ class RepairProposeErrorResponse(Record):
     message: Text
 
 
+PROVIDER_ERROR_CODES: frozenset[str] = frozenset(
+    {
+        "validation_error",
+        "not_found",
+        "stale_version",
+        "consent_required",
+        "provider_not_configured",
+        "provider_authentication",
+        "access_denied",
+        "rate_limit",
+        "timeout",
+        "network_error",
+        "invalid_response",
+        "provider_http_error",
+        "provider_error",
+    }
+)
+
+
 class RepairProposeResult(Record):
     project_id: ID
     base_version_id: ID
@@ -103,13 +122,8 @@ def build_context(
     completed_operation_ids: tuple[str, ...] = (),
     failed_operation_ids: tuple[str, ...] = (),
     expected_remaining_stock: tuple[Stock, ...] = (),
-    progress=None,
 ) -> dict:
     """Only saved typed facts; user report and diagnosis stay flagged."""
-    if progress is not None:
-        completed_operation_ids = tuple(progress.completed_operation_ids)
-        failed_operation_ids = tuple(progress.failed_operation_ids)
-        expected_remaining_stock = tuple(progress.expected_remaining_stock)
     # Reuse the diagnosis active-plan shape without inventory duplication.
     active_plan = diagnosis_runtime.build_context(
         project_id=project_id,
@@ -158,12 +172,6 @@ def validate_repairs(
     candidates = proposals.candidates
     if len({candidate.id for candidate in candidates}) != len(candidates):
         raise GatewayError("invalid_repair_reference")
-    seen: set[str] = set()
-    for candidate in candidates:
-        dumped = candidate.model_dump_json()
-        if dumped in seen:
-            raise GatewayError("invalid_repair_reference")
-        seen.add(dumped)
     # Exact duplicates ignoring only the id are still duplicates in effect.
     effect_keys = [
         candidate.model_dump_json(exclude={"id"}) for candidate in candidates

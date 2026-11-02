@@ -28,6 +28,7 @@ from forma_api.repair_runtime import (
     RepairProposeRequest,
     RepairProposeResult,
 )
+from forma_api.routes.health import ProviderStatusResponse
 
 
 def test_api_artifact_reuses_domain_types_and_reflects_route_models():
@@ -162,6 +163,15 @@ def test_api_artifact_includes_readiness_and_saved_project_records():
     )
     assert "SavedProjectSummary" not in import_line
     assert "DesignReadiness" not in import_line
+
+
+def test_api_artifact_includes_provider_status_record():
+    content = artifacts()[OUTPUT]
+    assert ProviderStatusResponse in API_RECORDS
+    assert ProviderStatusResponse.__module__ == "forma_api.routes.health"
+    assert "export type ProviderStatusResponse = " in content
+    assert 'readonly "configured": boolean' in content
+    assert 'readonly "model": string' in content
 
 
 def test_generated_api_matches_checked_in_artifact_without_app_configuration():

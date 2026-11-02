@@ -1,4 +1,6 @@
+import inspect
 import json
+import typing
 
 import pytest
 from fastapi.testclient import TestClient
@@ -58,6 +60,19 @@ class FakeGateway:
         if isinstance(self.result, Exception):
             raise self.result
         return self.result
+
+
+def test_provider_error_codes_match_error_response():
+    codes = typing.get_args(
+        repair_runtime.RepairProposeErrorResponse.model_fields["code"].annotation
+    )
+    assert repair_runtime.PROVIDER_ERROR_CODES == frozenset(codes)
+    assert isinstance(repair_runtime.PROVIDER_ERROR_CODES, frozenset)
+
+
+def test_build_context_has_only_typed_tuple_inputs():
+    params = inspect.signature(repair_runtime.build_context).parameters
+    assert "progress" not in params
 
 
 def test_valid_each_patch_kind(plan):
