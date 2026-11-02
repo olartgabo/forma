@@ -814,7 +814,7 @@ def simulate_patch(
                             "Confirm the original connector length before recording loss.",
                             tx.id,
                         )
-                    elif tx.quantity > current:
+                    elif tx.quantity > current and not _close(tx.quantity, current):
                         fail(
                             "stock_exhausted",
                             "Connector loss exceeds the known remaining length.",

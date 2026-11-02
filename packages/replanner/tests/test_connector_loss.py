@@ -95,14 +95,26 @@ def test_exact_connector_loss_debits_history_once_then_blocks_future_join():
     assert result.proposed_material_deltas == ()
 
 
-def test_even_small_overloss_does_not_create_a_negative_ledger():
+def test_overloss_beyond_rounding_does_not_create_a_negative_ledger():
     request, process = case(420)
-    request = change_loss(request, quantity=420 + 5e-8)
+    request = change_loss(request, quantity=420.001)
     result = run(request, process)
     assert any(
         b.code == "stock_exhausted"
         and "exceeds the known remaining length" in b.message
         for b in result.blockers
+    )
+
+
+def test_loss_of_whole_remaining_roll_within_rounding_matches_exact_loss():
+    # Split decimal losses such as 10.1 + 10.1 + 399.8 sum to 420 only within
+    # float rounding; recording the rest of the roll as lost must not conflict.
+    exact_request, process = case(420)
+    exact = run(exact_request, process)
+    drifted = run(change_loss(exact_request, quantity=420 + 5e-8), process)
+    assert [b.code for b in drifted.blockers] == [b.code for b in exact.blockers]
+    assert not any(
+        "exceeds the known remaining length" in b.message for b in drifted.blockers
     )
 
 

@@ -11,6 +11,7 @@ use, and an already spent connector cannot be charged again.
 
 from dataclasses import dataclass
 
+from forma_compiler.validation import EPS
 from pydantic import Field
 
 from forma_domain import models as m
@@ -233,9 +234,7 @@ def validated_connectors(
 
         baseline = stock.remaining_length_mm
         baseline_confirmed = baseline.value is not None and baseline.confirmed
-        if used and (
-            current_value is None or not measurement.confirmed or not baseline_confirmed
-        ):
+        if used and (current_value is None or not baseline_confirmed):
             add(
                 "missing_measurement",
                 "Connector used by a future operation requires a known, "
@@ -252,7 +251,7 @@ def validated_connectors(
             )
         if baseline_confirmed and current_value is not None:
             available_after_completed = baseline.value - completed_use[stock.id]
-            if current_value > available_after_completed:
+            if current_value > available_after_completed + EPS:
                 add(
                     "stock_exhausted",
                     "Remaining connector length exceeds the confirmed "
@@ -260,7 +259,7 @@ def validated_connectors(
                     "cannot be replenished.",
                     (stock.id,),
                 )
-        if used and current_value is not None and future > current_value:
+        if used and current_value is not None and future > current_value + EPS:
             add(
                 "stock_exhausted",
                 "Future connector use exceeds the remaining connector length.",

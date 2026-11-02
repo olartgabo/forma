@@ -151,6 +151,47 @@ def test_actual_different_loss_changes_only_future_forecast_hashes():
     assert diff_manuals(old, new).changed == (4, 5)
 
 
+def test_float_rounding_in_connector_balance_is_not_a_shortfall():
+    plan, parameters, process, context, _ = case()
+    # 50.2 * 3 sums to 150.60000000000002; the compiler accepts such exact
+    # fits within EPS, so the forecast must not block them either.
+    exact = 80 + 80 - 1e-9
+    remaining = tuple(
+        stock.model_copy(
+            update={
+                "remaining_length_mm": stock.remaining_length_mm.model_copy(
+                    update={"value": exact}
+                )
+            }
+        )
+        if stock.id == "fixture-tape-stock"
+        else stock
+        for stock in context.remaining_connectors
+    )
+    fitted = context.model_copy(update={"remaining_connectors": remaining})
+    manual = render(plan, parameters, process, fitted)
+    assert manual.status == "accepted", manual.blockers
+    short = context.model_copy(
+        update={
+            "remaining_connectors": tuple(
+                stock.model_copy(
+                    update={
+                        "remaining_length_mm": stock.remaining_length_mm.model_copy(
+                            update={"value": 159.9}
+                        )
+                    }
+                )
+                if stock.id == "fixture-tape-stock"
+                else stock
+                for stock in context.remaining_connectors
+            )
+        }
+    )
+    blocked = render(plan, parameters, process, short)
+    assert blocked.status == "blocked"
+    assert any(b.code == "stock_exhausted" for b in blocked.blockers)
+
+
 def test_unknown_unused_connector_stays_unknown_in_current_and_remaining_bom():
     plan, parameters, process, context, _ = case(unknown_unused=True)
     manual = render(plan, parameters, process, context)
