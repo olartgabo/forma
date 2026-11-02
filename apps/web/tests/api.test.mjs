@@ -47,6 +47,7 @@ import {
   isHandoffCurrent,
 } from "../src/lib/repair-handoff.ts";
 import { museAvailability } from "../src/lib/muse-provider.ts";
+import { museCopyFor, normalizeMuseLocale } from "../src/lib/muse-language.ts";
 import {
   isCandidateSetCurrent,
   mergeMuseCandidates,
@@ -215,6 +216,75 @@ test("muse latency and usage formatting report unknowns without inventing values
     formatProviderUsage(undefined),
     "Provider-reported usage: not reported.",
   );
+});
+
+test("muse language helpers default to English and fall back safely", () => {
+  assert.equal(normalizeMuseLocale(undefined), "en");
+  assert.equal(normalizeMuseLocale(null), "en");
+  assert.equal(normalizeMuseLocale("en"), "en");
+  assert.equal(normalizeMuseLocale("es"), "es");
+  assert.equal(normalizeMuseLocale("es-ES"), "es");
+  assert.equal(normalizeMuseLocale(" ES "), "es");
+  for (const unsupported of ["fr", "pt-BR", "", 42, {}, []])
+    assert.equal(normalizeMuseLocale(unsupported), "en");
+  assert.equal(museCopyFor(undefined), museCopyFor("en"));
+  assert.equal(museCopyFor("fr"), museCopyFor("en"));
+  assert.equal(
+    museCopyFor("es").intake.title,
+    "Preguntar a Muse sobre esta foto",
+  );
+  // Unsupported locales keep the existing English formatter output.
+  assert.deepEqual(museRequestStatus({ busy: true }, "fr"), {
+    kind: "pending",
+    label: "Waiting for Muse",
+  });
+  assert.equal(
+    formatProviderUsage(null, "fr"),
+    "Provider-reported usage: not reported.",
+  );
+  assert.equal(formatMuseLatency(null, "fr"), "duration: not reported");
+});
+
+test("muse Spanish status, latency and usage keep unknown and zero honest", () => {
+  assert.deepEqual(museRequestStatus({ busy: true }, "es"), {
+    kind: "pending",
+    label: "Esperando a Muse",
+  });
+  assert.deepEqual(museRequestStatus({ errorCode: "timeout" }, "es"), {
+    kind: "timeout",
+    label: "La solicitud agotó el tiempo",
+  });
+  assert.equal(
+    museStatusLabel("provider_failure", "es"),
+    "La solicitud a Muse falló",
+  );
+  assert.equal(museStatusLabel("nonsense", "es"), "La solicitud a Muse falló");
+  assert.equal(formatMuseLatency(0, "es"), "duración: 0 ms");
+  assert.equal(formatMuseLatency(1234, "es"), "duración: 1234 ms");
+  for (const missing of [null, undefined, "12", Number.NaN, -1, Infinity, {}])
+    assert.equal(formatMuseLatency(missing, "es"), "duración: no informada");
+  for (const missing of [null, undefined, "PRIVATE", 42, true, []])
+    assert.equal(
+      formatProviderUsage(missing, "es"),
+      "Uso informado por el proveedor: no informado.",
+    );
+  assert.equal(
+    formatProviderUsage(
+      { model_calls: 0, input_tokens: 0, output_tokens: 0 },
+      "es",
+    ),
+    "Uso informado por el proveedor — llamadas al modelo: 0; tokens de entrada: 0; tokens de salida: 0.",
+  );
+  assert.equal(
+    formatProviderUsage({ model_calls: 1, input_tokens: null }, "es"),
+    "Uso informado por el proveedor — llamadas al modelo: 1; tokens de entrada: no informado; tokens de salida: no informado.",
+  );
+  const malformed = formatProviderUsage(
+    { model_calls: "PRIVATE", input_tokens: 10, output_tokens: 5 },
+    "es",
+  );
+  assert.match(malformed, /no informado/);
+  assert.doesNotMatch(malformed, /PRIVATE/);
 });
 
 test("museDiagnosticsFromResult maps diagnostics or returns null", () => {

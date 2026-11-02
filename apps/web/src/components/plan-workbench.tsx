@@ -14,6 +14,7 @@ import Diagram from "./manual-diagram";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
 import type { MuseAvailability } from "../lib/muse-provider";
 import MuseRequestStatus from "./muse-request-status";
+import { useMuseLanguage } from "./muse-language-provider";
 import PhysicalProgress from "./physical-progress";
 import type {
   DesignGenerateRequest,
@@ -93,6 +94,7 @@ export default function PlanWorkbench({
   const [designUnknown, setDesignUnknown] = useState(false);
   const designController = useRef<AbortController | null>(null);
   const designEpoch = useRef(0);
+  const { locale, copy } = useMuseLanguage();
   const controller = useRef(new AbortController());
 
   useEffect(() => {
@@ -185,9 +187,7 @@ export default function PlanWorkbench({
     setDesignBusy(false);
     setDesignFailure(null);
     setDesignUnknown(true);
-    setDesignNotice(
-      "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the request. Its outcome is unknown, so check saved previews before starting a new request.",
-    );
+    setDesignNotice(copy.design.cancelled);
   }
 
   async function runDesign(body: DesignGenerateRequest) {
@@ -243,9 +243,7 @@ export default function PlanWorkbench({
         return;
       if (error instanceof ApiError && error.code === "cancelled") {
         setDesignUnknown(true);
-        setDesignNotice(
-          "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the request. Its outcome is unknown, so check saved previews before starting a new request.",
-        );
+        setDesignNotice(copy.design.cancelled);
         return;
       }
       if (
@@ -290,9 +288,7 @@ export default function PlanWorkbench({
     setDesignUnknown(false);
     setDesignFailure(null);
     setDesignConsented(false);
-    setDesignNotice(
-      "The previous request outcome may be unknown. Check saved previews, then consent again and use Generate with Muse to start a new request with a fresh key.",
-    );
+    setDesignNotice(copy.design.newRequestNotice);
   }
 
   function retryDesign() {
@@ -424,14 +420,10 @@ export default function PlanWorkbench({
       >
         Refresh saved plans
       </button>
-      <div className="muse-design">
-        <h3>Generate with Muse</h3>
-        <p>
-          Muse proposes up to two designs from the saved project. FORMA compiles
-          and saves only previews that pass its checks. Generating a preview
-          does not approve a plan, record physical work or send a photo.
-        </p>
-        <label htmlFor="design-notes">Notes for Muse (optional)</label>
+      <div className="muse-design" lang={locale}>
+        <h3>{copy.design.title}</h3>
+        <p>{copy.design.intro}</p>
+        <label htmlFor="design-notes">{copy.design.notesLabel}</label>
         <textarea
           id="design-notes"
           value={designNotes}
@@ -441,7 +433,9 @@ export default function PlanWorkbench({
         />
         {museAvailability?.enabled === false && (
           <p className="help" role="note">
-            {museAvailability.reason}
+            {locale === "es"
+              ? copy.provider.notConfiguredReason
+              : museAvailability.reason}
           </p>
         )}
         <label className="checkbox-label" htmlFor="design-consent">
@@ -452,15 +446,10 @@ export default function PlanWorkbench({
             disabled={designBusy || museAvailability?.enabled === false}
             onChange={(event) => setDesignConsented(event.target.checked)}
           />
-          Share this project&apos;s saved goal, materials, requirements and my
-          notes above with Meta&apos;s Muse service for this one request. No
-          photo is sent by this action.
+          {copy.design.consent}
         </label>
         {project.active_version_id && (
-          <p className="help">
-            A plan is already active for this project, so Muse generation is
-            unavailable until a revision flow is connected.
-          </p>
+          <p className="help">{copy.design.activeHelp}</p>
         )}
         <div className="muse-actions">
           <button
@@ -469,12 +458,12 @@ export default function PlanWorkbench({
             disabled={designDisabled}
             onClick={startDesign}
           >
-            Generate with Muse
+            {copy.design.generate}
           </button>
         </div>
         <MuseRequestStatus
           busy={designBusy}
-          pendingMessage="Asking Muse… Cancelling stops FORMA waiting; it does not guarantee Muse stopped. There are no automatic retries."
+          pendingMessage={copy.design.pending}
           onCancel={cancelDesign}
           cancelledMessage={designNotice}
           errorCode={designFailure?.code}
@@ -484,54 +473,40 @@ export default function PlanWorkbench({
               ? museDiagnosticsFromResult(designResult.diagnostics)
               : null
           }
+          locale={locale}
         />
         {designPending && !designBusy && designUnknown && (
-          <aside className="retry-panel">
-            <h3>Generation outcome unknown</h3>
-            <p>
-              The previous Muse request may already have been processed, so its
-              outcome is unknown. Check saved previews first; checking does not
-              start a new run. Reusing the same request will not resume provider
-              work or start another run. To start again, explicitly start a new
-              request: consent is reset and a fresh key is created only when you
-              generate again.
-            </p>
+          <aside className="retry-panel" lang={locale}>
+            <h3>{copy.design.unknownTitle}</h3>
+            <p>{copy.design.unknownBody}</p>
             <button
               type="button"
               className="secondary"
               disabled={approvalDisabled}
               onClick={() => setAttempt((value) => value + 1)}
             >
-              Check saved previews
+              {copy.design.checkPreviews}
             </button>{" "}
             <button
               type="button"
               disabled={approvalDisabled || pending !== null}
               onClick={startNewDesignRequest}
             >
-              Start a new request
+              {copy.design.startNew}
             </button>
           </aside>
         )}
         {designPending && !designBusy && !designUnknown && (
-          <aside className="retry-panel">
-            <h3>Check the generation result</h3>
-            <p>
-              Check saved previews first, or send the identical Muse request
-              again. That replays a saved result or reports the request state
-              when one is saved; it does not resume provider work. If the
-              previous request failed before any result was saved, sending it
-              again may start a new provider run. Consent was used by the
-              previous request, so tick the consent box above again before
-              retrying.
-            </p>
+          <aside className="retry-panel" lang={locale}>
+            <h3>{copy.design.retryTitle}</h3>
+            <p>{copy.design.retryBody}</p>
             <button
               type="button"
               className="secondary"
               disabled={approvalDisabled}
               onClick={() => setAttempt((value) => value + 1)}
             >
-              Check saved previews
+              {copy.design.checkPreviews}
             </button>{" "}
             <button
               type="button"
@@ -543,20 +518,20 @@ export default function PlanWorkbench({
               }
               onClick={retryDesign}
             >
-              Retry same Muse request
+              {copy.design.retrySame}
             </button>
           </aside>
         )}
         {designResult && (
           <div className="muse-result">
-            <h3>Muse design result</h3>
+            <h3>{copy.design.resultTitle}</h3>
             <p>
-              Status: {designResult.status.replaceAll("_", " ")}. Saved previews
-              below still require separate approval.
+              {copy.design.status} {designResult.status.replaceAll("_", " ")}.{" "}
+              {copy.design.statusNote}
             </p>
             {(designResult.questions ?? []).length > 0 && (
               <>
-                <h4>Questions to answer</h4>
+                <h4>{copy.design.questions}</h4>
                 <ul>
                   {(designResult.questions ?? []).map((question, index) => (
                     <li key={`${index}-${question}`}>{question}</li>
@@ -566,7 +541,7 @@ export default function PlanWorkbench({
             )}
             {(designResult.blockers ?? []).length > 0 && (
               <>
-                <h4>Blockers</h4>
+                <h4>{copy.design.blockers}</h4>
                 <ul>
                   {(designResult.blockers ?? []).map((blocker, index) => (
                     <li key={`${index}-${blocker.code}`}>{blocker.message}</li>
@@ -581,7 +556,7 @@ export default function PlanWorkbench({
                     {candidate.candidate_id}:{" "}
                     {candidate.status.replaceAll("_", " ")}
                     {candidate.version
-                      ? ` — saved preview ${candidate.version.version_id}`
+                      ? ` — ${copy.design.savedPreview} ${candidate.version.version_id}`
                       : ""}
                     {(candidate.blockers ?? []).length > 0 && (
                       <ul>
@@ -600,10 +575,8 @@ export default function PlanWorkbench({
         )}
       </div>
       {!loading && !listError && plans.length === 0 && (
-        <p className="empty-note">
-          No compiled plan has been saved for this project yet. Your materials
-          and requirements are saved; use Generate with Muse above to ask for
-          compiled previews.
+        <p className="empty-note" lang={locale}>
+          {copy.design.noPlan}
         </p>
       )}
       {plans.length > 0 && (
