@@ -110,6 +110,15 @@ def run_smoke(gateway, image, sam_concept) -> tuple[int, dict]:
     return 0, report
 
 
+def _sniff_mime(data: bytes) -> str:
+    """Sniff MIME from magic bytes; ImageInput remains the authority."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    raise GatewayError("invalid_image")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image", type=Path)
@@ -125,8 +134,8 @@ def main(argv=None):
     try:
         if args.image.stat().st_size > 5_000_000:
             raise GatewayError("invalid_image")
-        mime = "image/png" if args.image.suffix.lower() == ".png" else "image/jpeg"
-        image = ImageInput(args.image.read_bytes(), mime, True)
+        data = args.image.read_bytes()
+        image = ImageInput(data, _sniff_mime(data), True)
     except GatewayError as exc:
         report = _base_report(gateway)
         report["status"] = exc.code
