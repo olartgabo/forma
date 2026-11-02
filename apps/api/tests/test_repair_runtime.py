@@ -11,6 +11,7 @@ from forma_api.main import create_app
 from forma_api.model_gateway import GatewayError
 from forma_api.plans import PlanService
 from forma_api.projects import ProjectStore
+from forma_api.proposal_prompts import LANGUAGE_RULE
 from forma_domain import models as m
 
 
@@ -272,6 +273,8 @@ def test_propose_repairs_one_call_no_image_tool(plan):
     assert "image" not in kwargs and "tool" not in kwargs
     assert kwargs["system_prompt"] == repair_runtime.REPAIR_SYSTEM_PROMPT
     assert "repair" in kwargs["system_prompt"].lower()
+    assert kwargs["system_prompt"].count(LANGUAGE_RULE) == 1
+    assert "bounded-proposals-v2" in kwargs["system_prompt"]
 
 
 def test_propose_repairs_invalid_output_raises(plan):

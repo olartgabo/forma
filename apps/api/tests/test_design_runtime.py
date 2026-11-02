@@ -14,6 +14,7 @@ from forma_api.design_context import (
 from forma_api.model_gateway import MetaGateway
 from forma_api.plans import PlanService
 from forma_api.projects import BuildRequirements, Project, ProjectStore
+from forma_api.proposal_prompts import LANGUAGE_RULE
 
 
 class Fake:
@@ -156,6 +157,9 @@ def test_runtime_tool_snapshot_and_real_compile(tmp_path):
     assert result.candidates[0].version.candidate_id == candidate.id
     assert result.diagnostics.tool_executions == 1
     assert result.diagnostics.model_rounds == 2
+    system_prompt = fake.calls[0][1]["messages"][0]["content"]
+    assert system_prompt.count(LANGUAGE_RULE) == 1
+    assert "bounded-proposals-v2" in system_prompt
     assert fake.calls[0][1]["tool_choice"] == "auto"
     assert fake.calls[0][1]["tools"] == [
         {

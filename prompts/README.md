@@ -3,7 +3,7 @@
 Owner: @ResniDev. Reviewer: @olartgabo. Issue: #9. Status: offline implementation.
 
 Runnable trusted instructions are packaged in
-`apps/api/src/forma_api/proposal_prompts.py` at version `bounded-proposals-v1`;
+`apps/api/src/forma_api/proposal_prompts.py` at version `bounded-proposals-v2`;
 the flat domain proposal schema version is `domain-proposals-v1`. Packaging
 instructions in Python keeps installed API deployments independent of a root
 working directory. Change the version when instructions or output contracts
