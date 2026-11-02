@@ -3,7 +3,7 @@
 Status: documentation of one actual connected-runtime acceptance. G0 stays open; issue #4 is not closed. Owner: @ResniDev.
 
 - Issue and acceptance: #4 Meta gateway compatibility; connected photo-to-app intake and diagnosis priority.
-- Branch: `agent/p0-realistic-photo-receipt`, from `main` at `8d713154a2ebc38c657b6111757ee153e0e33677`. Commit: none.
+- Branch: `agent/p0-realistic-photo-receipt`, from `main` at `8d713154a2ebc38c657b6111757ee153e0e33677`. Commit: see branch history.
 - Changed files: `docs/model-compatibility.md` and this handoff. No code, tests, queue, configuration or other docs changed.
 - Defect fixed: the compatibility page had no record of the realistic-photo calls and said the only live evidence was one software-labelled image.
 
@@ -16,7 +16,7 @@ The reviewed project goal and the reported problem in the requests both stated t
 ## Expected behavior (from the source contracts)
 
 - Intake (`intake_runtime.py`): list visible candidate material labels and questions only; never infer millimeters, stock availability or test results.
-- Diagnosis (`diagnosis_runtime.py`): read-only photo observation; keep the user report separate from visible observations; propose no repair, plan, inventory or test result; with no active plan, `affected_ids` empty and `failure_type` `unknown`; ask targeted questions when evidence is insufficient.
+- Diagnosis (`diagnosis_runtime.py`): read-only photo observation; keep the user report separate from visible observations; propose no repair, plan, inventory or test result; with no active plan, `affected_ids` empty and `failure_type` `unknown` unless the photo alone clearly supports a listed type without referencing a plan item; ask targeted questions when evidence is insufficient.
 
 ## Actual output (sanitized, November 2, 2026 UTC, main `8d713154`, model `muse-spark-1.3`)
 
@@ -54,7 +54,7 @@ Manual user authorization; harness reviewed independently by Terra; 18 offline c
 
 ## Evidence handling
 
-Read only sanitized values from the private acceptance folder in the main checkout (image provenance, window, preparation receipt, runtime ledger, intake and diagnosis receipts, review packet), plus the generated image for visual comparison. Project, revision and media identifiers, local paths, raw responses and the owner token, keys and settings were not copied or read.
+Read only sanitized values from the private acceptance folder in the main checkout (image provenance, window, preparation receipt, runtime ledger, intake and diagnosis receipts, review packet), plus the generated image for visual comparison. Project, revision and media identifiers, local paths and raw responses were not published. The owner token, keys and settings were not read by the documentation worker.
 
 ## Checks
 

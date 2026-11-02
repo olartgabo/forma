@@ -31,7 +31,7 @@ Source: sanitized server-only runtime acceptance reports and a reservation/settl
 - Input was one PNG image (about 2.6 MB, accepted as eligible), labelled **SYNTHETIC SOFTWARE IMAGE**. It is not a team photo and not a physical build.
 - State after both calls: no active plan, inventory not confirmed, no stock rows, measurements `unknown`, design readiness `needs_input` (blocker `missing_measurement`), physical verification `not_checked`. Design and repair were not requested.
 - Authentication succeeded at that time. This does not show that a key is available or funded now; key presence was not checked for this document.
-- The runtime verification window for these two calls has since expired and that harness has used both allowed attempts. The later photo harness below also used both of its attempts and its window ended at 21:14:57 UTC. No provider call was made for this document. Further live calls need a new explicit authorization and the existing server-only key, reservation, journal and unknown-outcome controls.
+- The runtime verification window for these two calls has since expired and that harness has used both allowed attempts. The later photo harness below also used both of its attempts with a fixed expiry of 21:14:57 UTC. No provider call was made for this document. Further live calls need a new explicit authorization and the existing server-only key, reservation, journal and unknown-outcome controls.
 
 ### Realistic synthetic-photo receipts, November 2, 2026
 
