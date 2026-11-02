@@ -101,9 +101,8 @@ def test_fixture_cases(case_file):
         assert result.blockers == ()
         assert rank_feasible((result,)) == (result,)
     else:
-        # BUG?: damaged_slot blocks early with unsupported and empty
-        # preservation because the completed lossy tape_joint needs explicit
-        # physical undo; recorded as-is from the engine.
+        # damaged_slot is unsupported with nothing preserved: replacing a part
+        # attached by the completed tape_joint requires explicit physical undo.
         assert result.plan is None
         assert result.cost is None
         assert rank_feasible((result,)) == ()
@@ -143,10 +142,9 @@ def test_impossible_request_mutation_exhausts_remaining_stock():
     assert rank_feasible((result,)) == ()
 
 
-@pytest.mark.parametrize("case_file", CASE_FILES)
-def test_default_path_rejects_synthetic_process(case_file):
-    """Each real case file run without allow_synthetic stays blocked."""
-    raw = load_raw(case_file)
+def test_default_path_rejects_synthetic_process():
+    """impossible_request reaches compiler validation without allow_synthetic."""
+    raw = load_raw("impossible_request.json")
     request = ReplannerInput.model_validate(raw["input"])
     process = make_process(
         raw["process"], request.base_plan.project_id, request.base_plan.version_id
@@ -158,20 +156,16 @@ def test_default_path_rejects_synthetic_process(case_file):
     assert rank_feasible((result,)) == ()
     assert result.blockers
     assert all(b.message != "" for b in result.blockers)
-    codes = sorted(b.code for b in result.blockers)
-    if case_file == "damaged_slot.json":
-        # Blocks before compiler validation, so the synthetic flag changes
-        # nothing; recorded as-is from the engine.
-        assert codes == ["unsupported"]
-    else:
-        # impossible_request reaches compiler validation, which rejects the
-        # synthetic_fixture process on the default path; geometry may also
-        # be reported, so assert presence rather than inventing the full set.
-        assert "unsupported_profile" in set(codes)
+    # With allow_synthetic the same input reports only geometry_invalid, so
+    # unsupported_profile here comes from the synthetic process gate.
+    assert sorted(b.code for b in result.blockers) == [
+        "geometry_invalid",
+        "unsupported_profile",
+    ]
 
 
 def test_unjoined_variant_rejected_without_allow_synthetic():
-    """Extra feasible-derivative check; does not replace per-case coverage."""
+    """damaged_slot blocks before the synthetic gate; its feasible derivative does not."""
     mutated, process_dict = unjoined_damage_variant()
     request = ReplannerInput.model_validate(mutated)
     process = make_process(
