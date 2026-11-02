@@ -1303,7 +1303,7 @@ function ProjectWorkbench({
               and active plans support explicit physical reports. A repair is
               simulated and reviewed first, and takes effect only after you
               approve it and confirm your current physical stock; a diagnosis
-              alone never changes your plan, materials or physical history.
+              alone never changes your plan, materials or recorded physical work.
               Saving inventory records materials and requirements; it does not
               validate a design or authorize a cut.
             </p>
