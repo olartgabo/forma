@@ -1269,7 +1269,9 @@ test("project requests preserve caller scope, explicit confirmations and retry k
   const calls = [];
   t.mock.method(globalThis, "fetch", async (path, options) => {
     calls.push({ path, options });
-    return Response.json({ project: savedProject });
+    return Response.json(
+      options.method === "GET" ? savedProject : { project: savedProject },
+    );
   });
   await createProject(token, "Un soporte para mi teléfono", "create-key");
   await saveInventory(token, "project-a", [], "inventory-1", "save-key");
@@ -1292,6 +1294,28 @@ test("project requests preserve caller scope, explicit confirmations and retry k
     assert.equal(options.credentials, "omit");
     assert.equal(options.redirect, "error");
     assert.equal(options.cache, "no-store");
+  }
+});
+
+test("project load accepts the requested project identity", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => Response.json(savedProject));
+  assert.deepEqual(await loadProject(token, "project-a"), savedProject);
+});
+
+test("project load rejects mismatched or missing response identity", async (t) => {
+  for (const body of [
+    { ...savedProject, id: "PRIVATE_OTHER_PROJECT" },
+    { goal: savedProject.goal, stocks: [] },
+  ]) {
+    t.mock.method(globalThis, "fetch", async () => Response.json(body));
+    await assert.rejects(loadProject(token, "project-a"), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 200);
+      assert.equal(error.code, "invalid_response");
+      assert.match(error.message, /project/);
+      assert.doesNotMatch(error.message, /PRIVATE_OTHER_PROJECT/);
+      return true;
+    });
   }
 });
 

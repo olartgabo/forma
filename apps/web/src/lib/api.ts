@@ -421,7 +421,17 @@ export function loadProject(
     token,
     projectPath(id),
     { method: "GET" },
-    json<Project>,
+    async (response) => {
+      const project = await json<Project>(response);
+      if (project.id !== id) {
+        throw new ApiError(
+          response.status,
+          "invalid_response",
+          "FORMA returned a project that does not match the requested project. Reload and try again.",
+        );
+      }
+      return project;
+    },
     signal,
   );
 }
