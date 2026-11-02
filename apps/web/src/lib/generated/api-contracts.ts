@@ -239,6 +239,7 @@ export type Media = {
   readonly "byte_count": number;
   readonly "width_px": number;
   readonly "height_px": number;
+  readonly "evidence_linked"?: boolean;
 };
 
 export type MediaDeleteResult = {

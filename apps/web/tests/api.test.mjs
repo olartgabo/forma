@@ -63,6 +63,10 @@ import {
   createInitialRepairWorkbenchState,
   repairWorkbenchReducer,
 } from "../src/lib/repair-workbench-state.ts";
+import {
+  photoDeletionState,
+  shouldApplyPhotoRefresh,
+} from "../src/lib/photo-deletion.ts";
 
 test("provider usage formats only provider-reported bounded counts", () => {
   assert.equal(
@@ -2554,6 +2558,79 @@ test("build-diagnosis focus constructor carries ids and nonce without side effec
     }).mediaId,
     null,
   );
+});
+
+test("photo deletion is blocked before click for evidence-linked photos", () => {
+  const protectedState = photoDeletionState(
+    { evidence_linked: true },
+    { materialLinked: false },
+  );
+  assert.equal(protectedState.disabled, true);
+  assert.equal(protectedState.evidenceLinked, true);
+  assert.match(protectedState.evidenceReason, /diagnosis or physical evidence/);
+  assert.match(protectedState.evidenceReason, /cannot be deleted/);
+  assert.equal(protectedState.materialReason, null);
+});
+
+test("photo deletion stays available for unreferenced photos", () => {
+  for (const photo of [
+    { evidence_linked: false },
+    { evidence_linked: undefined },
+    { evidence_linked: null },
+    {},
+  ]) {
+    const state = photoDeletionState(photo, { materialLinked: false });
+    assert.equal(state.disabled, false);
+    assert.equal(state.evidenceLinked, false);
+    assert.equal(state.evidenceReason, null);
+    assert.equal(state.materialReason, null);
+  }
+  const locked = photoDeletionState(
+    { evidence_linked: false },
+    { materialLinked: false, locked: true },
+  );
+  assert.equal(locked.disabled, true);
+  assert.equal(locked.evidenceReason, null);
+  assert.equal(locked.materialReason, null);
+});
+
+test("photo deletion material reason is separate from the evidence reason", () => {
+  const materialOnly = photoDeletionState(
+    { evidence_linked: false },
+    { materialLinked: true },
+  );
+  assert.equal(materialOnly.disabled, true);
+  assert.match(materialOnly.materialReason, /Unlink from materials and save/);
+  assert.equal(materialOnly.evidenceReason, null);
+  const both = photoDeletionState(
+    { evidence_linked: true },
+    { materialLinked: true },
+  );
+  assert.equal(both.disabled, true);
+  assert.match(both.evidenceReason, /diagnosis or physical evidence/);
+  assert.match(both.materialReason, /Unlink from materials and save/);
+  assert.notEqual(both.evidenceReason, both.materialReason);
+});
+
+test("photo metadata refresh only applies for the current owner session and project", () => {
+  const current = {
+    aborted: false,
+    requestEpoch: 3,
+    currentEpoch: 3,
+    requestProjectId: "project-a",
+    currentProjectId: "project-a",
+    requestToken: "token-a",
+    currentToken: "token-a",
+  };
+  assert.equal(shouldApplyPhotoRefresh(current), true);
+  for (const stale of [
+    { ...current, aborted: true },
+    { ...current, currentEpoch: 4 },
+    { ...current, currentProjectId: "project-b" },
+    { ...current, currentToken: "token-b" },
+    { ...current, requestProjectId: null, currentProjectId: null },
+  ])
+    assert.equal(shouldApplyPhotoRefresh(stale), false);
 });
 
 test("deadline also aborts a stalled response body", async (t) => {

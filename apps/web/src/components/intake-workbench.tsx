@@ -40,6 +40,10 @@ import {
   emptyRequirements,
   requirementsError,
 } from "../lib/build-requirements";
+import {
+  photoDeletionState,
+  shouldApplyPhotoRefresh,
+} from "../lib/photo-deletion";
 import type { RepairHandoff } from "../lib/repair-handoff";
 import type { DiagnosisFocus } from "../lib/build-diagnosis";
 
@@ -270,10 +274,10 @@ function ProjectWorkbench({
     null,
   );
   const [proofRevision, setProofRevision] = useState(0);
-  const physicalProgressChanged = useCallback(
-    () => setProofRevision((value) => value + 1),
-    [],
-  );
+  const physicalProgressChanged = useCallback(() => {
+    setProofRevision((value) => value + 1);
+    setPhotoAttempt((value) => value + 1);
+  }, []);
   const [providerStatus, setProviderStatus] = useState<MuseProviderStatus>({
     state: "loading",
   });
@@ -323,6 +327,10 @@ function ProjectWorkbench({
   const controller = useRef(new AbortController());
   const epoch = useRef(0);
   const photoEpoch = useRef(0);
+  const photoScope = useRef<{ projectId: string | null; token: string }>({
+    projectId: null,
+    token,
+  });
   const fileInput = useRef<HTMLInputElement>(null);
   const stocks = rows.map((row) => row.stock);
   const dirty =
@@ -382,26 +390,38 @@ function ProjectWorkbench({
     if (!project) return;
     const loadController = new AbortController();
     const listEpoch = photoEpoch.current;
+    const requestProjectId = project.id;
+    photoScope.current = { projectId: requestProjectId, token };
+    const isCurrent = () =>
+      shouldApplyPhotoRefresh({
+        aborted: loadController.signal.aborted,
+        requestEpoch: listEpoch,
+        currentEpoch: photoEpoch.current,
+        requestProjectId,
+        currentProjectId: photoScope.current.projectId,
+        requestToken: token,
+        currentToken: photoScope.current.token,
+      });
     setPhotoError("");
     setPhotosLoading(true);
-    void listPhotos(token, project.id, loadController.signal)
+    void listPhotos(token, requestProjectId, loadController.signal)
       .then((result) => {
-        if (!loadController.signal.aborted && listEpoch === photoEpoch.current)
-          setPhotos([...result.media]);
+        if (isCurrent()) setPhotos([...result.media]);
       })
       .catch((failure: unknown) => {
-        if (!loadController.signal.aborted && listEpoch === photoEpoch.current)
-          setPhotoError(errorMessage(failure));
+        // A failed refresh keeps the last loaded metadata; it never
+        // fabricates an unlinked (deletable) state for shown photos.
+        if (isCurrent()) setPhotoError(errorMessage(failure));
       })
       .finally(() => {
-        if (!loadController.signal.aborted && listEpoch === photoEpoch.current)
-          setPhotosLoading(false);
+        if (isCurrent()) setPhotosLoading(false);
       });
     return () => loadController.abort();
   }, [token, project?.id, photoAttempt]);
 
   function install(next: Project) {
     setProject(next);
+    setPhotoAttempt((value) => value + 1);
     setRows(rowsFor(next));
     setRequirements(next.requirements ?? emptyRequirements());
     setChecked(false);
@@ -808,6 +828,12 @@ function ProjectWorkbench({
                   </button>
                 </div>
               )}
+              {photosLoading && photos.length > 0 && (
+                <p className="help">
+                  Refreshing photo information… Delete availability still
+                  reflects the last loaded information.
+                </p>
+              )}
               {photos.length === 0 ? (
                 <p className="empty-note">
                   {photosLoading
@@ -823,6 +849,10 @@ function ProjectWorkbench({
                     const savedLink = project.stocks?.some((stock) =>
                       stock.image_ids?.includes(photo.id),
                     );
+                    const deletion = photoDeletionState(photo, {
+                      materialLinked: linked || Boolean(savedLink),
+                      locked,
+                    });
                     return (
                       <figure key={photo.id}>
                         <PhotoPreview
@@ -839,7 +869,7 @@ function ProjectWorkbench({
                         <button
                           type="button"
                           className="quiet danger"
-                          disabled={locked || linked || savedLink}
+                          disabled={deletion.disabled}
                           onClick={() => {
                             if (
                               window.confirm(
@@ -856,10 +886,11 @@ function ProjectWorkbench({
                         >
                           Delete photo {index + 1}
                         </button>
-                        {(linked || savedLink) && (
-                          <p className="help">
-                            Unlink from materials and save before deleting.
-                          </p>
+                        {deletion.evidenceReason && (
+                          <p className="help">{deletion.evidenceReason}</p>
+                        )}
+                        {deletion.materialReason && (
+                          <p className="help">{deletion.materialReason}</p>
                         )}
                       </figure>
                     );
@@ -1198,9 +1229,10 @@ function ProjectWorkbench({
             disabled={locked}
             prefill={diagnosisFocus}
             museAvailability={museAvailability}
-            onDiagnosisSaved={() =>
-              setDiagnosisSavedRevision((value) => value + 1)
-            }
+            onDiagnosisSaved={() => {
+              setDiagnosisSavedRevision((value) => value + 1);
+              setPhotoAttempt((value) => value + 1);
+            }}
             onRepairHandoff={(handoff, targetId) =>
               setPendingRepair({ handoff, targetId })
             }
