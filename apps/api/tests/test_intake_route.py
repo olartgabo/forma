@@ -252,6 +252,66 @@ def test_provider_errors_are_mapped_without_leaks(
     assert len(fake.calls) == 1
 
 
+@pytest.mark.parametrize(
+    "labels,questions",
+    [
+        ([], []),
+        (["  "], []),
+        ([], [" \t\n "]),
+        ([" "], ["\n"]),
+    ],
+)
+def test_unusable_provider_output_is_redacted_502_and_readonly(
+    client, monkeypatch, labels, questions
+):
+    p = project(client)
+    media = upload(client, p)
+    content = json.dumps(
+        {"labels": labels, "measurement_source": "unknown", "questions": questions}
+    )
+    fake = Fake(final(content))
+    install(monkeypatch, fake)
+    before = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+    result = call_intake(client, p, body(p, media))
+    assert result.status_code == 502, result.text
+    assert result.json() == {
+        "code": "invalid_response",
+        "message": "Model provider returned an unusable response; retry",
+    }
+    assert len(fake.calls) == 1
+    assert client.get(f"/api/projects/{p['id']}", headers=AUTH).json() == before
+    assert client.get(f"/api/projects/{p['id']}/media", headers=AUTH).json()[
+        "media"
+    ] == [media]
+
+
+def test_question_only_provider_output_succeeds_unknown_and_readonly(
+    client, monkeypatch
+):
+    p = project(client)
+    media = upload(client, p)
+    content = json.dumps(
+        {
+            "labels": [],
+            "measurement_source": "unknown",
+            "questions": ["Measure its thickness"],
+        }
+    )
+    fake = Fake(final(content))
+    install(monkeypatch, fake)
+    before = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+    result = call_intake(client, p, body(p, media))
+    assert result.status_code == 200, result.text
+    assert result.json()["observation"] == {
+        "labels": [],
+        "measurement_source": "unknown",
+        "questions": ["Measure its thickness"],
+    }
+    assert result.json()["diagnostics"]["status"] == "ok"
+    assert len(fake.calls) == 1
+    assert client.get(f"/api/projects/{p['id']}", headers=AUTH).json() == before
+
+
 def test_malformed_provider_output_is_safe(client, monkeypatch):
     p = project(client)
     media = upload(client, p)
