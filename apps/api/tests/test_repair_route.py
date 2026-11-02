@@ -334,3 +334,35 @@ def test_invalid_candidate_from_provider_is_502(client, monkeypatch, tmp_path):
     r = call(client, project, body(project, version))
     assert (r.status_code, r.json()["code"]) == (502, "invalid_response")
     assert snapshots(client, project, version) == before
+
+
+@pytest.mark.parametrize("change", ["history", "active_plan"])
+def test_rejects_state_changed_during_provider_call(
+    client, monkeypatch, tmp_path, change
+):
+    from test_progress import post, progress, update
+
+    project, version = active_project(client, tmp_path)
+
+    class ChangingFake(Fake):
+        def post(self, path, payload, timeout):
+            if change == "history":
+                result = post(
+                    client, version, update(version, progress(client, version).json())
+                )
+                assert result.status_code == 200, result.text
+            else:
+                store = ProjectStore(tmp_path)
+                with store.transaction() as connection:
+                    connection.execute(
+                        "UPDATE projects SET body=json_set(body, "
+                        "'$.active_version_id', NULL) WHERE id=?",
+                        (project["id"],),
+                    )
+            return super().post(path, payload, timeout)
+
+    fake = ChangingFake(final(questions=["Measure the brace width?"]))
+    install(monkeypatch, fake)
+    response = call(client, project, body(project, version))
+    assert (response.status_code, response.json()["code"]) == (409, "stale_version")
+    assert len(fake.calls) == 1

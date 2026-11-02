@@ -137,6 +137,18 @@ def repairs_router(
             )
         except GatewayError as exc:
             raise _provider_error(exc) from None
+        # Provider calls run outside the transaction. Reject advice based on a
+        # plan or physical history that changed while the call was in flight.
+        with store.transaction() as connection:
+            current = store.read(connection, owner, project_id)
+            if current.active_version_id != body.expected_version_id:
+                raise RepairError(
+                    409, "stale_version", "Active plan changed; reload it"
+                )
+            if snapshot(connection, plan).last_event_id != body.expected_last_event_id:
+                raise RepairError(
+                    409, "stale_version", "Physical history changed; reload it"
+                )
         return repair_runtime.RepairProposeResult(
             project_id=project_id,
             base_version_id=plan.version_id,
