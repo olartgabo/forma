@@ -27,9 +27,23 @@ process. `.env.example` lists some of them and is not loaded automatically.
 | `FORMA_API_ORIGIN`          | Web server | Optional API origin for the web proxy (default `http://127.0.0.1:8000`).                                                         |
 | `FORMA_SMOKE_OWNER_TOKEN`   | Smoke CLI  | Owner token for `demo_smoke` whenever `--project-id` is used (or pass `--credential-file`).                                      |
 
-Without a matching `FORMA_DESIGN_CONTEXT_PATH` entry, design generation reports
-missing inputs or blockers in the UI. Never commit or paste values for any of
-these variables.
+> **Warning: design generation needs a design context.** Muse design generation
+> is blocked unless `FORMA_DESIGN_CONTEXT_PATH` points to a readable JSON
+> manifest (at most 262,144 bytes) with exactly one entry matching the
+> project's `project_id` and current inventory `inventory_revision_id`. The
+> API returns blockers ("No server-configured design context for this project
+> and inventory revision." or "Configured design context is invalid.") and
+> nothing is invented. An entry holds `project_id`, `inventory_revision_id`,
+> `process` (measured cutting process), `parameters` (stand parameters),
+> `joint_profiles`, `kerf_mm` and `edge_margin_mm`; the schema is
+> `DesignContext` in `apps/api/src/forma_api/design_context.py`, and the
+> manifest is `{"contexts": [...]}` (a bare list or single entry also loads).
+> Use measured values only (see docs/decisions.md, D015). The manifest is
+> scoped to one inventory revision, so any inventory save needs a new entry.
+> Export the variable and restart the API. Use the "Saved input checklist" to
+> see what is still missing.
+
+Never commit or paste values for any of these variables.
 
 ## 2. Start the apps
 
