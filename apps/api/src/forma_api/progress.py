@@ -1,5 +1,7 @@
 """Append-only user reports; expected stock is separate from physical measurement."""
 
+import hashlib
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -169,6 +171,67 @@ def snapshot(connection, plan: BuildPlan) -> ProgressSnapshot:
         failed_operation_ids=tuple(op.id for op in plan.operations if op.id in failed),
         expected_remaining_stock=expected_stock(plan, completed),
         status=status,
+    )
+
+
+def record_diagnosis_evidence(
+    connection,
+    *,
+    project_id,
+    version_id,
+    operation_id,
+    media_id,
+    diagnosis,
+    part_ids,
+) -> None:
+    """Append a validated Muse diagnosis as unverified model evidence.
+
+    Idempotent for an identical diagnosis: the deterministic id makes a
+    retry an INSERT OR IGNORE no-op, while a different diagnosis appends.
+    Only the media id is stored; never photo bytes.
+    """
+    sections = [f"Muse diagnosis (unverified): {diagnosis.failure_type}"]
+    for label, items in (
+        ("Visible observations", diagnosis.visible_observations),
+        ("Hypotheses", diagnosis.hypotheses),
+        ("Questions or measurements", diagnosis.questions_or_measurements),
+    ):
+        if items:
+            sections.append(f"{label}: " + "; ".join(items))
+    description = "\n".join(sections)[:2000]
+    canonical = json.dumps(
+        {
+            "project_id": project_id,
+            "version_id": version_id,
+            "operation_id": operation_id,
+            "media_id": media_id,
+            "diagnosis": diagnosis.model_dump(mode="json"),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    evidence = Evidence(
+        id="evidence-" + hashlib.sha256(canonical.encode()).hexdigest(),
+        project_id=project_id,
+        version_id=version_id,
+        kind="model_interpretation",
+        provenance="model",
+        verification_state="vision_observed",
+        asset_id=media_id,
+        operation_ids=(operation_id,),
+        part_ids=tuple(part_ids),
+        recorded_at=datetime.now(UTC),
+        description=description,
+    )
+    connection.execute(
+        "INSERT OR IGNORE INTO progress_evidence VALUES (?, ?, ?, ?, ?)",
+        (
+            evidence.id,
+            project_id,
+            version_id,
+            evidence.asset_id,
+            evidence.model_dump_json(),
+        ),
     )
 
 

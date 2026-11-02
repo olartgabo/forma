@@ -1,3 +1,4 @@
+import base64
 import json
 import sqlite3
 from io import BytesIO
@@ -103,7 +104,30 @@ def call(client, p, payload, auth=AUTH):
     return client.post(f"/api/projects/{p['id']}/diagnose", json=payload, headers=auth)
 
 
-def test_photo_only_success_is_readonly(client, monkeypatch):
+def evidence_rows(tmp_path):
+    with sqlite3.connect(tmp_path / "projects.sqlite3") as connection:
+        return connection.execute(
+            "SELECT id, project_id, version_id, asset_id, body "
+            "FROM progress_evidence ORDER BY rowid"
+        ).fetchall()
+
+
+def get_progress(client, p, version_id, auth=AUTH):
+    return client.get(
+        f"/api/projects/{p['id']}/versions/{version_id}/progress", headers=auth
+    )
+
+
+def active_payload(p, media, version, **overrides):
+    values = {
+        "expected_active_version_id": version.version_id,
+        "current_operation_id": version.plan.operations[0].id,
+    }
+    values.update(overrides)
+    return body(p, media, **values)
+
+
+def test_photo_only_success_is_readonly(client, monkeypatch, tmp_path):
     p = project(client)
     media = upload(client, p)
     fake = Fake(final())
@@ -122,6 +146,7 @@ def test_photo_only_success_is_readonly(client, monkeypatch):
     assert result["diagnostics"]["model"] == "muse-spark-1.3"
     assert counter["factory"] == 1 and len(fake.calls) == 1
     assert client.get(f"/api/projects/{p['id']}", headers=AUTH).json() == before
+    assert evidence_rows(tmp_path) == []
 
 
 def test_photo_only_invented_affected_ids_are_invalid_response(client, monkeypatch):
@@ -303,6 +328,161 @@ def test_active_operation_context_and_valid_affected_id(client, monkeypatch, tmp
     assert operation.id in serialized
     assert '"active_plan"' in serialized
     assert version.version_id in serialized
+    # Only the new evidence row is added; no other progress/plan state changes.
+    rows = evidence_rows(tmp_path)
+    assert len(rows) == 1
+    assert rows[0][3] == media["id"]
+    snapshot = get_progress(client, p, version.version_id).json()
+    assert snapshot["events"] == []
+    assert snapshot["material_transactions"] == []
+    assert snapshot["completed_operation_ids"] == []
+    assert len(snapshot["evidence"]) == 1
+
+
+def test_active_diagnosis_persists_evidence_visible_on_reload(
+    client, monkeypatch, tmp_path
+):
+    p, version = _active_project(client, tmp_path)
+    media = upload(client, p, key="upload-diag-persist")
+    operation = version.plan.operations[0]
+    part = version.plan.parts[0]
+    fake = Fake(final(affected_ids=[operation.id, part.id], failure_type="torn_slot"))
+    install(monkeypatch, fake)
+    with sqlite3.connect(tmp_path / "projects.sqlite3") as connection:
+        media_before = connection.execute("SELECT COUNT(*) FROM media").fetchone()[0]
+    response = call(client, p, active_payload(p, media, version))
+    assert response.status_code == 200, response.text
+    snapshot_response = get_progress(client, p, version.version_id)
+    assert snapshot_response.status_code == 200
+    evidence = snapshot_response.json()["evidence"]
+    assert len(evidence) == 1
+    item = evidence[0]
+    assert item["kind"] == "model_interpretation"
+    assert item["provenance"] == "model"
+    assert item["verification_state"] == "vision_observed"
+    assert item["asset_id"] == media["id"]
+    assert item["operation_ids"] == [operation.id]
+    assert item["part_ids"] == [part.id]
+    assert "torn_slot" in item["description"]
+    assert "A tear is visible" in item["description"]
+    rows = evidence_rows(tmp_path)
+    assert len(rows) == 1
+    assert rows[0][3] == media["id"]
+    assert base64.b64encode(photo_bytes()).decode() not in rows[0][4]
+    assert "data:image" not in rows[0][4]
+    with sqlite3.connect(tmp_path / "projects.sqlite3") as connection:
+        assert (
+            connection.execute("SELECT COUNT(*) FROM media").fetchone()[0]
+            == media_before
+        )
+    assert get_progress(client, p, version.version_id, OTHER).status_code == 404
+
+
+def test_identical_diagnosis_idempotent_and_different_appends(
+    client, monkeypatch, tmp_path
+):
+    p, version = _active_project(client, tmp_path)
+    media = upload(client, p, key="upload-diag-idempotent")
+    fake = Fake(
+        final(failure_type="torn_slot"),
+        final(failure_type="torn_slot"),
+        final(
+            failure_type="damaged_part",
+            visible_observations=["A crack is visible"],
+        ),
+    )
+    install(monkeypatch, fake)
+    payload = active_payload(p, media, version)
+    assert call(client, p, payload).status_code == 200
+    first = evidence_rows(tmp_path)
+    assert len(first) == 1
+    assert call(client, p, payload).status_code == 200
+    assert evidence_rows(tmp_path) == first
+    assert call(client, p, payload).status_code == 200
+    rows = evidence_rows(tmp_path)
+    assert len(rows) == 2
+    assert rows[0] == first[0]
+    assert rows[1][0] != rows[0][0]
+    assert "damaged_part" in rows[1][4]
+
+
+def test_active_failure_paths_persist_nothing(client, monkeypatch, tmp_path):
+    p, version = _active_project(client, tmp_path)
+    media = upload(client, p, key="upload-diag-failures")
+    fake = Fake(final())
+    install(monkeypatch, fake)
+    assert (
+        call(
+            client,
+            p,
+            active_payload(p, media, version, provider_transfer_consented=False),
+        ).status_code
+        == 422
+    )
+    assert (
+        call(
+            client,
+            p,
+            active_payload(
+                p, media, version, expected_active_version_id="version-other"
+            ),
+        ).status_code
+        == 409
+    )
+    assert (
+        call(
+            client,
+            p,
+            active_payload(p, media, version, current_operation_id="op-missing"),
+        ).status_code
+        == 422
+    )
+    install(monkeypatch, Fake(GatewayError("timeout")))
+    assert call(client, p, active_payload(p, media, version)).status_code == 504
+    install(
+        monkeypatch,
+        Fake(
+            {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": "not json"},
+                    }
+                ]
+            }
+        ),
+    )
+    assert call(client, p, active_payload(p, media, version)).status_code == 502
+    install(
+        monkeypatch,
+        Fake(
+            final(
+                visible_observations=[],
+                hypotheses=[],
+                questions_or_measurements=[],
+            )
+        ),
+    )
+    assert call(client, p, active_payload(p, media, version)).status_code == 502
+    install(monkeypatch, Fake(final(affected_ids=["part-invented"])))
+    assert call(client, p, active_payload(p, media, version)).status_code == 502
+    assert evidence_rows(tmp_path) == []
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "mutate,status", [("change", 409), ("delete_project", 404), ("delete_media", 404)]
+)
+def test_active_post_call_stale_or_deletion_persists_nothing(
+    client, monkeypatch, tmp_path, mutate, status
+):
+    p, version = _active_project(client, tmp_path)
+    media = upload(client, p, key=f"upload-diag-postcall-{mutate}")
+    fake = Fake(final(), on_call=lambda: _mutate(tmp_path, p["id"], mutate))
+    install(monkeypatch, fake)
+    response = call(client, p, active_payload(p, media, version))
+    assert response.status_code == status, response.text
+    assert evidence_rows(tmp_path) == []
 
 
 def test_plan_and_operation_mismatches_have_no_dispatch(client, monkeypatch, tmp_path):

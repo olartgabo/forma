@@ -14,6 +14,7 @@ from test_plans import AUTH, OTHER, TOKENS, approval, prepared
 
 from forma_api.main import create_app
 from forma_api.plans import PlanService
+from forma_api.progress import record_diagnosis_evidence
 from forma_api.projects import ProjectStore
 from forma_domain import models as m
 
@@ -161,6 +162,41 @@ def test_empty_preview_history_and_active_version_gate(setup):
         == 409
     )
     assert progress(client, version).json() == empty
+
+
+def test_diagnosis_evidence_does_not_change_status_or_block_next_report(setup):
+    client, version, directory = setup
+    before = progress(client, version).json()
+    photo_id = photo(client, version)
+    diagnosis = m.DiagnosisProposal(
+        visible_observations=["A tear is visible"],
+        hypotheses=["The slot may be weak"],
+        questions_or_measurements=["Measure the edge distance"],
+        affected_ids=[version.plan.parts[0].id],
+        failure_type="torn_slot",
+    )
+    store = ProjectStore(directory)
+    with store.transaction() as connection:
+        record_diagnosis_evidence(
+            connection,
+            project_id=version.project_id,
+            version_id=version.version_id,
+            operation_id=version.plan.operations[0].id,
+            media_id=photo_id,
+            diagnosis=diagnosis,
+            part_ids=(version.plan.parts[0].id,),
+        )
+    after = progress(client, version).json()
+    assert after["status"] == before["status"]
+    assert after["last_event_id"] == before["last_event_id"]
+    assert after["completed_operation_ids"] == before["completed_operation_ids"]
+    assert after["failed_operation_ids"] == before["failed_operation_ids"]
+    assert after["events"] == before["events"]
+    assert len(after["evidence"]) == 1
+    assert after["evidence"][0]["kind"] == "model_interpretation"
+    saved = complete(client, version, 0)
+    assert saved["completed_operation_ids"] == [version.plan.operations[0].id]
+    assert saved["last_event_id"] is not None
 
 
 def test_saved_preview_can_be_read_but_cannot_record_work(preview_setup):
