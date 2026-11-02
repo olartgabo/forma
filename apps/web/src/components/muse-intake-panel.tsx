@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ApiError, requestIntakeObservation } from "../lib/api";
+import MuseRequestDetails from "./muse-request-details";
 import type {
   IntakeResult,
   Media,
@@ -119,6 +120,10 @@ export default function MuseIntakePanel({
     controller.current = requestController;
     const mediaId = selected.id;
     const revisionId = project.revision_id;
+    // Consent covers this one request only: consume it on dispatch so any
+    // later success, failure or cancellation requires a fresh opt-in. The
+    // in-flight request keeps the payload captured above.
+    setConsented(false);
     setBusy(true);
     setError("");
     setNotice("");
@@ -282,11 +287,12 @@ export default function MuseIntakePanel({
                 photo does not confirm measurements; measure and confirm values
                 yourself before using them.
               </p>
-              <p className="help">
-                Request diagnostics — status: {result.diagnostics.status};
-                model: {result.diagnostics.model}; duration:{" "}
-                {result.diagnostics.elapsed_ms} ms.
-              </p>
+              <MuseRequestDetails
+                status={result.diagnostics.status}
+                model={result.diagnostics.model}
+                elapsedMs={result.diagnostics.elapsed_ms}
+                usage={result.diagnostics.usage}
+              />
             </div>
           )}
         </>

@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ApiError, loadPlan, requestDiagnosis } from "../lib/api";
+import { createDiagnosisPlanLoader } from "../lib/diagnosis-plan-loader";
+import MuseRequestDetails from "./muse-request-details";
 import type {
   DiagnosisResult,
   Media,
@@ -43,8 +45,34 @@ export default function MuseDiagnosisPanel({
   const [problem, setProblem] = useState("");
   const [consented, setConsented] = useState(false);
   const [operationId, setOperationId] = useState("");
-  const [activePlan, setActivePlan] = useState<PlanVersion | null>(null);
-  const [planError, setPlanError] = useState("");
+  const [planLoader] = useState(() =>
+    createDiagnosisPlanLoader<PlanVersion>({
+      load: async (key, signal) => {
+        const next = await loadPlan(
+          key.token,
+          key.projectId,
+          key.activeVersionId,
+          signal,
+        );
+        if (
+          next.project_id !== key.projectId ||
+          next.version_id !== key.activeVersionId
+        )
+          throw new ApiError(
+            200,
+            "invalid_response",
+            "FORMA returned a manual that does not match this project or active version. Reload the project and try again.",
+          );
+        return next;
+      },
+      errorMessage,
+    }),
+  );
+  const planState = useSyncExternalStore(
+    planLoader.subscribe,
+    planLoader.getState,
+    planLoader.getState,
+  );
   const [result, setResult] = useState<DiagnosisResult | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -58,40 +86,34 @@ export default function MuseDiagnosisPanel({
     .map((photo) => `${photo.id}:${photo.content_type}:${photo.byte_count}`)
     .join(",");
   const hasActive = Boolean(project.active_version_id);
+  const planMatchesCurrent =
+    hasActive &&
+    planState.key !== null &&
+    planState.key.token === token &&
+    planState.key.projectId === project.id &&
+    planState.key.activeVersionId === project.active_version_id;
+  const activePlan = planMatchesCurrent ? planState.plan : null;
+  const planError = planMatchesCurrent ? planState.error : "";
+  const planLoading = hasActive && (!planMatchesCurrent || planState.loading);
   const operations = activePlan?.plan.operations ?? [];
+  const operationValid = operations.some(
+    (operation) => operation.id === operationId,
+  );
 
   useEffect(() => {
+    setOperationId("");
     if (!project.active_version_id) {
-      setActivePlan(null);
-      setOperationId("");
-      setPlanError("");
+      planLoader.setKey(null);
       return;
     }
-    const loadController = new AbortController();
-    setPlanError("");
-    void loadPlan(
+    planLoader.setKey({
       token,
-      project.id,
-      project.active_version_id,
-      loadController.signal,
-    )
-      .then((next) => {
-        if (loadController.signal.aborted) return;
-        setActivePlan(next);
-        setOperationId((current) =>
-          next.plan.operations.some((operation) => operation.id === current)
-            ? current
-            : "",
-        );
-      })
-      .catch((failure: unknown) => {
-        if (!loadController.signal.aborted) {
-          setActivePlan(null);
-          setPlanError(errorMessage(failure));
-        }
-      });
-    return () => loadController.abort();
-  }, [token, project.id, project.active_version_id]);
+      projectId: project.id,
+      activeVersionId: project.active_version_id,
+    });
+  }, [planLoader, token, project.id, project.active_version_id]);
+
+  useEffect(() => () => planLoader.dispose(), [planLoader]);
 
   useEffect(() => {
     epoch.current += 1;
@@ -147,7 +169,7 @@ export default function MuseDiagnosisPanel({
       busy ||
       inventoryStale ||
       disabled ||
-      (hasActive && (!activePlan || !operationId))
+      (hasActive && (!activePlan || !operationValid))
     )
       return;
     const consentedPayload = consented;
@@ -209,7 +231,7 @@ export default function MuseDiagnosisPanel({
     busy ||
     inventoryStale ||
     disabled ||
-    (hasActive && (!activePlan || !operationId));
+    (hasActive && (!activePlan || !operationValid));
 
   return (
     <section className="muse-panel" aria-labelledby="muse-diagnosis-title">
@@ -292,9 +314,19 @@ export default function MuseDiagnosisPanel({
                 ))}
               </select>
               {planError && (
-                <p className="error" role="alert">
-                  {planError}
-                </p>
+                <>
+                  <p className="error" role="alert">
+                    {planError}
+                  </p>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy || planLoading}
+                    onClick={() => planLoader.retry()}
+                  >
+                    Retry loading manual
+                  </button>
+                </>
               )}
               {!activePlan && !planError && (
                 <p className="help">Loading the active manual steps…</p>
@@ -404,11 +436,12 @@ export default function MuseDiagnosisPanel({
                 A photo does not confirm measurements or that a physical check
                 passed; measure and check yourself.
               </p>
-              <p className="help">
-                Request diagnostics — status: {result.diagnostics.status};
-                model: {result.diagnostics.model}; duration:{" "}
-                {result.diagnostics.elapsed_ms} ms.
-              </p>
+              <MuseRequestDetails
+                status={result.diagnostics.status}
+                model={result.diagnostics.model}
+                elapsedMs={result.diagnostics.elapsed_ms}
+                usage={result.diagnostics.usage}
+              />
             </div>
           )}
         </>

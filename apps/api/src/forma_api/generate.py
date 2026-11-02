@@ -11,6 +11,7 @@ from forma_api.design_runtime import (
     DesignErrorResponse,
     DesignGenerateRequest,
     DesignGenerateResult,
+    DesignReadiness,
     ProjectSnapshot,
     SnapshotToolArgs,
 )
@@ -46,8 +47,11 @@ from forma_api.projects import (
     InventoryUpdate,
     Project,
     ProjectResult,
+    SavedProjectList,
+    SavedProjectSummary,
 )
 from forma_api.proposal_service import IntakeObservation
+from forma_api.provider_diagnostics import ProviderUsage
 from forma_domain import models
 from forma_domain.generate import typescript
 
@@ -62,6 +66,7 @@ API_RECORDS = (
     DesignErrorResponse,
     DesignGenerateRequest,
     DesignGenerateResult,
+    DesignReadiness,
     DiagnosisDiagnostics,
     DiagnosisErrorResponse,
     DiagnosisRequest,
@@ -88,6 +93,9 @@ API_RECORDS = (
     PlanVersion,
     Project,
     ProjectResult,
+    ProviderUsage,
+    SavedProjectList,
+    SavedProjectSummary,
 )
 OUTPUT = "apps/web/src/lib/generated/api-contracts.ts"
 

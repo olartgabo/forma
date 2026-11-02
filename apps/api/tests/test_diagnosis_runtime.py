@@ -45,6 +45,13 @@ def final(content):
     return {"choices": [{"finish_reason": "stop", "message": {"content": content}}]}
 
 
+def final_usage(content, usage=None):
+    response = final(content)
+    if usage is not None:
+        response["usage"] = usage
+    return response
+
+
 def proposal_json(**overrides):
     value = {
         "visible_observations": ["A tear is visible near the slot"],
@@ -97,6 +104,146 @@ def test_photo_only_payload_schema_context_and_image_consent():
     assert '"reported_problem_is_observed_fact": false' in serialized
     assert '"completion_history_supplied": false' in serialized
     assert user[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_diagnosis_reports_provider_usage():
+    fake = Fake(
+        final_usage(proposal_json(), {"prompt_tokens": 20, "completion_tokens": 6})
+    )
+    _, diagnostics = diagnosis_runtime.diagnose_photo(
+        MetaGateway(fake),
+        image_data=PNG,
+        content_type="image/png",
+        context=photo_only_context(),
+        plan=None,
+    )
+    assert diagnostics.usage.model_calls == 1
+    assert diagnostics.usage.input_tokens == 20
+    assert diagnostics.usage.output_tokens == 6
+
+
+def test_diagnosis_reused_gateway_excludes_prior_calls_and_missing_unknown():
+    gateway = MetaGateway(
+        Fake(
+            final_usage(
+                proposal_json(), {"prompt_tokens": 100, "completion_tokens": 50}
+            ),
+            final(proposal_json()),
+        )
+    )
+    diagnosis_runtime.diagnose_photo(
+        gateway,
+        image_data=PNG,
+        content_type="image/png",
+        context=photo_only_context(),
+        plan=None,
+    )
+    _, diagnostics = diagnosis_runtime.diagnose_photo(
+        gateway,
+        image_data=PNG,
+        content_type="image/png",
+        context=photo_only_context(),
+        plan=None,
+    )
+    assert diagnostics.usage.model_calls == 1
+    assert diagnostics.usage.input_tokens is None
+    assert diagnostics.usage.output_tokens is None
+
+
+@pytest.mark.parametrize("bad", [False, -2, 2.5, "9", 10**9 + 1])
+def test_diagnosis_malformed_output_tokens_unknown(bad):
+    fake = Fake(
+        final_usage(proposal_json(), {"prompt_tokens": 5, "completion_tokens": bad})
+    )
+    _, diagnostics = diagnosis_runtime.diagnose_photo(
+        MetaGateway(fake),
+        image_data=PNG,
+        content_type="image/png",
+        context=photo_only_context(),
+        plan=None,
+    )
+    assert diagnostics.usage.model_calls == 1
+    assert diagnostics.usage.input_tokens == 5
+    assert diagnostics.usage.output_tokens is None
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {
+            "visible_observations": [],
+            "hypotheses": [],
+            "questions_or_measurements": [],
+        },
+        {
+            "visible_observations": [" ", "\t"],
+            "hypotheses": ["\n"],
+            "questions_or_measurements": ["  "],
+        },
+        {
+            "visible_observations": [],
+            "hypotheses": [" "],
+            "questions_or_measurements": [],
+        },
+    ],
+)
+def test_empty_or_whitespace_only_diagnosis_rejected_after_one_call(overrides):
+    fake = Fake(final(proposal_json(**overrides)))
+    with pytest.raises(GatewayError, match="invalid_diagnosis_empty") as error:
+        diagnosis_runtime.diagnose_photo(
+            MetaGateway(fake),
+            image_data=PNG,
+            content_type="image/png",
+            context=photo_only_context(),
+            plan=None,
+        )
+    assert error.value.code == "invalid_diagnosis_empty"
+    assert len(fake.calls) == 1
+    assert diagnosis_runtime.gateway_error_details(error.value.code) == (
+        502,
+        "invalid_response",
+        "Model provider returned an unusable response; retry",
+    )
+
+
+def test_validate_diagnosis_rejects_all_empty_proposal_directly():
+    proposal = DiagnosisProposal.model_validate_json(
+        proposal_json(
+            visible_observations=[],
+            hypotheses=[],
+            questions_or_measurements=[],
+        )
+    )
+    with pytest.raises(GatewayError, match="invalid_diagnosis_empty"):
+        diagnosis_runtime.validate_diagnosis(proposal, plan=None)
+
+
+def test_question_only_unknown_diagnosis_accepted():
+    question = "Can you measure the distance from the slot to the edge?"
+    fake = Fake(
+        final(
+            proposal_json(
+                visible_observations=[],
+                hypotheses=[],
+                questions_or_measurements=[question],
+                failure_type="unknown",
+            )
+        )
+    )
+    proposal, diagnostics = diagnosis_runtime.diagnose_photo(
+        MetaGateway(fake),
+        image_data=PNG,
+        content_type="image/png",
+        context=photo_only_context(),
+        plan=None,
+    )
+    assert proposal.failure_type == "unknown"
+    assert proposal.visible_observations == ()
+    assert proposal.hypotheses == ()
+    assert proposal.questions_or_measurements == (question,)
+    assert proposal.affected_ids == ()
+    assert diagnostics.status == "ok"
+    assert len(fake.calls) == 1
 
 
 def test_photo_only_invented_affected_ids_rejected():

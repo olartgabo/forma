@@ -67,7 +67,7 @@ runtime database, generated image or unredacted private artifact is committed.
 
 ## Composition with saved requirements and manuals
 
-The owned integration branch combines PR #70 with PRs #68â€“69. Both authenticated
+The owned integration branch combines PR #70 with PRs #68ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ69. Both authenticated
 routers and both workbench panels are retained: Muse photo observations alongside
 saved requirements, immutable previews/manuals and explicit initial approval.
 Muse resolved the two source conflicts; independent integration review approved.
@@ -178,3 +178,49 @@ TypeScript, Ruff, formatting and production build checks. A typed Fold regressio
 checks expected operation arguments and actual geometry in diagnosis context;
 route tests cover scope, consent, image gates, stale state and immutable data.
 Private evidence, owner credentials, generated images and runtime DB stay out of Git.
+
+## Planned request-local usage diagnostics contract
+
+The user requests visible evidence of actual Muse usage. Add optional `usage`
+to the existing intake, design and diagnosis diagnostic records, using one
+canonical API-owned ProviderUsage record. Its input_tokens/output_tokens are
+provider-reported nonnegative integers or null when unavailable; model_calls
+counts only this request's trace entries. Missing usage stays unknown, including
+an aggregate with missing counts. Reused gateway history must not be included.
+No prices, billed-cost claims, prompt bodies, keys or extra model requests are
+part of the response. Generate nested API TypeScript from Pydantic and preserve
+existing client compatibility. This lane owns API/runtime/contract tests; the
+parallel UI lane owns intake/design per-request consent only, with no API edits.
+
+### Usage diagnostics implemented and verified
+
+Optional diagnostics.usage now uses the canonical ProviderUsage record in all
+three connected runtimes. A request-local ProposalBudget trace sink excludes
+old gateway history. Reported input/output counts aggregate only when every
+participating count is valid; missing/malformed values remain null, never a
+partial total or invented zero. Model-call counts reflect that request's traces.
+There are no currency, billed-cost, prompt or credential fields.
+
+The parallel Muse lane passed 414 Python tests and 24 client tests, generated
+contracts, lint and formatting. Independent review approved the nine-file feature.
+The combined usage/consent tree also passed the full project check including
+TypeScript and production build. A real authenticated diagnosis request returned
+usage={model_calls:1,input_tokens:2904,output_tokens:1969}, exactly matching the
+safe trace from the actual Muse Spark1.3 response (11,859ms). Failure remained
+unknown with no affected IDs. These counts are provider-reported tokens, not a
+bill, estimated spending, physical evidence or additional inferred inventory.
+
+## Visible provider usage details
+
+All three successful connected-request panels now share compact request details:
+existing model/status/duration and design round/tool counts, plus optional
+provider-reported call and input/output token counts. Missing or malformed usage
+says not reported; genuine zero remains zero. No prices, billing estimates,
+private traces, extra requests or changes to consent/session controls are added.
+
+Muse implemented the six-file UI slice; independent final review approved it.
+Twenty-five client tests, TypeScript, formatting and production build passed.
+A real browser/photo/Meta Muse Spark1.3 diagnosis took 14,797ms and visibly showed
+one model call, 2,902 input tokens and 1,612 output tokens, matching the safe
+provider trace. Failure remained unknown and consent was consumed. Private DOM
+evidence remains uncommitted. Software acceptance is not a physical build pass.
