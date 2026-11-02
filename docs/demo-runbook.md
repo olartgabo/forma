@@ -147,9 +147,16 @@ exit code 0 means ok. Owner credential comes from `FORMA_SMOKE_OWNER_TOKEN` or
 uv run --locked python -m forma_api.demo_smoke --help
 ```
 
-Read-only (no provider cost): with no flags it checks health; `--project-id ID`
-adds the saved project and design readiness; `--media-id ID` (needs
-`--project-id`) adds photo eligibility. Common options: `--api-origin` (default
+Read-only (no provider cost): with no flags it checks health and local provider
+configuration. After health succeeds it requests `/api/provider/status` once;
+`report.provider` records that endpoint result, configuration and model, not
+actual Meta reachability. An unavailable endpoint or unconfigured provider is
+informational in read-only mode; live mode stops before project reads or POSTs
+if the endpoint fails or configuration is missing. `--project-id ID` adds the
+saved project and design readiness, plus one build-progress snapshot when a
+version is active. `report.progress` contains counts, status and a last-event
+presence flag, without observation text. `--media-id ID` (needs `--project-id`)
+adds photo eligibility. Common options: `--api-origin` (default
 `http://127.0.0.1:8000`) and `--timeout` seconds (0.1 to 30, default 10).
 
 Live steps. At most one live flag per run. Each makes real provider calls,
@@ -169,19 +176,30 @@ Example (live design):
 uv run --locked python -m forma_api.demo_smoke --project-id project-abc --live-design --transfer-consent
 ```
 
-A pass is **never physical proof**: it shows a provider answered and the
-deterministic checks ran. Do not present smoke output as a built or tested part.
+`report.usage_total` sums model calls, input/output tokens and elapsed milliseconds
+from all live steps, including diagnosis and repair in a live repair run. Any
+unknown contributing value makes that total null; the whole field is null when
+no live step ran. These are reported usage values, not a billing estimate.
+
+A read-only pass checks saved state and local configuration; it does not show
+that Muse answered. A live pass shows the requested provider flow and its
+deterministic checks completed. Neither is **physical proof**. Do not present
+smoke output as a built or tested part.
 
 ## 6. Failure modes
 
-Codes come from `PROVIDER_ERROR_CODES` and the gateway mapping. Muse requests
-are never retried automatically; Cancel only stops FORMA waiting, and Muse may
-still process the request.
+Codes come from `PROVIDER_ERROR_CODES` and the gateway mapping. Within one
+request, FORMA may retry a rate-limit or temporary server response (HTTP 429,
+500, 502, 503 or 504) once by default, only inside the same request deadline.
+Timeouts, network errors and outcomes that are unknown are not automatically
+retried. Cancel only stops FORMA waiting, and Muse may still process the
+request. Explicitly sending a new request yourself is separate from this
+internal retry and needs fresh consent.
 
 | Code                      | HTTP | What you see                                                       | What to do                                                                                                                |
 | ------------------------- | ---- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
 | `provider_not_configured` | 503  | "Model provider is not configured on the server"                   | Set `MODEL_API_KEY`, confirm `/api/provider/status`, restart the API.                                                     |
-| `timeout`                 | 504  | "Model provider request timed out; retry later"                    | Wait, retry once. For generation check saved previews first (outcome may be unknown), or use **Retry same Muse request**. |
+| `timeout`                 | 504  | "Model provider request timed out; retry later"                    | Check saved previews first for generation: its outcome may be unknown. A new provider request requires fresh consent. |
 | `rate_limit`              | 429  | "Model provider rate limit reached; retry later"                   | Wait, then retry.                                                                                                         |
 | `invalid_response`        | 502  | "Model provider returned an unusable response; retry"              | Retry; if it repeats, simplify notes or use a clearer photo; switch to the recorded backup.                               |
 | `consent_required`        | 422  | "Consent to transfer this photo to the model provider is required" | Tick that panel's consent box (the button stays disabled until then). Smoke needs `--transfer-consent`.                   |
@@ -199,8 +217,11 @@ within limits) and `not_found`. A 401 from a project route means
   request's consent box, and only the photo selected for it.
 - Proof exports (text and JSON) exclude photos and photo ids. They do include
   your goal and notes.
-- Photos linked to inventory or physical reports cannot be deleted until the
-  links are removed. A photo used for a Muse failure diagnosis cannot yet be
-  deleted individually (issue #90).
+- Remove current inventory links before deleting a photo. A photo linked to
+  physical-report or Muse-diagnosis evidence in any project version cannot be
+  deleted individually; the API returns 409. There is no evidence-unlink action.
+  Deleting the whole project removes its photo and evidence records. The media
+  list exposes only an `evidence_linked` boolean for this restriction, without
+  evidence IDs, text or counts.
 - Never put credentials in `NEXT_PUBLIC_*` variables, commit photos, or record
   a screen that shows the owner credential.

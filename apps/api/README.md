@@ -26,6 +26,15 @@ From the root, `uv sync --locked` installs the editable `forma_api` package from
 `apps/api/src/forma_api` using the root `pyproject.toml`. `npm run dev:api` starts Uvicorn
 at `127.0.0.1:8000`; `GET /api/health` reports process liveness and `/docs`
 exposes FastAPI's OpenAPI UI. No database or provider readiness is implied.
+`/api/provider/status` checks local key/model configuration only; it makes no Meta request and does not prove key
+acceptance or provider reachability.
+
+The gateway retries rate-limit and temporary server responses (429, 500, 502,
+503 and 504) once by default within the same deadline. Retry waits are capped
+at three seconds and require at least two seconds remaining afterward. Timeouts,
+network errors and unknown outcomes are not retried automatically. Cancelling
+stops the client waiting; provider processing may continue. A manually started
+new request requires fresh transfer consent.
 
 `npm test` runs the offline pytest suite. `npm run lint` and
 `uv run --locked ruff format --check .` check Python source. No model key is
@@ -96,16 +105,22 @@ it does not establish dimensions in millimeters or physical success.
 GET `/api/projects/{id}/media/{media_id}` returns private image bytes only to the
 project owner, with cache prevention and download headers. DELETE at the same
 path requires `Idempotency-Key`; first remove any current inventory references.
+Physical-report or Muse-diagnosis evidence in any project version blocks individual
+photo deletion with 409. Evidence cannot be unlinked through the API.
 Project deletion removes all photo rows and their upload receipts in the same
 transaction. Images remain in the local SQLite database until deleted. Logical
-deletion does not erase SQLite free pages or backups. No route sends images to
-a model or shares them publicly; those capabilities require a future consent
-flow. See the [media handoff](../../docs/handoffs/issue-6-private-media.md).
+deletion does not erase SQLite free pages or backups. These photo-storage routes
+do not send images to a model or share them publicly.
+Separate intake and diagnosis runtime endpoints send the selected image to Muse
+only with explicit consent for that request. See the [media handoff](../../docs/handoffs/issue-6-private-media.md).
 
 GET `/api/projects/{id}/media` lists private image metadata for that project,
 including uploads not yet linked to stock. It returns `{media: [...]}` with
 cache prevention, and checks project ownership before reading rows. Image bytes
-still require the authenticated individual media endpoint.
+still require the authenticated individual media endpoint. Each listed item has
+an `evidence_linked` boolean covering evidence across all project versions; it
+exposes no evidence IDs, text or counts. This lets the UI explain the deletion
+restriction before a request encounters 409.
 
 ## Initial plan previews and approval (#6/#11)
 
