@@ -498,27 +498,23 @@
         "patch": {
           "id": "replace-brace",
           "base_version_id": "fixture-v1",
-          "kind": "resize_part",
-          "target_id": "stand-base",
-          "replacement_stock_id": null,
+          "kind": "replace_part",
+          "target_id": "stand-brace",
+          "replacement_stock_id": "fixture-sheet",
           "replacement_profile_id": null,
-          "width_mm": 80.0,
-          "height_mm": 150.0,
+          "width_mm": null,
+          "height_mm": null,
           "angle_deg": null,
           "rationale": "SYNTHETIC hypothetical repair; no physical test."
         }
       },
       "mutation_expected": {
-        "status": "feasible",
-        "blocker_codes": [],
+        "status": "blocked",
+        "blocker_codes": ["unsupported"],
         "preserved_operation_ids": [],
         "required_undo_operation_ids": [],
-        "invalidated_checkpoint_ids": [
-          "stand-inspect-cuts-check",
-          "stand-inspect-fit-check",
-          "stand-function-check"
-        ],
-        "feasible_patch_ids": ["replace-brace"]
+        "invalidated_checkpoint_ids": [],
+        "feasible_patch_ids": []
       }
     }
   ]
