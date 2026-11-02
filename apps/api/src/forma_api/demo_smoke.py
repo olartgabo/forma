@@ -1069,6 +1069,7 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
             return emit(1)
         diagnosis_result = run_live_diagnosis()
         if diagnosis_result is None:
+            report["repair"] = {"status": "failed"}
             return emit(1)
         assert problem is not None  # Validated in preflight.
         assert progress is not None  # Fetched once for the active version.
