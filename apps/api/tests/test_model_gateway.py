@@ -16,8 +16,11 @@ from forma_api.model_gateway import (
     ImageInput,
     MetaGateway,
     MetaHTTP,
+    ProposalBudget,
     Tool,
+    Trace,
 )
+from forma_api.provider_diagnostics import summarize_usage
 
 
 class Proposal(BaseModel):
@@ -291,6 +294,271 @@ def test_round_cap_and_no_hidden_retry():
     with pytest.raises(GatewayError, match="rate_limit"):
         MetaGateway(failed).propose("test", Proposal)
     assert len(failed.calls) == 1
+
+
+def _retryable(code="rate_limit", retry_after=None):
+    return GatewayError(code, retryable=True, retry_after=retry_after)
+
+
+def _final_with_usage():
+    response = final()
+    response["usage"] = {"prompt_tokens": 10, "completion_tokens": 5}
+    return response
+
+
+def test_retryable_rate_limit_once_then_success():
+    sleeps = []
+    fake = Fake(_retryable(), _final_with_usage())
+    budget = ProposalBudget(max_rounds=4, seconds=60)
+    gateway = MetaGateway(fake, sleep=sleeps.append)
+    output = gateway.propose("test", Proposal, request_budget=budget)
+    assert output.questions == ["Measure thickness"]
+    assert sleeps == [1.0]
+    assert [trace.status for trace in gateway.traces] == ["rate_limit", "ok"]
+    assert [trace.status for trace in budget.traces] == ["rate_limit", "ok"]
+    assert budget.rounds == 1
+    usage = summarize_usage(budget.traces)
+    assert usage.model_calls == 2
+    # The failed attempt reported no usage, so totals stay unknown rather
+    # than presenting the success-only 10/5 as if it were the full total.
+    assert usage.input_tokens is None
+    assert usage.output_tokens is None
+
+
+@pytest.mark.parametrize(
+    "retry_after,expected", [(None, 1.0), (2, 2.0), (10, 3.0), (0, 0.0)]
+)
+def test_retry_delay_uses_retry_after_capped(retry_after, expected):
+    sleeps = []
+    fake = Fake(_retryable(retry_after=retry_after), final())
+    gateway = MetaGateway(fake, sleep=sleeps.append)
+    gateway.propose("test", Proposal)
+    assert sleeps == [expected]
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "timeout",
+        "network_error",
+        "invalid_response",
+        "response_too_large",
+        "authentication",
+        "access_denied",
+        "budget_exhausted",
+        "round_limit",
+    ],
+)
+def test_non_retryable_errors_never_retried(code):
+    sleeps = []
+    fake = Fake(GatewayError(code))
+    gateway = MetaGateway(fake, sleep=sleeps.append)
+    with pytest.raises(GatewayError) as error:
+        gateway.propose("test", Proposal)
+    assert error.value.code == code
+    assert sleeps == []
+    assert len(fake.calls) == 1
+    assert len(gateway.traces) == 1
+
+
+def test_max_retries_bounds_and_zero():
+    for bad in (-1, 3):
+        with pytest.raises(ValueError):
+            MetaGateway(Fake(final()), max_retries=bad)
+    sleeps = []
+    fake = Fake(_retryable(), final())
+    gateway = MetaGateway(fake, max_retries=0, sleep=sleeps.append)
+    with pytest.raises(GatewayError, match="rate_limit"):
+        gateway.propose("test", Proposal)
+    assert len(fake.calls) == 1
+    assert sleeps == []
+
+
+def test_at_most_max_retries_per_call():
+    sleeps = []
+    fake = Fake(_retryable(), _retryable(), final())
+    gateway = MetaGateway(fake, sleep=sleeps.append)  # default max_retries=1
+    with pytest.raises(GatewayError, match="rate_limit"):
+        gateway.propose("test", Proposal)
+    assert len(fake.calls) == 2
+    assert sleeps == [1.0]
+    assert [t.status for t in gateway.traces] == ["rate_limit", "rate_limit"]
+
+    sleeps2 = []
+    fake2 = Fake(_retryable(), _retryable(), _final_with_usage())
+    gateway2 = MetaGateway(fake2, max_retries=2, sleep=sleeps2.append)
+    assert gateway2.propose("test", Proposal).questions == ["Measure thickness"]
+    assert len(fake2.calls) == 3
+    assert sleeps2 == [1.0, 1.0]
+
+
+def test_no_sleep_when_remaining_after_wait_under_two_seconds():
+    sleeps = []
+    fake = Fake(_retryable(retry_after=1), final())
+    gateway = MetaGateway(fake, sleep=sleeps.append)
+    deadline = time.monotonic() + 2.5
+    with pytest.raises(GatewayError) as error:
+        gateway._post("/chat/completions", {"model": "muse-spark-1.3"}, deadline)
+    assert error.value.code == "rate_limit"
+    assert sleeps == []
+    assert len(fake.calls) == 1
+
+
+def test_summarize_usage_failed_attempt_unknown_usage_not_success_only():
+    traces = [
+        Trace("/chat/completions", "m", 1, "rate_limit"),
+        Trace("/chat/completions", "m", 1, "provider_http_error"),
+        Trace("/chat/completions", "m", 1, "ok", 10, 5),
+    ]
+    usage = summarize_usage(traces)
+    assert usage.model_calls == 3
+    # A 5xx/429 attempt with unknown usage followed by success must not
+    # present known success-only totals; unknown is not zero.
+    assert usage.input_tokens is None
+    assert usage.output_tokens is None
+    only_failed = summarize_usage(traces[:2])
+    assert only_failed.model_calls == 2
+    assert only_failed.input_tokens is None
+    assert only_failed.output_tokens is None
+
+
+def test_summarize_usage_5xx_unknown_then_success_stays_unknown():
+    traces = [
+        Trace("/responses", "m", 1, "provider_http_error"),
+        Trace("/responses", "m", 1, "ok", 10, 5),
+    ]
+    usage = summarize_usage(traces)
+    assert usage.model_calls == 2
+    assert usage.input_tokens is None
+    assert usage.output_tokens is None
+
+
+def test_summarize_usage_genuine_zero_and_per_key_unknown():
+    zero = summarize_usage([Trace("/chat/completions", "m", 1, "ok", 0, 0)])
+    assert zero.model_calls == 1
+    assert zero.input_tokens == 0
+    assert zero.output_tokens == 0
+    # Missing output in one attempt makes only the output aggregate unknown.
+    partial = summarize_usage(
+        [
+            Trace("/chat/completions", "m", 1, "ok", 10, None),
+            Trace("/chat/completions", "m", 1, "ok", 5, 5),
+        ]
+    )
+    assert partial.model_calls == 2
+    assert partial.input_tokens == 15
+    assert partial.output_tokens is None
+
+
+@pytest.mark.parametrize(
+    "status,code,retryable",
+    [
+        (429, "rate_limit", True),
+        (500, "provider_http_error", True),
+        (502, "provider_http_error", True),
+        (503, "provider_http_error", True),
+        (504, "provider_http_error", True),
+        (400, "provider_http_error", False),
+        (401, "authentication", False),
+        (403, "access_denied", False),
+    ],
+)
+@pytest.mark.parametrize(
+    "header,retry_after",
+    [
+        (None, None),
+        ("2", 2.0),
+        ("10", 10.0),
+        ("Wed, 21 Oct 2015 07:28:00 GMT", None),
+        ("-5", None),
+        ("bogus", None),
+        ("1.5", None),
+        ("9" * 309, 3.0),
+        ("9" * 5000, 3.0),
+        ("0" * 5000, 0.0),
+    ],
+)
+def test_http_retryable_marking_and_retry_after(
+    monkeypatch, status, code, retryable, header, retry_after
+):
+    class Response:
+        def __init__(self):
+            self.status = status
+
+        def getheader(self, name):
+            assert name == "Retry-After"
+            return header
+
+    class Connection:
+        sock = None
+
+        def __init__(self, host, timeout):
+            pass
+
+        def connect(self):
+            self.sock = _FakeSock()
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        "forma_api.model_gateway.http.client.HTTPSConnection", Connection
+    )
+    with pytest.raises(GatewayError) as error:
+        MetaHTTP("secret").post("/responses", {}, 2)
+    assert error.value.code == code
+    assert error.value.retryable is retryable
+    assert error.value.retry_after == (retry_after if retryable else None)
+
+
+@pytest.mark.parametrize("header", ["9" * 309, "9" * 5000, "0" * 5000 + "2"])
+def test_http_huge_retry_after_is_safe_http_error(monkeypatch, header):
+    class Response:
+        status = 503
+
+        def getheader(self, name):
+            assert name == "Retry-After"
+            return header
+
+    class Connection:
+        sock = None
+
+        def __init__(self, host, timeout):
+            pass
+
+        def connect(self):
+            self.sock = _FakeSock()
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        "forma_api.model_gateway.http.client.HTTPSConnection", Connection
+    )
+    with pytest.raises(GatewayError) as error:
+        MetaHTTP("secret").post("/responses", {}, 2)
+    # Parsing the huge header must not surface OverflowError/invalid_response.
+    assert error.value.code == "provider_http_error"
+    assert error.value.retryable is True
+    assert error.value.retry_after == (2.0 if header.endswith("2") else 3.0)
+
+
+def test_gateway_error_defaults_not_retryable():
+    error = GatewayError("rate_limit")
+    assert error.retryable is False
+    assert error.retry_after is None
 
 
 def test_manual_boxes_offline_and_bounds():

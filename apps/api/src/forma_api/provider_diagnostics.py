@@ -45,7 +45,13 @@ def _total(traces: list[Any], key: str) -> int | None:
 
 
 def summarize_usage(traces: Iterable[Any] | None) -> ProviderUsage:
-    """Aggregate request-local traces; any missing/malformed count is unknown."""
+    """Aggregate request-local traces; any missing/malformed count is unknown.
+
+    All attempts count in ``model_calls``. An attempt with a missing or
+    malformed input (or output) count makes that corresponding aggregate
+    unknown rather than presenting a success-only total; unknown is not
+    zero. Genuinely reported zeros aggregate to zero.
+    """
 
     local = list(traces) if traces is not None else []
     return ProviderUsage(

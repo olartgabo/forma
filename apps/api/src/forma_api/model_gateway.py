@@ -22,13 +22,66 @@ MAX_RESPONSE = 2_000_000
 MAX_TIMEOUT_SECONDS = 30.0
 # Short grace for a worker that can cooperatively clean up after expiry.
 WORKER_GRACE_SECONDS = 0.2
+RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
+
+
+def _parse_retry_after(response) -> float | None:
+    """Return non-negative integer delta-seconds, ignoring other forms."""
+    value = None
+    getheader = getattr(response, "getheader", None)
+    if callable(getheader):
+        try:
+            value = getheader("Retry-After")
+        except Exception:
+            value = None
+    if value is None:
+        headers = getattr(response, "headers", None)
+        if headers is not None:
+            try:
+                items = headers.items()  # type: ignore[union-attr]
+            except Exception:
+                items = []
+            for key, item in items:
+                if isinstance(key, str) and key.lower() == "retry-after":
+                    value = item
+                    break
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        if value < 0:
+            return None
+        # Clamp before float conversion: float() of a huge int overflows.
+        return 3.0 if value > 10**18 else float(value)
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not re.fullmatch(r"\d+", text):
+        return None
+    # Bound the parse before converting: int()/float() of a digit string
+    # with hundreds or thousands of digits raises ValueError/OverflowError.
+    # Any significant value this long far exceeds the 3s retry cap, so
+    # clamp it to the cap without ever materialising the huge number.
+    significant = text.lstrip("0")
+    if not significant:
+        return 0.0
+    if len(significant) > 18:
+        return 3.0
+    return float(int(significant))
 
 
 class GatewayError(Exception):
     """Only a stable safe code crosses the gateway boundary."""
 
-    def __init__(self, code: str):
+    def __init__(
+        self,
+        code: str,
+        *,
+        retryable: bool = False,
+        retry_after: float | None = None,
+    ):
         self.code = code
+        self.retryable = retryable
+        self.retry_after = retry_after
         super().__init__(code)
 
 
@@ -65,7 +118,8 @@ class MetaHTTP:
         the expiry flag immediately after the explicit ``connect()`` and
         before dispatch, so a late connection never sends authorization
         headers, payload or POST, never implicitly reconnects, and is
-        closed in ``finally``. No automatic retry or fallback is made.
+        closed in ``finally``. This method itself makes no automatic
+        retry or fallback; any bounded retry lives in ``MetaGateway``.
         """
         if path not in ("/chat/completions", "/responses"):
             raise GatewayError("invalid_endpoint")
@@ -163,12 +217,16 @@ class MetaHTTP:
                 active_socket.append(connection.sock)
             response = connection.getresponse()
             if response.status != 200:
+                code = {
+                    401: "authentication",
+                    403: "access_denied",
+                    429: "rate_limit",
+                }.get(response.status, "provider_http_error")
+                retryable = response.status in RETRYABLE_STATUSES
                 raise GatewayError(
-                    {
-                        401: "authentication",
-                        403: "access_denied",
-                        429: "rate_limit",
-                    }.get(response.status, "provider_http_error")
+                    code,
+                    retryable=retryable,
+                    retry_after=_parse_retry_after(response) if retryable else None,
                 )
             raw = bytearray()
             while True:
@@ -314,13 +372,23 @@ class MetaGateway:
         timeout: float = 20,
         budget: float = 60,
         max_rounds: int = 4,
+        max_retries: int = 1,
+        sleep: Callable[[float], None] = time.sleep,
     ):
         if not (0 < timeout <= 30 and 0 < budget <= 120 and 1 <= max_rounds <= 4):
             raise ValueError("invalid gateway bounds")
+        if (
+            isinstance(max_retries, bool)
+            or not isinstance(max_retries, int)
+            or not 0 <= max_retries <= 2
+        ):
+            raise ValueError("invalid max_retries")
         if not all(MODEL_ID_RE.fullmatch(name) for name in (spark, sam)):
             raise ValueError("invalid model ID")
         self.transport, self.spark, self.sam = transport, spark, sam
         self.timeout, self.budget, self.max_rounds = timeout, budget, max_rounds
+        self.max_retries = max_retries
+        self.sleep = sleep
         self.traces: list[Trace] = []
 
     @classmethod
@@ -332,6 +400,37 @@ class MetaGateway:
         )
 
     def _post(self, path, payload, deadline, trace_sink=None):
+        """Post with at most ``max_retries`` retries of retryable failures.
+
+        Each attempt records its own trace. A retry waits
+        ``min(retry_after if given else 1.0, 3.0)`` seconds, but only when
+        at least 2.0 seconds of the deadline would remain after the wait;
+        otherwise the original error is re-raised without sleeping.
+        Retries do not consume ``ProposalBudget`` rounds.
+        """
+        for attempt in range(self.max_retries + 1):
+            try:
+                return self._post_attempt(path, payload, deadline, trace_sink)
+            except GatewayError as exc:
+                if not getattr(exc, "retryable", False) or attempt >= self.max_retries:
+                    raise
+                retry_after = getattr(exc, "retry_after", None)
+                if (
+                    isinstance(retry_after, bool)
+                    or not isinstance(retry_after, (int, float))
+                    or not math.isfinite(retry_after)
+                    or retry_after < 0
+                ):
+                    delay = 1.0
+                else:
+                    delay = min(float(retry_after), 3.0)
+                delay = min(delay, 3.0)
+                if deadline - time.monotonic() - delay < 2.0:
+                    raise
+                self.sleep(delay)
+        raise GatewayError("round_limit")  # pragma: no cover - loop always returns
+
+    def _post_attempt(self, path, payload, deadline, trace_sink=None):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise GatewayError("budget_exhausted")
