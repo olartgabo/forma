@@ -1,0 +1,12 @@
+{$FORMA_HOST} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+	# Caddy sets no response timeout, so the web proxy's 140-second Muse
+	# deadline (D029) stays the binding limit.
+	reverse_proxy web:3000
+}

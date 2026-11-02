@@ -415,3 +415,15 @@ reconnecting or refreshing the application cannot recover an earlier unknown
 request's status.
 The browser regression intercepts synthetic API responses and establishes no live
 provider or physical result.
+
+## D033: AWS EC2 hosting for the demo, November 2, 2026
+
+The user moved the hackathon deployment from DigitalOcean (D030) to AWS
+`us-east-1` and approved one `t4g.small` instance at roughly $0.58 per day.
+SQLite and private media stay on the instance's encrypted volume; stateless
+container services were rejected because they lose local disk on restart.
+Caddy serves HTTPS on an sslip.io hostname for the Elastic IP. Owner bearer
+tokens and the optional provider key live in SSM Parameter Store, not git.
+The host has no SSH; administration goes through SSM. This resolves P004 for the
+demo only. Backups, token rotation and provider-side retention stay unverified.
+See [hosted deployment](deploy.md).
