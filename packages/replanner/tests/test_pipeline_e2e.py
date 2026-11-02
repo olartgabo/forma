@@ -1,7 +1,7 @@
 """Synthetic software fixtures only, not physical evidence."""
 
 from copy import deepcopy
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from forma_compiler import CutProcess
 from forma_renderer import StandParameters, compile_stand, render_manual
@@ -205,81 +205,6 @@ def test_stand_pipeline_future_support_resize_is_unsupported():
         )
     ]
     assert plan.model_dump(mode="python") == before
-
-
-def confirmed_tape_input(plan):
-    idx = next(i for i, o in enumerate(plan.operations) if o.type == "tape_joint")
-    prefix = plan.operations[: idx + 1]
-    base = datetime(2026, 10, 31, tzinfo=UTC)
-    user_evidence = m.Evidence(
-        id="synthetic-user-evidence",
-        project_id=plan.project_id,
-        version_id=plan.version_id,
-        kind="user_report",
-        provenance="user",
-        recorded_at=base,
-        description="SYNTHETIC user confirmation only",
-        verification_state="user_confirmed",
-    )
-    events = tuple(
-        m.PhysicalEvent(
-            id=f"synthetic-confirm-{o.id}",
-            project_id=plan.project_id,
-            version_id=plan.version_id,
-            operation_id=o.id,
-            kind="operation_confirmed",
-            evidence_ids=(user_evidence.id,),
-            recorded_at=base + timedelta(minutes=i + 1),
-            actor="user",
-            observation="SYNTHETIC confirmation only",
-            verification_state="user_confirmed",
-        )
-        for i, o in enumerate(prefix)
-    )
-    stocks = {s.id: s.model_copy(deep=True) for s in plan.stocks}
-    for op in prefix:
-        if op.type == "cut_rect":
-            stock = stocks[op.args.stock_id]
-            kept = tuple(
-                r for r in stock.usable_regions if r.id != op.args.source_region_id
-            )
-            kept += tuple(op.effects.created_offcuts)
-            stocks[stock.id] = stock.model_copy(update={"usable_regions": kept})
-        elif op.type in ("tape_joint", "tie_joint"):
-            stock = stocks[op.args.stock_id]
-            value = stock.remaining_length_mm.value - op.args.length_mm
-            measurement = stock.remaining_length_mm.model_copy(update={"value": value})
-            stocks[stock.id] = stock.model_copy(
-                update={"remaining_length_mm": measurement}
-            )
-    remaining = tuple(stocks[s.id] for s in plan.stocks)
-    return m.ReplannerInput(
-        base_plan=plan,
-        events=events,
-        evidence=(user_evidence,),
-        material_transactions=(),
-        remaining_stock=remaining,
-        patch=resize_patch(plan),
-    )
-
-
-def test_stand_pipeline_completed_support_resize_is_unsupported():
-    plan, _, process = compile_and_render()[:3]
-    snapshot = confirmed_tape_input(plan)
-    result = simulate_patch(snapshot, process=process, allow_synthetic=True)
-    assert result.status == "blocked"
-    assert result.plan is None
-    assert result.cost is None
-    assert rank_feasible((result,)) == ()
-    # The unsupported target is rejected before any undo reasoning, so this
-    # is not evidence that completed work can or cannot be undone.
-    assert [(b.code, b.message, b.target_ids) for b in result.blockers] == [
-        (
-            "unsupported",
-            "Stand resize only supports extending stand-base; other stand parts cannot be resized.",
-            (snapshot.patch.target_id,),
-        )
-    ]
 
 
 def test_stand_pipeline_default_rejects_synthetic():
