@@ -74,6 +74,7 @@ export default function PlanWorkbench({
   onActivated,
   onReload,
   photos,
+  onProgressChange,
 }: {
   token: string;
   project: Project;
@@ -82,6 +83,7 @@ export default function PlanWorkbench({
   onActivated: (next: Project) => void;
   onReload: () => void;
   photos: readonly Media[];
+  onProgressChange: () => void;
 }) {
   const [plans, setPlans] = useState<readonly PlanSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -368,6 +370,7 @@ export default function PlanWorkbench({
                   photos={photos}
                   disabled={approvalDisabled || pending !== null}
                   onReloadProject={onReload}
+                  onProgressChange={onProgressChange}
                   onLockChange={(locked) => {
                     setProgressPending(locked);
                     onLockChange(locked);

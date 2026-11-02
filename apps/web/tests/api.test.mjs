@@ -12,6 +12,7 @@ import {
   loadPlan,
   loadProgress,
   loadProject,
+  loadProof,
   saveInventory,
   recordProgress,
   uploadPhoto,
@@ -21,6 +22,7 @@ import {
   emptyRequirements,
   requirementsError,
 } from "../src/lib/build-requirements.ts";
+import { proofText, proofUnknowns } from "../src/lib/proof-report.ts";
 
 const token = "synthetic-owner-credential";
 const savedProject = {
@@ -29,6 +31,137 @@ const savedProject = {
   revision_id: "inventory-1",
   stocks: [],
 };
+
+test("proof requests stay owner scoped and exports preserve failed versus unattempted claims", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json({ project: savedProject, versions: [] });
+  });
+  await loadProof(token, "project-a");
+  assert.equal(calls[0].path, "/api/projects/project-a/proof");
+  assert.equal(
+    calls[0].options.headers.get("Authorization"),
+    `Bearer ${token}`,
+  );
+  assert.equal(calls[0].options.cache, "no-store");
+  const snapshot = {
+    project: savedProject,
+    generated_at: "2026-11-01T00:00:00Z",
+    photos_omitted: 2,
+    photo_policy: "excluded",
+    coverage: "initial_plan_reports",
+    versions: [
+      {
+        inventory_revision_id: "inventory-1",
+        candidate_id: "synthetic-candidate",
+        plan: {
+          version_id: "version-a",
+          compiler_version: "synthetic-compiler",
+          operations: [
+            {
+              id: "test-a",
+              type: "functional_test",
+              args: {
+                procedure: "Observe the specified fixture",
+                device_label: "SYNTHETIC phone",
+                mass_g: 180,
+                duration_seconds: 60,
+                surface: "SYNTHETIC desk",
+                pass_criteria: ["No slip"],
+              },
+            },
+          ],
+        },
+        progress: {
+          status: "not_started",
+          completed_operation_ids: [],
+          events: [],
+          evidence: [],
+          material_transactions: [],
+          expected_remaining_stock: [],
+        },
+      },
+    ],
+  };
+  const initial = proofText(snapshot);
+  assert.match(initial, /Result: not attempted/);
+  assert.match(initial, /Private photos excluded: 2/);
+  assert.match(initial, /evidence invalidation are not integrated/);
+  assert.doesNotMatch(initial, /User-reported result: passed/);
+  snapshot.versions[0].progress.status = "needs_review";
+  snapshot.versions[0].progress.events.push({
+    id: "synthetic-test-failure",
+    kind: "test",
+    operation_id: "test-a",
+    test_result: "failed",
+    verification_state: "failed",
+    recorded_at: "2026-11-01T00:00:01Z",
+    observation: "SYNTHETIC failure <script>literal text</script>",
+  });
+  const failed = proofText(snapshot);
+  assert.match(failed, /User-reported result: failed/);
+  assert.match(failed, /Device: SYNTHETIC phone/);
+  assert.match(failed, /Mass: 180 g/);
+  assert.match(failed, /literal text/);
+  assert.doesNotMatch(failed, /Result: not attempted/);
+});
+
+test("proof unknowns report missing and unconfirmed inputs without inventing zeros", () => {
+  const unknown = {
+    value: null,
+    unit: "mm",
+    source: "unknown",
+    confirmed: false,
+  };
+  const snapshot = {
+    project: {
+      ...savedProject,
+      requirements: emptyRequirements(),
+      stocks: [
+        {
+          id: "synthetic-sheet",
+          kind: "sheet",
+          condition: "uncertain",
+          usable_regions: [],
+          width_mm: unknown,
+          height_mm: {
+            value: 100,
+            unit: "mm",
+            source: "user_ruler",
+            confirmed: false,
+          },
+          thickness_mm: unknown,
+        },
+      ],
+    },
+  };
+  const unknowns = proofUnknowns(snapshot);
+  assert.ok(unknowns.includes("synthetic-sheet: width mm unknown"));
+  assert.ok(unknowns.includes("synthetic-sheet: height mm unconfirmed"));
+  assert.ok(
+    unknowns.includes("synthetic-sheet: usable starting regions not recorded"),
+  );
+  assert.ok(unknowns.includes("device mass g: unknown"));
+  snapshot.project.stocks = [
+    {
+      id: "synthetic-tape",
+      kind: "tape",
+      condition: "usable",
+      width_mm: unknown,
+      remaining_length_mm: {
+        value: 300,
+        unit: "mm",
+        source: "user_ruler",
+        confirmed: true,
+      },
+    },
+  ];
+  assert.ok(
+    proofUnknowns(snapshot).includes("synthetic-tape: width mm unknown"),
+  );
+  assert.doesNotMatch(unknowns.join("\n"), /0 mm/);
+});
 
 test("physical reports bind the active version and history cursor without accepting raw events", async (t) => {
   const calls = [];

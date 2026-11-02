@@ -357,8 +357,10 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     from forma_api.media import media_router
     from forma_api.plans import plan_router
     from forma_api.progress import progress_router
+    from forma_api.proof import proof_router
 
     router.include_router(media_router(store, authenticate))
     router.include_router(plan_router(store, authenticate))
     router.include_router(progress_router(store, authenticate))
+    router.include_router(proof_router(store, authenticate))
     return router

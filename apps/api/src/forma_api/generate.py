@@ -27,6 +27,7 @@ from forma_api.projects import (
     Project,
     ProjectResult,
 )
+from forma_api.proof import ProofSnapshot, ProofVersion
 from forma_domain import models
 from forma_domain.generate import typescript
 
@@ -54,6 +55,8 @@ API_RECORDS = (
     ProgressResult,
     ProgressSnapshot,
     ProgressUpdate,
+    ProofSnapshot,
+    ProofVersion,
 )
 OUTPUT = "apps/web/src/lib/generated/api-contracts.ts"
 

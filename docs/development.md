@@ -44,7 +44,7 @@ before the complete build/recovery flow can run.
 | Scoped bounded intake/design/diagnosis/repair service                 | #4 live Spark/SAM evidence and #9 trusted callbacks/authenticated runtime integration                  |
 | Repair simulation, remaining-stock reconciliation and recheck preview | Family continuation wiring; unsupported strategy/angle changes and completed-work undo remain blocked  |
 | Owner-scoped SQLite project/inventory/photo routes with durable retries | #6 consented provider transfer, hosted identity/storage and immutable plan/event/material/evidence history |
-| Next.js intake, saved plan approval, SVG manual and persistent user physical reports | #7 segmentation/provider interpretation, #11 diagnosis integration, #12 repair revision transaction and #14 proof UI |
+| Next.js intake, saved plan/manual approval, user physical reports and initial Proof/export | #7 provider interpretation, #11 diagnosis, #12 repair revision transaction and #14 cross-version evidence freshness |
 
 Next work follows the physical P0 path:
 

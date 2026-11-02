@@ -152,3 +152,19 @@ reconciliation before a repair. Original plan stock stays immutable. Photo evide
 prevents individual asset deletion; deleting the whole project purges history and
 its retry snapshots. This slice exposes no event-writing model tool.
 See the [contract and validation](../../docs/handoffs/issue-11-physical-progress.md).
+
+## Proof snapshots (#14)
+
+GET `/api/projects/{id}/proof` reads the authorized project, immutable versions,
+progress/evidence/material records and private-media count in one transaction.
+The no-store response includes a generated timestamp and explicit
+`coverage: initial_plan_reports`, `photo_policy: excluded`. Copies clear stock
+image IDs and evidence asset IDs; original private records remain unchanged.
+User-authored goal/notes remain text in the chosen report.
+
+The browser can inspect this snapshot and explicitly download fresh local text or
+JSON. There is no public sharing route or photo-transfer permission. Downloads
+are suppressed if a known physical-report change invalidates the pending snapshot.
+Repair diffs, cross-version evidence freshness and measured waste/salvage totals
+remain outside this initial coverage. See the
+[Proof handoff](../../docs/handoffs/issue-14-proof-summary.md).

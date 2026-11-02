@@ -8,6 +8,7 @@ import type {
   ProgressUpdate,
   ProgressSnapshot,
   ProgressResult,
+  ProofSnapshot,
   CreateProject,
   InventoryUpdate,
   MediaList,
@@ -277,6 +278,20 @@ export function recordProgress(
       body: JSON.stringify(body),
     },
     json<ProgressResult>,
+    signal,
+  );
+}
+
+export function loadProof(
+  token: string,
+  id: string,
+  signal?: AbortSignal,
+): Promise<ProofSnapshot> {
+  return request(
+    token,
+    `${projectPath(id)}/proof`,
+    { method: "GET" },
+    json<ProofSnapshot>,
     signal,
   );
 }

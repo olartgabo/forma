@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   ApiError,
   createProject,
@@ -19,6 +25,7 @@ import type {
 import type { Measurement, Stock } from "../lib/generated/contracts";
 import BuildRequirementsFields from "./build-requirements-fields";
 import PlanWorkbench from "./plan-workbench";
+import ProofWorkbench from "./proof-workbench";
 import {
   emptyRequirements,
   requirementsError,
@@ -243,6 +250,11 @@ function ProjectWorkbench({
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
   const [planPending, setPlanPending] = useState(false);
+  const [proofRevision, setProofRevision] = useState(0);
+  const physicalProgressChanged = useCallback(
+    () => setProofRevision((value) => value + 1),
+    [],
+  );
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [stale, setStale] = useState(false);
@@ -1083,6 +1095,14 @@ function ProjectWorkbench({
             }}
             onReload={() => void openProject(project.id)}
             photos={photos}
+            onProgressChange={physicalProgressChanged}
+          />
+          <ProofWorkbench
+            key={`proof-${project.id}`}
+            token={token}
+            project={project}
+            revision={proofRevision}
+            disabled={locked}
           />
           <aside className="next-step-note">
             <h2>What comes next</h2>

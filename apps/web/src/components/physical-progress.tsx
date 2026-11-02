@@ -22,6 +22,7 @@ export default function PhysicalProgress({
   disabled,
   onLockChange,
   onReloadProject,
+  onProgressChange,
 }: {
   token: string;
   projectId: string;
@@ -31,6 +32,7 @@ export default function PhysicalProgress({
   disabled: boolean;
   onLockChange: (locked: boolean) => void;
   onReloadProject: () => void;
+  onProgressChange: () => void;
 }) {
   const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,6 +115,7 @@ export default function PhysicalProgress({
         if (read.signal.aborted) return;
         setProgress(next);
         setStale(false);
+        onProgressChange();
       })
       .catch((failure: unknown) => {
         if (!read.signal.aborted) {
@@ -125,7 +128,7 @@ export default function PhysicalProgress({
         if (!read.signal.aborted) setLoading(false);
       });
     return () => read.abort();
-  }, [token, projectId, version.version_id, attempt]);
+  }, [token, projectId, version.version_id, attempt, onProgressChange]);
 
   useEffect(() => {
     setChecks([]);
@@ -161,6 +164,7 @@ export default function PhysicalProgress({
       if (signal.aborted) return;
       setProgress(latest);
       setReadFailed(false);
+      onProgressChange();
       setNotice(
         latest.status === "needs_review"
           ? "Failed check saved. Stop and review the build before continuing."
@@ -170,6 +174,7 @@ export default function PhysicalProgress({
       if (signal.aborted) return;
       setError(message(failure));
       if (reportKnown) {
+        onProgressChange();
         setReadFailed(true);
         setProgress(null);
         setNotice(

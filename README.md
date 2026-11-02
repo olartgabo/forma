@@ -10,7 +10,8 @@ build disagrees with the plan.
 private photos and confirmed inventory editing through the scoped FastAPI API.
 The compiler, renderer, replanner and proposal service are implemented. Saved
 plan previews, explicit initial approval and immutable manual viewing are connected;
-physical confirmations, evidence links and material receipts are persisted. Live
+physical confirmations, evidence links and material receipts are persisted. A
+Proof snapshot and photo-excluded text/JSON exports expose recorded claims. Live
 design generation, diagnosis/repair activation, hosted identity and physical
 results remain pending.
 The original [formspec.md](formspec.md) is preserved as the product source of truth.

@@ -24,6 +24,7 @@ remaining blockers clear so an agent can resume without repeating experiments.
 | #9    | [Bounded proposals](issue-9-bounded-proposals.md)  | Scoped proposal service implemented; trusted runtime callbacks and live evidence pending                                                               |
 | #10   | [Repair simulation](issue-10-repair-simulation.md) | Offline simulation implemented; listed PR #30/#32 dependencies have now merged; see [current interface and limits](../../packages/replanner/README.md) |
 | #11   | [Physical progress](issue-11-physical-progress.md) | Explicit active-plan reports, checks, photo evidence and material receipts implemented; failed checks pause reports pending diagnosis/revision; expected stock needs physical reconciliation |
+| #14   | [Proof summary](issue-14-proof-summary.md) | Consistent initial-plan/report snapshots, provenance and photo-excluded text/JSON exports implemented; repair/invalidation and physical verification remain pending |
 
 No handoff establishes a real provider result or physical pass through fixture
 checks. User-confirmed measurements, observed build/recovery outcomes and

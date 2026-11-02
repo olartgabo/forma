@@ -38,7 +38,7 @@ device mass/viewing angle/footprint limits and willingness to get more material.
 Blank measurements stay unknown; editing a value or its source clears confirmation.
 Requirements and stock share one revision and retry payload. Photos do not produce
 measurements or physical evidence. Segmentation boxes,
-live proposals and revision/proof screens remain
+live proposals, repair revision screens and full cross-version Proof remain
 pending. See the [intake handoff](../../docs/handoffs/issue-7-intake.md).
 The [requirements handoff](../../docs/handoffs/issue-7-requirements.md) documents
 the persisted planning inputs and consumer boundary.
@@ -66,4 +66,12 @@ Expected stock is calculated/unconfirmed, not an actual measurement. See the
 [progress handoff](../../docs/handoffs/issue-11-physical-progress.md).
 
 Next connect diagnosis, actual remaining-stock reconciliation and the adaptation diff.
+The Proof panel now displays an owner-scoped dated snapshot of saved versions,
+user reports, evidence provenance, test conditions, material receipts, expected
+stock and unknown starting inputs. Opening/refreshing it or saving a physical
+report refreshes the visible snapshot. Text/JSON downloads fetch fresh data and
+exclude structured photo references; notes remain part of the chosen download.
+Known report changes invalidate pending exports, including while the panel is
+closed. Repair/invalidation coverage is explicitly unavailable. See the
+[Proof handoff](../../docs/handoffs/issue-14-proof-summary.md).
 See [contracts](../../docs/contracts.md) and [development](../../docs/development.md).

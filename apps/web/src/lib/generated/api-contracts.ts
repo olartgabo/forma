@@ -167,3 +167,19 @@ export type ProjectResult = {
   readonly "project": Project;
   readonly "replayed"?: boolean;
 };
+
+export type ProofSnapshot = {
+  readonly "project": Project;
+  readonly "generated_at": string;
+  readonly "versions": ReadonlyArray<ProofVersion>;
+  readonly "photos_omitted": number;
+  readonly "photo_policy"?: "excluded";
+  readonly "coverage"?: "initial_plan_reports";
+};
+
+export type ProofVersion = {
+  readonly "inventory_revision_id": string;
+  readonly "candidate_id": string;
+  readonly "plan": BuildPlan;
+  readonly "progress": ProgressSnapshot;
+};

@@ -172,3 +172,16 @@ same-plan failure-resolution contract, so a later pass cannot silently clear the
 failure. Diagnosis/revision integration must resolve it explicitly. Expected stock
 is a calculated, unconfirmed projection requiring actual reconciliation before
 repair. See the [handoff](handoffs/issue-11-physical-progress.md).
+
+## D016: Photo-excluded initial Proof snapshots, November 1, 2026
+
+Issue #14 uses one owner-scoped read transaction for project, versions, user
+history, evidence and material receipts. Exported copies omit structured image
+references; private originals remain unchanged. Explicit local text/JSON downloads
+include user notes and a generated snapshot time. No sharing route or photo consent
+is inferred.
+
+Coverage is limited to initial plans and user reports. Repair diffs, evidence
+invalidation/freshness and measured waste/salvage totals remain unavailable.
+Pending downloads are invalidated by known report changes, including while the
+panel is closed. See the [handoff](handoffs/issue-14-proof-summary.md).
