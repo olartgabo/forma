@@ -7,7 +7,7 @@ import {
   handoffFromDiagnosis,
   type RepairHandoff,
 } from "../lib/repair-handoff";
-import MuseRequestDetails from "./muse-request-details";
+import MuseRequestStatus from "./muse-request-details";
 import type {
   DiagnosisResult,
   Media,
@@ -80,8 +80,11 @@ export default function MuseDiagnosisPanel({
     planLoader.getState,
   );
   const [result, setResult] = useState<DiagnosisResult | null>(null);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [failure, setFailure] = useState<{
+    code?: string;
+    message: string;
+  } | null>(null);
+  const [cancelledMessage, setCancelledMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const controller = useRef<AbortController | null>(null);
   const epoch = useRef(0);
@@ -127,8 +130,8 @@ export default function MuseDiagnosisPanel({
     controller.current = null;
     setConsented(false);
     setResult(null);
-    setError("");
-    setNotice("");
+    setFailure(null);
+    setCancelledMessage("");
     setBusy(false);
   }, [
     token,
@@ -160,8 +163,8 @@ export default function MuseDiagnosisPanel({
     controller.current?.abort();
     controller.current = null;
     setBusy(false);
-    setError("");
-    setNotice(
+    setFailure(null);
+    setCancelledMessage(
       "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the photo, so no result was shown.",
     );
   }
@@ -187,8 +190,8 @@ export default function MuseDiagnosisPanel({
     // in-flight request keeps the payload captured above.
     setConsented(false);
     setBusy(true);
-    setError("");
-    setNotice("");
+    setFailure(null);
+    setCancelledMessage("");
     setResult(null);
     try {
       const next = await requestDiagnosis(
@@ -215,12 +218,15 @@ export default function MuseDiagnosisPanel({
       if (requestController.signal.aborted || requestEpoch !== epoch.current)
         return;
       if (failure instanceof ApiError && failure.code === "cancelled") {
-        setNotice(
+        setCancelledMessage(
           "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the photo, so no result was shown.",
         );
         return;
       }
-      setError(errorMessage(failure));
+      setFailure({
+        code: failure instanceof ApiError ? failure.code : undefined,
+        message: errorMessage(failure),
+      });
     } finally {
       if (!requestController.signal.aborted && requestEpoch === epoch.current) {
         controller.current = null;
@@ -241,10 +247,6 @@ export default function MuseDiagnosisPanel({
 
   const repairHandoff =
     result && activePlan ? handoffFromDiagnosis(result, activePlan) : null;
-  const partLabel = (partId: string) => {
-    const part = activePlan?.plan.parts.find((item) => item.id === partId);
-    return part ? part.id : partId;
-  };
 
   return (
     <section className="muse-panel" aria-labelledby="muse-diagnosis-title">
@@ -380,28 +382,25 @@ export default function MuseDiagnosisPanel({
             >
               Ask Muse what went wrong
             </button>
-            {busy && (
-              <button type="button" className="secondary" onClick={cancel}>
-                Cancel
-              </button>
-            )}
           </div>
-          {busy && (
-            <p className="help" aria-live="polite">
-              Asking Muse… Cancelling stops FORMA waiting; Muse may already be
-              processing the photo. There are no automatic retries.
-            </p>
-          )}
-          {notice && (
-            <p className="notice" aria-live="polite">
-              {notice}
-            </p>
-          )}
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
+          <MuseRequestStatus
+            busy={busy}
+            pendingMessage="Asking Muse… Cancelling stops FORMA waiting; Muse may already be processing the photo. There are no automatic retries."
+            onCancel={cancel}
+            cancelledMessage={cancelledMessage}
+            errorCode={failure?.code}
+            errorMessage={failure?.message}
+            diagnostics={
+              result
+                ? {
+                    status: result.diagnostics.status,
+                    model: result.diagnostics.model,
+                    elapsedMs: result.diagnostics.elapsed_ms,
+                    usage: result.diagnostics.usage,
+                  }
+                : null
+            }
+          />
           {result && (
             <div className="muse-result">
               <h3>Visible observations</h3>
@@ -449,12 +448,6 @@ export default function MuseDiagnosisPanel({
                 A photo does not confirm measurements or that a physical check
                 passed; measure and check yourself.
               </p>
-              <MuseRequestDetails
-                status={result.diagnostics.status}
-                model={result.diagnostics.model}
-                elapsedMs={result.diagnostics.elapsed_ms}
-                usage={result.diagnostics.usage}
-              />
               {repairHandoff && onRepairHandoff && (
                 <div className="muse-actions">
                   <p className="help">
@@ -469,9 +462,14 @@ export default function MuseDiagnosisPanel({
                       type="button"
                       className="secondary"
                       disabled={disabled}
-                      onClick={() => onRepairHandoff(repairHandoff, targetId)}
+                      onClick={() =>
+                        onRepairHandoff(
+                          { ...repairHandoff, nonce: crypto.randomUUID() },
+                          targetId,
+                        )
+                      }
                     >
-                      Review a repair for {partLabel(targetId)}
+                      Review a repair for {targetId}
                     </button>
                   ))}
                 </div>

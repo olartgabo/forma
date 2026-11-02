@@ -10,6 +10,7 @@ from fastapi.routing import APIRoute
 from forma_api import diagnosis_runtime, intake_runtime
 from forma_api.model_gateway import GatewayError, MetaGateway
 from forma_api.plans import PlanService
+from forma_api.progress import record_diagnosis_evidence
 from forma_api.projects import ProjectStore
 from forma_domain.models import ID
 
@@ -181,6 +182,18 @@ def diagnosis_router(
                     store, connection, project_id, body.expected_active_version_id
                 )
                 _resolve_operation(version.plan, body.current_operation_id)
+                part_id_set = {part.id for part in version.plan.parts}
+                record_diagnosis_evidence(
+                    connection,
+                    project_id=project_id,
+                    version_id=body.expected_active_version_id,
+                    operation_id=body.current_operation_id,
+                    media_id=body.media_id,
+                    diagnosis=proposal,
+                    part_ids=tuple(
+                        item for item in proposal.affected_ids if item in part_id_set
+                    ),
+                )
             # A photo-only request stays valid if a plan was activated during
             # the call; the revision and media checks above are its stale gates.
         return diagnosis_runtime.DiagnosisResult(

@@ -10,7 +10,9 @@ from test_progress import preview_setup as preview_setup
 from test_progress import setup as setup
 
 from forma_api.plans import CompilePreview, PlanService
+from forma_api.progress import record_diagnosis_evidence
 from forma_api.projects import ProjectStore
+from forma_domain.models import DiagnosisProposal
 
 
 def proof(client, project_id, headers=AUTH):
@@ -226,6 +228,41 @@ def test_photos_are_redacted_from_every_copy_without_changing_private_sources(
         ).content
         == original_photo.content
     )
+
+
+def test_proof_strips_diagnosis_evidence_asset_id(setup):
+    client, version, directory = setup
+    photo_id = photo(client, version)
+    diagnosis = DiagnosisProposal(
+        visible_observations=["A tear is visible"],
+        hypotheses=["The slot may be weak"],
+        questions_or_measurements=["Measure the edge distance"],
+        affected_ids=[version.plan.parts[0].id],
+        failure_type="torn_slot",
+    )
+    with ProjectStore(directory).transaction() as connection:
+        record_diagnosis_evidence(
+            connection,
+            project_id=version.project_id,
+            version_id=version.version_id,
+            operation_id=version.plan.operations[0].id,
+            media_id=photo_id,
+            diagnosis=diagnosis,
+            part_ids=(version.plan.parts[0].id,),
+        )
+    response = proof(client, version.project_id)
+    assert response.status_code == 200, response.text
+    report = response.json()
+    assert report["photo_policy"] == "excluded"
+    assert photo_id not in response.text
+    evidence = report["versions"][0]["progress"]["evidence"]
+    assert len(evidence) == 1
+    assert evidence[0]["asset_id"] is None
+    assert evidence[0]["kind"] == "model_interpretation"
+    assert "torn_slot" in evidence[0]["description"]
+    # Private source retains the media reference.
+    source = progress(client, version).json()
+    assert source["evidence"][0]["asset_id"] == photo_id
 
 
 def test_proof_transaction_keeps_one_history_frontier_during_concurrent_report(

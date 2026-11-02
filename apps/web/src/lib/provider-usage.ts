@@ -27,3 +27,86 @@ export function formatProviderUsage(
   const outputTokens = formatCount(counts.output_tokens, MAX_TOKENS_TOTAL);
   return `Provider-reported usage — model calls: ${modelCalls}; input tokens: ${inputTokens}; output tokens: ${outputTokens}.`;
 }
+
+export type MuseStatusKind =
+  | "pending"
+  | "cancelled"
+  | "timeout"
+  | "rate_limit"
+  | "provider_not_configured"
+  | "invalid_response"
+  | "provider_failure"
+  | "success";
+
+export function museStatusKindForCode(code: unknown): MuseStatusKind {
+  switch (code) {
+    case "cancelled":
+      return "cancelled";
+    case "timeout":
+    case "request_timeout":
+      return "timeout";
+    case "rate_limit":
+      return "rate_limit";
+    case "provider_not_configured":
+      return "provider_not_configured";
+    case "invalid_response":
+      return "invalid_response";
+    default:
+      return "provider_failure";
+  }
+}
+
+export function museStatusKindForState(input: {
+  busy?: unknown;
+  cancelled?: unknown;
+  errorCode?: unknown;
+  succeeded?: unknown;
+}): MuseStatusKind {
+  if (input.busy) return "pending";
+  if (input.cancelled) return "cancelled";
+  if (input.errorCode !== undefined && input.errorCode !== null)
+    return museStatusKindForCode(input.errorCode);
+  if (input.succeeded) return "success";
+  return "provider_failure";
+}
+
+export function museStatusLabel(kind: unknown): string {
+  switch (kind) {
+    case "pending":
+      return "Waiting for Muse";
+    case "cancelled":
+      return "Request cancelled";
+    case "timeout":
+      return "Request timed out";
+    case "rate_limit":
+      return "Rate limit reached";
+    case "provider_not_configured":
+      return "Muse is not configured";
+    case "invalid_response":
+      return "Unusable Muse response";
+    case "success":
+      return "Request completed";
+    default:
+      return "Muse request failed";
+  }
+}
+
+export function museRequestStatus(input: {
+  busy?: unknown;
+  cancelled?: unknown;
+  errorCode?: unknown;
+  succeeded?: unknown;
+}): { kind: MuseStatusKind; label: string } {
+  const kind = museStatusKindForState(input);
+  return { kind, label: museStatusLabel(kind) };
+}
+
+export function formatMuseLatency(elapsedMs: unknown): string {
+  if (
+    typeof elapsedMs !== "number" ||
+    !Number.isFinite(elapsedMs) ||
+    elapsedMs < 0
+  )
+    return "duration: not reported";
+  return `duration: ${elapsedMs} ms`;
+}

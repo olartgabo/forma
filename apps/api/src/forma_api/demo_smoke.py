@@ -5,9 +5,11 @@ design-readiness and saved-media eligibility checks when selectors are
 supplied. A live saved photo intake runs only with ``--live-intake`` and
 ``--transfer-consent``. A live failure-photo diagnosis runs only with
 ``--live-diagnosis``, ``--transfer-consent`` and a required ``--problem``
-text (optionally scoped to the active plan with ``--operation-id``);
-``--live-intake`` and ``--live-diagnosis`` are mutually exclusive so at most
-one provider-backed request is made per invocation.
+text (optionally scoped to the active plan with ``--operation-id``). A live
+design generation runs only with ``--live-design`` and
+``--transfer-consent`` (with optional ``--design-notes``);
+``--live-intake``, ``--live-diagnosis`` and ``--live-design`` are mutually
+exclusive so at most one provider-backed request is made per invocation.
 
 Example live diagnosis run::
 
@@ -15,15 +17,22 @@ Example live diagnosis run::
         --media-id media-abc --live-diagnosis --transfer-consent \
         --problem "The leg split at the slot"
 
+Example live design run::
+
+    python -m forma_api.demo_smoke --project-id project-abc \
+        --live-design --transfer-consent
+
 A passing live-diagnosis smoke proves only that the provider returned one
 validated response for that photo. It does not prove physical repair
-success, and this command never claims a physical test pass.
+success, and this command never claims a physical test pass. A passing
+live-design smoke proves only one provider response and deterministic
+compile results, not physical build success.
 
 The owner credential is read only from the ``FORMA_SMOKE_OWNER_TOKEN``
 environment variable or an optional credential file. It is never accepted as
 a command-line value and never printed. No provider key is read and no direct
-provider call is made; live intake and live diagnosis use the existing
-consented API routes.
+provider call is made; live intake, live diagnosis and live design use the
+existing consented API routes.
 
 This command never uploads files, activates plans, changes inventory, or
 claims a physical test pass. Photo-derived measurements remain unknown.
@@ -38,6 +47,7 @@ import socket
 import sys
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
@@ -45,7 +55,12 @@ from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 
-from forma_api.design_runtime import DesignReadiness
+from forma_api.design_runtime import (
+    MAX_NOTES_LENGTH,
+    DesignGenerateRequest,
+    DesignGenerateResult,
+    DesignReadiness,
+)
 from forma_api.diagnosis_runtime import (
     MAX_REPORTED_PROBLEM_LENGTH,
     DiagnosisRequest,
@@ -77,6 +92,9 @@ _SAFE_ERROR_CODES = frozenset(
         "blocked",
         "consent_required",
         "forbidden",
+        "generation_in_progress",
+        "generation_outcome_unknown",
+        "idempotency_conflict",
         "invalid_response",
         "network_error",
         "not_found",
@@ -364,9 +382,11 @@ def _build_parser() -> argparse.ArgumentParser:
             "--live-intake and --transfer-consent. Live diagnosis requires "
             "--live-diagnosis, --transfer-consent and --problem, and proves "
             "only one provider response for that photo, not physical repair "
-            "success. Example: python -m forma_api.demo_smoke "
-            "--project-id project-abc --media-id media-abc --live-diagnosis "
-            "--transfer-consent --problem 'The leg split at the slot'"
+            "success. Live design requires --live-design and "
+            "--transfer-consent (optional --design-notes), and proves only "
+            "one provider response and deterministic compile results, not "
+            "physical build success. Example: python -m forma_api.demo_smoke "
+            "--project-id project-abc --live-design --transfer-consent"
         ),
     )
     parser.add_argument("--api-origin", default=DEFAULT_ORIGIN)
@@ -377,6 +397,8 @@ def _build_parser() -> argparse.ArgumentParser:
     live_group = parser.add_mutually_exclusive_group()
     live_group.add_argument("--live-intake", action="store_true")
     live_group.add_argument("--live-diagnosis", action="store_true")
+    live_group.add_argument("--live-design", action="store_true")
+    parser.add_argument("--design-notes", default=None)
     parser.add_argument("--problem", default=None)
     parser.add_argument("--operation-id", default=None)
     parser.add_argument(
@@ -398,6 +420,7 @@ def _initial_report(origin: str | None) -> dict:
         "design_readiness": {"status": "not_checked"},
         "intake": {"status": "not_requested"},
         "diagnosis": {"status": "not_requested"},
+        "design": {"status": "not_requested"},
         "physical_verification": "not_checked",
         "measurements": "unknown",
         "errors": [],
@@ -463,6 +486,23 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
     if args.operation_id is not None and not _ID_RE.match(args.operation_id):
         _fail(report, "arguments", "invalid_operation_id")
         return emit(2)
+    design_notes: str | None = None
+    if args.live_design:
+        if args.project_id is None:
+            _fail(report, "arguments", "live_design_requires_project")
+            return emit(2)
+        if not args.transfer_consent:
+            _fail(report, "design", "consent_required")
+            return emit(2)
+        if args.design_notes is not None:
+            stripped_notes = args.design_notes.strip()
+            if len(stripped_notes) > MAX_NOTES_LENGTH:
+                _fail(report, "arguments", "invalid_design_notes")
+                return emit(2)
+            design_notes = stripped_notes or None
+    elif args.design_notes is not None:
+        _fail(report, "arguments", "design_notes_requires_live_design")
+        return emit(2)
     problem: str | None = None
     if args.live_diagnosis:
         if args.project_id is None or args.media_id is None:
@@ -493,7 +533,9 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
     credential_error: str | None = None
     if needs_credential:
         token, credential_error = _load_credential(env, args.credential_file)
-        if credential_error is not None and (args.live_intake or args.live_diagnosis):
+        if credential_error is not None and (
+            args.live_intake or args.live_diagnosis or args.live_design
+        ):
             _fail(report, "credential", credential_error)
             return emit(2)
 
@@ -588,6 +630,13 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
             _fail(report, "diagnosis", "active_plan_required")
             return emit(1)
 
+    # The design route returns blocked for active plans; refuse locally
+    # with no generate request.
+    if args.live_design and project.active_version_id is not None:
+        report["design"] = {"status": "failed"}
+        _fail(report, "design", "blocked")
+        return emit(1)
+
     # --- Design readiness (read-only; safe fields only). ---
     response = checked_request(
         "design_readiness", "GET", f"/api/projects/{args.project_id}/designs/readiness"
@@ -614,13 +663,77 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         "ready": readiness.status == "inputs_complete",
         "inventory_confirmed": readiness.inventory_confirmed,
         "blocker_codes": blocker_codes,
-        "blocker_count": len(blocker_codes),
-        "missing_input_count": len(readiness.missing_inputs),
         "counts": {
             "blockers": len(blocker_codes),
             "missing_inputs": len(readiness.missing_inputs),
         },
     }
+
+    if args.live_design:
+        # --- Live design: only here, with consent already verified. ---
+        # The active-plan refusal above already ran with no POST.
+        report["design"] = {"status": "not_checked"}
+        design_payload = DesignGenerateRequest(
+            expected_revision_id=project.revision_id,
+            user_notes=design_notes,
+            idempotency_key=f"smoke-design-{uuid.uuid4().hex}",
+            provider_context_consented=True,
+        )
+        response = checked_request(
+            "design",
+            "POST",
+            f"/api/projects/{args.project_id}/designs/generate",
+            body=design_payload.model_dump_json().encode(),
+        )
+        if response is None:
+            report["design"] = {"status": "failed"}
+            return emit(1)
+        try:
+            design_result = DesignGenerateResult.model_validate_json(response.body)
+        except ValidationError:
+            report["design"] = {"status": "failed"}
+            _fail(report, "design", "invalid_response")
+            return emit(1)
+        if (
+            design_result.project_id != args.project_id
+            or design_result.inventory_revision_id != project.revision_id
+        ):
+            report["design"] = {"status": "failed"}
+            _fail(report, "design", "invalid_response")
+            return emit(1)
+        diag = design_result.diagnostics
+        candidate_counts = {
+            "accepted": 0,
+            "blocked": 0,
+            "needs_measurement": 0,
+            "unsupported": 0,
+        }
+        for candidate in design_result.candidates:
+            candidate_counts[candidate.status] += 1
+        usage_report = (
+            {
+                "model_calls": diag.usage.model_calls,
+                "input_tokens": diag.usage.input_tokens,
+                "output_tokens": diag.usage.output_tokens,
+            }
+            if diag.usage is not None
+            else None
+        )
+        report["design"] = {
+            "status": design_result.status,
+            "counts": candidate_counts,
+            "question_count": len(design_result.questions),
+            "diagnostics": {
+                "model": diag.model,
+                "elapsed_ms": diag.elapsed_ms,
+                "model_rounds": diag.model_rounds,
+                "tool_executions": diag.tool_executions,
+                "usage": usage_report,
+            },
+            "live_provider_call": True,
+            "replayed": design_result.replayed,
+        }
+        return emit(0)
 
     if args.media_id is None:
         return emit(0 if not (args.live_intake or args.live_diagnosis) else 1)
@@ -731,20 +844,12 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         report["diagnosis"] = {
             "status": diag.status,
             "failure_type": proposal.failure_type,
-            "visible_observations_count": counts["visible_observations"],
-            "hypotheses_count": counts["hypotheses"],
-            "questions_or_measurements_count": counts["questions_or_measurements"],
-            "affected_ids_count": counts["affected_ids"],
             "counts": counts,
-            "model": diag.model,
-            "elapsed_ms": diag.elapsed_ms,
             "diagnostics": {
-                "status": diag.status,
                 "model": diag.model,
                 "elapsed_ms": diag.elapsed_ms,
                 "usage": usage_report,
             },
-            "usage": usage_report,
             "live_provider_call": True,
         }
         return emit(0)
