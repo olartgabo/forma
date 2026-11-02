@@ -57,12 +57,35 @@ Write plainly. No dead code, unused abstractions, swallowed errors or invented
 success claims. Separate fixture validation, physical attempts and actual
 physical passes. Use [docs/agent-workflow.md](docs/agent-workflow.md) for handoffs.
 
-## Muse-first development loops
+## Native development and connected-demo priority
 
-Muse owns code, regression tests, offline checks and ordinary repairs. Codex or
-Claude plans once per feature, reviews the final green diff, or diagnoses after
-two unsuccessful Muse repairs. Do not assign premium agents routine test writing.
-Use tools/devloop/guarded/run.mjs and its POLICY.md. Start fresh feature sessions
-from bounded checkpoints; native automatic compaction stays enabled. Review
-subagents use fork_turns="none" rather than inheriting full chat history. Preserve
-all existing spending/STOP/verification gates; no automatic billing renewal.
+Current authorization (November 2, 2026) supersedes older Muse-first instructions.
+Native ChatGPT/Codex Sol or Terra and terminal Claude Code with explicit Sonnet
+selection may implement, test and repair bounded assigned scopes. Claude uses the
+existing subscription login, with no new API-key billing or Fable/Haiku fallback.
+If rate-limited, checkpoint and let native Codex continue.
+
+Meta/Muse/OpenCode coding workers and Meta-backed coding compaction stay disabled.
+Preserve both external STOPs and keep FORMA-Claude-Handoff disabled. MetaMuse is
+only the app runtime brain and a provider for bounded live runtime/end-to-end tests.
+Native coding, offline checks and read-only Proof verification need no Meta guard
+settings or META_GUARD_HOME. Missing live prerequisites block only actual live calls.
+Never create dummy settings, copy another user's secrets, remove STOPs or renew
+verification windows. Preserve journals, unknown-outcome halting, server-only keys
+and payments. The external live verification window is currently expired.
+
+Prioritize connected photo/intake, diagnosis, visible failures and runtime
+integration. Offline-engine extensions, synthetic fixture expansion and offline-only
+cleanup remain paused. Keep real measurement, confirmation and physical evidence
+gates; offline success cannot establish a physical pass.
+
+Use bounded task packets and disjoint owned scopes. After two unsuccessful repair
+attempts, obtain one targeted diagnosis; stop with a checkpoint if the subsequent
+repair stays blocked. Require a fresh independent Sol/Terra review of the green
+diff and passing appropriate local checks before authorized push/publication.
+Before merge, all required remote checks must pass on the exact reviewed published
+head. Do not
+duplicate judges. Native review subagents use fork_turns="none" with only the
+bounded packet. Keep native automatic compaction enabled; claim compaction only
+with a runtime event. See [current policy](tools/devloop/guarded/POLICY.md) and
+[portable handoff](docs/handoffs/issue-16-native-agent-workflow.md).
