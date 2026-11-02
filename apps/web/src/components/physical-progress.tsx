@@ -13,6 +13,10 @@ import type {
   ProgressSnapshot,
   ProgressUpdate,
 } from "../lib/generated/api-contracts";
+import {
+  MUSE_NOT_CONFIGURED_REASON,
+  type MuseAvailability,
+} from "../lib/muse-provider";
 
 function message(error: unknown) {
   return error instanceof ApiError
@@ -32,6 +36,7 @@ export default function PhysicalProgress({
   onProgressChange,
   onDiagnoseFailure,
   refreshKey,
+  museAvailability,
 }: {
   token: string;
   projectId: string;
@@ -44,6 +49,7 @@ export default function PhysicalProgress({
   onProgressChange: () => void;
   onDiagnoseFailure?: (focus: DiagnosisFocus) => void;
   refreshKey?: number;
+  museAvailability?: MuseAvailability;
 }) {
   const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -318,23 +324,31 @@ export default function PhysicalProgress({
           : "Refresh physical reports"}
       </button>
       {failedCheck && onDiagnoseFailure && (
-        <button
-          type="button"
-          className="secondary"
-          onClick={() =>
-            onDiagnoseFailure(
-              createDiagnosisFocus({
-                projectId,
-                versionId: version.version_id,
-                operationId,
-                mediaId: failedPhotoId,
-                nonce: crypto.randomUUID(),
-              }),
-            )
-          }
-        >
-          Diagnose this failure with Muse
-        </button>
+        <>
+          {museAvailability?.enabled === false && (
+            <p className="help" role="note">
+              {museAvailability.reason ?? MUSE_NOT_CONFIGURED_REASON}
+            </p>
+          )}
+          <button
+            type="button"
+            className="secondary"
+            disabled={museAvailability?.enabled === false}
+            onClick={() =>
+              onDiagnoseFailure(
+                createDiagnosisFocus({
+                  projectId,
+                  versionId: version.version_id,
+                  operationId,
+                  mediaId: failedPhotoId,
+                  nonce: crypto.randomUUID(),
+                }),
+              )
+            }
+          >
+            Diagnose this failure with Muse
+          </button>
+        </>
       )}
       {savedDiagnoses.length > 0 && (
         <section aria-label="Saved Muse diagnoses for this step">

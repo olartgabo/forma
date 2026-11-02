@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useReducer, useRef, useState, type FormEvent } from "react";
 import {
   ApiError,
   approveRepair,
@@ -9,7 +9,6 @@ import type { RepairPatch } from "../lib/generated/contracts";
 import type {
   AdaptCommitRequest,
   AdaptPreview,
-  AdaptPreviewSet,
   AdaptSimulateRequest,
   PlanVersion,
   ProgressSnapshot,
@@ -26,6 +25,11 @@ import {
   mergeMuseCandidates,
   museCandidateLabel,
 } from "../lib/repair-candidates";
+import {
+  canApprove,
+  createInitialRepairWorkbenchState,
+  repairWorkbenchReducer,
+} from "../lib/repair-workbench-state";
 import Diagram from "./manual-diagram";
 import MuseRepairPanel from "./muse-repair-panel";
 import type { MuseAvailability } from "../lib/muse-provider";
@@ -317,23 +321,28 @@ export default function AdaptWorkbench({
   const [open, setOpen] = useState(false);
   const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
-  const [candidates, setCandidates] = useState<readonly RepairPatch[]>([]);
+  const [workbench, dispatch] = useReducer(
+    repairWorkbenchReducer,
+    undefined,
+    createInitialRepairWorkbenchState,
+  );
+  const {
+    candidates,
+    candidateSetVersion,
+    previews,
+    previewCandidateSetVersion,
+    choice,
+    approved,
+    museCandidateIds,
+    draftChangeNotice,
+    pendingSimulation,
+    pendingApproval,
+  } = workbench;
   const [lengths, setLengths] = useState<Record<string, string>>({});
   const [remainingConfirmed, setRemainingConfirmed] = useState(false);
-  const [previews, setPreviews] = useState<AdaptPreviewSet | null>(null);
-  const [choice, setChoice] = useState("");
-  const [approved, setApproved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [stale, setStale] = useState(false);
-  const [pendingSimulation, setPendingSimulation] =
-    useState<AdaptSimulateRequest | null>(null);
-  const [pendingApproval, setPendingApproval] =
-    useState<AdaptCommitRequest | null>(null);
-  const [draftChangeNotice, setDraftChangeNotice] = useState("");
-  const [museCandidateIds, setMuseCandidateIds] = useState<ReadonlySet<string>>(
-    new Set(),
-  );
   const [handoffNote, setHandoffNote] = useState<"started" | "replace" | null>(
     null,
   );
@@ -341,16 +350,8 @@ export default function AdaptWorkbench({
     null,
   );
   const lifetime = useRef(new AbortController());
-  const candidatesRef = useRef<readonly RepairPatch[]>([]);
-  const candidateSetVersionRef = useRef(0);
-  const [candidateSetVersion, setCandidateSetVersion] = useState(0);
-  const previewCandidateSetVersionRef = useRef<number | null>(null);
-  const [previewCandidateSetVersion, setPreviewCandidateSetVersion] = useState<
-    number | null
-  >(null);
-  const previewsRef = useRef<AdaptPreviewSet | null>(null);
-  const choiceRef = useRef("");
-  const approvedRef = useRef(false);
+  const workbenchRef = useRef(workbench);
+  workbenchRef.current = workbench;
   const openRef = useRef(false);
   const draftRef = useRef<Draft>(emptyDraft);
   const appliedDraftRef = useRef<Draft | null>(null);
@@ -385,72 +386,28 @@ export default function AdaptWorkbench({
   }, [open]);
 
   useEffect(() => {
-    previewsRef.current = previews;
-  }, [previews]);
-
-  useEffect(() => {
-    choiceRef.current = choice;
-  }, [choice]);
-
-  useEffect(() => {
-    approvedRef.current = approved;
-  }, [approved]);
-
-  useEffect(() => {
-    candidatesRef.current = candidates;
-  }, [candidates]);
+    workbenchRef.current = workbench;
+  }, [workbench]);
 
   function clearStalePreviews() {
-    const had =
-      previewsRef.current !== null ||
-      choiceRef.current !== "" ||
-      approvedRef.current;
-    previewsRef.current = null;
-    choiceRef.current = "";
-    approvedRef.current = false;
-    previewCandidateSetVersionRef.current = null;
-    setPreviewCandidateSetVersion(null);
-    setPreviews(null);
-    setChoice("");
-    setApproved(false);
-    if (had)
-      setDraftChangeNotice(
-        "Earlier previews were cleared because the draft changed. Simulate again before approving a repair.",
-      );
-  }
-
-  function invalidateForCandidateChange() {
-    const had =
-      previewsRef.current !== null ||
-      choiceRef.current !== "" ||
-      approvedRef.current;
-    candidateSetVersionRef.current += 1;
-    setCandidateSetVersion(candidateSetVersionRef.current);
-    previewCandidateSetVersionRef.current = null;
-    setPreviewCandidateSetVersion(null);
-    previewsRef.current = null;
-    choiceRef.current = "";
-    approvedRef.current = false;
-    setPreviews(null);
-    setChoice("");
-    setApproved(false);
-    return had;
+    dispatch({ type: "previewsCleared" });
   }
 
   function handleMuseCandidates(incoming: readonly RepairPatch[]) {
-    const merged = mergeMuseCandidates(candidatesRef.current, incoming);
-    if (merged.added > 0) {
-      candidatesRef.current = merged.next;
-      setCandidates(merged.next);
-      setMuseCandidateIds(
-        (current) => new Set([...current, ...merged.addedIds]),
-      );
-      if (invalidateForCandidateChange())
-        setDraftChangeNotice(
-          "Earlier previews were cleared because the draft changed. Simulate again before approving a repair.",
-        );
-    }
-    return { added: merged.added, skipped: merged.skipped };
+    const current = workbenchRef.current;
+    const merged = mergeMuseCandidates(
+      current.candidates,
+      incoming.filter(
+        (candidate) => !current.removedCandidateIds.has(candidate.id),
+      ),
+    );
+    dispatch({
+      type: "museResolved",
+      candidates: incoming,
+      requestToken: current.museRequestToken,
+      epoch: current.planVersionEpoch,
+    });
+    return { added: merged.added, skipped: incoming.length - merged.added };
   }
 
   useEffect(() => {
@@ -460,22 +417,10 @@ export default function AdaptWorkbench({
     setHandoffNote(null);
     setPendingHandoffDraft(null);
     setProgress(null);
-    candidatesRef.current = [];
-    candidateSetVersionRef.current += 1;
-    setCandidateSetVersion(candidateSetVersionRef.current);
-    previewCandidateSetVersionRef.current = null;
-    setPreviewCandidateSetVersion(null);
-    setCandidates([]);
-    setPreviews(null);
-    setChoice("");
-    setApproved(false);
+    dispatch({ type: "versionChanged" });
     setLengths({});
     setRemainingConfirmed(false);
-    setPendingSimulation(null);
-    setPendingApproval(null);
     setStale(false);
-    setDraftChangeNotice("");
-    setMuseCandidateIds(new Set());
   }, [version.version_id]);
 
   useEffect(() => {
@@ -537,11 +482,7 @@ export default function AdaptWorkbench({
       );
       if (signal.aborted) return;
       setProgress(next);
-      previewCandidateSetVersionRef.current = null;
-      setPreviewCandidateSetVersion(null);
-      setPreviews(null);
-      setChoice("");
-      setApproved(false);
+      dispatch({ type: "previewsRefreshed" });
       setStale(false);
     } catch (failure) {
       if (!signal.aborted) setError(message(failure));
@@ -559,9 +500,9 @@ export default function AdaptWorkbench({
     if (draft.kind === "replace_part" && !draft.stockId) return;
     if (draft.kind === "resize_part" && width === null && height === null)
       return;
-    const nextCandidates: readonly RepairPatch[] = [
-      ...candidatesRef.current,
-      {
+    dispatch({
+      type: "addManual",
+      candidate: {
         id: `repair-${crypto.randomUUID()}`,
         base_version_id: version.version_id,
         kind: draft.kind,
@@ -574,36 +515,30 @@ export default function AdaptWorkbench({
         angle_deg: null,
         rationale: draft.rationale.trim(),
       },
-    ];
-    candidatesRef.current = nextCandidates;
-    setCandidates(nextCandidates);
-    invalidateForCandidateChange();
+    });
     setDraft(emptyDraft);
   }
 
   async function simulate(request: AdaptSimulateRequest) {
     const signal = lifetime.current.signal;
-    const startVersion = candidateSetVersionRef.current;
-    setPendingSimulation(request);
+    const startVersion = workbenchRef.current.candidateSetVersion;
+    dispatch({ type: "simulateStarted", request });
     setBusy(true);
     onLockChange(true);
     setError("");
     try {
       const result = await simulateRepairs(token, projectId, request, signal);
       if (signal.aborted) return;
-      setPendingSimulation(null);
-      if (!isCandidateSetCurrent(startVersion, candidateSetVersionRef.current))
-        return;
-      previewCandidateSetVersionRef.current = startVersion;
-      setPreviewCandidateSetVersion(startVersion);
-      setPreviews(result);
-      setChoice(result.previews.find((item) => item.version)?.preview_id ?? "");
-      setApproved(false);
+      dispatch({
+        type: "simulateResolved",
+        previews: result,
+        startedVersion: startVersion,
+      });
     } catch (failure) {
       if (signal.aborted) return;
       setError(message(failure));
       if (failure instanceof ApiError && failure.status >= 400) {
-        setPendingSimulation(null);
+        dispatch({ type: "simulateFailed" });
         setStale(failure.status === 409);
       }
     } finally {
@@ -615,30 +550,23 @@ export default function AdaptWorkbench({
   }
 
   async function approve(request: AdaptCommitRequest) {
-    if (
-      previewCandidateSetVersionRef.current === null ||
-      !isCandidateSetCurrent(
-        previewCandidateSetVersionRef.current,
-        candidateSetVersionRef.current,
-      )
-    )
-      return;
+    if (!canApprove(workbenchRef.current)) return;
     const signal = lifetime.current.signal;
-    setPendingApproval(request);
+    dispatch({ type: "approveStarted", request });
     setBusy(true);
     onLockChange(true);
     setError("");
     try {
       await approveRepair(token, projectId, request, signal);
       if (signal.aborted) return;
-      setPendingApproval(null);
+      dispatch({ type: "approveResolved" });
       onLockChange(false);
       onApproved();
     } catch (failure) {
       if (signal.aborted) return;
       setError(message(failure));
       if (failure instanceof ApiError && failure.status >= 400) {
-        setPendingApproval(null);
+        dispatch({ type: "approveFailed" });
         setStale(failure.status === 409);
       }
     } finally {
@@ -721,7 +649,7 @@ export default function AdaptWorkbench({
           <button
             type="button"
             className="quiet"
-            onClick={() => setDraftChangeNotice("")}
+            onClick={() => dispatch({ type: "draftChangeNoticeCleared" })}
           >
             Dismiss
           </button>
@@ -880,14 +808,12 @@ export default function AdaptWorkbench({
                         type="button"
                         className="quiet"
                         disabled={locked}
-                        onClick={() => {
-                          const nextCandidates = candidatesRef.current.filter(
-                            (item) => item.id !== candidate.id,
-                          );
-                          candidatesRef.current = nextCandidates;
-                          setCandidates(nextCandidates);
-                          invalidateForCandidateChange();
-                        }}
+                        onClick={() =>
+                          dispatch({
+                            type: "removeCandidate",
+                            id: candidate.id,
+                          })
+                        }
                       >
                         Remove
                       </button>
@@ -987,10 +913,12 @@ export default function AdaptWorkbench({
                   base={version}
                   selected={preview.preview_id === choice}
                   disabled={locked}
-                  onSelect={() => {
-                    setChoice(preview.preview_id);
-                    setApproved(false);
-                  }}
+                  onSelect={() =>
+                    dispatch({
+                      type: "choiceSelected",
+                      previewId: preview.preview_id,
+                    })
+                  }
                 />
               ))}
               {chosen?.version && (
@@ -1000,7 +928,12 @@ export default function AdaptWorkbench({
                       type="checkbox"
                       checked={approved}
                       disabled={locked}
-                      onChange={(event) => setApproved(event.target.checked)}
+                      onChange={(event) =>
+                        dispatch({
+                          type: "approvedChanged",
+                          approved: event.target.checked,
+                        })
+                      }
                     />
                     I approve this revision. Recorded work stays in history; the
                     listed checks must be repeated.

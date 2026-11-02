@@ -58,6 +58,11 @@ import {
   latestDiagnosisEvidence,
   selectFailedCheckPhoto,
 } from "../src/lib/build-diagnosis.ts";
+import {
+  canApprove,
+  createInitialRepairWorkbenchState,
+  repairWorkbenchReducer,
+} from "../src/lib/repair-workbench-state.ts";
 
 test("provider usage formats only provider-reported bounded counts", () => {
   assert.equal(
@@ -1473,6 +1478,223 @@ test("mergeMuseCandidates does not resurrect a removed candidate and counts dupl
   );
   assert.equal(full.added, 0);
   assert.equal(full.skipped, 1);
+});
+
+function createDeferred() {
+  return deferred();
+}
+
+function previewSetFor(previewId) {
+  return {
+    previews: [{ preview_id: previewId, version: { version_id: "version-b" } }],
+  };
+}
+
+test("repair workbench reducer keeps a manual candidate added while Muse is pending", async () => {
+  const original = repairCandidate("repair-original");
+  const manual = repairCandidate("repair-hand");
+  const museA = repairCandidate("repair-muse-a");
+  const museB = repairCandidate("repair-muse-b");
+  let state = createInitialRepairWorkbenchState();
+  state = repairWorkbenchReducer(state, {
+    type: "addManual",
+    candidate: original,
+  });
+  state = repairWorkbenchReducer(state, { type: "museRequested" });
+  const requestToken = state.museRequestToken;
+  const requestEpoch = state.planVersionEpoch;
+  const pending = createDeferred();
+  // The user edits candidates while the Muse request is in flight.
+  state = repairWorkbenchReducer(state, {
+    type: "addManual",
+    candidate: manual,
+  });
+  const versionBeforeResolve = state.candidateSetVersion;
+  pending.resolve([museA, museB]);
+  const incoming = await pending.promise;
+  const countBefore = state.candidates.length;
+  state = repairWorkbenchReducer(state, {
+    type: "museResolved",
+    candidates: incoming,
+    requestToken,
+    epoch: requestEpoch,
+  });
+  const added = state.candidates.length - countBefore;
+  const skipped = incoming.length - added;
+  // Cap is 3 total: manual kept, only the first Muse candidate fits.
+  assert.deepEqual(
+    state.candidates.map((candidate) => candidate.id),
+    ["repair-original", "repair-hand", "repair-muse-a"],
+  );
+  assert.equal(added, 1);
+  assert.equal(skipped, 1);
+  assert.equal(state.candidateSetVersion, versionBeforeResolve + 1);
+  assert.equal(state.previews, null);
+  assert.equal(canApprove(state), false);
+  // Negative control: merging against the request-time snapshot (only
+  // `original`) would have dropped the manual candidate. The reducer must
+  // merge against the current list, so this documents the old bug.
+  const staleSnapshotMerge = mergeMuseCandidates([original], incoming);
+  assert.equal(
+    staleSnapshotMerge.next.some((candidate) => candidate.id === "repair-hand"),
+    false,
+  );
+  assert.equal(
+    state.candidates.some((candidate) => candidate.id === "repair-hand"),
+    true,
+  );
+});
+
+test("repair workbench reducer does not resurrect a candidate removed while Muse is pending", async () => {
+  const remaining = repairCandidate("repair-remaining");
+  const removed = repairCandidate("repair-removed");
+  const museA = repairCandidate("repair-muse-a");
+  let state = createInitialRepairWorkbenchState();
+  state = repairWorkbenchReducer(state, {
+    type: "addManual",
+    candidate: remaining,
+  });
+  state = repairWorkbenchReducer(state, {
+    type: "addManual",
+    candidate: removed,
+  });
+  state = repairWorkbenchReducer(state, { type: "museRequested" });
+  const requestToken = state.museRequestToken;
+  const requestEpoch = state.planVersionEpoch;
+  const pending = createDeferred();
+  state = repairWorkbenchReducer(state, {
+    type: "removeCandidate",
+    id: "repair-removed",
+  });
+  // Muse returns the removed id again; it must not reappear.
+  pending.resolve([removed, museA]);
+  const incoming = await pending.promise;
+  const countBefore = state.candidates.length;
+  state = repairWorkbenchReducer(state, {
+    type: "museResolved",
+    candidates: incoming,
+    requestToken,
+    epoch: requestEpoch,
+  });
+  const added = state.candidates.length - countBefore;
+  assert.deepEqual(
+    state.candidates.map((candidate) => candidate.id),
+    ["repair-remaining", "repair-muse-a"],
+  );
+  assert.equal(
+    state.candidates.some((candidate) => candidate.id === "repair-removed"),
+    false,
+  );
+  assert.equal(added, 1);
+  assert.equal(incoming.length - added, 1);
+});
+
+test("repair workbench reducer drops stale simulate previews after a Muse merge", async () => {
+  const first = repairCandidate("repair-a");
+  const museA = repairCandidate("repair-muse-a");
+  let state = createInitialRepairWorkbenchState();
+  state = repairWorkbenchReducer(state, {
+    type: "addManual",
+    candidate: first,
+  });
+  const startedVersion = state.candidateSetVersion;
+  state = repairWorkbenchReducer(state, {
+    type: "simulateStarted",
+    request: { candidates: [first] },
+  });
+  assert.notEqual(state.pendingSimulation, null);
+  const pending = createDeferred();
+  state = repairWorkbenchReducer(state, { type: "museRequested" });
+  const requestToken = state.museRequestToken;
+  state = repairWorkbenchReducer(state, {
+    type: "museResolved",
+    candidates: [museA],
+    requestToken,
+    epoch: state.planVersionEpoch,
+  });
+  assert.notEqual(state.candidateSetVersion, startedVersion);
+  pending.resolve(previewSetFor("preview-stale"));
+  const previews = await pending.promise;
+  state = repairWorkbenchReducer(state, {
+    type: "simulateResolved",
+    previews,
+    startedVersion,
+  });
+  assert.equal(state.previews, null);
+  assert.equal(state.previewCandidateSetVersion, null);
+  assert.equal(state.pendingSimulation, null);
+  assert.equal(canApprove(state), false);
+});
+
+test("repair workbench reducer clears previews when Muse merges during approval", async () => {
+  const first = repairCandidate("repair-a");
+  const museA = repairCandidate("repair-muse-a");
+  let state = createInitialRepairWorkbenchState();
+  state = repairWorkbenchReducer(state, {
+    type: "addManual",
+    candidate: first,
+  });
+  const startedVersion = state.candidateSetVersion;
+  state = repairWorkbenchReducer(state, {
+    type: "simulateStarted",
+    request: { candidates: [first] },
+  });
+  state = repairWorkbenchReducer(state, {
+    type: "simulateResolved",
+    previews: previewSetFor("preview-a"),
+    startedVersion,
+  });
+  assert.equal(state.choice, "preview-a");
+  assert.equal(canApprove(state), true);
+  state = repairWorkbenchReducer(state, {
+    type: "approveStarted",
+    request: { preview_id: "preview-a" },
+  });
+  assert.notEqual(state.pendingApproval, null);
+  const pending = createDeferred();
+  pending.resolve([museA]);
+  const incoming = await pending.promise;
+  state = repairWorkbenchReducer(state, {
+    type: "museResolved",
+    candidates: incoming,
+  });
+  assert.equal(state.previews, null);
+  assert.equal(state.previewCandidateSetVersion, null);
+  assert.equal(state.choice, "");
+  assert.equal(canApprove(state), false);
+  assert.deepEqual(
+    state.candidates.map((candidate) => candidate.id),
+    ["repair-a", "repair-muse-a"],
+  );
+});
+
+test("repair workbench reducer ignores a late Muse result after a version change", async () => {
+  const first = repairCandidate("repair-a");
+  const museA = repairCandidate("repair-muse-a");
+  let state = createInitialRepairWorkbenchState();
+  state = repairWorkbenchReducer(state, {
+    type: "addManual",
+    candidate: first,
+  });
+  state = repairWorkbenchReducer(state, { type: "museRequested" });
+  const requestToken = state.museRequestToken;
+  const requestEpoch = state.planVersionEpoch;
+  const pending = createDeferred();
+  state = repairWorkbenchReducer(state, { type: "versionChanged" });
+  assert.deepEqual(state.candidates, []);
+  pending.resolve([museA]);
+  const incoming = await pending.promise;
+  const versionAfterChange = state.candidateSetVersion;
+  state = repairWorkbenchReducer(state, {
+    type: "museResolved",
+    candidates: incoming,
+    requestToken,
+    epoch: requestEpoch,
+  });
+  assert.deepEqual(state.candidates, []);
+  assert.equal(state.candidateSetVersion, versionAfterChange);
+  assert.equal(state.previews, null);
+  assert.equal(canApprove(state), false);
 });
 
 test("candidate-set version rejects stale simulate results and labels Muse candidates", () => {
