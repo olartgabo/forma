@@ -32,3 +32,6 @@ uploads/
 Codex.local.md
 .DS_Store
 Thumbs.db
+
+# Dev loop state, ledger and worktree
+.devloop/

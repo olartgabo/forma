@@ -56,3 +56,13 @@ issues and repository changes is handled through the normal work request.
 Write plainly. No dead code, unused abstractions, swallowed errors or invented
 success claims. Separate fixture validation, physical attempts and actual
 physical passes. Use [docs/agent-workflow.md](docs/agent-workflow.md) for handoffs.
+
+## Muse-first development loops
+
+Muse owns code, regression tests, offline checks and ordinary repairs. Codex or
+Claude plans once per feature, reviews the final green diff, or diagnoses after
+two unsuccessful Muse repairs. Do not assign premium agents routine test writing.
+Use tools/devloop/guarded/run.mjs and its POLICY.md. Start fresh feature sessions
+from bounded checkpoints; native automatic compaction stays enabled. Review
+subagents use fork_turns="none" rather than inheriting full chat history. Preserve
+all existing spending/STOP/verification gates; no automatic billing renewal.
