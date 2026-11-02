@@ -90,6 +90,7 @@ server credentials; see [API setup](apps/api/README.md). Export environment valu
 before starting the API (`.env.example` documents them; it is not loaded automatically).
 Never put credentials in
 `NEXT_PUBLIC_*` variables or commit private physical photos.
+For the connected Muse demo, follow the [demo runbook](docs/demo-runbook.md).
 
 ```sh
 npm run check
