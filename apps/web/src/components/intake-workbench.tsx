@@ -1300,10 +1300,12 @@ function ProjectWorkbench({
             <p>
               Asking Muse returns a read-only observation; it does not change
               your saved materials. Saved plan previews can be reviewed above,
-              and active plans support explicit physical reports. Repair
-              activation is still being connected. Saving inventory records
-              materials and requirements; it does not validate a design or
-              authorize a cut.
+              and active plans support explicit physical reports. A repair is
+              simulated and reviewed first, and takes effect only after you
+              approve it and confirm your current physical stock; a diagnosis
+              alone never changes your plan, materials or recorded physical
+              work. Saving inventory records materials and requirements; it does
+              not validate a design or authorize a cut.
             </p>
           </aside>
         </>
