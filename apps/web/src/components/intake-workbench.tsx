@@ -35,6 +35,7 @@ import {
   requirementsError,
 } from "../lib/build-requirements";
 import type { RepairHandoff } from "../lib/repair-handoff";
+import type { DiagnosisFocus } from "../lib/build-diagnosis";
 
 type Row = { key: string; stock: Stock; saved: boolean };
 type MeasurementField =
@@ -259,6 +260,9 @@ function ProjectWorkbench({
     handoff: RepairHandoff;
     targetId: string;
   } | null>(null);
+  const [diagnosisFocus, setDiagnosisFocus] = useState<DiagnosisFocus | null>(
+    null,
+  );
   const [proofRevision, setProofRevision] = useState(0);
   const physicalProgressChanged = useCallback(
     () => setProofRevision((value) => value + 1),
@@ -300,6 +304,20 @@ function ProjectWorkbench({
   useEffect(() => {
     setPendingRepair(null);
   }, [project?.id, project?.active_version_id, project?.revision_id]);
+
+  useEffect(() => {
+    setDiagnosisFocus(null);
+  }, [project?.id, project?.active_version_id]);
+
+  useEffect(() => {
+    if (!diagnosisFocus) return;
+    const frame = requestAnimationFrame(() => {
+      const region = document.getElementById("muse-diagnosis-panel");
+      region?.scrollIntoView({ block: "start" });
+      region?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [diagnosisFocus]);
 
   useEffect(() => {
     if (!pendingRepair) return;
@@ -1124,6 +1142,7 @@ function ProjectWorkbench({
             photos={photos}
             inventoryStale={stale || dirty}
             disabled={locked}
+            prefill={diagnosisFocus}
             onRepairHandoff={(handoff, targetId) =>
               setPendingRepair({ handoff, targetId })
             }
@@ -1149,6 +1168,7 @@ function ProjectWorkbench({
             photos={photos}
             onProgressChange={physicalProgressChanged}
             repairHandoff={pendingRepair}
+            onDiagnoseFailure={setDiagnosisFocus}
           />
           <ProofWorkbench
             key={`proof-${project.id}`}

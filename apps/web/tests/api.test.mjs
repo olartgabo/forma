@@ -50,6 +50,12 @@ import {
   mergeMuseCandidates,
   museCandidateLabel,
 } from "../src/lib/repair-candidates.ts";
+import {
+  createDiagnosisFocus,
+  hasFailedCheck,
+  latestDiagnosisEvidence,
+  selectFailedCheckPhoto,
+} from "../src/lib/build-diagnosis.ts";
 
 test("provider usage formats only provider-reported bounded counts", () => {
   assert.equal(
@@ -1867,6 +1873,217 @@ test("draftFromHandoff never picks a repair kind, stock or size from the failure
       rationale: `From Muse diagnosis (unverified): ${failureType}`,
     });
   }
+});
+
+function buildEvidence(overrides = {}) {
+  return {
+    id: "evidence-a",
+    project_id: "project-a",
+    version_id: "version-a",
+    kind: "photo",
+    provenance: "user",
+    asset_id: "media-a",
+    operation_ids: ["op-a"],
+    recorded_at: "2026-11-01T00:00:00Z",
+    description: "failed check",
+    verification_state: "failed",
+    ...overrides,
+  };
+}
+function buildProgress(evidence, overrides = {}) {
+  return {
+    project_id: "project-a",
+    version_id: "version-a",
+    last_event_id: null,
+    events: [],
+    evidence,
+    material_transactions: [],
+    completed_operation_ids: [],
+    failed_operation_ids: [],
+    expected_remaining_stock: [],
+    status: "building",
+    ...overrides,
+  };
+}
+const photoRefs = (...ids) => ids.map((id) => ({ id }));
+
+test("build-diagnosis selects most recent failed photo by recorded_at over insertion order", () => {
+  const older = buildEvidence({
+    id: "e-old",
+    asset_id: "media-old",
+    recorded_at: "2026-11-01T00:00:00Z",
+  });
+  const newer = buildEvidence({
+    id: "e-new",
+    asset_id: "media-new",
+    recorded_at: "2026-11-02T00:00:00Z",
+  });
+  // Newer is inserted first; recorded_at still wins.
+  const progress = buildProgress([newer, older]);
+  assert.equal(
+    selectFailedCheckPhoto(
+      progress,
+      "op-a",
+      photoRefs("media-old", "media-new"),
+    ),
+    "media-new",
+  );
+  assert.equal(hasFailedCheck(progress, "op-a"), true);
+  assert.equal(hasFailedCheck(progress, "op-other"), false);
+  // Repeated identical content: tie on recorded_at -> later array index is newer.
+  const first = buildEvidence({ id: "e-1", asset_id: "media-1" });
+  const second = buildEvidence({ id: "e-2", asset_id: "media-2" });
+  assert.equal(
+    selectFailedCheckPhoto(
+      buildProgress([first, second]),
+      "op-a",
+      photoRefs("media-1", "media-2"),
+    ),
+    "media-2",
+  );
+});
+
+test("build-diagnosis excludes other operations, deleted photos, version mismatch and empty inputs", () => {
+  const otherOp = buildEvidence({ operation_ids: ["op-b"] });
+  const deleted = buildEvidence({ id: "e-del", asset_id: "media-gone" });
+  const progress = buildProgress([otherOp, deleted]);
+  assert.equal(
+    selectFailedCheckPhoto(progress, "op-a", photoRefs("media-a")),
+    null,
+  );
+  assert.equal(hasFailedCheck(progress, "op-b"), true);
+  assert.equal(
+    selectFailedCheckPhoto(
+      progress,
+      "op-a",
+      photoRefs("media-gone"),
+      "version-b",
+    ),
+    null,
+  );
+  assert.equal(hasFailedCheck(progress, "op-a", "version-b"), false);
+  assert.deepEqual(
+    latestDiagnosisEvidence(progress, "op-a", 3, "version-b"),
+    [],
+  );
+  assert.equal(selectFailedCheckPhoto(null, "op-a", []), null);
+  assert.equal(selectFailedCheckPhoto(undefined, "op-a", []), null);
+  assert.equal(hasFailedCheck(null, "op-a"), false);
+  assert.equal(hasFailedCheck(buildProgress([]), "op-a"), false);
+  assert.deepEqual(latestDiagnosisEvidence(null, "op-a"), []);
+  assert.deepEqual(latestDiagnosisEvidence(buildProgress([]), "op-a"), []);
+  // Failed via failed_operation_ids even without photo evidence.
+  assert.equal(
+    hasFailedCheck(
+      buildProgress([], { failed_operation_ids: ["op-a"] }),
+      "op-a",
+    ),
+    true,
+  );
+  // String photo refs and missing asset also work.
+  assert.equal(
+    selectFailedCheckPhoto(
+      buildProgress([buildEvidence({ asset_id: null })]),
+      "op-a",
+      ["media-a"],
+    ),
+    null,
+  );
+});
+
+test("build-diagnosis latest diagnoses are newest-first, capped, per-operation and not invalidated", () => {
+  const diag = (id, recorded_at, overrides = {}) =>
+    buildEvidence({
+      id,
+      kind: "model_interpretation",
+      provenance: "model",
+      asset_id: "media-a",
+      verification_state: "vision_observed",
+      description: "Muse diagnosis (unverified): torn slot",
+      recorded_at,
+      ...overrides,
+    });
+  const progress = buildProgress([
+    diag("d-new", "2026-11-03T00:00:00Z"),
+    diag("d-old", "2026-11-01T00:00:00Z"),
+    diag("d-mid", "2026-11-02T00:00:00Z"),
+    diag("d-extra", "2026-11-04T00:00:00Z"),
+    diag("d-invalid", "2026-11-05T00:00:00Z", {
+      verification_state: "invalidated",
+    }),
+    diag("d-other", "2026-11-06T00:00:00Z", { operation_ids: ["op-b"] }),
+    diag("d-photo", "2026-11-07T00:00:00Z", { kind: "photo" }),
+  ]);
+  assert.deepEqual(
+    latestDiagnosisEvidence(progress, "op-a").map((item) => item.id),
+    ["d-extra", "d-new", "d-mid"],
+  );
+  assert.deepEqual(
+    latestDiagnosisEvidence(progress, "op-a", 2).map((item) => item.id),
+    ["d-extra", "d-new"],
+  );
+  assert.deepEqual(latestDiagnosisEvidence(progress, "op-a", 0), []);
+});
+
+test("build-diagnosis invalid dates fall back to array order deterministically", () => {
+  const bad1 = buildEvidence({
+    id: "e-bad-1",
+    asset_id: "media-1",
+    recorded_at: "not-a-date",
+  });
+  const bad2 = buildEvidence({
+    id: "e-bad-2",
+    asset_id: "media-2",
+    recorded_at: "",
+  });
+  const progress = buildProgress([bad1, bad2]);
+  assert.equal(
+    selectFailedCheckPhoto(progress, "op-a", photoRefs("media-1", "media-2")),
+    "media-2",
+  );
+  const diag = (id, recorded_at) =>
+    buildEvidence({
+      id,
+      kind: "model_interpretation",
+      provenance: "model",
+      verification_state: "vision_observed",
+      recorded_at,
+    });
+  assert.deepEqual(
+    latestDiagnosisEvidence(
+      buildProgress([diag("d-1", "bad"), diag("d-2", "also-bad")]),
+      "op-a",
+    ).map((item) => item.id),
+    ["d-2", "d-1"],
+  );
+});
+
+test("build-diagnosis focus constructor carries ids and nonce without side effects", () => {
+  assert.deepEqual(
+    createDiagnosisFocus({
+      projectId: "project-a",
+      versionId: "version-a",
+      operationId: "op-a",
+      mediaId: "media-a",
+      nonce: "nonce-1",
+    }),
+    {
+      projectId: "project-a",
+      versionId: "version-a",
+      operationId: "op-a",
+      mediaId: "media-a",
+      nonce: "nonce-1",
+    },
+  );
+  assert.equal(
+    createDiagnosisFocus({
+      projectId: "p",
+      versionId: "v",
+      operationId: "op",
+      nonce: "n",
+    }).mediaId,
+    null,
+  );
 });
 
 test("deadline also aborts a stalled response body", async (t) => {
