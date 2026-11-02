@@ -2,7 +2,7 @@
 
 Status: October 31, 2026. The workspace implements typed domain contracts,
 offline compiler/stand renderer/replanner, a bounded model gateway and proposal
-service, and private project/inventory/photo persistence. The web remains a preview;
+service, and private project/inventory/photo persistence. The web supports local intake;
 the complete user journey below is the target architecture. Live provider
 compatibility and physical build/recovery acceptance remain unverified.
 
@@ -54,14 +54,16 @@ these rules.
    records. Historical evidence remains visible after it becomes stale.
 
 These three record types exist in domain contracts. Persistence currently stores
-projects, private photos and confirmed pre-plan inventory. It does not yet store immutable
-plans, material/physical history, evidence or approved adaptations.
+projects, private photos, confirmed pre-plan inventory and immutable initial plans
+with rendered manuals. Append-only user reports now persist evidence and material
+receipts with a version/history cursor. Approved repair adaptations, evidence
+invalidation and actual remaining-material reconciliation remain pending.
 
 The development API uses SQLite and configured owner bearer credentials.
 Project create/read, inventory confirmation and logical deletion are scoped to
 the owner. Mutations require idempotency keys; inventory edits compare a separate
-inventory revision token and reject stale writes with 409. No route activates a
-plan. Inventory image IDs must resolve to the same project's private decoded
+inventory revision token and reject stale writes with 409. Initial approval activates
+a server-compiled stored version against that revision. Inventory image IDs must resolve to the same project's private decoded
 photos. Evidence IDs remain rejected. See the
 [persistence handoff](handoffs/issue-6-persistence.md) and
 [media handoff](handoffs/issue-6-private-media.md).
@@ -70,11 +72,18 @@ PostgreSQL and private object storage remain the production targets in the spec.
 Hosted identity, production storage/retention and provider-transfer consent remain
 [pending decisions](decisions.md).
 
+The local web workbench creates/reopens projects, uploads and links private
+photos, and saves measured/unknown stock through the scoped API. A same-origin
+rewrite forwards the caller's development credential to a fixed configured API
+origin. The credential stays in React memory; no shared server owner credential
+is inserted. API-local Pydantic envelopes generate separate browser types while
+domain generation remains offline. See the [intake handoff](handoffs/issue-7-intake.md).
+
 ## Revision transaction
 
 This is the required end-to-end transaction. Offline simulation supplies preview
-data; authenticated event/history storage, revision review and atomic activation
-remain integration work in #6/#11/#12.
+data; repair-specific history reconciliation, revision review and atomic repair
+activation remain integration work in #6/#11/#12.
 
 1. Capture the active version, actual events and remaining stock.
 2. Obtain at most three typed patch proposals with bounded model/tool rounds.
@@ -139,7 +148,12 @@ without an API key. See [contracts.md](contracts.md) and
   exposure, trusted catalogue loading and compiler/replanner callback wiring
   remain consumer work. See the [proposal handoff](handoffs/issue-9-bounded-proposals.md).
 
-The API currently mounts health and project/inventory routes. Uploads, model and
-manual endpoints, chronological event recording, revision activation and proof
-history are not connected to the web preview. Offline module acceptance never
-records a physical test pass.
+The API mounts health, private project/inventory/photo routes and immutable
+plan/manual reads with explicit initial activation. The internal preview producer
+compiles saved inputs with trusted measured context and binds versions to an
+inventory revision. The browser reviews saved previews and manuals; step navigation
+records no physical work. Active manuals support explicit scoped physical reports,
+failed-check gating and expected material accounting. Model generation, repair
+revision activation and complete proof history remain unconnected. See the
+[plan handoff](handoffs/issue-6-plan-activation.md). Compilation never records a
+physical test pass.

@@ -1,4 +1,4 @@
-"""Local private project persistence; never activates plans or records physical work."""
+"""Private project storage and authenticated route composition."""
 
 import hashlib
 import json
@@ -9,12 +9,12 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import Field
+from pydantic import Field, StringConstraints, model_validator
 
-from forma_domain.models import ID, ErrorEnvelope, Record, Stock, Text
+from forma_domain.models import ID, Constraints, ErrorEnvelope, Record, Stock, Text
 
 Key = Annotated[str, Field(min_length=8, max_length=128)]
 
@@ -24,11 +24,46 @@ class CreateProject(Record):
     idempotency_key: Key
 
 
+class BuildRequirements(Record):
+    tools: tuple[
+        Annotated[
+            str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)
+        ],
+        ...,
+    ] = Field(max_length=32)
+    device_description: Text | None = None
+    constraints: Constraints
+
+    @model_validator(mode="after")
+    def confirmed_inputs(self):
+        if len({tool.casefold() for tool in self.tools}) != len(self.tools):
+            raise ValueError("duplicate tool names")
+        if self.constraints.allowed_profile_ids:
+            raise ValueError("profile selection requires a trusted catalogue")
+        for name in (
+            "device_mass_g",
+            "support_angle_deg",
+            "max_footprint_width_mm",
+            "max_footprint_height_mm",
+        ):
+            measurement = getattr(self.constraints, name)
+            if measurement.evidence_ids:
+                raise ValueError("unresolved measurement evidence")
+            if measurement.value is not None and (
+                not measurement.confirmed
+                or measurement.value <= 0
+                or (name == "support_angle_deg" and measurement.value >= 90)
+            ):
+                raise ValueError("known requirements need positive confirmed values")
+        return self
+
+
 class InventoryUpdate(Record):
     expected_revision_id: ID
     idempotency_key: Key
     stocks: tuple[Stock, ...] = Field(min_length=1, max_length=32)
     user_confirmed: Literal[True]
+    requirements: BuildRequirements | None = None
 
 
 class Project(Record):
@@ -38,11 +73,25 @@ class Project(Record):
     active_version_id: ID | None = None
     stocks: tuple[Stock, ...] = ()
     inventory_confirmed: bool = False
+    requirements: BuildRequirements | None = None
 
 
 class ProjectResult(Record):
     project: Project
     replayed: bool = False
+
+
+class SavedProjectSummary(Record):
+    id: ID
+    goal: Text
+    revision_id: ID
+    inventory_confirmed: bool = False
+    active_version_id: ID | None = None
+
+
+class SavedProjectList(Record):
+    projects: tuple[SavedProjectSummary, ...]
+    next_cursor: ID | None = None
 
 
 class DeleteResult(Record):
@@ -87,6 +136,48 @@ class ProjectStore:
                 "REFERENCES projects(id) ON DELETE CASCADE, "
                 "content_type TEXT NOT NULL, width_px INTEGER NOT NULL, "
                 "height_px INTEGER NOT NULL, body BLOB NOT NULL)"
+            )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS plans "
+                "(version_id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
+                "REFERENCES projects(id) ON DELETE CASCADE, "
+                "inventory_revision_id TEXT NOT NULL, body TEXT NOT NULL, "
+                "process TEXT NOT NULL, parameters TEXT NOT NULL)"
+            )
+            for table in ("progress_events", "progress_material"):
+                connection.execute(
+                    f"CREATE TABLE IF NOT EXISTS {table} "
+                    "(id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
+                    "REFERENCES projects(id) ON DELETE CASCADE, "
+                    "version_id TEXT NOT NULL REFERENCES plans(version_id) ON DELETE CASCADE, "
+                    "body TEXT NOT NULL)"
+                )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS progress_evidence "
+                "(id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
+                "REFERENCES projects(id) ON DELETE CASCADE, "
+                "version_id TEXT NOT NULL REFERENCES plans(version_id) ON DELETE CASCADE, "
+                "asset_id TEXT REFERENCES media(id), body TEXT NOT NULL)"
+            )
+            # Repair previews are drafts; revisions and invalidations are the
+            # approved, append-only record of each adaptation.
+            for table in ("adapt_previews", "plan_revisions"):
+                connection.execute(
+                    f"CREATE TABLE IF NOT EXISTS {table} "
+                    "(id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
+                    "REFERENCES projects(id) ON DELETE CASCADE, "
+                    "base_version_id TEXT NOT NULL "
+                    "REFERENCES plans(version_id) ON DELETE CASCADE, "
+                    "body TEXT NOT NULL)"
+                )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS evidence_invalidations "
+                "(id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
+                "REFERENCES projects(id) ON DELETE CASCADE, "
+                "evidence_id TEXT NOT NULL "
+                "REFERENCES progress_evidence(id) ON DELETE CASCADE, "
+                "version_id TEXT NOT NULL REFERENCES plans(version_id) ON DELETE CASCADE, "
+                "body TEXT NOT NULL)"
             )
             yield connection
             connection.commit()
@@ -186,6 +277,35 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
             )
             return result
 
+    @router.get("", response_model=SavedProjectList)
+    def list_projects(
+        owner: Owner,
+        limit: Annotated[int, Query(ge=1, le=50)] = 20,
+        cursor: Annotated[ID | None, Query()] = None,
+    ):
+        with store.transaction() as connection:
+            rows = connection.execute(
+                "SELECT id, json_extract(body, '$.goal'), "
+                "json_extract(body, '$.revision_id'), "
+                "json_extract(body, '$.inventory_confirmed'), "
+                "json_extract(body, '$.active_version_id') "
+                "FROM projects WHERE owner = ? AND (? IS NULL OR id > ?) "
+                "ORDER BY id ASC LIMIT ?",
+                (owner, cursor, cursor, limit + 1),
+            ).fetchall()
+        summaries = tuple(
+            SavedProjectSummary(
+                id=row[0],
+                goal=row[1],
+                revision_id=row[2],
+                inventory_confirmed=bool(row[3]),
+                active_version_id=row[4],
+            )
+            for row in rows[:limit]
+        )
+        next_cursor = summaries[-1].id if len(rows) > limit and summaries else None
+        return SavedProjectList(projects=summaries, next_cursor=next_cursor)
+
     @router.get("/{project_id}", response_model=Project)
     def get(project_id: ID, owner: Owner):
         with store.transaction() as connection:
@@ -201,7 +321,12 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 owner,
                 scope,
                 body.idempotency_key,
-                body.model_dump(mode="json"),
+                body.model_dump(
+                    mode="json",
+                    exclude={"requirements"}
+                    if "requirements" not in body.model_fields_set
+                    else set(),
+                ),
             )
             if replay:
                 return replay
@@ -239,6 +364,9 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                     "stocks": body.stocks,
                     "inventory_confirmed": True,
                     "revision_id": "inventory-" + uuid4().hex,
+                    "requirements": body.requirements
+                    if "requirements" in body.model_fields_set
+                    else project.requirements,
                 }
             )
             connection.execute(
@@ -271,6 +399,24 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 (owner, project_id + ":media:%"),
             )
             connection.execute(
+                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?)",
+                (
+                    owner,
+                    project_id + ":plan-preview",
+                    project_id + ":plan-activation",
+                    project_id + ":design-generation",
+                ),
+            )
+            connection.execute(
+                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?)",
+                (
+                    owner,
+                    project_id + ":progress",
+                    project_id + ":adapt-simulate",
+                    project_id + ":adapt-commit",
+                ),
+            )
+            connection.execute(
                 "UPDATE requests SET response=? WHERE owner=? AND scope='create' "
                 "AND json_extract(response, '$.project.id')=?",
                 (json.dumps({"deleted_project_id": project_id}), owner, project_id),
@@ -280,7 +426,23 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
             store.remember(connection, owner, scope, idempotency_key, digest, result)
             return result
 
+    from forma_api.adapt import adapt_router
     from forma_api.media import media_router
+    from forma_api.plans import plan_router
+    from forma_api.progress import progress_router
+    from forma_api.proof import proof_router
+    from forma_api.routes.designs import designs_router
+    from forma_api.routes.diagnosis import diagnosis_router
+    from forma_api.routes.intake import intake_router
+    from forma_api.routes.repairs import repairs_router
 
     router.include_router(media_router(store, authenticate))
+    router.include_router(intake_router(store, authenticate))
+    router.include_router(plan_router(store, authenticate))
+    router.include_router(progress_router(store, authenticate))
+    router.include_router(adapt_router(store, authenticate))
+    router.include_router(proof_router(store, authenticate))
+    router.include_router(designs_router(store, authenticate))
+    router.include_router(diagnosis_router(store, authenticate))
+    router.include_router(repairs_router(store, authenticate))
     return router

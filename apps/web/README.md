@@ -1,6 +1,6 @@
 # Web product
 
-Owner: @olartgabo. Reviewer: @ResniDev. Status: runnable workbench preview.
+Owner: @olartgabo. Reviewer: @ResniDev. Status: intake, saved manuals and physical reports.
 Issues: #1, #7, #11, #12 and #14.
 
 Implement Next.js/React/TypeScript mobile flows: Start, Inventory, Design,
@@ -19,11 +19,59 @@ After the root setup, `npm run dev:web` serves the preview at
 `http://127.0.0.1:3000`. `npm run typecheck -w @forma/web` generates Next route
 types and runs strict TypeScript checks. `npm run build -w @forma/web` builds
 the production app, then `npm run start -w @forma/web` serves it locally.
-The page uses local system fonts and needs no model key or API connection.
+The page uses local system fonts and needs no model key. Creating or reopening
+projects, saving inventory and uploading photos require the private API.
 
-Project creation, inventory forms and assembly screens remain pending. The
-preview states this explicitly. It does not hold synthetic progress or dimensions.
+Enter an existing development owner credential in the workbench. It stays in
+React memory, is cleared on disconnect/refresh and is never written to browser
+storage. The project ID can remain in the URL for reopening after reconnecting.
+The web server proxies `/api` to loopback port 8000 by default, forwarding only
+the caller's credential. Set `FORMA_API_ORIGIN` in the web process environment
+before dev/build to choose another fixed origin. Hosted login remains pending.
 
-First product handoff: project/intake screen with confirmed dimension editing;
-later connect authoritative SVG steps and the computed adaptation diff.
+The workbench creates/reopens projects, uploads and links private photos, and
+edits one physical stock item per row. Empty dimensions stay unknown; entered
+measurements have explicit confirmation. Saving retains the inventory revision
+and uses retry keys; stale saves require reloading and reviewing the inventory.
+The inventory form also saves available tools, a device description, confirmed
+device mass/viewing angle/footprint limits and willingness to get more material.
+Blank measurements stay unknown; editing a value or its source clears confirmation.
+Requirements and stock share one revision and retry payload. Photos do not produce
+measurements or physical evidence. Segmentation boxes,
+live proposals, repair revision screens and full cross-version Proof remain
+pending. See the [intake handoff](../../docs/handoffs/issue-7-intake.md).
+The [requirements handoff](../../docs/handoffs/issue-7-requirements.md) documents
+the persisted planning inputs and consumer boundary.
+
+`npm run test:web` runs the native Node client tests without a browser or model
+key. Root `npm run check` includes those tests, API/domain contract freshness,
+formatting, Python tests, TypeScript and production build. Client request/response
+types come from the API Pydantic exporter; do not hand-edit generated files.
+
+Saved plan previews and immutable SVG manuals are available below intake. The
+owner reviews the manual and explicitly approves a current preview; stale
+approvals return a conflict, and ambiguous approvals retain their retry payload.
+Approval freezes pre-plan inventory editing. Navigation records no completed work.
+Diagrams have written instructions/checkpoints and an enlarged scrollable view.
+The trusted preview producer is an internal service; live design generation is
+not exposed through HTTP yet. Empty projects show no invented plan. See the
+[plan handoff](../../docs/handoffs/issue-6-plan-activation.md).
+
+An active manual now records explicit user reports, required checks, inspection/test
+pass or fail, notes and optional existing private photos. Progress survives refresh;
+duplicate/out-of-order reports are rejected. A failed check pauses further reports
+pending diagnosis/revision. Browsing steps records no work. Ambiguous writes retain
+their exact retry payload, and replay loads current history before enabling reports.
+Expected stock is calculated/unconfirmed, not an actual measurement. See the
+[progress handoff](../../docs/handoffs/issue-11-physical-progress.md).
+
+Next connect diagnosis, actual remaining-stock reconciliation and the adaptation diff.
+The Proof panel now displays an owner-scoped dated snapshot of saved versions,
+user reports, evidence provenance, test conditions, material receipts, expected
+stock and unknown starting inputs. Opening/refreshing it or saving a physical
+report refreshes the visible snapshot. Text/JSON downloads fetch fresh data and
+exclude structured photo references; notes remain part of the chosen download.
+Known report changes invalidate pending exports, including while the panel is
+closed. Repair/invalidation coverage is explicitly unavailable. See the
+[Proof handoff](../../docs/handoffs/issue-14-proof-summary.md).
 See [contracts](../../docs/contracts.md) and [development](../../docs/development.md).

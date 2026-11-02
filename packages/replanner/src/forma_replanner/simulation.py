@@ -1,12 +1,15 @@
 """Conservative repair simulation over immutable execution snapshots."""
 
 from hashlib import sha256
+from math import cos, hypot, radians, sin
 from typing import Callable, Literal
 
 from forma_compiler import CutProcess, validate_plan
 from pydantic import ValidationError, model_validator
 
 from forma_domain.models import Blocker, BuildPlan, Record, ReplannerInput
+
+from .tape_undo import build_tape_undo_candidate
 
 
 class RepairCost(Record):
@@ -76,6 +79,20 @@ def _area(rect):
 
 def _close(a, b):
     return abs(a - b) <= 1e-7
+
+
+def _failed_check(event, operations):
+    """A user-reported failed inspection or test is a known outcome, not
+    uncertainty. It never completes its operation, so every repair must
+    perform that check again; the failed result stays in history."""
+    operation = operations.get(event.operation_id)
+    return (
+        event.verification_state == "failed"
+        and event.actor == "user"
+        and event.kind in ("observation", "test")
+        and operation is not None
+        and operation.type in ("inspect", "functional_test")
+    )
 
 
 def _touched_stock_ids(snapshot):
@@ -150,6 +167,186 @@ def _affected(base, candidate):
         ):
             affected.add(op.id)
     return affected, changed_parts
+
+
+_STAND_PART_IDS = ("stand-support", "stand-base", "stand-brace")
+_STAND_CORE_TYPES = (
+    "cut_rect",
+    "inspect",
+    "fold",
+    "tape_joint",
+    "tape_joint",
+    "tape_joint",
+    "inspect",
+    "functional_test",
+)
+
+
+def _stand_base_resize(base, patch, completed, regions):
+    """Return regenerated stand geometries, or a specific stand blocker.
+
+    Only an unfinished, canonical triangular tape stand may extend its base
+    depth. Unsupported stand variants return blockers; only non-stand plans
+    fall through to the unchanged generic resize path.
+    """
+    if base.compiler_version != "triangular-tape-stand-v1":
+        return False, None, None
+
+    def unsupported(message, *ids):
+        return True, Blocker(code="unsupported", message=message, target_ids=ids), None
+
+    def invalid(message, *ids):
+        return (
+            True,
+            Blocker(code="geometry_invalid", message=message, target_ids=ids),
+            None,
+        )
+
+    if patch.target_id != "stand-base":
+        return unsupported(
+            "Stand resize only supports extending stand-base; other stand parts cannot be resized.",
+            patch.target_id,
+        )
+    parts = {part.id: part for part in base.parts}
+    if set(parts) != set(_STAND_PART_IDS) or len(base.parts) != len(_STAND_PART_IDS):
+        return unsupported(
+            "Stand base extension requires exactly the original stand-support, stand-base and stand-brace parts.",
+            *_STAND_PART_IDS,
+        )
+    if tuple(operation.type for operation in base.operations) != _STAND_CORE_TYPES:
+        return unsupported(
+            "Stand base extension requires exactly the eight original stand operations with no supplemental cuts.",
+            *(operation.id for operation in base.operations),
+        )
+    cuts = [operation for operation in base.operations if operation.type == "cut_rect"]
+    if (
+        len(cuts) != 1
+        or cuts[0].id != "stand-cut-panels"
+        or tuple(cuts[0].args.child_part_ids) != _STAND_PART_IDS
+    ):
+        return unsupported(
+            "Stand base extension requires the original stand-cut-panels cut producing stand-support, stand-base and stand-brace.",
+            *(operation.id for operation in cuts),
+        )
+    cut = cuts[0]
+    if cut.effects.created_offcuts:
+        return unsupported(
+            "Stand base extension does not support plans with declared offcuts.",
+            cut.id,
+        )
+    if cut.id in completed:
+        return unsupported(
+            "Stand base extension requires the original stand-cut-panels cut to be unfinished; completed cuts cannot be resized.",
+            cut.id,
+        )
+
+    support_part = parts["stand-support"]
+    base_part = parts["stand-base"]
+    brace_part = parts["stand-brace"]
+    ordered_parts = (support_part, base_part, brace_part)
+    stock_id = support_part.source_stock_id
+    region_id = support_part.source_region_id
+    if any(
+        part.source_stock_id != stock_id
+        or part.source_region_id != region_id
+        or part.geometry.rotation_deg != 0
+        for part in ordered_parts
+    ):
+        return unsupported(
+            "Stand base extension requires all original parts to share one unrotated original source region.",
+            *_STAND_PART_IDS,
+        )
+    stock = next((item for item in base.stocks if item.id == stock_id), None)
+    source_region = (
+        next(
+            (region for region in stock.usable_regions if region.id == region_id),
+            None,
+        )
+        if stock is not None
+        else None
+    )
+    if source_region is None or regions.get(region_id) != (
+        stock_id,
+        source_region.geometry,
+    ):
+        return unsupported(
+            "Stand base extension requires the original source region to remain in reconciled remaining stock.",
+            region_id,
+        )
+    if patch.width_mm != base_part.geometry.width:
+        return unsupported(
+            "Stand base extension requires the requested width to equal the current stand base width.",
+            base_part.id,
+        )
+    if patch.height_mm <= base_part.geometry.height:
+        return unsupported(
+            "Stand base extension only supports increasing the stand base depth.",
+            base_part.id,
+        )
+    footprint = base.constraints.max_footprint_height_mm
+    if footprint.value is None or not footprint.confirmed:
+        return (
+            True,
+            Blocker(
+                code="missing_measurement",
+                message="Stand base extension requires a confirmed max footprint height.",
+                target_ids=(base_part.id,),
+            ),
+            None,
+        )
+    if patch.height_mm > footprint.value:
+        return invalid(
+            "Requested stand base depth exceeds the confirmed max footprint height.",
+            base_part.id,
+        )
+    angle = base.constraints.support_angle_deg
+    if angle.value is None or not angle.confirmed or not 0 < angle.value < 90:
+        return invalid(
+            "Stand base extension requires a confirmed support angle strictly between 0 and 90 degrees.",
+            support_part.id,
+        )
+    if len(support_part.features) != 1 or support_part.features[0].kind != "fold":
+        return unsupported(
+            "Stand base extension requires the support to have exactly one fold feature.",
+            support_part.id,
+        )
+    support_length = support_part.features[0].geometry.y
+    if support_length <= 0 or support_length >= support_part.geometry.height:
+        return invalid(
+            "Stand support fold must leave positive support and lip heights.",
+            support_part.id,
+        )
+    theta = radians(angle.value)
+    reach = support_length * cos(theta)
+    rise = support_length * sin(theta)
+    if patch.height_mm <= reach:
+        return invalid(
+            "Requested stand base depth must exceed the horizontal reach of the support.",
+            base_part.id,
+            support_part.id,
+        )
+    heights = {
+        "stand-support": support_part.geometry.height,
+        "stand-base": patch.height_mm,
+        "stand-brace": hypot(patch.height_mm - reach, rise),
+    }
+    source = source_region.geometry
+    margin = cut.args.edge_margin_mm
+    kerf = cut.args.kerf_mm
+    x = source.x + margin
+    y = source.y + margin
+    geometries = {}
+    for part_id in _STAND_PART_IDS:
+        part = parts[part_id]
+        geometries[part_id] = {
+            "x": x,
+            "y": y,
+            "width": patch.width_mm if part_id == "stand-base" else part.geometry.width,
+            "height": heights[part_id],
+            "rotation_deg": 0,
+        }
+        y += heights[part_id] + kerf
+    return True, None, geometries
 
 
 def _safe_result_id(value: object, fallback: str) -> str:
@@ -365,8 +562,10 @@ def simulate_patch(
                     "Damage requires a confirmed scoped replacement or explicit physical repair plan.",
                     event.id,
                 )
-        elif event.verification_state in ("failed", "unknown", "invalidated") and (
-            relevant or event.kind == "operation_confirmed"
+        elif (
+            event.verification_state in ("failed", "unknown", "invalidated")
+            and (relevant or event.kind == "operation_confirmed")
+            and not _failed_check(event, operations)
         ):
             fail(
                 "needs_confirmation",
@@ -458,6 +657,7 @@ def simulate_patch(
                     )
 
     seen_transactions = set()
+    seen_connector_losses = set()
     lost = []
     if (
         tuple(sorted(snapshot.material_transactions, key=lambda t: t.recorded_at))
@@ -551,6 +751,93 @@ def simulate_patch(
                     "Offcut transaction must match a completed cut output.",
                     tx.id,
                 )
+        elif tx.kind in ("waste", "damage") and stocks[tx.source_stock_id].kind in (
+            "tape",
+            "cord",
+        ):
+            loss_key = (tx.physical_event_id, tx.source_stock_id)
+            if loss_key in seen_connector_losses:
+                fail(
+                    "stock_exhausted", "Duplicate physical material accounting.", tx.id
+                )
+            else:
+                seen_connector_losses.add(loss_key)
+                stock = stocks[tx.source_stock_id]
+                measurement = stock.remaining_length_mm
+                if (
+                    tx.unit != "mm"
+                    or tx.source_region_id is not None
+                    or tx.output_region is not None
+                    or op.type not in ("tape_joint", "tie_joint")
+                    or getattr(op.args, "stock_id", None) != tx.source_stock_id
+                    or tx.source_stock_id not in op.stock_ids
+                    or event.operation_id != tx.operation_id
+                    or tx.version_id != event.version_id
+                ):
+                    fail(
+                        "invalid_reference",
+                        "Connector loss must match the connector operation and physical event.",
+                        tx.id,
+                    )
+                elif measurement.value is None:
+                    fail(
+                        "missing_measurement",
+                        "Confirm the original connector length before recording loss.",
+                        tx.id,
+                    )
+                elif not measurement.confirmed:
+                    fail(
+                        "needs_confirmation",
+                        "Confirm the original connector length before recording loss.",
+                        tx.id,
+                    )
+                elif not event.evidence_ids:
+                    fail(
+                        "needs_confirmation",
+                        "Connector loss requires user evidence.",
+                        tx.id,
+                    )
+                else:
+                    bad_evidence = None
+                    for eid in event.evidence_ids:
+                        item = evidence.get(eid)
+                        if item is None or item.version_id != event.version_id:
+                            bad_evidence = "invalid_reference"
+                            break
+                        if (
+                            item.provenance != "user"
+                            or item.verification_state != "user_confirmed"
+                            or item.recorded_at > event.recorded_at
+                        ):
+                            bad_evidence = "needs_confirmation"
+                            break
+                    current = lengths.get(tx.source_stock_id)
+                    if bad_evidence == "invalid_reference":
+                        fail(
+                            "invalid_reference",
+                            "Connector loss evidence must match the physical event version.",
+                            tx.id,
+                        )
+                    elif bad_evidence is not None:
+                        fail(
+                            "needs_confirmation",
+                            "Connector loss evidence is not current user evidence.",
+                            tx.id,
+                        )
+                    elif current is None:
+                        fail(
+                            "missing_measurement",
+                            "Confirm the original connector length before recording loss.",
+                            tx.id,
+                        )
+                    elif tx.quantity > current and not _close(tx.quantity, current):
+                        fail(
+                            "stock_exhausted",
+                            "Connector loss exceeds the known remaining length.",
+                            tx.id,
+                        )
+                    else:
+                        lengths[tx.source_stock_id] = current - tx.quantity
         elif tx.kind in ("waste", "damage"):
             value = regions.get(tx.source_region_id)
             if (
@@ -657,7 +944,73 @@ def simulate_patch(
     if blockers:
         return blocked(lost_region_ids=tuple(lost))
 
+    # Before any candidate mutation, persisted records that reference a
+    # not-yet-completed final operation which this tape recovery would
+    # rename/retarget block the simulation. Historical records are never
+    # stripped or rewritten to make the renamed candidate replayable.
+    if (
+        patch.kind == "replace_part"
+        and patch.target_id == "stand-brace"
+        and base.compiler_version == "triangular-tape-stand-v1"
+    ):
+        renamed_future = tuple(
+            oid
+            for oid in ("stand-inspect-fit", "stand-functional-test")
+            if oid not in completed
+        )
+        required_tape = {
+            "stand-cut-panels",
+            "stand-fold-lip",
+            "stand-joint-rear-attach",
+            "stand-joint-apex-attach",
+        }
+        if renamed_future and required_tape <= completed:
+            checkpoint_ops = {c.id: c.after_operation_id for c in base.checkpoints}
+            for op in base.operations:
+                checkpoint_id = getattr(op.args, "checkpoint_id", None)
+                if checkpoint_id is not None:
+                    checkpoint_ops[checkpoint_id] = op.id
+            referenced = set()
+            # A failed check result stays in history as is; the renamed check
+            # in the new version is a fresh, incomplete operation.
+            failed_check_evidence = {
+                eid
+                for event in snapshot.events
+                if _failed_check(event, operations)
+                for eid in event.evidence_ids
+            }
+            for event in snapshot.events:
+                if event.operation_id in renamed_future and not _failed_check(
+                    event, operations
+                ):
+                    referenced.add(event.operation_id)
+            for item in snapshot.evidence:
+                if item.id in failed_check_evidence:
+                    continue
+                referenced.update(set(item.operation_ids) & set(renamed_future))
+                referenced.update(
+                    checkpoint_ops[cid]
+                    for cid in item.checkpoint_ids
+                    if checkpoint_ops.get(cid) in renamed_future
+                )
+            for tx in snapshot.material_transactions:
+                if tx.operation_id in renamed_future:
+                    referenced.add(tx.operation_id)
+            for oid in renamed_future:
+                if oid in referenced:
+                    fail(
+                        "invalid_reference",
+                        "Persisted events, evidence or material transactions "
+                        f"reference {oid}, which would be renamed by this "
+                        "repair; the original history cannot be rewritten.",
+                        oid,
+                    )
+    if blockers:
+        return blocked(lost_region_ids=tuple(lost))
+
     data = base.model_dump(mode="python")
+    tape_peel_ids: tuple[str, ...] = ()
+    tape_peeled_ids: tuple[str, ...] = ()
     if patch.kind == "resize_part":
         target = next((p for p in data["parts"] if p["id"] == patch.target_id), None)
         if target is None:
@@ -667,7 +1020,18 @@ def simulate_patch(
                 patch.target_id,
             )
         else:
-            target["geometry"].update(width=patch.width_mm, height=patch.height_mm)
+            stand_handled, stand_blocker, stand_geometries = _stand_base_resize(
+                base, patch, completed, regions
+            )
+            if stand_blocker is not None:
+                blockers.append(stand_blocker)
+            elif stand_handled:
+                for part in data["parts"]:
+                    geometry = stand_geometries.get(part["id"])
+                    if geometry is not None:
+                        part["geometry"].update(geometry)
+            else:
+                target["geometry"].update(width=patch.width_mm, height=patch.height_mm)
     elif patch.kind == "replace_joint_profile":
         target = next((j for j in data["joints"] if j["id"] == patch.target_id), None)
         catalogue = {p.id: p for p in base.joint_profiles}
@@ -721,6 +1085,16 @@ def simulate_patch(
             )
         else:
             original = next(p for p in base.parts if p.id == patch.target_id)
+            tape_handled, tape_blocker, peel_ids, peeled_ids = (
+                build_tape_undo_candidate(
+                    data, base, patch, completed, remaining, process
+                )
+            )
+            if tape_handled:
+                if tape_blocker is not None:
+                    blockers.append(tape_blocker)
+                else:
+                    tape_peel_ids, tape_peeled_ids = peel_ids, peeled_ids
             creator = next(
                 (
                     o
@@ -729,7 +1103,9 @@ def simulate_patch(
                 ),
                 None,
             )
-            if creator is None or creator.id not in completed:
+            if tape_handled:
+                pass
+            elif creator is None or creator.id not in completed:
                 fail(
                     "unsupported",
                     "Part replacement currently requires an existing physically cut part; resize unfinished parts instead.",
@@ -814,8 +1190,15 @@ def simulate_patch(
                         if op["type"] == "cut_rect":
                             continue
                         refs_old = original.id in op["part_ids"]
+                        refs_old |= original.id in op["preconditions"].get(
+                            "accessible_part_ids", ()
+                        )
                         op["part_ids"] = tuple(
                             new_pid if p == original.id else p for p in op["part_ids"]
+                        )
+                        op["preconditions"]["accessible_part_ids"] = tuple(
+                            new_pid if p == original.id else p
+                            for p in op["preconditions"].get("accessible_part_ids", ())
                         )
                         for name in ("part_id", "brace_part_id", "target_id"):
                             if op["args"].get(name) == original.id:
@@ -909,6 +1292,8 @@ def simulate_patch(
         for o in base.operations
         if o.id in incompatible and o.reversible in ("reversible", "lossy")
     )
+    if tape_peel_ids:
+        undo = tape_peel_ids
     for oid in incompatible:
         op = operations[oid]
         code = (
@@ -941,12 +1326,27 @@ def simulate_patch(
         and o.type == "cut_rect"
         and set(o.effects.created_part_ids) <= set(lost_parts)
     )
+    reported_lost_operations = tuple(
+        dict.fromkeys((*lost_operations, *tape_peeled_ids))
+    )
     # Retained legacy cuts remain historically complete, but discarded work is
-    # not advertised as usable preservation.
+    # not advertised as usable preservation. Peeled tape joins are lost work,
+    # not preserved, even though their historical operations stay in the plan.
+    # In a full-build tape recovery the original final checks were completed
+    # against the retired brace: they stay in history but are not preserved
+    # useful work, and must not be advertised as such.
+    stale_finals = (
+        {"stand-inspect-fit", "stand-functional-test"} & completed
+        if tape_peel_ids
+        else set()
+    )
     kept = tuple(
         o.id
         for o in base.operations
-        if o.id in completed and o.id not in affected and o.id not in lost_operations
+        if o.id in completed
+        and o.id not in affected
+        and o.id not in reported_lost_operations
+        and o.id not in stale_finals
     )
     changed_parts.update(lost_parts)
     invalid_checks = tuple(
@@ -956,7 +1356,29 @@ def simulate_patch(
                 *(
                     c.id
                     for c in base.checkpoints
-                    if c.after_operation_id in lost_operations
+                    if c.after_operation_id in reported_lost_operations
+                ),
+                # A preserved inspection keeps its checkpoint: nothing in the
+                # new plan could recheck it. Its unchanged targets stay
+                # measured, evidence naming the retired part still
+                # invalidates, and the replacement gets its own inspection.
+                *(
+                    c.id
+                    for c in base.checkpoints
+                    if tape_peeled_ids
+                    and c.after_operation_id not in kept
+                    and (
+                        set(operations[c.after_operation_id].part_ids)
+                        | set(
+                            getattr(
+                                operations[c.after_operation_id].args,
+                                "target_ids",
+                                (),
+                            )
+                            or ()
+                        )
+                    )
+                    & changed_parts
                 ),
             )
         )
@@ -964,7 +1386,7 @@ def simulate_patch(
     invalid_evidence = tuple(
         e.id
         for e in snapshot.evidence
-        if set(e.operation_ids) & (affected | set(lost_operations))
+        if set(e.operation_ids) & (affected | set(reported_lost_operations))
         or set(e.part_ids) & changed_parts
         or set(e.checkpoint_ids) & set(invalid_checks)
     )
@@ -1168,9 +1590,11 @@ def simulate_patch(
     )
     cost = RepairCost(
         irreversible_completed_actions_lost=len(lost_operations),
-        required_physical_undos=0,
+        required_physical_undos=len(undo),
         new_irreversible_actions=new_irreversible,
-        known_weighted_cost=5 * len(lost_operations) + 2 * new_irreversible,
+        known_weighted_cost=5 * len(lost_operations)
+        + 3 * len(undo)
+        + 2 * new_irreversible,
     )
     unknown_checks = tuple(
         dict.fromkeys(
@@ -1190,6 +1614,7 @@ def simulate_patch(
         status="feasible",
         plan=candidate,
         preserved_operation_ids=kept,
+        required_undo_operation_ids=undo,
         redo_operation_ids=tuple(
             renamed[o.id] for o in base.operations if o.id in completed & affected
         ),
@@ -1204,7 +1629,7 @@ def simulate_patch(
         invalidated_evidence_ids=invalid_evidence,
         lost_region_ids=tuple(lost),
         lost_part_ids=lost_parts,
-        lost_operation_ids=lost_operations,
+        lost_operation_ids=reported_lost_operations,
         additional_material_stock_ids=additional,
         proposed_material_deltas=tuple(material_deltas),
         cost=cost,

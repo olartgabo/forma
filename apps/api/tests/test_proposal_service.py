@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 
 import pytest
+from forma_replanner import RepairCost, SimulationResult
 
 from forma_api.model_gateway import GatewayError, ImageInput, MetaGateway
 from forma_api.proposal_prompts import PROMPT_VERSION
@@ -194,13 +195,30 @@ class FakeTransport:
         }
 
 
-def service(
-    transport,
-    validator=lambda candidate, state: CandidateFeedback(
-        status="accepted", blockers=()
-    ),
-    **kwargs,
-):
+def _synthetic_validator(candidate, state):
+    # Orchestration-only stub. Real compiler/ranking coverage uses the adapter.
+    if isinstance(candidate, m.RepairPatch):
+        return SimulationResult(
+            patch_id=candidate.id,
+            base_version_id=candidate.base_version_id,
+            status="feasible",
+            plan=state.plan.model_copy(
+                update={
+                    "version_id": "synthetic-next",
+                    "parent_version_id": state.version_id,
+                }
+            ),
+            cost=RepairCost(
+                irreversible_completed_actions_lost=0,
+                required_physical_undos=0,
+                new_irreversible_actions=0,
+                known_weighted_cost=0,
+            ),
+        )
+    return CandidateFeedback(status="accepted", blockers=())
+
+
+def service(transport, validator=_synthetic_validator, **kwargs):
     return ProposalService(MetaGateway(transport), validator, **kwargs)
 
 

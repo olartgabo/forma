@@ -32,7 +32,8 @@ exposes FastAPI's OpenAPI UI. No database or provider readiness is implied.
 needed. See the [root README](../../README.md) for pinned tools and setup.
 
 Project/inventory routes and local development authentication are implemented.
-Plan/event persistence and hosted authentication remain #6 work. The
+Initial plan/manual and user-reported event/evidence/material persistence are
+implemented; hosted authentication remains #6 work. The
 [#1 handoff](../../docs/handoffs/issue-1-workspace.md) reserves the service/domain
 boundary for review before those changes.
 
@@ -52,17 +53,26 @@ inventory records there. POST `/api/projects` accepts `goal` and
 `expected_revision_id` and `idempotency_key`. Every accepted edit advances the
 inventory revision. Stale edits and changed-payload key reuse return 409; exact
 retries return the original outcome with `replayed: true`. An inventory revision
-is separate from `active_version_id`, which stays null until plan storage exists.
+is separate from `active_version_id`, which stays null until explicit initial plan approval.
 Unknown measurements remain unknown. Photo IDs must resolve to private media in
 the same project; evidence IDs remain rejected until evidence storage exists.
 OpenAPI documents the actual envelopes.
+
+Inventory confirmation can include `requirements` with available `tools`, nullable
+`device_description` and the domain `Constraints` record. Requirements and stock
+advance the same revision atomically. Omitting requirements preserves them;
+explicit null clears them. Known mass/footprint measurements must be positive and
+confirmed; a known angle must be greater than 0 and less than 90 degrees. Evidence
+references and profile selection remain unavailable until trusted evidence/catalogue
+integration. Tool names record reported availability and grant no execution permission.
+See the [requirements handoff](../../docs/handoffs/issue-7-requirements.md).
 
 DELETE `/api/projects/{id}` takes `Idempotency-Key` in a header, removes the
 inventory and stored replay snapshots, and retains only a scoped deletion receipt.
 This is logical deletion; SQLite free pages and local backup copies are outside
 this deletion mechanism. These routes do not send
-data to providers. Consent/transfer, immutable plan/event/material history
-and revision activation remain open in #6/#12. See the
+data to providers. Consent/transfer, actual remaining-stock reconciliation
+and repair revision activation remain open in #6/#12. See the
 [contract handoff](../../docs/handoffs/issue-6-persistence.md).
 
 ## Private photos (#6)
@@ -83,3 +93,78 @@ transaction. Images remain in the local SQLite database until deleted. Logical
 deletion does not erase SQLite free pages or backups. No route sends images to
 a model or shares them publicly; those capabilities require a future consent
 flow. See the [media handoff](../../docs/handoffs/issue-6-private-media.md).
+
+GET `/api/projects/{id}/media` lists private image metadata for that project,
+including uploads not yet linked to stock. It returns `{media: [...]}` with
+cache prevention, and checks project ownership before reading rows. Image bytes
+still require the authenticated individual media endpoint.
+
+## Initial plan previews and approval (#6/#11)
+
+`PlanService.compile_preview` is an internal producer boundary. A trusted runtime
+supplies a candidate, selected kerf/margin, measured process, stand parameters and
+reviewed profiles. The service loads scoped saved stock/requirements, generates
+version/time IDs, compiles and renders, then stores accepted immutable outputs
+against the exact inventory revision. It stores the process/stand context and
+binds the complete invocation to its retry key. At most two previews can be saved
+per revision. Production calls reject synthetic evidence by default. This is not
+an HTTP model-generation or arbitrary-plan upload endpoint.
+
+Authenticated routes:
+
+- GET `/api/projects/{id}/plans` lists saved version summaries.
+- GET `/api/projects/{id}/versions/{version}` reads the immutable plan/manual.
+- GET `/api/projects/{id}/manual/{version}` reads the immutable manual alone.
+- POST `/api/projects/{id}/plans/{version}/activate` requires
+  `expected_revision_id`, `idempotency_key` and `user_approved: true`.
+
+Approval atomically checks the saved preview, current revision and absence of an
+active plan before setting the active pointer. It never accepts plan JSON. Exact
+retries replay; changed keys/payloads or stale activation conflict. Read/approval
+responses prevent caching. Project deletion cascades plan/manual rows and purges
+their receipts. Approval creates no events, material consumption or test results.
+
+Provider-driven preview production, measured process/profile intake and repair
+activation remain pending. The browser can inspect and approve
+existing previews, navigate instructions and enlarge dimensions. See the
+[contract and evidence handoff](../../docs/handoffs/issue-6-plan-activation.md).
+
+## Physical progress (#6/#11)
+
+GET `/api/projects/{id}/versions/{version}/progress` returns chronological domain
+events, user evidence, material receipts, completed/failed IDs, an expected-stock
+projection and the last event cursor. POST `/api/projects/{id}/events` accepts an
+operation reference, expected active version/last event, retry key, result, notes,
+explicit confirmations and up to eight existing project photo IDs. It accepts no
+caller-authored events, ledger quantities or physical-test authority fields.
+
+Reports are appended atomically after scope, active version, cursor, prerequisites
+and duplicate checks. Exact retries return their original receipt; consumers must
+reload current history after replay because other reports may now exist. Checks
+use explicit pass/fail; failed checks stop further confirmation until diagnosis
+or a revision resolves them. Functional-test outcomes retain the stored named
+device/procedure/conditions and user provenance. Nothing infers physical function.
+
+Confirmed cuts consume the entire parent region and preserve declared offcuts;
+joins spend exact planned connector length once. Expected connector balances use
+decimal accounting and remain calculated/unconfirmed. They need actual material
+reconciliation before a repair. Original plan stock stays immutable. Photo evidence
+prevents individual asset deletion; deleting the whole project purges history and
+its retry snapshots. This slice exposes no event-writing model tool.
+See the [contract and validation](../../docs/handoffs/issue-11-physical-progress.md).
+
+## Proof snapshots (#14)
+
+GET `/api/projects/{id}/proof` reads the authorized project, immutable versions,
+progress/evidence/material records and private-media count in one transaction.
+The no-store response includes a generated timestamp and explicit
+`coverage: initial_plan_reports`, `photo_policy: excluded`. Copies clear stock
+image IDs and evidence asset IDs; original private records remain unchanged.
+User-authored goal/notes remain text in the chosen report.
+
+The browser can inspect this snapshot and explicitly download fresh local text or
+JSON. There is no public sharing route or photo-transfer permission. Downloads
+are suppressed if a known physical-report change invalidates the pending snapshot.
+Repair diffs, cross-version evidence freshness and measured waste/salvage totals
+remain outside this initial coverage. See the
+[Proof handoff](../../docs/handoffs/issue-14-proof-summary.md).

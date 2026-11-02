@@ -3,13 +3,15 @@
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from hashlib import sha256
-from math import cos, hypot, radians, sin
+from math import cos, radians, sin
 from textwrap import wrap
 
 from forma_compiler import CutProcess, validate_plan
 
 from forma_domain import models as m
 
+from .continuation import resolve_tape_stage, stand_continuation_blockers
+from .resources import ConnectorContext, validated_connectors
 from .template import profile_evidence_valid
 
 
@@ -31,6 +33,7 @@ class Panel:
     dependency_hash: str
     svg: str
     tools: tuple[str, ...]
+    step_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,7 @@ class Manual:
     bill_of_materials: tuple[BillItem, ...]
     blockers: tuple[m.Blocker, ...]
     physical_verification: str = "not_attempted"
+    resource_basis: str = "plan"
 
 
 def number(value):
@@ -74,6 +78,7 @@ def tools_for(operation):
         "cut_rect": ("ruler", "confirmed cutting tool", "cutting mat"),
         "fold": ("ruler", "confirmed folding tool"),
         "tape_joint": ("ruler", "tape", "confirmed cutting tool"),
+        "detach": ("device removed", "confirmed support", "hands"),
         "inspect": ("ruler", "protractor", "camera"),
         "functional_test": ("named device", "timer", "camera"),
     }[operation.type]
@@ -81,17 +86,28 @@ def tools_for(operation):
 
 def instruction(operation, plan):
     if operation.type == "cut_rect":
+        panels_phrase = (
+            "the one labelled panel"
+            if len(operation.args.child_part_ids) == 1
+            else "the three labelled panels"
+        )
         if operation.effects.created_offcuts:
-            return f"Confirm all measurements and safe tools. Cut the three labelled panels; kerf {number(operation.args.kerf_mm)} mm, edge margin {number(operation.args.edge_margin_mm)} mm. Labelled offcut regions are remaining stock; other unallocated sheet material is waste."
-        return f"Confirm all measurements and safe tools. Cut the three labelled panels; kerf {number(operation.args.kerf_mm)} mm, edge margin {number(operation.args.edge_margin_mm)} mm. Unallocated sheet material is waste, not available offcut stock."
+            return f"Confirm all measurements and safe tools. Cut {panels_phrase}; kerf {number(operation.args.kerf_mm)} mm, edge margin {number(operation.args.edge_margin_mm)} mm. Labelled offcut regions are remaining stock; other unallocated sheet material is waste."
+        return f"Confirm all measurements and safe tools. Cut {panels_phrase}; kerf {number(operation.args.kerf_mm)} mm, edge margin {number(operation.args.edge_margin_mm)} mm. Unallocated sheet material is waste, not available offcut stock."
     if operation.type == "fold":
         a = operation.args
-        return f"Fold stand-support on stand-lip-fold at {number(a.start_y_mm)} mm from the top, {number(a.angle_deg)} deg valley toward front. Check cracking and actual fold allowance manually."
+        return f"Fold {a.part_id} on {a.feature_id} at {number(a.start_y_mm)} mm from the top, {number(a.angle_deg)} deg valley toward front. Check cracking and actual fold allowance manually."
     if operation.type == "tape_joint":
         return (
             f"Attach {operation.args.joint_id} using {number(operation.args.length_mm)} mm of {operation.args.stock_id}. "
             + " ".join(operation.preconditions.human_checks)
             + " Removal may damage sheet material."
+        )
+    if operation.type == "detach":
+        return (
+            f"Peel tape to detach {operation.args.joint_id}; the peeled tape "
+            f"({', '.join(operation.args.material_loss_stock_ids)}) is lost and not reused. "
+            + " ".join(operation.preconditions.human_checks)
         )
     if operation.type == "functional_test":
         a = operation.args
@@ -251,11 +267,12 @@ def flat_view(root, plan, operation, selected, *, stock=False):
                     )
 
 
-def side_view(root, plan, operation, attached_before):
+def side_view(root, plan, operation, attached_before, active_ids):
     parts = {p.id: p for p in plan.parts}
-    support = parts["stand-support"]
+    support_id, base_id, brace_id = active_ids
+    support = parts[support_id]
     length = support.features[0].geometry.y
-    depth = parts["stand-base"].geometry.height
+    depth = parts[base_id].geometry.height
     theta = radians(plan.constraints.support_angle_deg.value)
     reach, rise = length * cos(theta), length * sin(theta)
     scale = min(400 / depth, 300 / rise)
@@ -271,9 +288,9 @@ def side_view(root, plan, operation, attached_before):
     )
     for index, (pid, p1, p2) in enumerate(
         (
-            ("stand-base", start, rear),
-            ("stand-support", start, apex),
-            ("stand-brace", apex, rear),
+            (base_id, start, rear),
+            (support_id, start, apex),
+            (brace_id, apex, rear),
         )
     ):
         group = element(root, "g", data_part_id=pid)
@@ -298,7 +315,7 @@ def side_view(root, plan, operation, attached_before):
             root,
             610,
             500 + index * 30,
-            f"P{index + 1} {pid}: {dimension(length if pid == 'stand-support' else parts[pid].geometry.height)} mm",
+            f"P{index + 1} {pid}: {dimension(length if pid == support_id else parts[pid].geometry.height)} mm",
             13,
         )
     lip_length = support.geometry.height - length
@@ -315,7 +332,7 @@ def side_view(root, plan, operation, attached_before):
         y2=number(lip_end[1]),
         stroke="#111",
         stroke_width=5,
-        data_feature_id="stand-lip-fold",
+        data_feature_id=support.features[0].id,
     )
     text(
         root,
@@ -324,16 +341,33 @@ def side_view(root, plan, operation, attached_before):
         f"Support angle {number(plan.constraints.support_angle_deg.value)} deg; width {number(support.geometry.width)} mm; retaining lip {number(lip_length)} mm",
         15,
     )
-    current = operation.args.joint_id if operation.type == "tape_joint" else None
-    for index, (joint, point) in enumerate(
-        (
-            ("stand-joint-front", start),
-            ("stand-joint-rear", rear),
-            ("stand-joint-apex", apex),
+
+    def canonical(joint_id):
+        return next(
+            (name for name in ("front", "rear", "apex") if name in joint_id), None
         )
+
+    current = (
+        operation.args.joint_id if operation.type in ("tape_joint", "detach") else None
+    )
+    current_name = canonical(current) if current else None
+    attached_names = {canonical(jid) for jid in attached_before}
+    pair_joint = {
+        tuple(j.part_ids): j.id
+        for j in plan.joints
+        if len(j.part_ids) == 2 and set(j.part_ids) <= {support_id, base_id, brace_id}
+    }
+    joint_ids = (
+        pair_joint.get((support_id, base_id), "stand-joint-front"),
+        pair_joint.get((base_id, brace_id), "stand-joint-rear"),
+        pair_joint.get((support_id, brace_id), "stand-joint-apex"),
+    )
+    for index, (joint, point) in enumerate(
+        zip(joint_ids, (start, rear, apex), strict=True)
     ):
+        name = canonical(joint)
         group = element(root, "g", data_joint_id=joint)
-        active = joint in attached_before or joint == current
+        active = name in attached_names or joint == current or name == current_name
         element(
             group,
             "circle",
@@ -352,15 +386,17 @@ def side_view(root, plan, operation, attached_before):
             610,
             300 + index * 65,
             (
-                ": attach now"
-                if joint == current
+                ": detach now"
+                if name == current_name and operation.type == "detach"
+                else ": attach now"
+                if name == current_name
                 else ": previously attached"
                 if active
                 else ": not yet joined"
             ),
             13,
         )
-        if joint == current:
+        if name == current_name:
             element(
                 group,
                 "line",
@@ -376,98 +412,7 @@ def side_view(root, plan, operation, attached_before):
 
 def template_valid(plan):
     """Check the renderer's exact supported geometry/sequence before SVG math."""
-    parts = {p.id: p for p in plan.parts}
-    if set(parts) != {"stand-support", "stand-base", "stand-brace"}:
-        return False
-    support_part = parts["stand-support"]
-    if len(support_part.features) != 1:
-        return False
-    feature = support_part.features[0]
-    support = feature.geometry.y
-    lip = support_part.geometry.height - support
-    angle_m = plan.constraints.support_angle_deg
-    if (
-        feature.id != "stand-lip-fold"
-        or feature.kind != "fold"
-        or feature.geometry.x != 0
-        or feature.geometry.width != support_part.geometry.width
-        or abs(feature.geometry.height - lip) > 1e-7
-    ):
-        return False
-    if (
-        support <= 0
-        or lip <= 0
-        or angle_m.value is None
-        or not angle_m.confirmed
-        or not 0 < angle_m.value < 90
-    ):
-        return False
-    angle = radians(angle_m.value)
-    depth = parts["stand-base"].geometry.height
-    if depth <= support * cos(angle) or any(
-        p.geometry.width != support_part.geometry.width for p in parts.values()
-    ):
-        return False
-    expected_brace = hypot(depth - support * cos(angle), support * sin(angle))
-    if abs(parts["stand-brace"].geometry.height - expected_brace) > 1e-6:
-        return False
-    expected = (
-        ("stand-cut-panels", "cut_rect"),
-        ("stand-inspect-cuts", "inspect"),
-        ("stand-fold-lip", "fold"),
-        ("stand-joint-front-attach", "tape_joint"),
-        ("stand-joint-rear-attach", "tape_joint"),
-        ("stand-joint-apex-attach", "tape_joint"),
-        ("stand-inspect-fit", "inspect"),
-        ("stand-functional-test", "functional_test"),
-    )
-    if tuple((o.id, o.type) for o in plan.operations) != expected:
-        return False
-    all_parts = tuple(p.id for p in plan.parts)
-    if any(
-        plan.operations[index].part_ids != all_parts for index in (1, 6, 7)
-    ) or plan.operations[2].part_ids != ("stand-support",):
-        return False
-    if any(
-        not any(
-            c.after_operation_id == o.id and c.id == o.args.checkpoint_id
-            for c in plan.checkpoints
-        )
-        for o in plan.operations
-        if o.type in ("inspect", "functional_test")
-    ):
-        return False
-    fold = plan.operations[2].args
-    if (
-        fold.part_id != support_part.id
-        or fold.feature_id != feature.id
-        or fold.start_x_mm != 0
-        or fold.end_x_mm != support_part.geometry.width
-        or fold.start_y_mm != support
-        or fold.end_y_mm != support
-        or fold.angle_deg != 90
-        or fold.direction != "valley"
-        or fold.reachable_face != "front"
-    ):
-        return False
-    topology = {
-        "stand-joint-front": ("stand-support", "stand-base"),
-        "stand-joint-rear": ("stand-base", "stand-brace"),
-        "stand-joint-apex": ("stand-support", "stand-brace"),
-    }
-    if {j.id: j.part_ids for j in plan.joints} != topology:
-        return False
-    for operation in plan.operations[3:6]:
-        if (
-            operation.args.joint_id != operation.id.removesuffix("-attach")
-            or operation.args.length_mm != support_part.geometry.width
-            or operation.part_ids != topology[operation.args.joint_id]
-        ):
-            return False
-    test = plan.operations[-1].args
-    if test.mass_g is None or test.mass_g != plan.constraints.device_mass_g.value:
-        return False
-    return True
+    return not stand_continuation_blockers(plan)
 
 
 def render_manual(
@@ -476,6 +421,7 @@ def render_manual(
     process: CutProcess | None = None,
     profile_evidence: tuple[m.Evidence, ...] = (),
     allow_synthetic=False,
+    connector_context: ConnectorContext | None = None,
 ) -> Manual:
     """Validate before rendering; unsupported geometry fails closed without panels."""
     result = validate_plan(plan, process=process, allow_synthetic=allow_synthetic)
@@ -508,6 +454,50 @@ def render_manual(
             ),
         )
     plan = result.plan
+    joints_by_id = {j.id: j for j in plan.joints}
+    support_id, base_id = joints_by_id["stand-joint-front"].part_ids
+    historical_ids = (
+        support_id,
+        base_id,
+        joints_by_id["stand-joint-rear"].part_ids[1],
+    )
+    new_rear = next(
+        (
+            j
+            for jid, j in joints_by_id.items()
+            if jid not in {"stand-joint-front", "stand-joint-rear", "stand-joint-apex"}
+            and j.part_ids[0] == base_id
+        ),
+        None,
+    )
+    active_ids = (
+        (support_id, base_id, new_rear.part_ids[1])
+        if new_rear is not None
+        else historical_ids
+    )
+    core_child_ids = ("stand-support", "stand-base", "stand-brace")
+    stage = resolve_tape_stage(plan.operations)
+    continuation_indexes: set[int] = set()
+    if stage is not None:
+        end = len(plan.operations) if stage.has_new_finals else stage.fit
+        continuation_indexes = set(range(stage.peel, end))
+    core_index_by_plan_index: dict[int, int] = {}
+    supplemental_indexes: set[int] = set()
+    for plan_index, candidate in enumerate(plan.operations):
+        if plan_index in continuation_indexes:
+            continue
+        if (
+            candidate.type == "cut_rect"
+            and tuple(candidate.args.child_part_ids) != core_child_ids
+        ):
+            supplemental_indexes.add(plan_index)
+        else:
+            core_index_by_plan_index[plan_index] = len(core_index_by_plan_index)
+    core_count = len(core_index_by_plan_index)
+    if stage is not None:
+        # Tape layouts keep the original eight core step slots in titles
+        # even when a historical final is superseded by a continuation.
+        core_count = 8
     if not profile_evidence_valid(
         plan.joint_profiles,
         profile_evidence,
@@ -525,15 +515,49 @@ def render_manual(
                 ),
             ),
         )
+    connector_state = None
+    if connector_context is not None:
+        connector_state, connector_blockers = validated_connectors(
+            plan, connector_context
+        )
+        if connector_blockers or connector_state is None:
+            status = (
+                "needs_measurement"
+                if any(
+                    blocker.code == "missing_measurement"
+                    for blocker in connector_blockers
+                )
+                else "blocked"
+            )
+            return Manual(status, (), (), connector_blockers)
     panels = []
     attached = set()
     used_by_stock: dict[str, float] = {}
+    future_used_by_stock: dict[str, float] = {}
     for index, operation in enumerate(plan.operations):
-        selected = (
-            tuple(p.id for p in plan.parts)
-            if operation.type in ("cut_rect", "tape_joint", "functional_test")
-            else operation.part_ids
+        is_supplemental = index in supplemental_indexes
+        is_continuation = index in continuation_indexes
+        core_index = core_index_by_plan_index.get(index)
+        is_inspect_fit = operation.type == "inspect" and (
+            core_index == 6 or (stage is not None and index == stage.fit)
         )
+        panel_active_ids = active_ids
+        if (
+            operation.type == "detach"
+            or (stage is not None and index < stage.historical_count)
+            or (
+                operation.type == "tape_joint"
+                and operation.args.joint_id
+                in ("stand-joint-front", "stand-joint-rear", "stand-joint-apex")
+            )
+        ):
+            panel_active_ids = historical_ids
+        if operation.type == "cut_rect":
+            selected = tuple(operation.args.child_part_ids)
+        elif operation.type in ("tape_joint", "functional_test"):
+            selected = panel_active_ids
+        else:
+            selected = operation.part_ids
         checkpoints = tuple(
             c for c in plan.checkpoints if c.after_operation_id == operation.id
         )
@@ -556,7 +580,13 @@ def render_manual(
             },
         )
         text_title = element(root, "title", id="title")
-        text_title.text = f"Step {index + 1}: {operation.type} - {operation.id}"
+        text_title.text = (
+            f"Continuation: {operation.type} - {operation.id}"
+            if is_continuation
+            else f"Replacement cut: {operation.type} - {operation.id}"
+            if is_supplemental
+            else f"Step {core_index + 1}: {operation.type} - {operation.id}"
+        )
         description = element(root, "desc", id="description")
         description.text = instructions
         element(root, "rect", width=900, height=panel_height, fill="white")
@@ -576,7 +606,13 @@ def render_manual(
             root,
             35,
             38,
-            f"Step {index + 1}/{len(plan.operations)} - {operation.type.replace('_', ' ')}",
+            (
+                f"Continuation - {operation.type.replace('_', ' ')}"
+                if is_continuation
+                else f"Replacement cut - {operation.type.replace('_', ' ')}"
+                if is_supplemental
+                else f"Step {core_index + 1}/{core_count} - {operation.type.replace('_', ' ')}"
+            ),
             25,
         )
         text(root, 35, 66, operation.id, 15)
@@ -600,30 +636,72 @@ def render_manual(
             used_before = used_by_stock.get(stock.id, 0.0)
             this_step = operation.args.length_mm
             remaining_after = stock.remaining_length_mm.value - used_before - this_step
-            tape_readout = (stock.id, used_before, this_step, remaining_after)
+            if (
+                connector_state is not None
+                and operation.id not in connector_state.completed
+                and connector_state.current.get(stock.id) is not None
+            ):
+                expected_before = connector_state.current[
+                    stock.id
+                ] - future_used_by_stock.get(stock.id, 0.0)
+                tape_readout = (
+                    stock.id,
+                    expected_before,
+                    this_step,
+                    expected_before - this_step,
+                    True,
+                )
+            else:
+                tape_readout = (
+                    stock.id,
+                    used_before,
+                    this_step,
+                    remaining_after,
+                    False,
+                )
         if operation.type == "cut_rect":
             flat_view(drawing, plan, operation, selected, stock=True)
-        elif (
-            operation.type in ("fold", "inspect")
-            and operation.id != "stand-inspect-fit"
-        ):
+        elif operation.type in ("fold", "inspect") and not is_inspect_fit:
             flat_view(drawing, plan, operation, selected)
         else:
-            side_view(drawing, plan, operation, attached)
+            side_view(drawing, plan, operation, attached, panel_active_ids)
         if tape_readout is not None:
-            stock_id, used_before, this_step, remaining_after = tape_readout
+            stock_id, used_before, this_step, remaining_after, is_forecast = (
+                tape_readout
+            )
             readout = element(drawing, "g", data_stock_id=stock_id)
-            text(
-                readout, 610, 445, f"tape used before: {dimension(used_before)} mm", 13
-            )
-            text(readout, 610, 463, f"this step: {dimension(this_step)} mm", 13)
-            text(
-                readout,
-                610,
-                481,
-                f"tape left after: {dimension(remaining_after)} mm",
-                13,
-            )
+            if is_forecast:
+                text(
+                    readout,
+                    610,
+                    445,
+                    f"expected tape before: {dimension(used_before)} mm",
+                    13,
+                )
+                text(readout, 610, 463, f"this step: {dimension(this_step)} mm", 13)
+                text(
+                    readout,
+                    610,
+                    481,
+                    f"expected tape after: {dimension(remaining_after)} mm",
+                    13,
+                )
+            else:
+                text(
+                    readout,
+                    610,
+                    445,
+                    f"tape used before: {dimension(used_before)} mm",
+                    13,
+                )
+                text(readout, 610, 463, f"this step: {dimension(this_step)} mm", 13)
+                text(
+                    readout,
+                    610,
+                    481,
+                    f"tape left after: {dimension(remaining_after)} mm",
+                    13,
+                )
         text(drawing, 35, 645, "Tools: " + ", ".join(tools_for(operation)), 15)
         text(
             drawing,
@@ -675,21 +753,48 @@ def render_manual(
                 dependency_hash,
                 svg,
                 tools_for(operation),
+                step_key=(
+                    f"continuation:{operation.id}"
+                    if is_continuation
+                    else f"replacement:{operation.id}"
+                    if is_supplemental
+                    else f"core:{core_index}:{operation.type}"
+                ),
             )
         )
         attached.update(operation.effects.attached_joint_ids)
+        attached.difference_update(operation.effects.detached_joint_ids)
         if operation.type == "tape_joint":
             used_by_stock[operation.args.stock_id] = (
                 used_by_stock.get(operation.args.stock_id, 0.0)
                 + operation.args.length_mm
             )
+            if (
+                connector_state is not None
+                and operation.id not in connector_state.completed
+            ):
+                future_used_by_stock[operation.args.stock_id] = (
+                    future_used_by_stock.get(operation.args.stock_id, 0.0)
+                    + operation.args.length_mm
+                )
+    # Retired parts stay listed for history but are not needed for the build.
+    replaced_by = {
+        old: new
+        for old, new in zip(core_child_ids, active_ids, strict=True)
+        if old != new
+    }
     bill = tuple(
         BillItem(
             p.id,
             p.source_stock_id,
-            1,
+            0 if p.id in replaced_by else 1,
             "part",
-            f"{number(p.geometry.width)} x {number(p.geometry.height)} mm",
+            f"{number(p.geometry.width)} x {number(p.geometry.height)} mm"
+            + (
+                f"; retired, replaced by {replaced_by[p.id]}"
+                if p.id in replaced_by
+                else ""
+            ),
         )
         for p in plan.parts
     )
@@ -707,26 +812,66 @@ def render_manual(
             )
             remaining = stock.remaining_length_mm
             remaining_known = remaining.value is not None and remaining.confirmed
-            bill += (
-                BillItem(
-                    f"{stock.id}-consumed",
-                    stock.id,
-                    used,
-                    "mm",
-                    f"{joints} tape joint strip(s)"
-                    if joints
-                    else "Tape not used by this plan",
-                ),
-                BillItem(
-                    f"{stock.id}-remaining",
-                    stock.id,
-                    remaining.value - used if remaining_known else None,
-                    "mm",
-                    "Remaining connector length"
-                    if remaining_known
-                    else "Remaining connector length unknown; not measured/confirmed",
-                ),
-            )
+            if connector_state is not None:
+                current = connector_state.current[stock.id]
+                future_use = connector_state.future_use[stock.id]
+                bill += (
+                    BillItem(
+                        f"{stock.id}-consumed",
+                        stock.id,
+                        used,
+                        "mm",
+                        f"{joints} tape joint strip(s); total planned use including completed steps"
+                        if joints
+                        else "Tape not used by this plan",
+                    ),
+                    BillItem(
+                        f"{stock.id}-current",
+                        stock.id,
+                        current,
+                        "mm",
+                        "Current confirmed balance"
+                        if current is not None
+                        else "Current confirmed balance unknown; not measured/confirmed",
+                    ),
+                    BillItem(
+                        f"{stock.id}-future-use",
+                        stock.id,
+                        future_use,
+                        "mm",
+                        "Expected tape use from future steps",
+                    ),
+                    BillItem(
+                        f"{stock.id}-remaining",
+                        stock.id,
+                        current - future_use if current is not None else None,
+                        "mm",
+                        "Expected remaining connector length after future steps"
+                        if current is not None
+                        else "Expected remaining connector length after future steps unknown; not measured/confirmed",
+                    ),
+                )
+            else:
+                bill += (
+                    BillItem(
+                        f"{stock.id}-consumed",
+                        stock.id,
+                        used,
+                        "mm",
+                        f"{joints} tape joint strip(s)"
+                        if joints
+                        else "Tape not used by this plan",
+                    ),
+                    BillItem(
+                        f"{stock.id}-remaining",
+                        stock.id,
+                        remaining.value - used if remaining_known else None,
+                        "mm",
+                        "Remaining connector length"
+                        if remaining_known
+                        else "Remaining connector length unknown; not measured/confirmed",
+                    ),
+                )
         if stock.kind == "sheet":
             available = {r.id: r.geometry for r in stock.usable_regions}
             waste = 0.0
@@ -772,4 +917,10 @@ def render_manual(
                     else "Remaining usable area unknown; stock dimensions not measured/confirmed",
                 ),
             )
-    return Manual("accepted", tuple(panels), bill, ())
+    return Manual(
+        "accepted",
+        tuple(panels),
+        bill,
+        (),
+        resource_basis="mixed" if connector_state is not None else "plan",
+    )

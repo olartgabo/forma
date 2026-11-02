@@ -109,3 +109,183 @@ the project removes its photos. Deletion is logical and does not promise
 forensic erasure or backup deletion. Provider transfer and public sharing are
 unavailable in this slice; their consent and external-retention policy remain
 pending. No measurements or physical outcomes are inferred from uploads.
+
+## D012: Development intake access and API contracts, October 31, 2026
+
+Issue #7 uses the existing configured owner credentials for the local intake
+workbench. The person enters their development access key; it stays in React
+memory and is cleared on disconnect or refresh. Reopening a project requires
+its ID and reentering the key. This extends D010 without choosing hosted identity.
+
+The web server proxies same-origin API requests to a fixed, server-configured
+origin. It forwards the caller's authentication and never injects a shared
+server credential. API-local Pydantic models generate their TypeScript envelopes
+separately from the offline domain exporter, preserving the domain dependency
+boundary and avoiding handwritten request/response schemas.
+
+One stock row describes one physical item. Blank dimensions remain unknown;
+entered measurements require explicit confirmation. Existing measurement
+provenance and usable regions remain intact. Saving inventory does not compile
+a design, authorize cutting or establish a physical test result. Manual stock
+editing and photo linking work without a model. Segmentation boxes, tools and
+design constraints require later contracts; they are not represented by guessed
+fields in this slice.
+
+## D013: Persisted build requirements, November 1, 2026
+
+Issue #7 now records available tools, a device description and existing domain
+constraints with inventory confirmation. They share the inventory revision so
+planning can consume a consistent set of user-confirmed inputs. Older projects
+have null requirements; older clients preserve requirements when omitting them.
+Known values require confirmation and the same provenance categories as stock;
+unknown values remain unknown. The API rejects unresolved evidence/profile IDs.
+This extends D012 without changing compiler or proposal contracts. See the
+[requirements handoff](handoffs/issue-7-requirements.md).
+
+The product has one connected planning/build journey. Running deterministic
+validation without provider access is an implementation/testing property, not a
+separate product mode. Live interpretation/design remains integration work.
+
+## D014: Immutable initial plans and manual review, November 1, 2026
+
+Issue #6/#11 stores only accepted compiler/renderer output through an internal
+trusted producer boundary. The browser can read scoped previews and explicitly
+approve one against the current inventory revision; it cannot upload a plan or
+mark a supplied plan valid. Plan/manual bytes stay immutable while a transaction
+sets the active pointer. Physical work remains separate and is never inferred
+from approval or navigation.
+
+Manuals include written instructions, checkpoints, BOM and authoritative SVG with
+an enlarged view for inspecting dimensions on phones. Live model production,
+real measured process/profile intake, physical history and repair activation remain
+separate work. See the [handoff](handoffs/issue-6-plan-activation.md).
+
+## D015: Consented connected Muse design production, November 1, 2026
+
+Issue #9 connects saved project facts to Muse proposals and D014's existing
+trusted compiler/renderer producer. Generation requires owner authentication,
+expected inventory revision, literal transfer consent and request identity.
+The browser supplies notes, not trusted geometry, profiles or a BuildPlan.
+A scoped read-only snapshot tool loads saved facts; proposals must reference
+those facts and pass existing validation before becoming immutable previews.
+Generation never approves a plan or records physical work.
+
+An explicit server-owned `FORMA_DESIGN_CONTEXT_PATH` manifest resolves process,
+stand parameters, profiles and allowances for an exact project/revision. Missing
+context returns blockers/questions; no implicit catalogue or measured values
+are invented. Production rejects synthetic evidence. Tests may explicitly inject
+synthetic context and remain software checks, not physical evidence.
+
+Uncertain provider outcomes retain a durable receipt and cannot be silently
+restarted with the same key. The client requires an explicit fresh start and
+new consent after uncertainty. A completed request replays without model calls;
+capacity limits preserve already saved previews and their result receipt.
+
+Meta Chat Completions supports automatic tool selection only. Request a tool
+with the supported protocol, then enforce its name, arguments, count and result
+locally before accepting final typed output. A skipped or invalid tool blocks
+the request; it never becomes a successful proposal through a fallback.
+
+## D016: Read-only connected failure-photo diagnosis, November 1, 2026
+
+Issue #9 permits consented photo-only diagnosis before a calibrated plan exists.
+The canonical DiagnosisProposal separates observations, hypotheses and questions;
+without a plan, affected IDs must be empty. When an active plan/operation is
+selected, server-owned expected arguments and geometry inform reasoning without
+asserting physical completion. Each photo transfer consumes its consent. No
+state mutation or repair execution follows from a diagnosis; real history and
+separate validated repair approval remain required.
+
+## D017: Provider-reported request usage, November 1, 2026
+
+Connected intake/design/diagnosis diagnostics optionally expose request-local
+model-call and provider-reported input/output token counts. Missing or malformed
+counts remain unknown, including incomplete aggregates. Never infer actual
+billing from local reservations or present token estimates as provider charges.
+Generate the nested API type from Pydantic; emit no prompt, credential or raw
+provider response. Fresh request trace sinks preserve prior gateway history
+without counting it again.
+
+## D018: Explicit physical reports and failed-check gating, November 1, 2026
+
+Issue #11 records authenticated user reports against the active plan and last
+physical-event cursor. The server derives immutable domain evidence/events and
+material receipts from the referenced operation. User-reported work is separate
+from approved plans; neither navigation nor models complete a step.
+
+Failed inspections/tests pause further confirmations. The current replanner has no
+same-plan failure-resolution contract, so a later pass cannot silently clear the
+failure. Diagnosis/revision integration must resolve it explicitly. Expected stock
+is a calculated, unconfirmed projection requiring actual reconciliation before
+repair. See the [handoff](handoffs/issue-11-physical-progress.md).
+
+## D019: Photo-excluded initial Proof snapshots, November 1, 2026
+
+Issue #14 uses one owner-scoped read transaction for project, versions, user
+history, evidence and material receipts. Exported copies omit structured image
+references; private originals remain unchanged. Explicit local text/JSON downloads
+include user notes and a generated snapshot time. No sharing route or photo consent
+is inferred.
+
+Coverage is limited to initial plans and user reports. Repair diffs, evidence
+invalidation/freshness and measured waste/salvage totals remain unavailable.
+Pending downloads are invalidated by known report changes, including while the
+panel is closed. See the [handoff](handoffs/issue-14-proof-summary.md).
+## D020: Stand replacement roles and stable core manual steps, October 31, 2026
+
+Stand continuation validates active panel roles through joint topology while
+retaining retired parts and their original cuts as history. The renderer and
+replanner callback share the same family checks. Supplemental replacement cuts
+use separate headings; the original eight core slots keep stable numbering so
+unchanged visible panels retain their hashes. Hashes still cover the entire SVG.
+Grouped cuts are preserved while their other outputs remain useful; retired-part
+material loss is explicit. This changes no schema, physical claim or approval flow.
+
+
+## D021: Brace-only explicit tape undo, November 1, 2026
+
+Issue44 adds an offline continuation for the canonical attached brace after the
+original six-operation construction prefix. Rear/apex peels are new incomplete
+operations; old definitions/consumption remain immutable, front hinge is kept,
+and remaining measured stock funds replacement. The manual validates historical
+and active stages separately. Exact fold invariants apply to both paths.
+
+Completed final fit/function checks block before construction of this candidate;
+the current slice does not rewrite or drop their completion history. Base/support
+replacement and generic physical inverses remain unsupported. Synthetic
+compile/simulate/rank/render regression evidence does not establish a bench pass.
+
+
+## D022: Completed-build brace history, November 1, 2026
+
+The attached-brace continuation also supports all eight original operations
+completed. It retains all original operation/checkpoint definitions and IDs and
+appends explicit recovery work and new fit/function checks with unique state and
+checkpoint IDs. Old dependent evidence/checks invalidate; they are not treated as
+useful current verification. No event/evidence/transaction/salvage is created.
+
+This supersedes the initial slice's completed-final-check gate. Six, seven and
+eight completed original operations use 14-, 15- and 16-step layouts; base/support
+changes remain blocked. Validation and rendering share a narrow stage resolver
+instead of duplicating the validator. Original checkpoint
+references must match their operations before construction; malformed history
+returns blockers. Synthetic replay/manual evidence is not a physical pass.
+
+Unfinished final operations can receive replacement identities only when no
+persisted event, evidence or transaction references the retired operation or its
+checkpoint. Otherwise the proposal blocks before mutation. The same rule applies
+to the original six-operation path; saved history is never silently dropped.
+
+## D023: Approved repair revisions and failed checks, November 2, 2026
+
+Issue #12 activates a repair only through an explicit approval that names a
+server-stored preview, the expected active version and the history cursor. The
+server re-derives the simulation from saved history inside the commit
+transaction; the browser never supplies a plan. The new version carries the
+completions the replanner preserved and records evidence invalidations; parent
+history stays unchanged.
+
+A user-reported failed inspection or functional test is a known outcome, not
+uncertainty. It no longer blocks repair simulation because its check never
+completes and every repair must repeat it. Other failed, unknown or invalidated
+records still block. See the [handoff](handoffs/issue-12-adapt-revision.md).

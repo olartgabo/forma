@@ -10,5 +10,6 @@ package-lock.json
 **/next-env.d.ts
 **/generated/
 .local/
+.devloop/
 uploads/
 data/physical-tests/private/

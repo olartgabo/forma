@@ -15,3 +15,5 @@ Verification: pinned uv sync --locked installed the existing lock unchanged; Ruf
 Review follow-up: absolute call timers shut down active sockets to interrupt slow headers/bodies and are cancelled/joined in cleanup. DNS/pre-socket connection and OS delays remain documented limits. SAM refusals/missing/non-text output fail explicitly; only an explicit empty output_text counts as zero matches. Synthetic cancellation/cleanup and refusal tests pass.
 
 Smoke update: scripts/smoke_meta.py now splits preflight from run_smoke and reports runtime and models metadata alongside existing traces, with offline coverage driving the smoke flow through a fake transport. Live Spark and SAM evidence, account region and privacy and quota and budget confirmation, and the consented real-photo run are still missing, and #4 stays open.
+
+Photo intake: scripts/smoke_meta.py sniffs PNG and JPEG from magic bytes instead of the file suffix, and anything else (including WEBP, empty or oversized files) reports invalid_image with no gateway call; ImageInput still enforces the signature as the authority. No live Spark or SAM run is claimed and #4 stays open.

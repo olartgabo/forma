@@ -17,10 +17,11 @@
     "lint": "uv run --locked ruff check .",
     "typecheck": "npm run typecheck -w @forma/web",
     "test": "uv run --locked pytest",
-    "contracts:generate": "uv run --locked python -m forma_domain.generate",
-    "contracts:check": "uv run --locked python -m forma_domain.generate --check",
+    "test:web": "node --experimental-strip-types --test apps/web/tests/api.test.mjs",
+    "contracts:generate": "uv run --locked python -m forma_domain.generate && uv run --locked python -m forma_api.generate",
+    "contracts:check": "uv run --locked python -m forma_domain.generate --check && uv run --locked python -m forma_api.generate --check",
     "build": "npm run build -w @forma/web",
-    "check": "npm run format:check && npm run lint && npm run contracts:check && npm run typecheck && npm test && npm run build"
+    "check": "npm run format:check && npm run lint && npm run contracts:check && npm run typecheck && npm run test:web && npm test && npm run build"
   },
   "devDependencies": {
     "prettier": "3.9.10"

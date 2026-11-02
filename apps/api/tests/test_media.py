@@ -64,6 +64,33 @@ def counts(tmp_path):
         return connection.execute("SELECT count(*) FROM media").fetchone()[0]
 
 
+def test_photo_list_restores_unlinked_uploads_and_obeys_project_scope(client):
+    first = project(client)
+    second = project(client, "project-002")
+    first_path = f"/api/projects/{first['id']}/media"
+    second_path = f"/api/projects/{second['id']}/media"
+    assert client.get(first_path, headers=AUTH).json() == {"media": []}
+    saved = upload(client, first).json()["media"]
+    assert upload(client, first).json()["replayed"] is True
+    response = client.get(first_path, headers=AUTH)
+    assert response.status_code == 200
+    assert response.json() == {"media": [saved]}
+    assert response.headers["cache-control"] == "private, no-store"
+    assert client.get(first_path).status_code == 401
+    assert client.get(first_path, headers=OTHER).status_code == 404
+    assert client.get(second_path, headers=AUTH).json() == {"media": []}
+    assert (
+        client.get("/api/projects/missing-project/media", headers=AUTH).status_code
+        == 404
+    )
+    deleted = client.delete(
+        first_path + "/" + saved["id"],
+        headers={**AUTH, "Idempotency-Key": "delete-photo-001"},
+    )
+    assert deleted.status_code == 200
+    assert client.get(first_path, headers=AUTH).json() == {"media": []}
+
+
 @pytest.mark.parametrize(
     "format,mime",
     [("PNG", "image/png"), ("JPEG", "image/jpeg"), ("WEBP", "image/webp")],

@@ -33,6 +33,10 @@ class MediaResult(Record):
     replayed: bool = False
 
 
+class MediaList(Record):
+    media: tuple[Media, ...]
+
+
 class MediaDeleteResult(Record):
     media_id: ID
     deleted: bool = True
@@ -181,6 +185,30 @@ def media_router(store: ProjectStore, authenticate) -> APIRouter:
             save, owner, project_id, idempotency_key, bytes(body), content_type
         )
 
+    @router.get("", response_model=MediaList)
+    def list_media(project_id: ID, owner: Owner, response: Response):
+        with store.transaction() as connection:
+            store.read(connection, owner, project_id)
+            rows = connection.execute(
+                "SELECT id, content_type, width_px, height_px, length(body) "
+                "FROM media WHERE project_id=? ORDER BY rowid",
+                (project_id,),
+            ).fetchall()
+        response.headers["Cache-Control"] = "private, no-store"
+        return MediaList(
+            media=tuple(
+                Media(
+                    id=row[0],
+                    project_id=project_id,
+                    content_type=row[1],
+                    width_px=row[2],
+                    height_px=row[3],
+                    byte_count=row[4],
+                )
+                for row in rows
+            )
+        )
+
     @router.get("/{media_id}")
     def get(project_id: ID, media_id: ID, owner: Owner):
         with store.transaction() as connection:
@@ -233,6 +261,16 @@ def media_router(store: ProjectStore, authenticate) -> APIRouter:
                     409,
                     "blocked",
                     "Remove this photo from inventory before deleting it",
+                )
+            if (
+                connection.execute(
+                    "SELECT 1 FROM progress_evidence WHERE project_id=? AND asset_id=?",
+                    (project_id, media_id),
+                ).fetchone()
+                is not None
+            ):
+                raise ProjectError(
+                    409, "blocked", "This photo is linked to physical evidence"
                 )
             connection.execute(
                 "DELETE FROM media WHERE id=? AND project_id=?", (media_id, project_id)

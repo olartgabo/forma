@@ -38,13 +38,19 @@ Keep proposal schemas flat/bounded for model structured output.
 ## API surface
 
 Implemented routes are POST `/api/projects`, GET/DELETE `/api/projects/{id}`,
-PUT `/api/projects/{id}/inventory`, POST `/api/projects/{id}/media` and
+PUT `/api/projects/{id}/inventory`, GET/POST `/api/projects/{id}/media` and
 GET/DELETE `/api/projects/{id}/media/{media_id}`. Health remains public at
 `/api/health`; project routes require configured owner credentials. API-local
 Pydantic envelopes reuse domain Stock records. Inventory revisions remain
 separate from active plan versions. See the [persistence handoff](handoffs/issue-6-persistence.md)
 and [media handoff](handoffs/issue-6-private-media.md); runtime OpenAPI documents
 these envelopes. Domain-generated OpenAPI contains components only.
+
+`python -m forma_api.generate` exports the route-owned Pydantic envelopes to
+`apps/web/src/lib/generated/api-contracts.ts`, importing shared Stock from the
+domain-generated contracts. Both generation and freshness checks run through
+the root `contracts:generate` and `contracts:check` scripts. The offline domain
+exporter never imports the API or its persistence/provider dependencies.
 
 Project-scoped interpret, candidates, compile, versions, manual, events,
 diagnose, adapt/simulate, adapt/commit, functional-test, proof and job-status
