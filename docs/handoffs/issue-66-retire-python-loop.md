@@ -21,3 +21,15 @@ policy correction. No provider-product or physical acceptance is claimed.
 
 Updates existing PR33; refs66. Legacy worktree-cleanup PR59 is superseded by
 retirement rather than reviving destructive cleanup in the active workflow.
+
+## Integration on current main, November 2, 2026
+
+The integration preserves both test:web and test:devloop in the root check.
+Product decisions D012-D024 remain reserved; tooling history uses D025-D028.
+The runner, worker policy and guard behavior are unchanged from the reviewed PR.
+
+Actual full npm run check exited 0: 826 passed, 4 skipped in 47.28s;
+web # pass 43 / # fail 0; guarded Node # pass 17 / # fail 0;
+formatting, Ruff, contract freshness, TypeScript and production build passed.
+The four skips require a POSIX shell. No guard provisioning, budget renewal,
+live worker dispatch or physical test ran.

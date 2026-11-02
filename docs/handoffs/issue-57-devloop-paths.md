@@ -21,5 +21,5 @@ No product schemas or generated contracts changed. On the integrated main tree:
 No live provider or physical test ran. The runner remains disabled: durable
 accounting for every dispatch, registered worktree ownership before cleanup,
 checkout-independent self-exclusion and complete review/staging remain open.
-D013 records the user's Codex coding fallback and Muse preference.
+D026 records the user's Codex coding fallback and Muse preference.
 Next: repair those remaining boundaries and verify before launching the runner.
