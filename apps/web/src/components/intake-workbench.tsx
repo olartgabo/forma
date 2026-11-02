@@ -46,6 +46,7 @@ import {
 } from "../lib/photo-deletion";
 import type { RepairHandoff } from "../lib/repair-handoff";
 import type { DiagnosisFocus } from "../lib/build-diagnosis";
+import { loadPhotoPreview } from "../lib/photo-preview-loader";
 
 type Row = { key: string; stock: Stock; saved: boolean };
 type MeasurementField =
@@ -125,21 +126,27 @@ function PhotoPreview({
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    let objectUrl: string | undefined;
+    let disposePreview: (() => void) | undefined;
     setUrl(null);
     setFailed(false);
-    void fetchPhoto(token, projectId, photo.id, controller.signal)
-      .then((blob) => {
-        if (controller.signal.aborted) return;
-        objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
+    void loadPhotoPreview(
+      () => fetchPhoto(token, projectId, photo.id, controller.signal),
+      controller.signal,
+    )
+      .then((preview) => {
+        if (controller.signal.aborted) {
+          preview.dispose();
+          return;
+        }
+        disposePreview = preview.dispose;
+        setUrl(preview.url);
       })
       .catch(() => {
         if (!controller.signal.aborted) setFailed(true);
       });
     return () => {
       controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      disposePreview?.();
     };
   }, [token, projectId, photo.id, attempt]);
   return (
