@@ -2101,6 +2101,61 @@ test("repair workbench reducer drops stale simulate previews after a Muse merge"
   assert.equal(canApprove(state), false);
 });
 
+test("changed remaining stock invalidates previews, simulation retries and late results", () => {
+  const candidate = repairCandidate("repair-stock");
+  let state = repairWorkbenchReducer(createInitialRepairWorkbenchState(), {
+    type: "addManual",
+    candidate,
+  });
+  const startedVersion = state.candidateSetVersion;
+  state = repairWorkbenchReducer(state, {
+    type: "simulateResolved",
+    previews: previewSetFor("old-stock"),
+    startedVersion,
+  });
+  state = repairWorkbenchReducer(state, {
+    type: "approvedChanged",
+    approved: true,
+  });
+  const pendingApproval = {
+    preview_id: "old-stock",
+    idempotency_key: "original-approval",
+  };
+  state = repairWorkbenchReducer(state, {
+    type: "approveStarted",
+    request: pendingApproval,
+  });
+  state = repairWorkbenchReducer(state, {
+    type: "simulateStarted",
+    request: {
+      candidates: [candidate],
+      connector_measurements: [
+        { stock_id: "tape-a", remaining_length_mm: 120 },
+      ],
+    },
+  });
+  const previous = state;
+  state = repairWorkbenchReducer(state, { type: "remainingStockChanged" });
+  assert.equal(state.previews, null);
+  assert.equal(state.pendingSimulation, null);
+  assert.equal(state.choice, "");
+  assert.equal(state.approved, false);
+  assert.equal(canApprove(state), false);
+  assert.equal(state.candidateSetVersion, startedVersion + 1);
+  assert.equal(state.candidates, previous.candidates);
+  // An ambiguous activation must keep its exact retry, since it may already
+  // have committed. A simulation has no physical or activation side effects.
+  assert.equal(state.pendingApproval, pendingApproval);
+  assert.notEqual(previous.previews, null, "the prior state is immutable");
+  state = repairWorkbenchReducer(state, {
+    type: "simulateResolved",
+    previews: previewSetFor("late-old-stock"),
+    startedVersion,
+  });
+  assert.equal(state.previews, null);
+  assert.equal(canApprove(state), false);
+});
+
 test("repair workbench reducer clears previews when Muse merges during approval", async () => {
   const first = repairCandidate("repair-a");
   const museA = repairCandidate("repair-muse-a");

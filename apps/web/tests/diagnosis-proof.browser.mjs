@@ -32,7 +32,7 @@ const plan = {
   version_id: project.active_version_id,
   compiler_version: "synthetic-ui-test",
   stocks: [],
-  parts: [],
+  parts: [{ id: "part-a", geometry: { width: 100, height: 150 } }],
   joints: [],
   checkpoints: [],
   operations: [{ id: "inspect-a", type: "inspect", depends_on: [], args: {} }],
@@ -79,7 +79,7 @@ const pixel = Buffer.from(
   "base64",
 );
 
-async function scenario({ pendingExport = false } = {}) {
+async function scenario({ pendingExport = false, repairCase = null } = {}) {
   const context = await browser.newContext({ serviceWorkers: "block" });
   const page = await context.newPage();
   page.setDefaultTimeout(10_000);
@@ -87,6 +87,9 @@ async function scenario({ pendingExport = false } = {}) {
   const unexpected = [];
   page.on("pageerror", (error) => errors.push(error.message));
   let saved = false;
+  let historyCursor = "event-a";
+  const simulations = [];
+  const approvals = [];
   let proofReads = 0;
   let holdExport = false;
   let releaseExport;
@@ -127,7 +130,59 @@ async function scenario({ pendingExport = false } = {}) {
       return;
     } else if (path.endsWith("/plans")) body = { plans: [] };
     else if (path.endsWith(`/versions/${plan.version_id}`)) body = version;
-    else if (path.endsWith("/designs/readiness"))
+    else if (path.endsWith("/progress"))
+      body = {
+        project_id: project.id,
+        version_id: plan.version_id,
+        last_event_id: historyCursor,
+        status: "building",
+        completed_operation_ids: [],
+        failed_operation_ids: [],
+        events: [],
+        evidence: [],
+        material_transactions: [],
+        expected_remaining_stock: [
+          {
+            id: "tape-a",
+            kind: "tape",
+            remaining_length_mm: {
+              value: historyCursor === "event-a" ? 120 : 90,
+              unit: "mm",
+              source: "calculated",
+              confirmed: false,
+            },
+          },
+        ],
+      };
+    else if (path.endsWith("/adapt/simulate")) {
+      const input = request.postDataJSON();
+      simulations.push(input);
+      if (repairCase === "retry") {
+        await route.abort("failed");
+        return;
+      }
+      body = {
+        project_id: project.id,
+        base_version_id: plan.version_id,
+        base_last_event_id: historyCursor,
+        previews: [
+          {
+            preview_id: "synthetic-blocked",
+            patch: input.candidates[0],
+            version: repairCase === "approval" ? version : null,
+            rank: repairCase === "approval" ? 1 : null,
+            simulation: {
+              status: repairCase === "approval" ? "feasible" : "blocked",
+              blockers: [],
+            },
+          },
+        ],
+      };
+    } else if (path.endsWith("/adapt/commit")) {
+      approvals.push(request.postDataJSON());
+      await route.abort("failed");
+      return;
+    } else if (path.endsWith("/designs/readiness"))
       body = {
         project_id: project.id,
         inventory_revision_id: project.revision_id,
@@ -182,6 +237,148 @@ async function scenario({ pendingExport = false } = {}) {
     await page.goto(new URL(`/?project=${project.id}`, origin).href);
     await page.getByLabel("Owner credential").fill("synthetic-browser-owner");
     await page.getByRole("button", { name: "Open workbench" }).click();
+    if (repairCase) {
+      const repair = page.locator("#repair-review");
+      await repair.getByRole("button", { name: "Review a repair" }).click();
+      await repair
+        .getByRole("combobox", { name: /^Repair/ })
+        .selectOption("resize_part");
+      await repair
+        .getByRole("combobox", { name: /^Part/ })
+        .selectOption("part-a");
+      await repair.getByLabel("New width (mm)").fill("95");
+      await repair
+        .getByLabel("What went wrong", { exact: true })
+        .fill("SYNTHETIC future part correction");
+      await repair.getByRole("button", { name: "Add candidate" }).click();
+      const length = repair.getByLabel(/Measured remaining tape on tape-a/);
+      const confirmation = repair.getByRole("checkbox", {
+        name: /I checked the remaining materials/,
+      });
+      const simulate = repair.getByRole("button", {
+        name: "Simulate repairs",
+        exact: true,
+      });
+      await length.fill("120");
+      await confirmation.check();
+      assert.equal(await simulate.isEnabled(), true);
+      await simulate.click();
+      if (repairCase === "retry") {
+        await repair
+          .getByRole("button", { name: "Retry simulation" })
+          .waitFor();
+      } else {
+        await repair
+          .getByRole("heading", { name: "Repair options", exact: true })
+          .waitFor();
+      }
+      assert.equal(simulations.length, 1);
+      if (repairCase === "approval") {
+        await repair
+          .getByRole("checkbox", { name: /I approve this revision/ })
+          .check();
+        await repair.getByRole("button", { name: "Activate revision" }).click();
+        const retry = repair.getByRole("button", {
+          name: "Retry approval",
+          exact: true,
+        });
+        await retry.waitFor();
+        assert.equal(await length.isDisabled(), true);
+        assert.equal(await confirmation.isDisabled(), true);
+        assert.equal(
+          await repair
+            .getByRole("button", { name: "Reload recorded work" })
+            .isDisabled(),
+          true,
+        );
+        assert.equal(await simulate.isDisabled(), true);
+        const failedRetry = page.waitForEvent("requestfailed", {
+          predicate: (request) =>
+            new URL(request.url()).pathname.endsWith("/adapt/commit"),
+        });
+        await retry.click();
+        await failedRetry;
+        await retry.waitFor();
+        assert.equal(approvals.length, 2);
+        assert.deepEqual(
+          approvals[1],
+          approvals[0],
+          "uncertain approval keeps its exact retry payload",
+        );
+        assert.deepEqual(errors, []);
+        assert.deepEqual(unexpected, []);
+        console.log(
+          "PASS: uncertain approval locks stock inputs and retains exact retry",
+        );
+        return;
+      }
+      if (repairCase === "reload") {
+        historyCursor = "event-b";
+        await repair
+          .getByRole("button", { name: "Reload recorded work" })
+          .click();
+        await repair.getByLabel(/calculated 90 mm/).waitFor();
+        assert.equal(
+          await length.inputValue(),
+          "",
+          "new history clears old measurements",
+        );
+      } else if (repairCase === "uncheck") {
+        await confirmation.uncheck();
+      } else {
+        await length.fill("110");
+      }
+      assert.equal(
+        await confirmation.isChecked(),
+        false,
+        "changed measurements need fresh confirmation",
+      );
+      assert.equal(await simulate.isEnabled(), false);
+      assert.equal(
+        await repair
+          .getByRole("heading", { name: "Repair options", exact: true })
+          .count(),
+        0,
+      );
+      assert.equal(
+        await repair.getByRole("button", { name: "Retry simulation" }).count(),
+        0,
+      );
+      assert.equal(
+        simulations.length,
+        1,
+        "no implicit simulation after inputs change",
+      );
+      if (repairCase === "reload") await length.fill("90");
+      await confirmation.check();
+      if (repairCase !== "retry") {
+        await simulate.click();
+        await repair
+          .getByRole("heading", { name: "Repair options", exact: true })
+          .waitFor();
+        assert.equal(simulations.length, 2);
+        const latest = simulations[1];
+        assert.equal(latest.expected_last_event_id, historyCursor);
+        assert.deepEqual(latest.connector_measurements, [
+          {
+            stock_id: "tape-a",
+            remaining_length_mm:
+              repairCase === "reload"
+                ? 90
+                : repairCase === "uncheck"
+                  ? 120
+                  : 110,
+          },
+        ]);
+        assert.equal(latest.remaining_confirmed, true);
+      }
+      assert.deepEqual(unexpected, []);
+      assert.deepEqual(errors, []);
+      console.log(
+        `PASS: repair confirmation and previews invalidated by ${repairCase}`,
+      );
+      return;
+    }
     const proofPanel = page.locator(".proof-workbench");
     await proofPanel.locator(":scope > summary").click();
     await proofPanel
@@ -239,6 +436,8 @@ async function scenario({ pendingExport = false } = {}) {
 try {
   await scenario();
   await scenario({ pendingExport: true });
+  for (const repairCase of ["edit", "reload", "uncheck", "retry", "approval"])
+    await scenario({ repairCase });
 } finally {
   await browser.close();
 }

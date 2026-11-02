@@ -79,7 +79,7 @@ export type RepairWorkbenchAction =
   | { type: "versionChanged" }
   | { type: "reset" }
   | { type: "previewsCleared" }
-  | { type: "previewsRefreshed" }
+  | { type: "remainingStockChanged" }
   | { type: "choiceSelected"; previewId: string }
   | { type: "approvedChanged"; approved: boolean }
   | { type: "draftChangeNoticeCleared" };
@@ -240,8 +240,15 @@ export function repairWorkbenchReducer(
         draftChangeNotice: had ? DRAFT_CHANGE_NOTICE : state.draftChangeNotice,
       };
     }
-    case "previewsRefreshed":
-      return clearedPreviews(state);
+    case "remainingStockChanged":
+      return {
+        ...clearedPreviews(state),
+        candidateSetVersion: state.candidateSetVersion + 1,
+        pendingSimulation: null,
+        draftChangeNotice: hadPreviews(state)
+          ? DRAFT_CHANGE_NOTICE
+          : state.draftChangeNotice,
+      };
     case "choiceSelected":
       return { ...state, choice: action.previewId, approved: false };
     case "approvedChanged":
