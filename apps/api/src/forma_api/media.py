@@ -26,6 +26,7 @@ class Media(Record):
     byte_count: int
     width_px: int
     height_px: int
+    evidence_linked: bool = False
 
 
 class MediaResult(Record):
@@ -190,7 +191,10 @@ def media_router(store: ProjectStore, authenticate) -> APIRouter:
         with store.transaction() as connection:
             store.read(connection, owner, project_id)
             rows = connection.execute(
-                "SELECT id, content_type, width_px, height_px, length(body) "
+                "SELECT id, content_type, width_px, height_px, length(body), "
+                "EXISTS(SELECT 1 FROM progress_evidence "
+                "WHERE progress_evidence.project_id=media.project_id "
+                "AND progress_evidence.asset_id=media.id) "
                 "FROM media WHERE project_id=? ORDER BY rowid",
                 (project_id,),
             ).fetchall()
@@ -204,6 +208,7 @@ def media_router(store: ProjectStore, authenticate) -> APIRouter:
                     width_px=row[2],
                     height_px=row[3],
                     byte_count=row[4],
+                    evidence_linked=bool(row[5]),
                 )
                 for row in rows
             )
