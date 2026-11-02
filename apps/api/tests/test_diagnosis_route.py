@@ -138,6 +138,69 @@ def test_photo_only_invented_affected_ids_are_invalid_response(client, monkeypat
     assert client.get(f"/api/projects/{p['id']}", headers=AUTH).json() == before
 
 
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {
+            "visible_observations": [],
+            "hypotheses": [],
+            "questions_or_measurements": [],
+        },
+        {
+            "visible_observations": [" ", "\t"],
+            "hypotheses": ["\n"],
+            "questions_or_measurements": ["  "],
+        },
+    ],
+)
+def test_empty_or_whitespace_diagnosis_is_safe_502_and_readonly(
+    client, monkeypatch, overrides
+):
+    p = project(client)
+    media = upload(client, p)
+    fake = Fake(final(**overrides))
+    install(monkeypatch, fake)
+    before = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+    response = call(client, p, body(p, media))
+    assert (response.status_code, response.json()["code"]) == (
+        502,
+        "invalid_response",
+    )
+    assert response.json() == {
+        "code": "invalid_response",
+        "message": "Model provider returned an unusable response; retry",
+    }
+    assert "SECRET" not in response.text
+    assert len(fake.calls) == 1
+    assert client.get(f"/api/projects/{p['id']}", headers=AUTH).json() == before
+
+
+def test_question_only_unknown_diagnosis_succeeds_and_is_readonly(client, monkeypatch):
+    p = project(client)
+    media = upload(client, p)
+    question = "Can you measure the distance from the slot to the edge?"
+    fake = Fake(
+        final(
+            visible_observations=[],
+            hypotheses=[],
+            questions_or_measurements=[question],
+            failure_type="unknown",
+        )
+    )
+    install(monkeypatch, fake)
+    before = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+    response = call(client, p, body(p, media))
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["diagnosis"]["failure_type"] == "unknown"
+    assert result["diagnosis"]["visible_observations"] == []
+    assert result["diagnosis"]["hypotheses"] == []
+    assert result["diagnosis"]["questions_or_measurements"] == [question]
+    assert result["diagnosis"]["affected_ids"] == []
+    assert len(fake.calls) == 1
+    assert client.get(f"/api/projects/{p['id']}", headers=AUTH).json() == before
+
+
 def test_gates_have_no_dispatch(client, monkeypatch, tmp_path):
     p = project(client)
     other_project = project(client, "project-002")

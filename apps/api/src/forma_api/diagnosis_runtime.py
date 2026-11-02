@@ -251,6 +251,13 @@ def validate_diagnosis(proposal: DiagnosisProposal, *, plan=None) -> DiagnosisPr
         raise GatewayError("invalid_diagnosis_reference")
     if not set(proposal.affected_ids) <= allowed:
         raise GatewayError("invalid_diagnosis_reference")
+    substantive = (
+        *proposal.visible_observations,
+        *proposal.hypotheses,
+        *proposal.questions_or_measurements,
+    )
+    if not any(item.strip() for item in substantive):
+        raise GatewayError("invalid_diagnosis_empty")
     return proposal
 
 
@@ -295,7 +302,7 @@ def diagnose_photo(
 
 
 def gateway_error_details(code: str) -> tuple[int, str, str]:
-    if code == "invalid_diagnosis_reference":
+    if code in {"invalid_diagnosis_reference", "invalid_diagnosis_empty"}:
         return (
             502,
             "invalid_response",
