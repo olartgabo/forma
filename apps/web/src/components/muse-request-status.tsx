@@ -1,9 +1,11 @@
 import type { ProviderUsage } from "../lib/generated/api-contracts";
+import { museCopyFor } from "../lib/muse-language";
 import {
   formatMuseLatency,
   formatProviderUsage,
   museRequestStatus,
 } from "../lib/provider-usage";
+import { useMuseLanguage } from "./muse-language-provider";
 
 export type MuseDiagnostics = {
   status: string;
@@ -22,6 +24,7 @@ export default function MuseRequestStatus({
   errorCode,
   errorMessage,
   diagnostics,
+  locale,
 }: {
   busy?: boolean;
   pendingMessage?: string;
@@ -30,10 +33,16 @@ export default function MuseRequestStatus({
   errorCode?: string;
   errorMessage?: string;
   diagnostics?: MuseDiagnostics | null;
+  locale?: unknown;
 }) {
-  const failure = errorMessage ? museRequestStatus({ errorCode }) : null;
+  const context = useMuseLanguage();
+  const effectiveLocale = locale ?? context.locale;
+  const copy = museCopyFor(effectiveLocale);
+  const failure = errorMessage
+    ? museRequestStatus({ errorCode }, effectiveLocale)
+    : null;
   return (
-    <>
+    <div lang={effectiveLocale === "es" ? "es" : "en"}>
       {busy && (
         <>
           <p className="help" aria-live="polite">
@@ -42,7 +51,7 @@ export default function MuseRequestStatus({
           {onCancel && (
             <div className="muse-actions">
               <button type="button" className="secondary" onClick={onCancel}>
-                Cancel
+                {copy.actions.cancel}
               </button>
             </div>
           )}
@@ -60,18 +69,24 @@ export default function MuseRequestStatus({
       )}
       {diagnostics && (
         <p className="help">
-          Request diagnostics — status: {diagnostics.status}; model:{" "}
-          {diagnostics.model};
+          {copy.diagnostics.label} — {copy.diagnostics.status}:{" "}
+          {diagnostics.status}; {copy.diagnostics.model}: {diagnostics.model};
           {diagnostics.modelRounds !== undefined && (
-            <> rounds: {diagnostics.modelRounds};</>
+            <>
+              {" "}
+              {copy.diagnostics.rounds}: {diagnostics.modelRounds};
+            </>
           )}
           {diagnostics.toolExecutions !== undefined && (
-            <> tool calls: {diagnostics.toolExecutions};</>
+            <>
+              {" "}
+              {copy.diagnostics.toolCalls}: {diagnostics.toolExecutions};
+            </>
           )}{" "}
-          {formatMuseLatency(diagnostics.elapsedMs)}.{" "}
-          {formatProviderUsage(diagnostics.usage)}
+          {formatMuseLatency(diagnostics.elapsedMs, effectiveLocale)}.{" "}
+          {formatProviderUsage(diagnostics.usage, effectiveLocale)}
         </p>
       )}
-    </>
+    </div>
   );
 }

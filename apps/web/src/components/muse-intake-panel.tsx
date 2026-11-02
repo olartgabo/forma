@@ -3,8 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, requestIntakeObservation } from "../lib/api";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import {
+  formatEnglishGroupedNumber,
+  museFailureText,
+  museNoticeText,
+  museStoredFailure,
+  type MuseNoticeId,
+  type MuseStoredFailure,
+} from "../lib/muse-language";
 import type { MuseAvailability } from "../lib/muse-provider";
 import MuseRequestStatus from "./muse-request-status";
+import { useMuseLanguage } from "./muse-language-provider";
 import type {
   IntakeResult,
   Media,
@@ -22,16 +31,13 @@ function isEligible(photo: Media): boolean {
   );
 }
 
-function ineligibleReason(photo: Media): string {
+function ineligibleReason(
+  photo: Media,
+  copy: ReturnType<typeof useMuseLanguage>["copy"],
+): string {
   if (!SUPPORTED_TYPES.includes(photo.content_type))
-    return "Stored as a format Muse cannot read here. Save a JPEG or PNG photo instead.";
-  return "Larger than 5,000,000 bytes. Save a smaller JPEG or PNG photo instead.";
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof ApiError
-    ? error.message
-    : "The request could not finish. Check the API connection and try again.";
+    return copy.intake.ineligibleFormat;
+  return copy.intake.ineligibleSize;
 }
 
 export default function MuseIntakePanel({
@@ -52,12 +58,12 @@ export default function MuseIntakePanel({
   const [selectedId, setSelectedId] = useState("");
   const [consented, setConsented] = useState(false);
   const [result, setResult] = useState<IntakeResult | null>(null);
-  const [failure, setFailure] = useState<{
-    code?: string;
-    message: string;
-  } | null>(null);
-  const [cancelledMessage, setCancelledMessage] = useState("");
+  const [failure, setFailure] = useState<MuseStoredFailure | null>(null);
+  const [cancelledNotice, setCancelledNotice] = useState<MuseNoticeId | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
+  const { locale, copy } = useMuseLanguage();
   const controller = useRef<AbortController | null>(null);
   const epoch = useRef(0);
 
@@ -76,7 +82,7 @@ export default function MuseIntakePanel({
     setConsented(false);
     setResult(null);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
     setBusy(false);
   }, [
     token,
@@ -107,9 +113,7 @@ export default function MuseIntakePanel({
     controller.current = null;
     setBusy(false);
     setFailure(null);
-    setCancelledMessage(
-      "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the photo, so no result was shown.",
-    );
+    setCancelledNotice("intake-cancelled");
   }
 
   async function ask() {
@@ -134,7 +138,7 @@ export default function MuseIntakePanel({
     setConsented(false);
     setBusy(true);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
     setResult(null);
     try {
       const next = await requestIntakeObservation(
@@ -151,15 +155,16 @@ export default function MuseIntakePanel({
       if (requestController.signal.aborted || requestEpoch !== epoch.current)
         return;
       if (failure instanceof ApiError && failure.code === "cancelled") {
-        setCancelledMessage(
-          "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the photo, so no result was shown.",
-        );
+        setCancelledNotice("intake-cancelled");
         return;
       }
-      setFailure({
-        code: failure instanceof ApiError ? failure.code : undefined,
-        message: errorMessage(failure),
-      });
+      setFailure(
+        museStoredFailure({
+          code: failure instanceof ApiError ? failure.code : undefined,
+          apiMessage: failure instanceof ApiError ? failure.message : undefined,
+          fallbackSection: "intake",
+        }),
+      );
     } finally {
       if (!requestController.signal.aborted && requestEpoch === epoch.current) {
         controller.current = null;
@@ -178,58 +183,54 @@ export default function MuseIntakePanel({
     museAvailability?.enabled === false;
 
   return (
-    <section className="muse-panel" aria-labelledby="muse-intake-title">
+    <section
+      className="muse-panel"
+      aria-labelledby="muse-intake-title"
+      lang={locale}
+    >
       <div className="section-title">
         <span aria-hidden="true">3</span>
-        <h2 id="muse-intake-title">Ask Muse about this photo</h2>
+        <h2 id="muse-intake-title">{copy.intake.title}</h2>
       </div>
-      <p>
-        Muse can suggest candidate material labels and questions from one saved
-        photo. Suggestions are proposals only: they do not fill in inventory
-        values, confirm measurements, create stock or show that a physical check
-        passed.
-      </p>
+      <p>{copy.intake.intro}</p>
       {photos.length === 0 ? (
-        <p className="empty-note">
-          Save a photo in this project first, then choose it here.
-        </p>
+        <p className="empty-note">{copy.intake.saveFirst}</p>
       ) : (
         <>
-          <label htmlFor="muse-photo">Saved photo</label>
+          <label htmlFor="muse-photo">{copy.intake.savedPhoto}</label>
           <select
             id="muse-photo"
             value={selectedId}
             disabled={busy}
             onChange={(event) => setSelectedId(event.target.value)}
           >
-            <option value="">Choose a photo…</option>
+            <option value="">{copy.intake.choosePhoto}</option>
             {photos.map((photo, index) => (
               <option
                 key={photo.id}
                 value={photo.id}
                 disabled={!isEligible(photo)}
               >
-                Photo {index + 1} — {photo.content_type},{" "}
-                {photo.byte_count.toLocaleString()} bytes
-                {isEligible(photo) ? "" : " (cannot be sent to Muse)"}
+                {copy.intake.photo} {index + 1} — {photo.content_type},{" "}
+                {formatEnglishGroupedNumber(photo.byte_count)}{" "}
+                {copy.intake.bytes}
+                {isEligible(photo) ? "" : ` ${copy.intake.cannotSend}`}
               </option>
             ))}
           </select>
           {selected && !eligible && (
             <p className="help" role="note">
-              Photo guidance: {ineligibleReason(selected)}
+              {copy.intake.photoGuidance} {ineligibleReason(selected, copy)}
             </p>
           )}
           {!selected && photos.some((photo) => !isEligible(photo)) && (
-            <p className="help">
-              Muse can only read saved JPEG or PNG photos of 5,000,000 bytes or
-              smaller. Photos in other formats or larger than that cannot be
-              selected; save a JPEG or PNG photo instead.
-            </p>
+            <p className="help">{copy.intake.formatHelp}</p>
           )}
           {museAvailability?.enabled === false && (
             <p className="help" role="note">
-              {museAvailability.reason}
+              {locale === "es"
+                ? copy.provider.notConfiguredReason
+                : museAvailability.reason}
             </p>
           )}
           <label className="checkbox-label" htmlFor="muse-consent">
@@ -240,17 +241,9 @@ export default function MuseIntakePanel({
               disabled={busy || museAvailability?.enabled === false}
               onChange={(event) => setConsented(event.target.checked)}
             />
-            Send the selected photo and this project&apos;s saved goal to
-            Meta&apos;s Muse service for this one request. Do not send a photo
-            you are not allowed to share.
+            {copy.intake.consent}
           </label>
-          {inventoryStale && (
-            <p className="help">
-              Save or reload the inventory first: the saved inventory is stale
-              or has unsaved changes, so Muse is unavailable until it matches
-              the server.
-            </p>
-          )}
+          {inventoryStale && <p className="help">{copy.intake.stale}</p>}
           <div className="muse-actions">
             <button
               type="button"
@@ -258,25 +251,28 @@ export default function MuseIntakePanel({
               disabled={actionDisabled}
               onClick={() => void ask()}
             >
-              Ask Muse about this photo
+              {copy.intake.ask}
             </button>
           </div>
           <MuseRequestStatus
             busy={busy}
-            pendingMessage="Asking Muse… Cancelling stops FORMA waiting; Muse may already be processing the photo. There are no automatic retries."
+            pendingMessage={copy.intake.pending}
             onCancel={cancel}
-            cancelledMessage={cancelledMessage}
+            cancelledMessage={museNoticeText(cancelledNotice, locale)}
             errorCode={failure?.code}
-            errorMessage={failure?.message}
+            errorMessage={
+              failure ? museFailureText(failure, locale) : undefined
+            }
             diagnostics={
               result ? museDiagnosticsFromResult(result.diagnostics) : null
             }
+            locale={locale}
           />
           {result && (
             <div className="muse-result">
-              <h3>Candidate labels</h3>
+              <h3>{copy.intake.candidateLabels}</h3>
               {result.observation.labels.length === 0 ? (
-                <p className="empty-note">Muse returned no candidate labels.</p>
+                <p className="empty-note">{copy.intake.noLabels}</p>
               ) : (
                 <ul>
                   {result.observation.labels.map((label, index) => (
@@ -284,9 +280,9 @@ export default function MuseIntakePanel({
                   ))}
                 </ul>
               )}
-              <h3>Questions to check</h3>
+              <h3>{copy.intake.questions}</h3>
               {result.observation.questions.length === 0 ? (
-                <p className="empty-note">Muse returned no questions.</p>
+                <p className="empty-note">{copy.intake.noQuestions}</p>
               ) : (
                 <ul>
                   {result.observation.questions.map((question, index) => (
@@ -295,9 +291,9 @@ export default function MuseIntakePanel({
                 </ul>
               )}
               <p>
-                Measurement source: {result.observation.measurement_source}. A
-                photo does not confirm measurements; measure and confirm values
-                yourself before using them.
+                {copy.intake.measurementSource}{" "}
+                {result.observation.measurement_source}.{" "}
+                {copy.intake.measurementNote}
               </p>
             </div>
           )}

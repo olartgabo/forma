@@ -8,14 +8,16 @@ import type {
   RepairPatch,
 } from "../lib/generated/contracts";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import {
+  museFailureText,
+  museNoticeText,
+  museStoredFailure,
+  type MuseNoticeId,
+  type MuseStoredFailure,
+} from "../lib/muse-language";
 import type { MuseAvailability } from "../lib/muse-provider";
 import MuseRequestStatus from "./muse-request-status";
-
-function errorMessage(error: unknown) {
-  return error instanceof ApiError
-    ? error.message
-    : "The request could not finish. Check the API connection and try again.";
-}
+import { useMuseLanguage } from "./muse-language-provider";
 
 export type MuseCandidateMerge = { added: number; skipped: number };
 
@@ -43,13 +45,13 @@ export default function MuseRepairPanel({
   const [problem, setProblem] = useState("");
   const [consented, setConsented] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<{
-    code?: string;
-    message: string;
-  } | null>(null);
-  const [cancelledMessage, setCancelledMessage] = useState("");
+  const [failure, setFailure] = useState<MuseStoredFailure | null>(null);
+  const [cancelledNotice, setCancelledNotice] = useState<MuseNoticeId | null>(
+    null,
+  );
   const [result, setResult] = useState<RepairProposeResult | null>(null);
   const [merge, setMerge] = useState<MuseCandidateMerge | null>(null);
+  const { locale, copy } = useMuseLanguage();
   const controller = useRef<AbortController | null>(null);
   const epoch = useRef(0);
   const versionRef = useRef(versionId);
@@ -80,7 +82,7 @@ export default function MuseRepairPanel({
     setResult(null);
     setMerge(null);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
   }, [diagnosis]);
 
   // A new active version invalidates consent and any shown Muse result.
@@ -92,7 +94,7 @@ export default function MuseRepairPanel({
     setResult(null);
     setMerge(null);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
     setBusy(false);
   }, [token, projectId, versionId]);
 
@@ -102,9 +104,7 @@ export default function MuseRepairPanel({
     controller.current = null;
     setBusy(false);
     setFailure(null);
-    setCancelledMessage(
-      "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the request, so no result was shown.",
-    );
+    setCancelledNotice("repair-cancelled");
   }
 
   async function ask() {
@@ -128,7 +128,7 @@ export default function MuseRepairPanel({
     setConsented(false);
     setBusy(true);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
     setResult(null);
     setMerge(null);
     try {
@@ -162,15 +162,16 @@ export default function MuseRepairPanel({
       )
         return;
       if (failure instanceof ApiError && failure.code === "cancelled") {
-        setCancelledMessage(
-          "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the request, so no result was shown.",
-        );
+        setCancelledNotice("repair-cancelled");
         return;
       }
-      setFailure({
-        code: failure instanceof ApiError ? failure.code : undefined,
-        message: errorMessage(failure),
-      });
+      setFailure(
+        museStoredFailure({
+          code: failure instanceof ApiError ? failure.code : undefined,
+          apiMessage: failure instanceof ApiError ? failure.message : undefined,
+          fallbackSection: "repair",
+        }),
+      );
     } finally {
       setConsented(false);
       if (!requestController.signal.aborted && requestEpoch === epoch.current) {
@@ -190,29 +191,21 @@ export default function MuseRepairPanel({
     !diagnosis;
 
   return (
-    <section className="muse-panel" aria-labelledby="muse-repair-title">
-      <h4 id="muse-repair-title">Ask Muse for repair options</h4>
-      <p>
-        Muse can propose repair candidates from your reported problem, the Muse
-        diagnosis (if present) and the active plan context. Proposals are
-        unverified: they are only added to the candidate list below. Nothing is
-        simulated or approved until you confirm remaining stock, press Simulate
-        repairs and approve a preview yourself.
-      </p>
+    <section
+      className="muse-panel"
+      aria-labelledby="muse-repair-title"
+      lang={locale}
+    >
+      <h4 id="muse-repair-title">{copy.repair.title}</h4>
+      <p>{copy.repair.intro}</p>
       {!diagnosis ? (
         <p className="help" role="note">
-          A Muse diagnosis is needed first. Ask Muse what went wrong above and
-          review a repair from that diagnosis, then return here. FORMA will not
-          invent a diagnosis.
+          {copy.repair.needsDiagnosis}
         </p>
       ) : (
-        <p className="help">
-          This request sends your reported problem, the Muse diagnosis from the
-          handoff and the active plan context to Meta&apos;s Muse service for
-          this one request.
-        </p>
+        <p className="help">{copy.repair.sendsContext}</p>
       )}
-      <label htmlFor="muse-repair-problem">Reported problem</label>
+      <label htmlFor="muse-repair-problem">{copy.repair.problemLabel}</label>
       <textarea
         id="muse-repair-problem"
         rows={4}
@@ -220,11 +213,13 @@ export default function MuseRepairPanel({
         value={problem}
         disabled={busy}
         onChange={(event) => setProblem(event.target.value)}
-        placeholder="For example: the brace tore at the slot"
+        placeholder={copy.repair.problemPlaceholder}
       />
       {museAvailability?.enabled === false && (
         <p className="help" role="note">
-          {museAvailability.reason}
+          {locale === "es"
+            ? copy.provider.notConfiguredReason
+            : museAvailability.reason}
         </p>
       )}
       <label className="checkbox-label" htmlFor="muse-repair-consent">
@@ -235,8 +230,7 @@ export default function MuseRepairPanel({
           disabled={busy || museAvailability?.enabled === false}
           onChange={(event) => setConsented(event.target.checked)}
         />
-        Send my reported problem, the Muse diagnosis if present and the active
-        plan context to Meta&apos;s Muse service for this one request.
+        {copy.repair.consent}
       </label>
       <div className="muse-actions">
         <button
@@ -245,46 +239,44 @@ export default function MuseRepairPanel({
           disabled={actionDisabled}
           onClick={() => void ask()}
         >
-          Ask Muse for repair options
+          {copy.repair.ask}
         </button>
       </div>
       <MuseRequestStatus
         busy={busy}
-        pendingMessage="Asking Muse… Cancelling stops FORMA waiting; Muse may already be processing the request. There are no automatic retries."
+        pendingMessage={copy.repair.pending}
         onCancel={cancel}
-        cancelledMessage={cancelledMessage}
+        cancelledMessage={museNoticeText(cancelledNotice, locale)}
         errorCode={failure?.code}
-        errorMessage={failure?.message}
+        errorMessage={failure ? museFailureText(failure, locale) : undefined}
         diagnostics={
           result ? museDiagnosticsFromResult(result.diagnostics) : null
         }
+        locale={locale}
       />
       {result && merge && result.candidates.length > 0 && (
         <p className="notice" aria-live="polite">
           {merge.added > 0
-            ? `Added ${merge.added} Muse proposal${merge.added === 1 ? "" : "s"} (unverified) to the candidate list. Confirm remaining stock and press Simulate repairs to preview ${merge.added === 1 ? "it" : "them"}.`
-            : "No candidates were added."}
-          {merge.skipped > 0
-            ? ` ${merge.skipped} proposal${merge.skipped === 1 ? " was" : "s were"} skipped (duplicate or the 3-candidate limit was reached).`
-            : ""}
+            ? copy.repair.addedOne(merge.added)
+            : copy.repair.noAdded}
+          {merge.skipped > 0 ? copy.repair.skipped(merge.skipped) : ""}
         </p>
       )}
       {result &&
         result.candidates.length === 0 &&
         result.questions.length === 0 && (
           <p className="notice" aria-live="polite">
-            Muse returned no repair candidates. No candidates were added; add a
-            candidate yourself or give more detail and ask again.
+            {copy.repair.noCandidates}
           </p>
         )}
       {result && result.questions.length > 0 && (
         <div className="muse-result">
           <p>
             {result.candidates.length === 0
-              ? "Muse needs more information before proposing repairs. No candidates were added from these questions."
-              : "Muse also asked the following questions."}
+              ? copy.repair.needsInfo
+              : copy.repair.alsoAsked}
           </p>
-          <h4>Questions from Muse</h4>
+          <h4>{copy.repair.questions}</h4>
           <ul>
             {result.questions.map((question, index) => (
               <li key={`${index}-${question}`}>{question}</li>

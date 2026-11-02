@@ -48,6 +48,15 @@ import {
 } from "../src/lib/repair-handoff.ts";
 import { museAvailability } from "../src/lib/muse-provider.ts";
 import {
+  formatEnglishGroupedNumber,
+  museCopyFor,
+  museFailureText,
+  museNoticeText,
+  museStoredFailure,
+  normalizeMuseLocale,
+  resolveStoredFailureText,
+} from "../src/lib/muse-language.ts";
+import {
   isCandidateSetCurrent,
   mergeMuseCandidates,
   museCandidateLabel,
@@ -215,6 +224,169 @@ test("muse latency and usage formatting report unknowns without inventing values
     formatProviderUsage(undefined),
     "Provider-reported usage: not reported.",
   );
+});
+
+test("muse language helpers default to English and fall back safely", () => {
+  assert.equal(normalizeMuseLocale(undefined), "en");
+  assert.equal(normalizeMuseLocale(null), "en");
+  assert.equal(normalizeMuseLocale("en"), "en");
+  assert.equal(normalizeMuseLocale("es"), "es");
+  assert.equal(normalizeMuseLocale("es-ES"), "es");
+  assert.equal(normalizeMuseLocale(" ES "), "es");
+  for (const unsupported of ["fr", "pt-BR", "", 42, {}, []])
+    assert.equal(normalizeMuseLocale(unsupported), "en");
+  assert.equal(museCopyFor(undefined), museCopyFor("en"));
+  assert.equal(museCopyFor("fr"), museCopyFor("en"));
+  assert.equal(
+    museCopyFor("es").intake.title,
+    "Preguntar a Muse sobre esta foto",
+  );
+  // Unsupported locales keep the existing English formatter output.
+  assert.deepEqual(museRequestStatus({ busy: true }, "fr"), {
+    kind: "pending",
+    label: "Waiting for Muse",
+  });
+  assert.equal(
+    formatProviderUsage(null, "fr"),
+    "Provider-reported usage: not reported.",
+  );
+  assert.equal(formatMuseLatency(null, "fr"), "duration: not reported");
+});
+
+test("muse Spanish status, latency and usage keep unknown and zero honest", () => {
+  assert.deepEqual(museRequestStatus({ busy: true }, "es"), {
+    kind: "pending",
+    label: "Esperando a Muse",
+  });
+  assert.deepEqual(museRequestStatus({ errorCode: "timeout" }, "es"), {
+    kind: "timeout",
+    label: "La solicitud agotó el tiempo",
+  });
+  assert.equal(
+    museStatusLabel("provider_failure", "es"),
+    "La solicitud a Muse falló",
+  );
+  assert.equal(museStatusLabel("nonsense", "es"), "La solicitud a Muse falló");
+  assert.equal(formatMuseLatency(0, "es"), "duración: 0 ms");
+  assert.equal(formatMuseLatency(1234, "es"), "duración: 1234 ms");
+  for (const missing of [null, undefined, "12", Number.NaN, -1, Infinity, {}])
+    assert.equal(formatMuseLatency(missing, "es"), "duración: no informada");
+  for (const missing of [null, undefined, "PRIVATE", 42, true, []])
+    assert.equal(
+      formatProviderUsage(missing, "es"),
+      "Uso informado por el proveedor: no informado.",
+    );
+  assert.equal(
+    formatProviderUsage(
+      { model_calls: 0, input_tokens: 0, output_tokens: 0 },
+      "es",
+    ),
+    "Uso informado por el proveedor — llamadas al modelo: 0; tokens de entrada: 0; tokens de salida: 0.",
+  );
+  assert.equal(
+    formatProviderUsage({ model_calls: 1, input_tokens: null }, "es"),
+    "Uso informado por el proveedor — llamadas al modelo: 1; tokens de entrada: no informado; tokens de salida: no informado.",
+  );
+  const malformed = formatProviderUsage(
+    { model_calls: "PRIVATE", input_tokens: 10, output_tokens: 5 },
+    "es",
+  );
+  assert.match(malformed, /no informado/);
+  assert.doesNotMatch(malformed, /PRIVATE/);
+});
+
+test("grouped counts keep English formatting after Spanish toggle", () => {
+  const usage = {
+    model_calls: 2,
+    input_tokens: 12345,
+    output_tokens: 1234567,
+  };
+  const english = formatProviderUsage(usage, "en");
+  assert.equal(
+    english,
+    "Provider-reported usage — model calls: 2; input tokens: 12,345; output tokens: 1,234,567.",
+  );
+  // Same retained values in Spanish: labels translate, numbers do not.
+  assert.equal(
+    formatProviderUsage(usage, "es"),
+    "Uso informado por el proveedor — llamadas al modelo: 2; tokens de entrada: 12,345; tokens de salida: 1,234,567.",
+  );
+  assert.equal(formatEnglishGroupedNumber(12345), "12,345");
+  assert.equal(formatEnglishGroupedNumber(0), "0");
+});
+
+test("retained notice identity renders in the current locale", () => {
+  for (const [notice, enText, esText] of [
+    [
+      "intake-cancelled",
+      museCopyFor("en").intake.cancelled,
+      museCopyFor("es").intake.cancelled,
+    ],
+    [
+      "diagnosis-cancelled",
+      museCopyFor("en").diagnosis.cancelled,
+      museCopyFor("es").diagnosis.cancelled,
+    ],
+    [
+      "repair-cancelled",
+      museCopyFor("en").repair.cancelled,
+      museCopyFor("es").repair.cancelled,
+    ],
+    [
+      "design-cancelled",
+      museCopyFor("en").design.cancelled,
+      museCopyFor("es").design.cancelled,
+    ],
+    [
+      "design-new-request",
+      museCopyFor("en").design.newRequestNotice,
+      museCopyFor("es").design.newRequestNotice,
+    ],
+  ]) {
+    // One retained identity, rendered first in EN then after ES toggle.
+    assert.equal(museNoticeText(notice, "en"), enText);
+    assert.equal(museNoticeText(notice, "es"), esText);
+    assert.notEqual(enText, esText);
+  }
+  assert.equal(museNoticeText(null, "es"), "");
+  assert.equal(museNoticeText("unknown-notice", "es"), "");
+});
+
+test("stored failure fallback follows locale while API text stays verbatim", () => {
+  const fallback = museStoredFailure({ fallbackSection: "intake" });
+  assert.equal(
+    museFailureText(fallback, "en"),
+    museCopyFor("en").intake.requestFailed,
+  );
+  assert.equal(
+    museFailureText(fallback, "es"),
+    museCopyFor("es").intake.requestFailed,
+  );
+  const designFallback = museStoredFailure({ fallbackSection: "design" });
+  assert.equal(
+    museFailureText(designFallback, "en"),
+    "Could not load this plan. Try again.",
+  );
+  assert.equal(
+    museFailureText(designFallback, "es"),
+    museCopyFor("es").design.requestFailed,
+  );
+  const apiText = "API supplied failure: Reload the project and try again.";
+  const apiFailure = museStoredFailure({
+    code: "stale_version",
+    apiMessage: apiText,
+    fallbackSection: "intake",
+  });
+  assert.equal(apiFailure.code, "stale_version");
+  assert.equal(museFailureText(apiFailure, "en"), apiText);
+  assert.equal(museFailureText(apiFailure, "es"), apiText);
+  // String-stored generic fallback (plan loader) also re-derives locale.
+  const storedEnglish = museCopyFor("en").diagnosis.requestFailed;
+  assert.equal(
+    resolveStoredFailureText(storedEnglish, "diagnosis", "es"),
+    museCopyFor("es").diagnosis.requestFailed,
+  );
+  assert.equal(resolveStoredFailureText(apiText, "diagnosis", "es"), apiText);
 });
 
 test("museDiagnosticsFromResult maps diagnostics or returns null", () => {

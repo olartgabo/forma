@@ -8,9 +8,19 @@ import {
   type RepairHandoff,
 } from "../lib/repair-handoff";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import {
+  formatEnglishGroupedNumber,
+  museFailureText,
+  museNoticeText,
+  museStoredFailure,
+  resolveStoredFailureText,
+  type MuseNoticeId,
+  type MuseStoredFailure,
+} from "../lib/muse-language";
 import type { MuseAvailability } from "../lib/muse-provider";
 import type { DiagnosisFocus } from "../lib/build-diagnosis";
 import MuseRequestStatus from "./muse-request-status";
+import { useMuseLanguage } from "./muse-language-provider";
 import type {
   DiagnosisResult,
   Media,
@@ -29,10 +39,11 @@ function isEligible(photo: Media): boolean {
   );
 }
 
-function errorMessage(error: unknown) {
+function errorMessage(error: unknown, fallback?: string) {
   return error instanceof ApiError
     ? error.message
-    : "The request could not finish. Check the API connection and try again.";
+    : (fallback ??
+        "The request could not finish. Check the API connection and try again.");
 }
 
 export default function MuseDiagnosisPanel({
@@ -89,12 +100,12 @@ export default function MuseDiagnosisPanel({
     planLoader.getState,
   );
   const [result, setResult] = useState<DiagnosisResult | null>(null);
-  const [failure, setFailure] = useState<{
-    code?: string;
-    message: string;
-  } | null>(null);
-  const [cancelledMessage, setCancelledMessage] = useState("");
+  const [failure, setFailure] = useState<MuseStoredFailure | null>(null);
+  const [cancelledNotice, setCancelledNotice] = useState<MuseNoticeId | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
+  const { locale, copy } = useMuseLanguage();
   const controller = useRef<AbortController | null>(null);
   const epoch = useRef(0);
 
@@ -140,7 +151,7 @@ export default function MuseDiagnosisPanel({
     setConsented(false);
     setResult(null);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
     setBusy(false);
   }, [
     token,
@@ -198,9 +209,7 @@ export default function MuseDiagnosisPanel({
     controller.current = null;
     setBusy(false);
     setFailure(null);
-    setCancelledMessage(
-      "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the photo, so no result was shown.",
-    );
+    setCancelledNotice("diagnosis-cancelled");
   }
 
   async function ask() {
@@ -226,7 +235,7 @@ export default function MuseDiagnosisPanel({
     setConsented(false);
     setBusy(true);
     setFailure(null);
-    setCancelledMessage("");
+    setCancelledNotice(null);
     setResult(null);
     try {
       const next = await requestDiagnosis(
@@ -254,15 +263,16 @@ export default function MuseDiagnosisPanel({
       if (requestController.signal.aborted || requestEpoch !== epoch.current)
         return;
       if (failure instanceof ApiError && failure.code === "cancelled") {
-        setCancelledMessage(
-          "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the photo, so no result was shown.",
-        );
+        setCancelledNotice("diagnosis-cancelled");
         return;
       }
-      setFailure({
-        code: failure instanceof ApiError ? failure.code : undefined,
-        message: errorMessage(failure),
-      });
+      setFailure(
+        museStoredFailure({
+          code: failure instanceof ApiError ? failure.code : undefined,
+          apiMessage: failure instanceof ApiError ? failure.message : undefined,
+          fallbackSection: "diagnosis",
+        }),
+      );
     } finally {
       if (!requestController.signal.aborted && requestEpoch === epoch.current) {
         controller.current = null;
@@ -291,56 +301,47 @@ export default function MuseDiagnosisPanel({
       id="muse-diagnosis-panel"
       tabIndex={-1}
       aria-labelledby="muse-diagnosis-title"
+      lang={locale}
     >
       <div className="section-title">
         <span aria-hidden="true">4</span>
-        <h2 id="muse-diagnosis-title">Something went wrong</h2>
+        <h2 id="muse-diagnosis-title">{copy.diagnosis.title}</h2>
       </div>
-      <p>
-        Send one saved failure photo and what you noticed to Muse for a
-        read-only diagnosis. Muse separates what is visible from possible causes
-        and questions. This does not change your plan or materials, record
-        damage, or start a repair.
-      </p>
-      <p className="help">
-        Muse&apos;s diagnosis is unverified. A repair is only a draft until
-        FORMA simulates it and you approve it; starting a repair review below
-        does not change your plan or materials.
-      </p>
+      <p>{copy.diagnosis.intro}</p>
+      <p className="help">{copy.diagnosis.unverified}</p>
       {photos.length === 0 ? (
-        <p className="empty-note">
-          Save a photo of the problem in this project first, then choose it
-          here.
-        </p>
+        <p className="empty-note">{copy.diagnosis.saveFirst}</p>
       ) : (
         <>
-          <label htmlFor="diagnosis-photo">Saved failure photo</label>
+          <label htmlFor="diagnosis-photo">{copy.diagnosis.savedPhoto}</label>
           <select
             id="diagnosis-photo"
             value={selectedId}
             disabled={busy}
             onChange={(event) => setSelectedId(event.target.value)}
           >
-            <option value="">Choose a photo…</option>
+            <option value="">{copy.diagnosis.choosePhoto}</option>
             {photos.map((photo, index) => (
               <option
                 key={photo.id}
                 value={photo.id}
                 disabled={!isEligible(photo)}
               >
-                Photo {index + 1} — {photo.content_type},{" "}
-                {photo.byte_count.toLocaleString()} bytes
-                {isEligible(photo) ? "" : " (cannot be sent to Muse)"}
+                {copy.diagnosis.photo} {index + 1} — {photo.content_type},{" "}
+                {formatEnglishGroupedNumber(photo.byte_count)}{" "}
+                {copy.diagnosis.bytes}
+                {isEligible(photo) ? "" : ` ${copy.diagnosis.cannotSend}`}
               </option>
             ))}
           </select>
           {selected && !eligible && (
             <p className="help" role="note">
-              Muse can only read saved JPEG or PNG photos of 5,000,000 bytes or
-              smaller. Save a smaller JPEG or PNG photo instead.
+              {copy.diagnosis.formatHelp}
             </p>
           )}
-          <label htmlFor="diagnosis-problem">What went wrong?</label>
+          <label htmlFor="diagnosis-problem">
+            {copy.diagnosis.problemLabel}
+          </label>
           <textarea
             id="diagnosis-problem"
             rows={4}
@@ -348,32 +349,32 @@ export default function MuseDiagnosisPanel({
             value={problem}
             disabled={busy}
             onChange={(event) => setProblem(event.target.value)}
-            placeholder="For example: the slot tore when I inserted the tab"
+            placeholder={copy.diagnosis.problemPlaceholder}
           />
-          <p className="help">
-            This is your report, not something Muse has observed. Muse will keep
-            it separate from what is visible in the photo.
-          </p>
+          <p className="help">{copy.diagnosis.problemHelp}</p>
           {hasActive ? (
             <>
-              <label htmlFor="diagnosis-operation">Current step</label>
+              <label htmlFor="diagnosis-operation">
+                {copy.diagnosis.currentStep}
+              </label>
               <select
                 id="diagnosis-operation"
                 value={operationId}
                 disabled={busy || !activePlan}
                 onChange={(event) => setOperationId(event.target.value)}
               >
-                <option value="">Choose the current step…</option>
+                <option value="">{copy.diagnosis.chooseStep}</option>
                 {operations.map((operation, index) => (
                   <option key={operation.id} value={operation.id}>
-                    Step {index + 1} — {operation.type} ({operation.id})
+                    {copy.diagnosis.step} {index + 1} — {operation.type} (
+                    {operation.id})
                   </option>
                 ))}
               </select>
               {planError && (
                 <>
                   <p className="error" role="alert">
-                    {planError}
+                    {resolveStoredFailureText(planError, "diagnosis", locale)}
                   </p>
                   <button
                     type="button"
@@ -381,23 +382,22 @@ export default function MuseDiagnosisPanel({
                     disabled={busy || planLoading}
                     onClick={() => planLoader.retry()}
                   >
-                    Retry loading manual
+                    {copy.actions.retryLoadingManual}
                   </button>
                 </>
               )}
               {!activePlan && !planError && (
-                <p className="help">Loading the active manual steps…</p>
+                <p className="help">{copy.diagnosis.loadingSteps}</p>
               )}
             </>
           ) : (
-            <p className="help">
-              No active manual yet, so this is a photo-only diagnosis. Build
-              progress stays unknown and Muse cannot name affected plan parts.
-            </p>
+            <p className="help">{copy.diagnosis.photoOnly}</p>
           )}
           {museAvailability?.enabled === false && (
             <p className="help" role="note">
-              {museAvailability.reason}
+              {locale === "es"
+                ? copy.provider.notConfiguredReason
+                : museAvailability.reason}
             </p>
           )}
           <label className="checkbox-label" htmlFor="diagnosis-consent">
@@ -408,18 +408,9 @@ export default function MuseDiagnosisPanel({
               disabled={busy || museAvailability?.enabled === false}
               onChange={(event) => setConsented(event.target.checked)}
             />
-            Send the selected photo, my reported problem and this project&apos;s
-            saved materials
-            {hasActive ? " and active step" : ""} to Meta&apos;s Muse service
-            for this one request. Do not send a photo you are not allowed to
-            share.
+            {hasActive ? copy.diagnosis.consentActive : copy.diagnosis.consent}
           </label>
-          {inventoryStale && (
-            <p className="help">
-              Save or reload the inventory first: Muse diagnosis is unavailable
-              while saved materials are stale or have unsaved changes.
-            </p>
-          )}
+          {inventoryStale && <p className="help">{copy.diagnosis.stale}</p>}
           <div className="muse-actions">
             <button
               type="button"
@@ -427,27 +418,28 @@ export default function MuseDiagnosisPanel({
               disabled={actionDisabled}
               onClick={() => void ask()}
             >
-              Ask Muse what went wrong
+              {copy.diagnosis.ask}
             </button>
           </div>
           <MuseRequestStatus
             busy={busy}
-            pendingMessage="Asking Muse… Cancelling stops FORMA waiting; Muse may already be processing the photo. There are no automatic retries."
+            pendingMessage={copy.diagnosis.pending}
             onCancel={cancel}
-            cancelledMessage={cancelledMessage}
+            cancelledMessage={museNoticeText(cancelledNotice, locale)}
             errorCode={failure?.code}
-            errorMessage={failure?.message}
+            errorMessage={
+              failure ? museFailureText(failure, locale) : undefined
+            }
             diagnostics={
               result ? museDiagnosticsFromResult(result.diagnostics) : null
             }
+            locale={locale}
           />
           {result && (
             <div className="muse-result">
-              <h3>Visible observations</h3>
+              <h3>{copy.diagnosis.visible}</h3>
               {result.diagnosis.visible_observations.length === 0 ? (
-                <p className="empty-note">
-                  Muse reported no visible observations.
-                </p>
+                <p className="empty-note">{copy.diagnosis.noVisible}</p>
               ) : (
                 <ul>
                   {result.diagnosis.visible_observations.map((item, index) => (
@@ -455,9 +447,9 @@ export default function MuseDiagnosisPanel({
                   ))}
                 </ul>
               )}
-              <h3>Possible causes (hypotheses)</h3>
+              <h3>{copy.diagnosis.causes}</h3>
               {result.diagnosis.hypotheses.length === 0 ? (
-                <p className="empty-note">Muse offered no hypotheses.</p>
+                <p className="empty-note">{copy.diagnosis.noCauses}</p>
               ) : (
                 <ul>
                   {result.diagnosis.hypotheses.map((item, index) => (
@@ -465,11 +457,9 @@ export default function MuseDiagnosisPanel({
                   ))}
                 </ul>
               )}
-              <h3>Questions or measurements to check</h3>
+              <h3>{copy.diagnosis.questions}</h3>
               {result.diagnosis.questions_or_measurements.length === 0 ? (
-                <p className="empty-note">
-                  Muse asked for no further measurements.
-                </p>
+                <p className="empty-note">{copy.diagnosis.noQuestions}</p>
               ) : (
                 <ul>
                   {result.diagnosis.questions_or_measurements.map(
@@ -480,22 +470,16 @@ export default function MuseDiagnosisPanel({
                 </ul>
               )}
               <p>
-                Failure type:{" "}
+                {copy.diagnosis.failureType}{" "}
                 {result.diagnosis.failure_type.replaceAll("_", " ")}.
                 {result.diagnosis.affected_ids.length > 0
-                  ? ` Affected plan items: ${result.diagnosis.affected_ids.join(", ")}.`
-                  : " No plan items were identified."}{" "}
-                A photo does not confirm measurements or that a physical check
-                passed; measure and check yourself.
+                  ? ` ${copy.diagnosis.affected} ${result.diagnosis.affected_ids.join(", ")}.`
+                  : ` ${copy.diagnosis.noAffected}`}{" "}
+                {copy.diagnosis.measurementNote}
               </p>
               {repairHandoff && onRepairHandoff && (
                 <div className="muse-actions">
-                  <p className="help">
-                    Muse&apos;s diagnosis is unverified. Reviewing a repair only
-                    starts a draft; FORMA must simulate it and you must approve
-                    it before anything changes. Nothing is sent to any API by
-                    this action.
-                  </p>
+                  <p className="help">{copy.diagnosis.repairHelp}</p>
                   {repairHandoff.targetIds.map((targetId) => (
                     <button
                       key={targetId}
@@ -509,7 +493,7 @@ export default function MuseDiagnosisPanel({
                         )
                       }
                     >
-                      Review a repair for {targetId}
+                      {copy.diagnosis.reviewRepair} {targetId}
                     </button>
                   ))}
                 </div>
