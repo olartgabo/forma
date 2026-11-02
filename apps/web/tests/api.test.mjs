@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   ApiError,
   activatePlan,
+  approveRepair,
   createProject,
   deletePhoto,
   fetchPhoto,
@@ -20,6 +21,7 @@ import {
   requestIntakeObservation,
   saveInventory,
   recordProgress,
+  simulateRepairs,
   uploadPhoto,
 } from "../src/lib/api.ts";
 import {
@@ -363,6 +365,54 @@ test("physical reports bind the active version and history cursor without accept
     `Bearer ${token}`,
   );
   assert.equal(calls[1].options.cache, "no-store");
+});
+
+test("repair review sends typed candidates and approves only a preview reference", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json({ previews: [] });
+  });
+  const simulation = {
+    expected_version_id: "version-a",
+    expected_last_event_id: "event-a",
+    idempotency_key: "simulate-key",
+    candidates: [
+      {
+        id: "repair-a",
+        base_version_id: "version-a",
+        kind: "replace_part",
+        target_id: "stand-brace",
+        replacement_stock_id: "spare",
+        replacement_profile_id: null,
+        width_mm: null,
+        height_mm: null,
+        angle_deg: null,
+        rationale: "SYNTHETIC torn brace",
+      },
+    ],
+    connector_measurements: [{ stock_id: "tape", remaining_length_mm: 260 }],
+    remaining_confirmed: true,
+  };
+  const approval = {
+    expected_version_id: "version-a",
+    expected_last_event_id: "event-a",
+    preview_id: "preview-a",
+    idempotency_key: "commit-key",
+    user_approved: true,
+  };
+  await simulateRepairs(token, "project-a", simulation);
+  await approveRepair(token, "project-a", approval);
+  assert.equal(calls[0].path, "/api/projects/project-a/adapt/simulate");
+  assert.deepEqual(JSON.parse(calls[0].options.body), simulation);
+  assert.equal(calls[1].path, "/api/projects/project-a/adapt/commit");
+  // Approval names a server-stored preview; the browser never sends a plan.
+  assert.deepEqual(JSON.parse(calls[1].options.body), approval);
+  for (const call of calls) {
+    assert.equal(call.options.method, "POST");
+    assert.equal(call.options.headers.get("Authorization"), `Bearer ${token}`);
+    assert.equal(call.options.cache, "no-store");
+  }
 });
 
 test("plan reads stay scoped and approval sends only a version reference", async (t) => {

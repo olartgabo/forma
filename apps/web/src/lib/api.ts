@@ -2,6 +2,10 @@ import type { Stock } from "./generated/contracts";
 import type {
   BuildRequirements,
   ActivationResult,
+  AdaptCommitRequest,
+  AdaptCommitResult,
+  AdaptPreviewSet,
+  AdaptSimulateRequest,
   DesignGenerateRequest,
   DesignGenerateResult,
   DesignReadiness,
@@ -599,6 +603,44 @@ export function recordProgress(
       body: JSON.stringify(body),
     },
     json<ProgressResult>,
+    signal,
+  );
+}
+
+export function simulateRepairs(
+  token: string,
+  id: string,
+  body: AdaptSimulateRequest,
+  signal?: AbortSignal,
+): Promise<AdaptPreviewSet> {
+  return request(
+    token,
+    `${projectPath(id)}/adapt/simulate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    json<AdaptPreviewSet>,
+    signal,
+  );
+}
+
+export function approveRepair(
+  token: string,
+  id: string,
+  body: AdaptCommitRequest,
+  signal?: AbortSignal,
+): Promise<AdaptCommitResult> {
+  return request(
+    token,
+    `${projectPath(id)}/adapt/commit`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    json<AdaptCommitResult>,
     signal,
   );
 }

@@ -6,6 +6,9 @@ import {
   listPlans,
   loadPlan,
 } from "../lib/api";
+import AdaptWorkbench from "./adapt-workbench";
+import { operationTitles } from "../lib/operation-titles";
+import Diagram from "./manual-diagram";
 import MuseRequestDetails from "./muse-request-details";
 import PhysicalProgress from "./physical-progress";
 import type {
@@ -24,56 +27,6 @@ function message(error: unknown) {
     ? error.message
     : "Could not load this plan. Try again.";
 }
-
-function Diagram({ panel }: { panel: ManualPanel }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [enlarged, setEnlarged] = useState(false);
-  useEffect(() => {
-    const next = URL.createObjectURL(
-      new Blob([panel.svg], { type: "image/svg+xml" }),
-    );
-    setUrl(next);
-    return () => URL.revokeObjectURL(next);
-  }, [panel.svg]);
-  return url ? (
-    <>
-      <button
-        type="button"
-        className="quiet"
-        aria-expanded={enlarged}
-        onClick={() => setEnlarged((value) => !value)}
-      >
-        {enlarged ? "Fit diagram to screen" : "Enlarge diagram"}
-      </button>
-      <div
-        className={`manual-diagram-frame${enlarged ? " enlarged" : ""}`}
-        tabIndex={enlarged ? 0 : undefined}
-        role={enlarged ? "region" : undefined}
-        aria-label={
-          enlarged
-            ? "Full-size diagram; scroll to inspect dimensions"
-            : undefined
-        }
-      >
-        <img
-          className="manual-diagram"
-          src={url}
-          alt={`Assembly diagram for ${panel.operation_id}. ${panel.instruction}`}
-        />
-      </div>
-    </>
-  ) : (
-    <p>Loading diagram…</p>
-  );
-}
-
-const titles: Record<string, string> = {
-  cut_rect: "Cut the labelled panels",
-  fold: "Fold the retaining lip",
-  tape_joint: "Attach the tape hinge",
-  inspect: "Inspect the assembly",
-  functional_test: "Test the stand",
-};
 
 export default function PlanWorkbench({
   token,
@@ -96,6 +49,7 @@ export default function PlanWorkbench({
 }) {
   const [plans, setPlans] = useState<readonly PlanSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const shownActive = useRef<string | null | undefined>(undefined);
   const [version, setVersion] = useState<PlanVersion | null>(null);
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -164,7 +118,12 @@ export default function PlanWorkbench({
       .then((result) => {
         if (controller.signal.aborted) return;
         setPlans(result.plans);
+        // A newly activated version (approval or repair) replaces the
+        // selection; otherwise keep the plan the builder was viewing.
+        const activeChanged = shownActive.current !== project.active_version_id;
+        shownActive.current = project.active_version_id;
         setSelected((current) =>
+          !activeChanged &&
           result.plans.some((plan) => plan.version_id === current)
             ? current
             : (project.active_version_id ??
@@ -635,7 +594,9 @@ export default function PlanWorkbench({
               <option value={plan.version_id} key={plan.version_id}>
                 {plan.version_id === project.active_version_id
                   ? "Active plan"
-                  : "Preview"}{" "}
+                  : project.active_version_id
+                    ? "Not active"
+                    : "Preview"}{" "}
                 · {plan.candidate_id} · {plan.version_id}
               </option>
             ))}
@@ -666,7 +627,7 @@ export default function PlanWorkbench({
             <article className="manual-step">
               <h3 tabIndex={-1}>
                 Step {step + 1} of {version.manual.panels.length} —{" "}
-                {titles[
+                {operationTitles[
                   version.plan.operations.find(
                     (operation) => operation.id === panel.operation_id,
                   )?.type ?? ""
@@ -740,6 +701,16 @@ export default function PlanWorkbench({
                 />
               )}
             </article>
+          )}
+          {current && (
+            <AdaptWorkbench
+              token={token}
+              projectId={project.id}
+              version={version}
+              disabled={approvalDisabled || pending !== null || progressPending}
+              onApproved={onReload}
+              onLockChange={onLockChange}
+            />
           )}
           <details className="manual-materials">
             <summary>Materials and planned quantities</summary>

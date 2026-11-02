@@ -35,3 +35,6 @@ the shared family validator, replacement SVGs, bounded original uncut-base
 extension and unsupported resize variants for #39. The
 [attached-brace recovery](issue-44-brace-tape-undo.md) handoff covers explicit tape
 undo, preserved build history and recovery manuals for #44.
+
+The [repair revision](issue-12-adapt-revision.md) handoff covers adapt/simulate,
+explicit atomic adapt/commit, carried completions and the Adapt screen for #12.

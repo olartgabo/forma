@@ -275,3 +275,17 @@ Unfinished final operations can receive replacement identities only when no
 persisted event, evidence or transaction references the retired operation or its
 checkpoint. Otherwise the proposal blocks before mutation. The same rule applies
 to the original six-operation path; saved history is never silently dropped.
+
+## D023: Approved repair revisions and failed checks, November 2, 2026
+
+Issue #12 activates a repair only through an explicit approval that names a
+server-stored preview, the expected active version and the history cursor. The
+server re-derives the simulation from saved history inside the commit
+transaction; the browser never supplies a plan. The new version carries the
+completions the replanner preserved and records evidence invalidations; parent
+history stays unchanged.
+
+A user-reported failed inspection or functional test is a known outcome, not
+uncertainty. It no longer blocks repair simulation because its check never
+completes and every repair must repeat it. Other failed, unknown or invalidated
+records still block. See the [handoff](handoffs/issue-12-adapt-revision.md).

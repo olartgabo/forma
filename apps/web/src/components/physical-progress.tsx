@@ -253,9 +253,9 @@ export default function PhysicalProgress({
         )}
         {progress?.status === "needs_review" && (
           <p className="error">
-            A check failed. Further confirmations are paused until diagnosis or
-            an approved revision resolves it. The failed report remains in
-            history.
+            A check failed. Further confirmations are paused until an approved
+            revision resolves it; review a repair under Adapt the plan. The
+            failed report remains in history.
           </p>
         )}
         {progress?.status === "passed" && (
@@ -280,7 +280,9 @@ export default function PhysicalProgress({
       </button>
       {completed && (
         <p>
-          This operation is already confirmed. Its report remains in history.
+          {progress?.carried_operation_ids?.includes(operationId)
+            ? "Confirmed before this revision; that report stays with the earlier version."
+            : "This operation is already confirmed. Its report remains in history."}
         </p>
       )}
       {progress && missingPredecessors.length > 0 && (
