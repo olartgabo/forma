@@ -57,6 +57,7 @@ export default function MuseDiagnosisPanel({
   prefill,
   museAvailability,
   onDiagnosisSaved,
+  onDiagnosisOutcome,
 }: {
   token: string;
   project: Project;
@@ -67,6 +68,7 @@ export default function MuseDiagnosisPanel({
   prefill?: DiagnosisFocus | null;
   museAvailability?: MuseAvailability;
   onDiagnosisSaved?: () => void;
+  onDiagnosisOutcome?: (outcome: "pending" | "saved" | "uncertain") => void;
 }) {
   const [selectedId, setSelectedId] = useState("");
   const [problem, setProblem] = useState("");
@@ -109,6 +111,7 @@ export default function MuseDiagnosisPanel({
   const { locale, copy } = useMuseLanguage();
   const controller = useRef<AbortController | null>(null);
   const epoch = useRef(0);
+  const outcomeCallback = useRef(onDiagnosisOutcome);
 
   const selected = photos.find((photo) => photo.id === selectedId) ?? null;
   const eligible = selected !== null && isEligible(selected);
@@ -147,6 +150,7 @@ export default function MuseDiagnosisPanel({
 
   useEffect(() => {
     epoch.current += 1;
+    if (controller.current) outcomeCallback.current?.("uncertain");
     controller.current?.abort();
     controller.current = null;
     setConsented(false);
@@ -199,6 +203,7 @@ export default function MuseDiagnosisPanel({
   useEffect(
     () => () => {
       epoch.current += 1;
+      if (controller.current) outcomeCallback.current?.("uncertain");
       controller.current?.abort();
     },
     [],
@@ -206,6 +211,7 @@ export default function MuseDiagnosisPanel({
 
   function cancel() {
     epoch.current += 1;
+    if (controller.current) outcomeCallback.current?.("uncertain");
     controller.current?.abort();
     controller.current = null;
     setBusy(false);
@@ -230,6 +236,8 @@ export default function MuseDiagnosisPanel({
     const requestEpoch = ++epoch.current;
     const requestController = new AbortController();
     controller.current = requestController;
+    outcomeCallback.current = hasActive ? onDiagnosisOutcome : undefined;
+    if (hasActive) outcomeCallback.current?.("pending");
     // Consent covers this one request only: consume it on dispatch so any
     // later success, failure or cancellation requires a fresh opt-in. The
     // in-flight request keeps the payload captured above.
@@ -259,10 +267,13 @@ export default function MuseDiagnosisPanel({
       if (requestController.signal.aborted || requestEpoch !== epoch.current)
         return;
       setResult(next);
+      controller.current = null;
+      if (hasActive) outcomeCallback.current?.("saved");
       onDiagnosisSaved?.();
     } catch (failure) {
       if (requestController.signal.aborted || requestEpoch !== epoch.current)
         return;
+      if (hasActive) outcomeCallback.current?.("uncertain");
       if (failure instanceof ApiError && failure.code === "cancelled") {
         setCancelledNotice("diagnosis-cancelled");
         return;
