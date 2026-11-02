@@ -3,6 +3,7 @@ import importlib.util
 import json
 import sys
 import threading
+import time
 from dataclasses import asdict
 from pathlib import Path
 
@@ -44,6 +45,21 @@ class Fake:
         if isinstance(response, Exception):
             raise response
         return response
+
+
+class MetaCompatibleFake(Fake):
+    """Simulates Meta Chat Completions: tool_choice supports only auto/omitted.
+
+    Any named, required or none choice is rejected before a response is
+    produced, matching the provider's HTTP 400 behaviour.
+    """
+
+    def post(self, path, payload, timeout):
+        tool_choice = payload.get("tool_choice")
+        if tool_choice is not None and tool_choice != "auto":
+            self.calls.append((path, json.loads(json.dumps(payload)), timeout))
+            raise GatewayError("provider_http_error")
+        return super().post(path, payload, timeout)
 
 
 def final(content='{"questions":["Measure thickness"]}', reason="stop"):
@@ -110,6 +126,112 @@ def test_validated_deterministic_tool_roundtrip():
         "content": '{"needs_measurement":true}',
     }
     assert "tools" not in fake.calls[1][1]
+
+
+@pytest.mark.parametrize(
+    "unsupported",
+    [
+        {"type": "function", "function": {"name": "get_project_snapshot"}},
+        "required",
+        "none",
+    ],
+)
+def test_meta_compatible_transport_rejects_unsupported_tool_choice(unsupported):
+    fake = MetaCompatibleFake(final())
+    with pytest.raises(GatewayError, match="provider_http_error"):
+        fake.post(
+            "/chat/completions",
+            {"model": "muse-spark-1.3", "tool_choice": unsupported},
+            1,
+        )
+    assert len(fake.calls) == 1
+
+
+def test_meta_auto_first_tool_then_validated_result_then_typed_output():
+    fake = MetaCompatibleFake(call("get_project_snapshot"), final())
+    ran = []
+
+    def snapshot(args):
+        ran.append(args)
+        return Result(needs_measurement=not args.measured)
+
+    gateway = MetaGateway(fake)
+    output = gateway.propose(
+        "design",
+        Proposal,
+        tool=Tool("get_project_snapshot", Args, Result, snapshot),
+    )
+    assert output == Proposal(questions=["Measure thickness"])
+    assert ran == [Args(measured=False)]
+    first = fake.calls[0][1]
+    assert first["tool_choice"] == "auto"
+    assert first["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_project_snapshot",
+                "parameters": Args.model_json_schema(),
+            },
+        }
+    ]
+    assert "get_project_snapshot" in first["messages"][0]["content"]
+    assert "exactly once" in first["messages"][0]["content"]
+    second = fake.calls[1][1]
+    assert "tools" not in second
+    assert "tool_choice" not in second
+    assert (
+        second["response_format"]["json_schema"]["schema"]
+        == Proposal.model_json_schema()
+    )
+    assert second["messages"][-2]["role"] == "assistant"
+    assert second["messages"][-1] == {
+        "role": "tool",
+        "tool_call_id": "call_1",
+        "content": '{"needs_measurement":true}',
+    }
+    assert [trace.status for trace in gateway.traces] == ["ok", "ok"]
+
+
+@pytest.mark.parametrize(
+    "response", [final(), final("Here is a design, no snapshot needed")]
+)
+def test_direct_final_before_tool_rejected_without_bypassing_snapshot(response):
+    ran = []
+
+    def snapshot(args):
+        ran.append(args)
+        return Result(needs_measurement=True)
+
+    fake = MetaCompatibleFake(response)
+    with pytest.raises(GatewayError) as error:
+        MetaGateway(fake).propose(
+            "design",
+            Proposal,
+            tool=Tool("get_project_snapshot", Args, Result, snapshot),
+        )
+    assert error.value.code == "invalid_tool_call"
+    assert ran == []
+    assert len(fake.calls) == 1
+
+
+def test_multiple_tool_calls_rejected_without_execution():
+    response = call("get_project_snapshot")
+    response["choices"][0]["message"]["tool_calls"].append(
+        response["choices"][0]["message"]["tool_calls"][0].copy()
+    )
+    fake = MetaCompatibleFake(response)
+
+    def forbidden(args):
+        pytest.fail("multiple tool calls executed")
+
+    with pytest.raises(GatewayError) as error:
+        MetaGateway(fake).propose(
+            "design",
+            Proposal,
+            tool=Tool("get_project_snapshot", Args, Result, forbidden),
+        )
+    assert error.value.code == "invalid_tool_call"
+    assert len(fake.calls) == 1
 
 
 @pytest.mark.parametrize(
@@ -238,6 +360,9 @@ def test_http_errors_closed_and_redacted(monkeypatch, status, code):
         def __init__(self, host, timeout):
             assert host == "api.meta.ai" and timeout == 2
 
+        def connect(self):
+            self.sock = _FakeSock()
+
         def request(self, method, path, **kwargs):
             assert method == "POST" and path == "/v1/responses"
             assert kwargs["headers"]["Authorization"] == "Bearer secret"
@@ -319,11 +444,17 @@ def test_absolute_timer_interrupts_stalled_headers_and_cleans_up(monkeypatch):
         def shutdown(self, how):
             interrupted.set()
 
+        def settimeout(self, value):
+            pass
+
     class Connection:
         closed = False
         sock = Sock()
 
         def __init__(self, host, timeout):
+            pass
+
+        def connect(self):
             pass
 
         def request(self, *args, **kwargs):
@@ -345,6 +476,216 @@ def test_absolute_timer_interrupts_stalled_headers_and_cleans_up(monkeypatch):
     assert {
         id(t) for t in threading.enumerate() if isinstance(t, threading.Timer)
     } == timers_before
+
+
+class _FakeSock:
+    def __init__(self):
+        self.timeout = None
+        self.closed = False
+
+    def settimeout(self, value):
+        self.timeout = value
+
+    def shutdown(self, how):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
+class _BlockingMetaConnection:
+    """Fake HTTPS connection whose DNS/connect stalls with no sock assigned.
+
+    ``connect()`` represents both name resolution and TCP/TLS connect,
+    which ``http.client`` performs inside ``connect()`` before ``sock``
+    exists.
+    """
+
+    instances = []
+
+    def __init__(self, host, timeout=None, **kwargs):
+        assert host == "api.meta.ai"
+        self.host = host
+        self.timeout = timeout
+        self.sock = None
+        self.closed = False
+        self.request_calls = []
+        self.connect_calls = 0
+        self.connect_started = threading.Event()
+        self.release_connect = threading.Event()
+        _BlockingMetaConnection.instances.append(self)
+
+    def connect(self):
+        self.connect_calls += 1
+        self.connect_started.set()
+        # Bounded so a failing test cannot hang the suite forever.
+        self.release_connect.wait(timeout=10)
+        self.sock = _FakeSock()
+
+    def request(self, method, url, body=None, headers=None):
+        self.request_calls.append((method, url, body, headers))
+
+    def getresponse(self):  # pragma: no cover - must never be reached
+        raise AssertionError("getresponse must not be called after timeout")
+
+    def close(self):
+        self.closed = True
+        if self.sock is not None:
+            self.sock.close()
+
+
+def _wait_until(predicate, timeout=2.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return predicate()
+
+
+def test_http_stalled_connect_no_sock_times_out_and_never_dispatches(monkeypatch):
+    _BlockingMetaConnection.instances = []
+    monkeypatch.setattr(
+        "forma_api.model_gateway.http.client.HTTPSConnection",
+        _BlockingMetaConnection,
+    )
+    start = time.monotonic()
+    with pytest.raises(GatewayError, match="timeout") as error:
+        MetaHTTP("secret").post("/chat/completions", {"prompt": "private"}, 0.3)
+    elapsed = time.monotonic() - start
+    assert error.value.code == "timeout"
+    assert "secret" not in str(error.value)
+    # Caller returns near its deadline (plus at most the documented grace)
+    # even though connect is still blocked and no socket was ever assigned.
+    assert elapsed < 1.5
+    assert len(_BlockingMetaConnection.instances) == 1
+    conn = _BlockingMetaConnection.instances[0]
+    assert conn.connect_started.is_set()
+    assert conn.sock is None
+    assert conn.connect_calls == 1
+    assert conn.request_calls == []
+
+    # Releasing the blocked stage afterwards must not dispatch the POST
+    # (no method, path, body or Authorization header) and must clean up.
+    conn.release_connect.set()
+    assert _wait_until(lambda: conn.closed)
+    assert conn.request_calls == []
+    assert conn.connect_calls == 1  # no implicit reconnect / automatic retry
+    assert conn.sock is not None and conn.sock.closed
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf"), 31, "1", None])
+def test_http_invalid_timeout_rejected_before_connection(monkeypatch, timeout):
+    def forbidden(*args, **kwargs):
+        pytest.fail("connection must not be created for an invalid timeout")
+
+    monkeypatch.setattr(
+        "forma_api.model_gateway.http.client.HTTPSConnection", forbidden
+    )
+    with pytest.raises(GatewayError, match="invalid_timeout"):
+        MetaHTTP("secret").post("/responses", {}, timeout)
+
+
+def test_http_invalid_endpoint_rejected_before_connection(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("connection must not be created for an invalid endpoint")
+
+    monkeypatch.setattr(
+        "forma_api.model_gateway.http.client.HTTPSConnection", forbidden
+    )
+    with pytest.raises(GatewayError, match="invalid_endpoint"):
+        MetaHTTP("secret").post("/admin", {}, 1)
+
+
+def test_http_success_path_dispatches_once_after_connect(monkeypatch):
+    class Response:
+        status = 200
+
+        def __init__(self):
+            self._chunks = iter([b'{"ok":', b"true}", b""])
+
+        def read1(self, size):
+            return next(self._chunks)
+
+    class Connection:
+        closed = False
+        sock = None
+
+        def __init__(self, host, timeout):
+            assert host == "api.meta.ai" and timeout == 2
+            self.calls = []
+
+        def connect(self):
+            self.sock = _FakeSock()
+
+        def request(self, method, path, **kwargs):
+            # http.client only auto-connects when sock is None; the explicit
+            # connect above must have assigned it before any dispatch.
+            assert self.sock is not None
+            self.calls.append((method, path, kwargs))
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            Connection.closed = True
+
+    instances = []
+
+    def factory(host, timeout):
+        conn = Connection(host, timeout)
+        instances.append(conn)
+        return conn
+
+    monkeypatch.setattr("forma_api.model_gateway.http.client.HTTPSConnection", factory)
+    result = MetaHTTP("secret").post("/responses", {"x": 1}, 2)
+    assert result == {"ok": True}
+    assert Connection.closed
+    assert len(instances) == 1
+    method, path, kwargs = instances[0].calls[0]
+    assert (method, path) == ("POST", "/v1/responses")
+    assert kwargs["headers"]["Authorization"] == "Bearer secret"
+    assert json.loads(kwargs["body"]) == {"x": 1}
+
+
+def test_http_trickling_response_hits_total_deadline(monkeypatch):
+    class Response:
+        status = 200
+
+        def read1(self, size):
+            time.sleep(0.05)
+            return b"x"
+
+    class Connection:
+        closed = False
+        sock = None
+
+        def __init__(self, host, timeout):
+            pass
+
+        def connect(self):
+            self.sock = _FakeSock()
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            Connection.closed = True
+
+    monkeypatch.setattr(
+        "forma_api.model_gateway.http.client.HTTPSConnection", Connection
+    )
+    start = time.monotonic()
+    with pytest.raises(GatewayError, match="timeout"):
+        MetaHTTP("secret").post("/responses", {}, 0.22)
+    elapsed = time.monotonic() - start
+    # Bytes keep arriving, so an inactivity timeout would never fire; the
+    # total deadline (plus at most the cleanup grace) must cut it off.
+    assert elapsed < 1.5
+    assert Connection.closed
 
 
 SMOKE_PATH = Path(__file__).resolve().parents[3] / "scripts" / "smoke_meta.py"

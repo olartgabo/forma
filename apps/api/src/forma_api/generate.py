@@ -5,6 +5,28 @@ from pathlib import Path
 
 from pydantic.json_schema import models_json_schema
 
+from forma_api.design_runtime import (
+    DesignCandidateResult,
+    DesignDiagnostics,
+    DesignErrorResponse,
+    DesignGenerateRequest,
+    DesignGenerateResult,
+    DesignReadiness,
+    ProjectSnapshot,
+    SnapshotToolArgs,
+)
+from forma_api.diagnosis_runtime import (
+    DiagnosisDiagnostics,
+    DiagnosisErrorResponse,
+    DiagnosisRequest,
+    DiagnosisResult,
+)
+from forma_api.intake_runtime import (
+    IntakeDiagnostics,
+    IntakeErrorResponse,
+    IntakeRequest,
+    IntakeResult,
+)
 from forma_api.media import Media, MediaDeleteResult, MediaList, MediaResult
 from forma_api.plans import (
     ActivationResult,
@@ -26,8 +48,12 @@ from forma_api.projects import (
     InventoryUpdate,
     Project,
     ProjectResult,
+    SavedProjectList,
+    SavedProjectSummary,
 )
 from forma_api.proof import ProofSnapshot, ProofVersion
+from forma_api.proposal_service import IntakeObservation
+from forma_api.provider_diagnostics import ProviderUsage
 from forma_domain import models
 from forma_domain.generate import typescript
 
@@ -37,6 +63,23 @@ API_RECORDS = (
     CreateProject,
     CompilePreview,
     DeleteResult,
+    DesignCandidateResult,
+    DesignDiagnostics,
+    DesignErrorResponse,
+    DesignGenerateRequest,
+    DesignGenerateResult,
+    DesignReadiness,
+    DiagnosisDiagnostics,
+    DiagnosisErrorResponse,
+    DiagnosisRequest,
+    DiagnosisResult,
+    ProjectSnapshot,
+    SnapshotToolArgs,
+    IntakeDiagnostics,
+    IntakeErrorResponse,
+    IntakeObservation,
+    IntakeRequest,
+    IntakeResult,
     InventoryUpdate,
     ManualBillItem,
     ManualDocument,
@@ -57,6 +100,9 @@ API_RECORDS = (
     ProgressUpdate,
     ProofSnapshot,
     ProofVersion,
+    ProviderUsage,
+    SavedProjectList,
+    SavedProjectSummary,
 )
 OUTPUT = "apps/web/src/lib/generated/api-contracts.ts"
 

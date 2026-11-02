@@ -17,6 +17,8 @@ import {
   saveInventory,
   uploadPhoto,
 } from "../lib/api";
+import MuseIntakePanel from "./muse-intake-panel";
+import MuseDiagnosisPanel from "./muse-diagnosis-panel";
 import type {
   BuildRequirements,
   Media,
@@ -24,8 +26,10 @@ import type {
 } from "../lib/generated/api-contracts";
 import type { Measurement, Stock } from "../lib/generated/contracts";
 import BuildRequirementsFields from "./build-requirements-fields";
+import DesignReadinessPanel from "./design-readiness-panel";
 import PlanWorkbench from "./plan-workbench";
 import ProofWorkbench from "./proof-workbench";
+import SavedProjectsPanel from "./saved-projects-panel";
 import {
   emptyRequirements,
   requirementsError,
@@ -613,6 +617,11 @@ function ProjectWorkbench({
                 </button>
               </fieldset>
             </form>
+            <SavedProjectsPanel
+              token={token}
+              disabled={locked}
+              onOpen={(id) => void openProject(id)}
+            />
           </section>
         </div>
       ) : (
@@ -663,7 +672,7 @@ function ProjectWorkbench({
               </div>
               <p>
                 Keep sheets, strips and connectors visible. Photos stay private
-                in this project and are not sent to a model.
+                in this project unless you explicitly ask Muse about one below.
               </p>
               <form
                 onSubmit={(event) => {
@@ -1081,6 +1090,25 @@ function ProjectWorkbench({
               )}
             </section>
           </div>
+          <MuseIntakePanel
+            token={token}
+            project={project}
+            photos={photos}
+            inventoryStale={stale || dirty}
+            disabled={locked}
+          />
+          <MuseDiagnosisPanel
+            token={token}
+            project={project}
+            photos={photos}
+            inventoryStale={stale || dirty}
+            disabled={locked}
+          />
+          <DesignReadinessPanel
+            token={token}
+            project={project}
+            inventoryStale={stale || dirty}
+          />
           <PlanWorkbench
             key={project.id}
             token={token}
@@ -1107,11 +1135,12 @@ function ProjectWorkbench({
           <aside className="next-step-note">
             <h2>What comes next</h2>
             <p>
-              Live design generation and diagnosis/repair activation are still
-              being connected. Active plans support explicit physical reports
-              above. Saving inventory records materials and requirements; it
-              does not validate a design. Model-assisted image review remains
-              pending.
+              Asking Muse returns a read-only observation; it does not change
+              your saved materials. Saved plan previews can be reviewed above,
+              and active plans support explicit physical reports. Repair
+              activation is still being connected. Saving inventory records
+              materials and requirements; it does not validate a design or
+              authorize a cut.
             </p>
           </aside>
         </>

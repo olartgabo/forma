@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import Field, StringConstraints, model_validator
@@ -79,6 +79,19 @@ class Project(Record):
 class ProjectResult(Record):
     project: Project
     replayed: bool = False
+
+
+class SavedProjectSummary(Record):
+    id: ID
+    goal: Text
+    revision_id: ID
+    inventory_confirmed: bool = False
+    active_version_id: ID | None = None
+
+
+class SavedProjectList(Record):
+    projects: tuple[SavedProjectSummary, ...]
+    next_cursor: ID | None = None
 
 
 class DeleteResult(Record):
@@ -244,6 +257,35 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
             )
             return result
 
+    @router.get("", response_model=SavedProjectList)
+    def list_projects(
+        owner: Owner,
+        limit: Annotated[int, Query(ge=1, le=50)] = 20,
+        cursor: Annotated[ID | None, Query()] = None,
+    ):
+        with store.transaction() as connection:
+            rows = connection.execute(
+                "SELECT id, json_extract(body, '$.goal'), "
+                "json_extract(body, '$.revision_id'), "
+                "json_extract(body, '$.inventory_confirmed'), "
+                "json_extract(body, '$.active_version_id') "
+                "FROM projects WHERE owner = ? AND (? IS NULL OR id > ?) "
+                "ORDER BY id ASC LIMIT ?",
+                (owner, cursor, cursor, limit + 1),
+            ).fetchall()
+        summaries = tuple(
+            SavedProjectSummary(
+                id=row[0],
+                goal=row[1],
+                revision_id=row[2],
+                inventory_confirmed=bool(row[3]),
+                active_version_id=row[4],
+            )
+            for row in rows[:limit]
+        )
+        next_cursor = summaries[-1].id if len(rows) > limit and summaries else None
+        return SavedProjectList(projects=summaries, next_cursor=next_cursor)
+
     @router.get("/{project_id}", response_model=Project)
     def get(project_id: ID, owner: Owner):
         with store.transaction() as connection:
@@ -337,8 +379,13 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 (owner, project_id + ":media:%"),
             )
             connection.execute(
-                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?)",
-                (owner, project_id + ":plan-preview", project_id + ":plan-activation"),
+                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?)",
+                (
+                    owner,
+                    project_id + ":plan-preview",
+                    project_id + ":plan-activation",
+                    project_id + ":design-generation",
+                ),
             )
             connection.execute(
                 "DELETE FROM requests WHERE owner=? AND scope=?",
@@ -358,9 +405,15 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     from forma_api.plans import plan_router
     from forma_api.progress import progress_router
     from forma_api.proof import proof_router
+    from forma_api.routes.designs import designs_router
+    from forma_api.routes.diagnosis import diagnosis_router
+    from forma_api.routes.intake import intake_router
 
     router.include_router(media_router(store, authenticate))
+    router.include_router(intake_router(store, authenticate))
     router.include_router(plan_router(store, authenticate))
     router.include_router(progress_router(store, authenticate))
     router.include_router(proof_router(store, authenticate))
+    router.include_router(designs_router(store, authenticate))
+    router.include_router(diagnosis_router(store, authenticate))
     return router

@@ -160,7 +160,53 @@ an enlarged view for inspecting dimensions on phones. Live model production,
 real measured process/profile intake, physical history and repair activation remain
 separate work. See the [handoff](handoffs/issue-6-plan-activation.md).
 
-## D015: Explicit physical reports and failed-check gating, November 1, 2026
+## D015: Consented connected Muse design production, November 1, 2026
+
+Issue #9 connects saved project facts to Muse proposals and D014's existing
+trusted compiler/renderer producer. Generation requires owner authentication,
+expected inventory revision, literal transfer consent and request identity.
+The browser supplies notes, not trusted geometry, profiles or a BuildPlan.
+A scoped read-only snapshot tool loads saved facts; proposals must reference
+those facts and pass existing validation before becoming immutable previews.
+Generation never approves a plan or records physical work.
+
+An explicit server-owned `FORMA_DESIGN_CONTEXT_PATH` manifest resolves process,
+stand parameters, profiles and allowances for an exact project/revision. Missing
+context returns blockers/questions; no implicit catalogue or measured values
+are invented. Production rejects synthetic evidence. Tests may explicitly inject
+synthetic context and remain software checks, not physical evidence.
+
+Uncertain provider outcomes retain a durable receipt and cannot be silently
+restarted with the same key. The client requires an explicit fresh start and
+new consent after uncertainty. A completed request replays without model calls;
+capacity limits preserve already saved previews and their result receipt.
+
+Meta Chat Completions supports automatic tool selection only. Request a tool
+with the supported protocol, then enforce its name, arguments, count and result
+locally before accepting final typed output. A skipped or invalid tool blocks
+the request; it never becomes a successful proposal through a fallback.
+
+## D016: Read-only connected failure-photo diagnosis, November 1, 2026
+
+Issue #9 permits consented photo-only diagnosis before a calibrated plan exists.
+The canonical DiagnosisProposal separates observations, hypotheses and questions;
+without a plan, affected IDs must be empty. When an active plan/operation is
+selected, server-owned expected arguments and geometry inform reasoning without
+asserting physical completion. Each photo transfer consumes its consent. No
+state mutation or repair execution follows from a diagnosis; real history and
+separate validated repair approval remain required.
+
+## D017: Provider-reported request usage, November 1, 2026
+
+Connected intake/design/diagnosis diagnostics optionally expose request-local
+model-call and provider-reported input/output token counts. Missing or malformed
+counts remain unknown, including incomplete aggregates. Never infer actual
+billing from local reservations or present token estimates as provider charges.
+Generate the nested API type from Pydantic; emit no prompt, credential or raw
+provider response. Fresh request trace sinks preserve prior gateway history
+without counting it again.
+
+## D018: Explicit physical reports and failed-check gating, November 1, 2026
 
 Issue #11 records authenticated user reports against the active plan and last
 physical-event cursor. The server derives immutable domain evidence/events and
@@ -173,7 +219,7 @@ failure. Diagnosis/revision integration must resolve it explicitly. Expected sto
 is a calculated, unconfirmed projection requiring actual reconciliation before
 repair. See the [handoff](handoffs/issue-11-physical-progress.md).
 
-## D016: Photo-excluded initial Proof snapshots, November 1, 2026
+## D019: Photo-excluded initial Proof snapshots, November 1, 2026
 
 Issue #14 uses one owner-scoped read transaction for project, versions, user
 history, evidence and material receipts. Exported copies omit structured image
