@@ -289,3 +289,17 @@ A user-reported failed inspection or functional test is a known outcome, not
 uncertainty. It no longer blocks repair simulation because its check never
 completes and every repair must repeat it. Other failed, unknown or invalidated
 records still block. See the [handoff](handoffs/issue-12-adapt-revision.md).
+
+## D024: Versioned Proof and evidence freshness, November 2, 2026
+
+Proof now includes approved repair records and evidence invalidations in its
+owner-scoped consistent snapshot. Ancestors of the active plan are historical;
+unselected designs remain previews. Original evidence retains its provenance
+and recorded outcome while dated notices identify the revision that invalidated
+it and the reason. Carried completions are distinct from new user reports.
+
+Approved repair requirements and proposed material deltas remain separate from
+physical actions and receipts. Private photo references are excluded from all
+exported copies, including the nested revision simulation plan. Source records
+stay unchanged. No physical success, measured waste, salvage or build duration
+is inferred from repair approval. See the [Proof handoff](handoffs/issue-14-proof-summary.md).
