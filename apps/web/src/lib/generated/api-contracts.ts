@@ -390,6 +390,11 @@ export type ProofVersion = {
   readonly "invalidations"?: ReadonlyArray<EvidenceInvalidation>;
 };
 
+export type ProviderStatusResponse = {
+  readonly "configured": boolean;
+  readonly "model": string;
+};
+
 export type ProviderUsage = {
   readonly "model_calls": number;
   readonly "input_tokens"?: (number | null);

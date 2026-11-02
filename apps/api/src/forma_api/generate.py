@@ -71,6 +71,7 @@ from forma_api.repair_runtime import (
     RepairProposeRequest,
     RepairProposeResult,
 )
+from forma_api.routes.health import ProviderStatusResponse
 from forma_domain import models
 from forma_domain.generate import typescript
 
@@ -126,6 +127,7 @@ API_RECORDS = (
     ProgressUpdate,
     ProofSnapshot,
     ProofVersion,
+    ProviderStatusResponse,
     ProviderUsage,
     RepairCost,
     RepairProposeDiagnostics,
