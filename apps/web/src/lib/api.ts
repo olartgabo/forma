@@ -291,7 +291,13 @@ async function request<T>(
   const cancel = () => controller.abort();
   if (signal?.aborted) controller.abort();
   signal?.addEventListener("abort", cancel, { once: true });
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  // Runtime calls can use the gateway's bounded 120-second maximum, including
+  // retries. Leave time for validation and persistence before the browser stops
+  // waiting; ordinary storage requests retain their shorter deadline.
+  const timeout = setTimeout(
+    () => controller.abort(),
+    intake || design || diagnosis || repair ? 130_000 : 30_000,
+  );
   try {
     const headers = new Headers(init.headers);
     headers.set("Authorization", `Bearer ${token}`);
