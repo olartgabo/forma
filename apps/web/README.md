@@ -102,3 +102,32 @@ withdrawing confirmation or reloading recorded work clears earlier previews and
 simulation retries. Reloading requires fresh measurements even if the read fails.
 An uncertain activation locks these inputs and retains its exact approval retry
 to resolve its outcome.
+
+## Mobile manual regression
+
+`apps/web/tests/manual-mobile.browser.mjs` replays the compiled eight-panel stand
+manual and the authenticated readiness response in the actual connected workbench at
+390px and 320px. Each width runs fresh progress and an injected synthetic failed-check
+UI state (not a persisted physical event or server replay). It checks diagrams,
+instructions, tools, parts, checkpoints, bill of materials, bounded width, reachable
+Next, zero writes, disabled save/diagnosis and prerequisite blocking.
+
+Export the fixture to a path outside tracked source. It runs the existing
+`apps/api/tests/test_plans.py` inputs through the offline compiler/renderer, using this
+checkout's packages, and needs no secret or provider:
+
+```sh
+python apps/web/tests/manual-mobile-fixture.py /absolute/path/to/fixture.json
+```
+
+Serve the app locally with no model key and a closed API origin, using an existing
+Playwright install (see above; `CHROME_PATH` is optional):
+
+```sh
+env -u MODEL_API_KEY FORMA_API_ORIGIN=http://127.0.0.1:9 npm run dev -w @forma/web -- --port 3007
+node apps/web/tests/manual-mobile.browser.mjs /absolute/path/to/playwright/index.mjs http://127.0.0.1:3007 /absolute/path/to/fixture.json
+```
+
+The runner blocks service workers, unexpected APIs, writes and non-local network,
+and fails on page errors. It is a software browser replay only, not a provider,
+physical or hosted pass, and is not part of `npm run check`.
