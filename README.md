@@ -6,16 +6,17 @@ FORMA helps a person turn measured reused materials into a small tabletop
 fixture, follow a deterministic assembly manual, and recover when the physical
 build disagrees with the plan.
 
-**Status: intake, saved manuals and user-reported progress.** Next.js supports goal intake,
+**Status: connected local build and repair flow; physical acceptance pending.** Next.js supports goal intake,
 private photos and confirmed inventory editing through the scoped FastAPI API.
 The compiler, renderer, replanner and proposal service are implemented. Saved
 plan previews, explicit initial approval and immutable manual viewing are connected;
 physical confirmations, evidence links and material receipts are persisted. A
 Proof snapshot and photo-excluded text/JSON exports expose recorded claims.
 Consented Muse intake, design generation and read-only diagnosis are connected;
-offline stand repair simulation covers panel replacement, base resize and
-attached-brace tape undo. Repair activation, hosted identity and physical
-results remain pending.
+Muse repair proposals feed validated revision previews with explicit approval;
+versioned Proof shows carried work, historical evidence and required rechecks.
+Stand repair supports bounded panel replacement, base resize and attached-brace
+tape undo. Hosted identity, deployment and physical results remain pending.
 The original [formspec.md](formspec.md) is preserved as the product source of truth.
 
 ## Start here
@@ -50,14 +51,15 @@ fixtures/               Synthetic cases and consented measured inventory data
 data/physical-tests/    Redacted physical observations and evidence manifests
 docs/                   Architecture, contracts, decisions and experiment guides
 prompts/                Versioned model task instructions and tool boundaries
-scripts/                Future schema export, smoke test and evaluation commands
+scripts/                Explicit live Meta smoke test
 .github/                Contribution templates and offline CI
 ```
 
 Each module has a README describing its boundary, owner and next deliverable.
 The local intake workbench, private project/inventory/photo API and offline compiler, renderer,
-replanner and provider proposal services are implemented. Live-provider and
-physical gates remain unverified.
+replanner and provider proposal services are implemented. Recorded live Muse
+software observations are in the [connected handoff](docs/handoffs/connected-muse-demo.md).
+They used synthetic imagery and establish no real build or physical gate pass.
 
 ## Run and verify
 
@@ -125,7 +127,9 @@ development access.
 
 Add one inventory row per physical item. Leave unknown dimensions blank and
 explicitly confirm measurements you took. Private photos can be uploaded and
-linked to stock; they are not sent to a model or used to infer dimensions.
+linked to stock. Uploading and saving do not send them to a model. Separate Muse
+actions require transfer consent for each request; photo observations never
+establish confirmed dimensions.
 The same form saves available tools, a device description, confirmed device mass,
 viewing angle and footprint limits. Requirements and materials share one revision;
 blank measurements remain unknown. Saving inventory does not generate instructions
@@ -136,7 +140,27 @@ Dependency updates use `npm install` and `uv add`; commit the generated
 `package-lock.json` and `uv.lock`, never edit them by hand. Schema generation
 and shared domain contracts remain assigned to #3. See the
 [#1 handoff](docs/handoffs/issue-1-workspace.md) for the proposed integration
-boundary and pending review.
+boundary and historical review status.
+
+## Build, repair and Proof
+
+Follow the [connected demo runbook](docs/demo-runbook.md) for the complete local
+flow. Design generation needs confirmed inventory and a server-owned measured
+design context for that exact inventory revision. Missing context returns
+blockers; it does not create a manual. Review the compiled SVG and explicitly
+approve a saved plan before recording actual physical work.
+
+A saved failure photo can inform a read-only Muse diagnosis. Repair proposals
+still need deterministic simulation, confirmed remaining material and review of
+kept work, undo, material use and rechecks. Approval activates a stored revision
+atomically against the active version and history cursor; stale approval returns 409. Neither Muse output nor approval records completed physical work.
+
+Proof retains original evidence and outcomes alongside revision invalidations.
+Its text/JSON downloads exclude structured photo references; user-entered goal
+and notes remain in the export. Expected stock and proposed material changes
+are calculations, not measured waste or salvage. A second repair on a repaired
+version remains unsupported. See the [repair handoff](docs/handoffs/issue-12-adapt-revision.md)
+and [Proof handoff](docs/handoffs/issue-14-proof-summary.md) for details.
 
 ## First acceptance gate
 
