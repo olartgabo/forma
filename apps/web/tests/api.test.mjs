@@ -44,6 +44,7 @@ import {
   museStatusLabel,
 } from "../src/lib/provider-usage.ts";
 import {
+  diagnosisHasNoPartTarget,
   draftFromHandoff,
   handoffFromDiagnosis,
   isHandoffCurrent,
@@ -2625,6 +2626,40 @@ test("repair handoff is built only for the matching project and active version",
     null,
   );
   assert.equal(handoffFromDiagnosis(diagnosisFor([]), handoffVersion), null);
+});
+
+test("diagnosis explains non-part targets only for the current plan without inventing a repair", () => {
+  for (const ids of [
+    ["joint-a"],
+    ["feature-a"],
+    ["operation-a"],
+    ["stock-a"],
+    ["joint-a", "feature-a", "operation-a", "stock-a"],
+  ]) {
+    const diagnosis = diagnosisFor(ids);
+    assert.equal(diagnosisHasNoPartTarget(diagnosis, handoffVersion), true);
+    assert.equal(handoffFromDiagnosis(diagnosis, handoffVersion), null);
+  }
+  for (const ids of [["part-a"], ["joint-a", "part-a"], []]) {
+    assert.equal(
+      diagnosisHasNoPartTarget(diagnosisFor(ids), handoffVersion),
+      false,
+    );
+  }
+  for (const overrides of [
+    { project_id: "other-project" },
+    { active_version_id: "old-version" },
+    { active_version_id: null },
+    { active_version_id: undefined },
+  ]) {
+    assert.equal(
+      diagnosisHasNoPartTarget(
+        diagnosisFor(["joint-a"], "torn_slot", overrides),
+        handoffVersion,
+      ),
+      false,
+    );
+  }
 });
 
 test("repair handoff carries diagnosis diagnostics only for matching handoff", () => {

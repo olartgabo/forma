@@ -48,6 +48,18 @@ export function handoffFromDiagnosis(
   };
 }
 
+export function diagnosisHasNoPartTarget(
+  result: DiagnosisResult,
+  version: PlanVersion,
+): boolean {
+  return (
+    result.project_id === version.project_id &&
+    result.active_version_id === version.version_id &&
+    result.diagnosis.affected_ids.length > 0 &&
+    handoffFromDiagnosis(result, version) === null
+  );
+}
+
 export function isHandoffCurrent(
   handoff: RepairHandoff | null | undefined,
   projectId: string,
