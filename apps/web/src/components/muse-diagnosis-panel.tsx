@@ -340,6 +340,9 @@ export default function MuseDiagnosisPanel({
               {copy.diagnosis.formatHelp}
             </p>
           )}
+          {!selected && photos.some((photo) => !isEligible(photo)) && (
+            <p className="help">{copy.diagnosis.formatHelp}</p>
+          )}
           <label htmlFor="diagnosis-problem">
             {copy.diagnosis.problemLabel}
           </label>
