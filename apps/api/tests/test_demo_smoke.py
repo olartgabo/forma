@@ -50,6 +50,49 @@ def media_payload(**overrides):
     return {"media": [item]}
 
 
+PROBLEM = "Secret reported problem leg split"
+OPERATION_ID = "operation-abc"
+ACTIVE_VERSION = "version-abc"
+
+
+def readiness_payload(**overrides):
+    value = {
+        "project_id": PROJECT_ID,
+        "inventory_revision_id": REVISION,
+        "inventory_confirmed": True,
+        "status": "inputs_complete",
+        "missing_inputs": [],
+        "blockers": [],
+    }
+    value.update(overrides)
+    return value
+
+
+def diagnosis_payload(**overrides):
+    value = {
+        "project_id": PROJECT_ID,
+        "revision_id": REVISION,
+        "media_id": MEDIA_ID,
+        "active_version_id": None,
+        "current_operation_id": None,
+        "diagnosis": {
+            "visible_observations": ["secret visible observation"],
+            "hypotheses": ["secret hypothesis text"],
+            "questions_or_measurements": ["secret question text"],
+            "affected_ids": [],
+            "failure_type": "torn_slot",
+        },
+        "diagnostics": {
+            "status": "ok",
+            "model": "muse-spark-1.3",
+            "elapsed_ms": 99,
+            "usage": {"model_calls": 1, "input_tokens": 20, "output_tokens": 7},
+        },
+    }
+    value.update(overrides)
+    return value
+
+
 def intake_payload(**overrides):
     value = {
         "project_id": PROJECT_ID,
@@ -102,7 +145,13 @@ def healthy_routes(overrides=None):
         ("GET", "/api/health"): resp(payload={"status": "ok"}),
         ("GET", f"/api/projects/{PROJECT_ID}"): resp(payload=project_payload()),
         ("GET", f"/api/projects/{PROJECT_ID}/media"): resp(payload=media_payload()),
+        ("GET", f"/api/projects/{PROJECT_ID}/designs/readiness"): resp(
+            payload=readiness_payload()
+        ),
         ("POST", f"/api/projects/{PROJECT_ID}/intake"): resp(payload=intake_payload()),
+        ("POST", f"/api/projects/{PROJECT_ID}/diagnose"): resp(
+            payload=diagnosis_payload()
+        ),
     }
     if overrides:
         routes.update(overrides)
@@ -155,7 +204,7 @@ def test_readonly_project_media_eligibility_uses_env_credential():
         "eligible": True,
     }
     assert report["intake"] == {"status": "not_requested"}
-    assert [m for m, _ in fake.paths()] == ["GET", "GET", "GET"]
+    assert [m for m, _ in fake.paths()] == ["GET", "GET", "GET", "GET"]
     assert fake.requests[1].headers["Authorization"] == f"Bearer {TOKEN}"
     assert fake.requests[0].timeout == 5.0
     assert TOKEN not in text and "provider-secret" not in text
@@ -653,6 +702,342 @@ def test_unauthorized_project_is_safe():
         {"check": "project", "code": "forbidden", "http_status": 401}
     ]
     assert "secret hint" not in text and TOKEN not in text
+
+
+def test_readiness_success_safe_fields_only():
+    routes = healthy_routes(
+        {
+            ("GET", f"/api/projects/{PROJECT_ID}/designs/readiness"): resp(
+                payload=readiness_payload(
+                    status="needs_input",
+                    missing_inputs=["secret missing input text"],
+                    blockers=[
+                        {
+                            "code": "missing_measurement",
+                            "message": "secret blocker text",
+                            "target_ids": [],
+                        }
+                    ],
+                )
+            )
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, text = invoke(
+        base_argv("--project-id", PROJECT_ID),
+        fake,
+        env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
+    )
+    assert code == 0
+    readiness = report["design_readiness"]
+    assert readiness["ready"] is False
+    assert readiness["status"] == "needs_input"
+    assert readiness["blocker_codes"] == ["missing_measurement"]
+    assert readiness["blocker_count"] == 1
+    assert readiness["missing_input_count"] == 1
+    assert "secret missing input text" not in text
+    assert "secret blocker text" not in text
+    assert TOKEN not in text
+    assert ("GET", f"/api/projects/{PROJECT_ID}/designs/readiness") in fake.paths()
+
+
+def test_readiness_schema_mismatch_and_http_error():
+    routes = healthy_routes(
+        {
+            ("GET", f"/api/projects/{PROJECT_ID}/designs/readiness"): resp(
+                payload={"project_id": PROJECT_ID, "bogus": "secret-schema-text"}
+            )
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, text = invoke(
+        base_argv("--project-id", PROJECT_ID),
+        fake,
+        env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
+    )
+    assert code == 1
+    assert report["design_readiness"] == {"status": "failed"}
+    assert report["errors"] == [
+        {"check": "design_readiness", "code": "invalid_response"}
+    ]
+    assert "secret-schema-text" not in text
+
+    routes = healthy_routes(
+        {
+            ("GET", f"/api/projects/{PROJECT_ID}/designs/readiness"): resp(
+                503, payload={"code": "provider_error", "message": "secret detail"}
+            )
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, text = invoke(
+        base_argv("--project-id", PROJECT_ID),
+        fake,
+        env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
+    )
+    assert code == 1
+    assert report["design_readiness"] == {"status": "failed"}
+    assert report["errors"] == [
+        {"check": "design_readiness", "code": "provider_error", "http_status": 503}
+    ]
+    assert "secret detail" not in text
+
+
+def _diagnosis_argv(*extra):
+    return base_argv(
+        "--project-id",
+        PROJECT_ID,
+        "--media-id",
+        MEDIA_ID,
+        "--live-diagnosis",
+        "--transfer-consent",
+        "--problem",
+        PROBLEM,
+        *extra,
+    )
+
+
+def test_live_diagnosis_success_without_operation_scope():
+    fake = FakeTransport(healthy_routes())
+    code, report, text = invoke(
+        _diagnosis_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 0
+    posts = [r for r in fake.requests if r.method == "POST"]
+    assert len(posts) == 1
+    assert posts[0].url == ORIGIN + f"/api/projects/{PROJECT_ID}/diagnose"
+    assert json.loads(posts[0].body) == {
+        "media_id": MEDIA_ID,
+        "expected_revision_id": REVISION,
+        "reported_problem": PROBLEM,
+        "provider_transfer_consented": True,
+        "expected_active_version_id": None,
+        "current_operation_id": None,
+    }
+    diag = report["diagnosis"]
+    assert diag["failure_type"] == "torn_slot"
+    assert diag["live_provider_call"] is True
+    assert diag["model"] == "muse-spark-1.3"
+    assert diag["elapsed_ms"] == 99
+    assert diag["counts"] == {
+        "visible_observations": 1,
+        "hypotheses": 1,
+        "questions_or_measurements": 1,
+        "affected_ids": 0,
+    }
+    assert diag["usage"] == {"model_calls": 1, "input_tokens": 20, "output_tokens": 7}
+    assert PROBLEM not in text
+    assert "secret visible observation" not in text
+    assert "secret hypothesis text" not in text
+    assert "secret question text" not in text
+    assert TOKEN not in text
+
+
+def test_live_diagnosis_success_with_operation_scope():
+    routes = healthy_routes(
+        {
+            ("GET", f"/api/projects/{PROJECT_ID}"): resp(
+                payload=project_payload(active_version_id=ACTIVE_VERSION)
+            ),
+            ("POST", f"/api/projects/{PROJECT_ID}/diagnose"): resp(
+                payload=diagnosis_payload(
+                    active_version_id=ACTIVE_VERSION,
+                    current_operation_id=OPERATION_ID,
+                )
+            ),
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, _ = invoke(
+        _diagnosis_argv("--operation-id", OPERATION_ID),
+        fake,
+        env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
+    )
+    assert code == 0
+    posts = [r for r in fake.requests if r.method == "POST"]
+    assert len(posts) == 1
+    assert json.loads(posts[0].body) == {
+        "media_id": MEDIA_ID,
+        "expected_revision_id": REVISION,
+        "reported_problem": PROBLEM,
+        "provider_transfer_consented": True,
+        "expected_active_version_id": ACTIVE_VERSION,
+        "current_operation_id": OPERATION_ID,
+    }
+    assert report["diagnosis"]["live_provider_call"] is True
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--live-diagnosis"],
+        ["--live-diagnosis", "--transfer-consent"],
+        ["--live-diagnosis", "--transfer-consent", "--problem", PROBLEM],
+        [
+            "--project-id",
+            PROJECT_ID,
+            "--live-diagnosis",
+            "--transfer-consent",
+            "--problem",
+            PROBLEM,
+        ],
+        [
+            "--project-id",
+            PROJECT_ID,
+            "--media-id",
+            MEDIA_ID,
+            "--live-diagnosis",
+            "--problem",
+            PROBLEM,
+        ],
+        [
+            "--project-id",
+            PROJECT_ID,
+            "--media-id",
+            MEDIA_ID,
+            "--live-diagnosis",
+            "--transfer-consent",
+        ],
+        [
+            "--project-id",
+            PROJECT_ID,
+            "--media-id",
+            MEDIA_ID,
+            "--live-diagnosis",
+            "--transfer-consent",
+            "--problem",
+            "   ",
+        ],
+        [
+            "--project-id",
+            PROJECT_ID,
+            "--media-id",
+            MEDIA_ID,
+            "--live-diagnosis",
+            "--transfer-consent",
+            "--problem",
+            "x" * 1001,
+        ],
+        [
+            "--project-id",
+            PROJECT_ID,
+            "--media-id",
+            MEDIA_ID,
+            "--live-diagnosis",
+            "--transfer-consent",
+            "--problem",
+            PROBLEM,
+            "--live-intake",
+        ],
+        [
+            "--project-id",
+            PROJECT_ID,
+            "--media-id",
+            MEDIA_ID,
+            "--live-diagnosis",
+            "--transfer-consent",
+            "--problem",
+            PROBLEM,
+            "--operation-id",
+            "bad id!",
+        ],
+    ],
+)
+def test_live_diagnosis_parser_rejections_zero_transport(extra):
+    fake = FakeTransport(healthy_routes())
+    code, report, _ = invoke(
+        base_argv(*extra), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code != 0
+    assert report["errors"]
+    assert fake.requests == []
+
+
+def test_live_diagnosis_ineligible_media_zero_posts():
+    routes = healthy_routes(
+        {
+            ("GET", f"/api/projects/{PROJECT_ID}/media"): resp(
+                payload=media_payload(content_type="image/webp")
+            )
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, _ = invoke(
+        _diagnosis_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 1
+    assert report["media"]["eligible"] is False
+    assert all(m == "GET" for m, _ in fake.paths())
+
+
+def test_live_diagnosis_operation_without_active_plan_zero_posts():
+    fake = FakeTransport(healthy_routes())  # active_version_id is None
+    code, report, _ = invoke(
+        _diagnosis_argv("--operation-id", OPERATION_ID),
+        fake,
+        env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
+    )
+    assert code == 1
+    assert report["errors"] == [{"check": "diagnosis", "code": "active_plan_required"}]
+    assert all(m == "GET" for m, _ in fake.paths())
+
+
+def test_live_diagnosis_result_mismatch_is_invalid_response():
+    for overrides in (
+        {"project_id": "project-other"},
+        {"media_id": "media-other"},
+    ):
+        routes = healthy_routes(
+            {
+                ("POST", f"/api/projects/{PROJECT_ID}/diagnose"): resp(
+                    payload=diagnosis_payload(**overrides)
+                )
+            }
+        )
+        fake = FakeTransport(routes)
+        code, report, text = invoke(
+            _diagnosis_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+        )
+        assert code == 1
+        assert report["diagnosis"] == {"status": "failed"}
+        assert report["errors"] == [{"check": "diagnosis", "code": "invalid_response"}]
+        assert "project-other" not in text and "media-other" not in text
+
+
+def test_live_diagnosis_provider_errors_surfaced():
+    for status, payload, expected in (
+        (
+            502,
+            {"code": "provider_error", "message": "provider secret"},
+            "provider_error",
+        ),
+        (
+            503,
+            {"code": "provider_not_configured", "message": "x"},
+            "provider_not_configured",
+        ),
+        (504, {"code": "timeout", "message": "x"}, "timeout"),
+        (429, {"code": "rate_limit", "message": "x"}, "rate_limit"),
+        (422, {"code": "consent_required", "message": "x"}, "consent_required"),
+    ):
+        routes = healthy_routes(
+            {
+                ("POST", f"/api/projects/{PROJECT_ID}/diagnose"): resp(
+                    status, payload=payload
+                )
+            }
+        )
+        fake = FakeTransport(routes)
+        code, report, text = invoke(
+            _diagnosis_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+        )
+        assert code == 1
+        assert report["diagnosis"] == {"status": "failed"}
+        assert report["errors"] == [
+            {"check": "diagnosis", "code": expected, "http_status": status}
+        ]
+        assert "provider secret" not in text
+        assert PROBLEM not in text and TOKEN not in text
 
 
 def test_module_entrypoint_invalid_origin_is_json():
