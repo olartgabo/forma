@@ -1,10 +1,13 @@
 # Architecture
 
-Status: October 31, 2026. The workspace implements typed domain contracts,
+Status: November 2, 2026. The workspace implements typed domain contracts,
 offline compiler/stand renderer/replanner, a bounded model gateway and proposal
-service, and private project/inventory/photo persistence. The web supports local intake;
-the complete user journey below is the target architecture. Live provider
-compatibility and physical build/recovery acceptance remain unverified.
+service, and private project/inventory/photo persistence. The web connects
+consented Muse intake, design, diagnosis and repair proposals to saved manual
+review, physical reports, explicit revision approval and versioned Proof.
+Hosted identity/storage and physical build/recovery acceptance remain pending.
+Recorded live software observations used synthetic imagery; see the
+[connected handoff](handoffs/connected-muse-demo.md).
 
 ```mermaid
 flowchart TD
@@ -55,9 +58,12 @@ these rules.
 
 These three record types exist in domain contracts. Persistence currently stores
 projects, private photos, confirmed pre-plan inventory and immutable initial plans
-with rendered manuals. Append-only user reports now persist evidence and material
-receipts with a version/history cursor. Approved repair adaptations, evidence
-invalidation and actual remaining-material reconciliation remain pending.
+with rendered manuals. Append-only user reports persist evidence and material
+receipts with a version/history cursor. Approved revisions carry compatible
+completions and append evidence invalidations while preserving original reports.
+Proof reads those records in one consistent owner-scoped snapshot and excludes
+structured photo references from exports. Expected stock remains calculated;
+measured waste, salvage and actual recovery evidence remain pending.
 
 The development API uses SQLite and configured owner bearer credentials.
 Project create/read, inventory confirmation and logical deletion are scoped to
@@ -69,8 +75,9 @@ photos. Evidence IDs remain rejected. See the
 [media handoff](handoffs/issue-6-private-media.md).
 
 PostgreSQL and private object storage remain the production targets in the spec.
-Hosted identity, production storage/retention and provider-transfer consent remain
-[pending decisions](decisions.md).
+Hosted identity and production storage/retention remain
+[pending decisions](decisions.md). Connected Muse actions require explicit
+transfer consent per request; storing a photo alone does not transfer it.
 
 The local web workbench creates/reopens projects, uploads and links private
 photos, and saves measured/unknown stock through the scoped API. A same-origin
@@ -81,9 +88,8 @@ domain generation remains offline. See the [intake handoff](handoffs/issue-7-int
 
 ## Revision transaction
 
-This is the required end-to-end transaction. Offline simulation supplies preview
-data; repair-specific history reconciliation, revision review and atomic repair
-activation remain integration work in #6/#11/#12.
+The local flow implements this transaction through saved repair previews and
+explicit approval. See the [repair handoff](handoffs/issue-12-adapt-revision.md).
 
 1. Capture the active version, actual events and remaining stock.
 2. Obtain at most three typed patch proposals with bounded model/tool rounds.
@@ -92,12 +98,19 @@ activation remain integration work in #6/#11/#12.
 4. Compute compatible preserved work, required physical undo, irreversible loss,
    replacement material and transitive checkpoint invalidation.
 5. Render a diff with kept/redo/undo/waste/new-stock/recheck fields.
-6. On explicit user approval, validate the expected active version and commit
-   the new version, material transactions and invalidations atomically.
+6. On explicit user approval, re-simulate the stored preview against the expected
+   active version and history cursor, then atomically store the new version,
+   revision and invalidations. Physical receipts are recorded separately when
+   the user reports doing the work; approval consumes no material itself.
 7. Return 409 for a stale base. Rejection changes no active state. Retrying an
    idempotent mutation cannot consume material twice.
 8. Re-render changed dependency hashes only; render reuse never implies a
    physical checkpoint is still valid.
+
+A second repair on a repaired version remains unsupported. Generic joint-strategy
+and stand-angle changes also remain blocked. The supported attached-brace
+continuation adds explicit tape peels and fresh checks; it does not erase the
+original completed operations or their material use.
 
 ## Physical and model limits
 
@@ -133,27 +146,34 @@ without an API key. See [contracts.md](contracts.md) and
   unknown. Completed modifications requiring undo block until an explicit
   continuation exists. Joint-strategy/stand-angle changes require family
   regeneration and currently block; known stand plans require an injected
-  family continuation validator. No simulation commits state. See the
+  family continuation validator. The runtime supplies the stand validator,
+  including bounded replacement, base resize and attached-brace tape undo.
+  No simulation commits state. See the
   [replanner interface](../packages/replanner/README.md).
 - The server-only Meta gateway validates structured outputs and allowlisted
   read-only tools, bounds calls, and records safe traces. SAM/manual boxes use
   media pixels and establish no physical dimensions. The smoke script separates
   Spark validation from SAM failure and makes no request without explicit live
-  prerequisites. Real account/photo results remain pending in
-  [model compatibility](model-compatibility.md).
+  prerequisites. Historical compatibility prerequisites remain in
+  [model compatibility](model-compatibility.md); later live software observations
+  are recorded in the [connected handoff](handoffs/connected-muse-demo.md).
+  Real-team-photo SAM acceptance and physical results remain pending.
 - `ProposalService.run` supports intake, design, diagnosis and repair against a
   validated scoped snapshot. Candidate and round caps span retries; injected
   deterministic validators gate usable designs/repairs. Diagnosis can reference
-  current-plan features without expanding repair targets. Authenticated HTTP
-  exposure, trusted catalogue loading and compiler/replanner callback wiring
-  remain consumer work. See the [proposal handoff](handoffs/issue-9-bounded-proposals.md).
+  current-plan features without expanding repair targets. Authenticated runtimes
+  load saved scoped context and connect compiler/replanner validation. Design
+  context must match the exact project and inventory revision; missing measured
+  inputs return blockers. See the [proposal handoff](handoffs/issue-9-bounded-proposals.md)
+  and [demo runbook](demo-runbook.md).
 
 The API mounts health, private project/inventory/photo routes and immutable
 plan/manual reads with explicit initial activation. The internal preview producer
 compiles saved inputs with trusted measured context and binds versions to an
 inventory revision. The browser reviews saved previews and manuals; step navigation
 records no physical work. Active manuals support explicit scoped physical reports,
-failed-check gating and expected material accounting. Model generation, repair
-revision activation and complete proof history remain unconnected. See the
-[plan handoff](handoffs/issue-6-plan-activation.md). Compilation never records a
-physical test pass.
+failed-check gating and expected material accounting. Muse repair results feed
+the Adapt review; only an approved stored preview can activate a revision.
+Versioned Proof shows historical evidence, carried work and invalidations. See
+the [Proof handoff](handoffs/issue-14-proof-summary.md). Compilation and approval
+never record a physical test pass.

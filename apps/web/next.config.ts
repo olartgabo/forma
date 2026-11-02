@@ -17,6 +17,9 @@ if (
 }
 
 const config: NextConfig = {
+  // External rewrites otherwise time out after 30 seconds, before a bounded
+  // Muse request can finish. Keep the proxy open past the browser's deadline.
+  experimental: { proxyTimeout: 140_000 },
   rewrites() {
     return [
       { source: "/api/:path*", destination: `${origin.origin}/api/:path*` },

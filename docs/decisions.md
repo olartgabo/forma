@@ -361,6 +361,17 @@ Continue ResniDev-owned issues/PRs and open only concrete useful followups. Reus
 original issues instead of multiplying equivalent loop-proposed tickets. Product
 runtime bounds, ownership and physical-evidence requirements are unchanged.
 
+## D029: Allow bounded runtime responses through the web, November 2, 2026
+
+Intake, design, diagnosis and repair proposal requests wait up to 130 seconds
+in the browser, covering the gateway's permitted 120-second maximum plus response
+validation and persistence. Ordinary project, media and history requests retain
+their 30-second browser deadline. The Next.js API rewrite uses a finite
+140-second proxy timeout so it does not cut off runtime responses first.
+Cancellation stays available and the browser never retries provider requests.
+Server model budgets, retry counts, consent and physical evidence gates stay
+unchanged. Hosted infrastructure must also permit these response times.
+
 ## D030: DigitalOcean hosting preference, November 2, 2026
 
 The user selects DigitalOcean for the hackathon deployment, with AWS available
