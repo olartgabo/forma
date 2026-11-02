@@ -10,7 +10,8 @@ import AdaptWorkbench from "./adapt-workbench";
 import { operationTitles } from "../lib/operation-titles";
 import type { RepairHandoff } from "../lib/repair-handoff";
 import Diagram from "./manual-diagram";
-import MuseRequestStatus from "./muse-request-details";
+import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import MuseRequestStatus from "./muse-request-status";
 import PhysicalProgress from "./physical-progress";
 import type {
   DesignGenerateRequest,
@@ -448,14 +449,7 @@ export default function PlanWorkbench({
           errorMessage={designFailure?.message}
           diagnostics={
             designResult
-              ? {
-                  status: designResult.diagnostics.status,
-                  model: designResult.diagnostics.model,
-                  elapsedMs: designResult.diagnostics.elapsed_ms,
-                  usage: designResult.diagnostics.usage,
-                  modelRounds: designResult.diagnostics.model_rounds,
-                  toolExecutions: designResult.diagnostics.tool_executions,
-                }
+              ? museDiagnosticsFromResult(designResult.diagnostics)
               : null
           }
         />

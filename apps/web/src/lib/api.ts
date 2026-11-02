@@ -26,6 +26,8 @@ import type {
   MediaResult,
   Project,
   ProjectResult,
+  RepairProposeRequest,
+  RepairProposeResult,
   SavedProjectList,
 } from "./generated/api-contracts";
 
@@ -88,6 +90,16 @@ const DIAGNOSIS_CODE_MESSAGES: Record<string, string> = {
     "Saved project state changed in another session. Reload the project before asking Muse again.",
 };
 
+const REPAIR_CODES = [...INTAKE_CODES];
+
+const REPAIR_CODE_MESSAGES: Record<string, string> = {
+  ...INTAKE_CODE_MESSAGES,
+  consent_required:
+    "Consent to send the reported problem, the diagnosis and saved project context to Meta is required before asking Muse.",
+  stale_version:
+    "Saved project state changed in another session. Reload the project before asking Muse again.",
+};
+
 const DESIGN_CODES = [
   ...INTAKE_CODES,
   "blocked",
@@ -122,23 +134,49 @@ async function responseError(
   intake = false,
   design = false,
   diagnosis = false,
+  repair = false,
 ): Promise<ApiError> {
   let code = "request_failed";
   try {
     const body: unknown = await response.json();
     if (typeof body === "object" && body !== null && "code" in body) {
-      const known = design
-        ? DESIGN_CODES
-        : diagnosis
-          ? DIAGNOSIS_CODES
-          : intake
-            ? INTAKE_CODES
-            : ["stale_version", "idempotency_conflict", "blocked"];
+      const known = repair
+        ? REPAIR_CODES
+        : design
+          ? DESIGN_CODES
+          : diagnosis
+            ? DIAGNOSIS_CODES
+            : intake
+              ? INTAKE_CODES
+              : ["stale_version", "idempotency_conflict", "blocked"];
       if (typeof body.code === "string" && known.includes(body.code))
         code = body.code;
     }
   } catch {
     // Proxy failures may contain HTML; only local messages reach the UI.
+  }
+  if (repair) {
+    const repairStatusMessages: Record<number, string> = {
+      401: "Check your development access key and reconnect.",
+      403: "This access key cannot open this project.",
+      404: "This project or active plan is unavailable. Reload the project.",
+      409: "Saved project state changed. Reload the project before asking Muse again.",
+      422:
+        code === "consent_required"
+          ? REPAIR_CODE_MESSAGES.consent_required
+          : "The repair request could not be accepted. Check the reported problem and diagnosis, then try again.",
+      429: REPAIR_CODE_MESSAGES.rate_limit,
+      502: "The Muse request failed. Try again later.",
+      503: REPAIR_CODE_MESSAGES.provider_not_configured,
+      504: REPAIR_CODE_MESSAGES.timeout,
+    };
+    return new ApiError(
+      response.status,
+      code,
+      REPAIR_CODE_MESSAGES[code] ??
+        repairStatusMessages[response.status] ??
+        "FORMA could not complete this request. Try again shortly.",
+    );
   }
   if (diagnosis) {
     const diagnosisStatusMessages: Record<number, string> = {
@@ -246,6 +284,7 @@ async function request<T>(
   intake = false,
   design = false,
   diagnosis = false,
+  repair = false,
 ): Promise<T> {
   const controller = new AbortController();
   const cancel = () => controller.abort();
@@ -264,7 +303,7 @@ async function request<T>(
       signal: controller.signal,
     });
     if (!response.ok)
-      throw await responseError(response, intake, design, diagnosis);
+      throw await responseError(response, intake, design, diagnosis, repair);
     return await read(response);
   } catch (error) {
     if (error instanceof ApiError) throw error;
@@ -955,6 +994,166 @@ export function requestDiagnosis(
         body.current_operation_id ?? null,
       ),
     signal,
+    false,
+    false,
+    true,
+  );
+}
+
+const REPAIR_PATCH_KINDS = [
+  "resize_part",
+  "replace_joint_profile",
+  "replace_part",
+  "change_angle",
+];
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  const actual = Object.keys(value);
+  return (
+    actual.length === keys.length &&
+    keys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
+  );
+}
+
+function isBoundedText(value: unknown): value is string {
+  // Server contract (Text) is raw length 1..2000 with no whitespace stripping.
+  return typeof value === "string" && value.length > 0 && value.length <= 2000;
+}
+
+function isNullableId(value: unknown): boolean {
+  return value === null || isNonEmptyString(value);
+}
+
+function isNullablePositive(value: unknown): boolean {
+  return (
+    value === null ||
+    (typeof value === "number" && Number.isFinite(value) && value > 0)
+  );
+}
+
+function checkedRepairProposeResult(
+  value: unknown,
+  projectId: string,
+  body: RepairProposeRequest,
+): RepairProposeResult {
+  const invalid = () =>
+    new ApiError(
+      200,
+      "invalid_response",
+      "FORMA returned repair proposals that do not match this project or version. Reload the project and try again.",
+    );
+  if (!isRecord(value)) throw invalid();
+  if (
+    !hasExactKeys(value, [
+      "project_id",
+      "base_version_id",
+      "base_last_event_id",
+      "candidates",
+      "questions",
+      "diagnostics",
+    ]) ||
+    value.project_id !== projectId ||
+    value.base_version_id !== body.expected_version_id ||
+    value.base_last_event_id !== body.expected_last_event_id ||
+    !Array.isArray(value.candidates) ||
+    value.candidates.length > 3 ||
+    !Array.isArray(value.questions) ||
+    value.questions.length > 8 ||
+    !value.questions.every(isBoundedText) ||
+    !isRecord(value.diagnostics) ||
+    !Object.keys(value.diagnostics).every((key) =>
+      ["status", "model", "elapsed_ms", "usage"].includes(key),
+    ) ||
+    value.diagnostics.status !== "ok" ||
+    !isNonEmptyString(value.diagnostics.model) ||
+    value.diagnostics.model.length > 80 ||
+    typeof value.diagnostics.elapsed_ms !== "number" ||
+    !Number.isFinite(value.diagnostics.elapsed_ms) ||
+    value.diagnostics.elapsed_ms < 0
+  )
+    throw invalid();
+  const usage = value.diagnostics.usage;
+  if (usage !== undefined && usage !== null) {
+    if (
+      !isRecord(usage) ||
+      !Object.keys(usage).every((key) =>
+        ["model_calls", "input_tokens", "output_tokens"].includes(key),
+      ) ||
+      typeof usage.model_calls !== "number" ||
+      !Number.isSafeInteger(usage.model_calls) ||
+      usage.model_calls < 0 ||
+      usage.model_calls > 16 ||
+      (usage.input_tokens !== undefined &&
+        usage.input_tokens !== null &&
+        (typeof usage.input_tokens !== "number" ||
+          !Number.isSafeInteger(usage.input_tokens) ||
+          usage.input_tokens < 0 ||
+          usage.input_tokens > 16_000_000_000)) ||
+      (usage.output_tokens !== undefined &&
+        usage.output_tokens !== null &&
+        (typeof usage.output_tokens !== "number" ||
+          !Number.isSafeInteger(usage.output_tokens) ||
+          usage.output_tokens < 0 ||
+          usage.output_tokens > 16_000_000_000))
+    )
+      throw invalid();
+  }
+  const seen = new Set<string>();
+  for (const candidate of value.candidates as unknown[]) {
+    if (
+      !isRecord(candidate) ||
+      !hasExactKeys(candidate, [
+        "id",
+        "base_version_id",
+        "kind",
+        "target_id",
+        "replacement_stock_id",
+        "replacement_profile_id",
+        "width_mm",
+        "height_mm",
+        "angle_deg",
+        "rationale",
+      ]) ||
+      !isNonEmptyString(candidate.id) ||
+      seen.has(candidate.id) ||
+      candidate.base_version_id !== body.expected_version_id ||
+      !REPAIR_PATCH_KINDS.includes(candidate.kind as string) ||
+      !isNonEmptyString(candidate.target_id) ||
+      !isBoundedText(candidate.rationale) ||
+      !isNullableId(candidate.replacement_stock_id) ||
+      !isNullableId(candidate.replacement_profile_id) ||
+      !isNullablePositive(candidate.width_mm) ||
+      !isNullablePositive(candidate.height_mm) ||
+      !isNullablePositive(candidate.angle_deg) ||
+      (typeof candidate.angle_deg === "number" && candidate.angle_deg >= 90)
+    )
+      throw invalid();
+    seen.add(candidate.id as string);
+  }
+  return value as unknown as RepairProposeResult;
+}
+
+export function proposeRepairs(
+  token: string,
+  id: string,
+  body: RepairProposeRequest,
+  signal?: AbortSignal,
+): Promise<RepairProposeResult> {
+  return request(
+    token,
+    `${projectPath(id)}/repairs/propose`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    async (response) =>
+      checkedRepairProposeResult(await json<unknown>(response), id, body),
+    signal,
+    false,
     false,
     false,
     true,
