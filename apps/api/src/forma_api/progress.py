@@ -8,7 +8,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Response
 from pydantic import Field, StringConstraints, model_validator
 
-from forma_api.plans import PlanService
+from forma_api.plans import PlanService, read_revision
 from forma_api.projects import Key, ProjectError, ProjectStore
 from forma_domain.models import (
     ID,
@@ -60,6 +60,7 @@ class ProgressSnapshot(Record):
     evidence: tuple[Evidence, ...]
     material_transactions: tuple[MaterialTransaction, ...]
     completed_operation_ids: tuple[ID, ...]
+    carried_operation_ids: tuple[ID, ...] = ()
     failed_operation_ids: tuple[ID, ...]
     expected_remaining_stock: tuple[Stock, ...]
     status: Literal["not_started", "building", "needs_review", "passed"]
@@ -129,7 +130,9 @@ def snapshot(connection, plan: BuildPlan) -> ProgressSnapshot:
     events = records("progress_events", PhysicalEvent)
     evidence = records("progress_evidence", Evidence)
     transactions = records("progress_material", MaterialTransaction)
-    completed = {
+    revision = read_revision(connection, plan.project_id, plan.version_id)
+    carried = set(revision.carried_completed_operation_ids) if revision else set()
+    completed = carried | {
         event.operation_id for event in events if event.kind == "operation_confirmed"
     }
     failed = {
@@ -138,7 +141,7 @@ def snapshot(connection, plan: BuildPlan) -> ProgressSnapshot:
     status = "not_started"
     if failed:
         status = "needs_review"
-    elif events:
+    elif events or carried:
         status = (
             "passed"
             if (
@@ -159,6 +162,9 @@ def snapshot(connection, plan: BuildPlan) -> ProgressSnapshot:
         material_transactions=transactions,
         completed_operation_ids=tuple(
             op.id for op in plan.operations if op.id in completed
+        ),
+        carried_operation_ids=tuple(
+            op.id for op in plan.operations if op.id in carried
         ),
         failed_operation_ids=tuple(op.id for op in plan.operations if op.id in failed),
         expected_remaining_stock=expected_stock(plan, completed),
@@ -216,6 +222,7 @@ def progress_router(store: ProjectStore, authenticate) -> APIRouter:
                 "cut_rect",
                 "fold",
                 "tape_joint",
+                "detach",
                 "inspect",
                 "functional_test",
             }:

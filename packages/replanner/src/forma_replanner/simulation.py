@@ -81,6 +81,20 @@ def _close(a, b):
     return abs(a - b) <= 1e-7
 
 
+def _failed_check(event, operations):
+    """A user-reported failed inspection or test is a known outcome, not
+    uncertainty. It never completes its operation, so every repair must
+    perform that check again; the failed result stays in history."""
+    operation = operations.get(event.operation_id)
+    return (
+        event.verification_state == "failed"
+        and event.actor == "user"
+        and event.kind in ("observation", "test")
+        and operation is not None
+        and operation.type in ("inspect", "functional_test")
+    )
+
+
 def _touched_stock_ids(snapshot):
     """Stocks the base work, ledger or requested patch actually relies on."""
     base, patch = snapshot.base_plan, snapshot.patch
@@ -548,8 +562,10 @@ def simulate_patch(
                     "Damage requires a confirmed scoped replacement or explicit physical repair plan.",
                     event.id,
                 )
-        elif event.verification_state in ("failed", "unknown", "invalidated") and (
-            relevant or event.kind == "operation_confirmed"
+        elif (
+            event.verification_state in ("failed", "unknown", "invalidated")
+            and (relevant or event.kind == "operation_confirmed")
+            and not _failed_check(event, operations)
         ):
             fail(
                 "needs_confirmation",
@@ -955,10 +971,22 @@ def simulate_patch(
                 if checkpoint_id is not None:
                     checkpoint_ops[checkpoint_id] = op.id
             referenced = set()
+            # A failed check result stays in history as is; the renamed check
+            # in the new version is a fresh, incomplete operation.
+            failed_check_evidence = {
+                eid
+                for event in snapshot.events
+                if _failed_check(event, operations)
+                for eid in event.evidence_ids
+            }
             for event in snapshot.events:
-                if event.operation_id in renamed_future:
+                if event.operation_id in renamed_future and not _failed_check(
+                    event, operations
+                ):
                     referenced.add(event.operation_id)
             for item in snapshot.evidence:
+                if item.id in failed_check_evidence:
+                    continue
                 referenced.update(set(item.operation_ids) & set(renamed_future))
                 referenced.update(
                     checkpoint_ops[cid]

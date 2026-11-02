@@ -77,6 +77,13 @@ discarded, the exception type and message are never exposed in the result. `Keyb
 
 ## Execution, material and evidence accounting
 
+A user-reported failed inspection or functional test is a known outcome, not
+uncertainty, so it does not block a repair. Its operation never completes, so
+every feasible repair still contains that check as incomplete work (renamed when
+its dependencies change); the failed record stays in history unchanged. Failed
+reports on other operations, system-reported failures and unknown or
+invalidated states still block with `needs_confirmation`.
+
 Completion is chronological, user-confirmed and once per operation, after its
 prerequisites. Linked evidence must exist and support the user's current claim.
 Historical events remain unchanged. Supply their original plans through

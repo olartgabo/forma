@@ -3,8 +3,18 @@
 import argparse
 from pathlib import Path
 
+from forma_replanner import MaterialDelta, RepairCost, SimulationResult
 from pydantic.json_schema import models_json_schema
 
+from forma_api.adapt import (
+    AdaptCommitRequest,
+    AdaptCommitResult,
+    AdaptPreview,
+    AdaptPreviewSet,
+    AdaptSimulateRequest,
+    ConnectorMeasurement,
+    PanelDiff,
+)
 from forma_api.design_runtime import (
     DesignCandidateResult,
     DesignDiagnostics,
@@ -37,6 +47,7 @@ from forma_api.plans import (
     PlanActivation,
     PlanCompileResult,
     PlanList,
+    PlanRevision,
     PlanSummary,
     PlanVersion,
 )
@@ -59,6 +70,14 @@ from forma_domain.generate import typescript
 
 API_RECORDS = (
     ActivationResult,
+    AdaptCommitRequest,
+    AdaptCommitResult,
+    AdaptPreview,
+    AdaptPreviewSet,
+    AdaptSimulateRequest,
+    ConnectorMeasurement,
+    PanelDiff,
+    PlanRevision,
     BuildRequirements,
     CreateProject,
     CompilePreview,
@@ -84,6 +103,7 @@ API_RECORDS = (
     ManualBillItem,
     ManualDocument,
     ManualPanel,
+    MaterialDelta,
     Media,
     MediaDeleteResult,
     MediaList,
@@ -101,8 +121,10 @@ API_RECORDS = (
     ProofSnapshot,
     ProofVersion,
     ProviderUsage,
+    RepairCost,
     SavedProjectList,
     SavedProjectSummary,
+    SimulationResult,
 )
 OUTPUT = "apps/web/src/lib/generated/api-contracts.ts"
 

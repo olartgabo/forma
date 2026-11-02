@@ -159,6 +159,26 @@ class ProjectStore:
                 "version_id TEXT NOT NULL REFERENCES plans(version_id) ON DELETE CASCADE, "
                 "asset_id TEXT REFERENCES media(id), body TEXT NOT NULL)"
             )
+            # Repair previews are drafts; revisions and invalidations are the
+            # approved, append-only record of each adaptation.
+            for table in ("adapt_previews", "plan_revisions"):
+                connection.execute(
+                    f"CREATE TABLE IF NOT EXISTS {table} "
+                    "(id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
+                    "REFERENCES projects(id) ON DELETE CASCADE, "
+                    "base_version_id TEXT NOT NULL "
+                    "REFERENCES plans(version_id) ON DELETE CASCADE, "
+                    "body TEXT NOT NULL)"
+                )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS evidence_invalidations "
+                "(id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
+                "REFERENCES projects(id) ON DELETE CASCADE, "
+                "evidence_id TEXT NOT NULL "
+                "REFERENCES progress_evidence(id) ON DELETE CASCADE, "
+                "version_id TEXT NOT NULL REFERENCES plans(version_id) ON DELETE CASCADE, "
+                "body TEXT NOT NULL)"
+            )
             yield connection
             connection.commit()
         except BaseException:
@@ -388,8 +408,13 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 ),
             )
             connection.execute(
-                "DELETE FROM requests WHERE owner=? AND scope=?",
-                (owner, project_id + ":progress"),
+                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?)",
+                (
+                    owner,
+                    project_id + ":progress",
+                    project_id + ":adapt-simulate",
+                    project_id + ":adapt-commit",
+                ),
             )
             connection.execute(
                 "UPDATE requests SET response=? WHERE owner=? AND scope='create' "
@@ -401,6 +426,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
             store.remember(connection, owner, scope, idempotency_key, digest, result)
             return result
 
+    from forma_api.adapt import adapt_router
     from forma_api.media import media_router
     from forma_api.plans import plan_router
     from forma_api.progress import progress_router
@@ -413,6 +439,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     router.include_router(intake_router(store, authenticate))
     router.include_router(plan_router(store, authenticate))
     router.include_router(progress_router(store, authenticate))
+    router.include_router(adapt_router(store, authenticate))
     router.include_router(proof_router(store, authenticate))
     router.include_router(designs_router(store, authenticate))
     router.include_router(diagnosis_router(store, authenticate))

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Response
 from forma_compiler import CutProcess
 from forma_renderer import StandParameters, compile_stand, render_manual
 from forma_renderer.svg import instruction
+from forma_replanner import SimulationResult
 from pydantic import AwareDatetime, TypeAdapter, ValidationError
 
 from forma_api.projects import Key, Project, ProjectError, ProjectStore
@@ -20,6 +21,7 @@ from forma_domain.models import (
     JointProfile,
     Nonnegative,
     Record,
+    RepairPatch,
 )
 
 
@@ -62,6 +64,29 @@ class PlanVersion(PlanSummary):
     manual: ManualDocument
 
 
+class PlanRevision(Record):
+    """Approved adaptation of a parent version; never a physical claim."""
+
+    version_id: ID
+    base_version_id: ID
+    base_last_event_id: ID | None
+    preview_id: ID
+    patch: RepairPatch
+    simulation: SimulationResult
+    # Operations the replanner kept as already done in history; the new
+    # version must not ask for them again or charge their stock twice.
+    carried_completed_operation_ids: tuple[ID, ...]
+    approved_at: AwareDatetime
+
+
+def read_revision(connection, project_id: str, version_id: str) -> PlanRevision | None:
+    row = connection.execute(
+        "SELECT body FROM plan_revisions WHERE id=? AND project_id=?",
+        (version_id, project_id),
+    ).fetchone()
+    return None if row is None else PlanRevision.model_validate_json(row[0])
+
+
 class PlanList(Record):
     plans: tuple[PlanSummary, ...]
 
@@ -88,6 +113,30 @@ class PlanActivation(Record):
 class ActivationResult(Record):
     project: Project
     replayed: bool = False
+
+
+def manual_document(project_id: str, plan: BuildPlan, manual) -> ManualDocument:
+    operations = {operation.id: operation for operation in plan.operations}
+    return ManualDocument(
+        project_id=project_id,
+        version_id=plan.version_id,
+        panels=tuple(
+            ManualPanel(
+                operation_id=panel.operation_id,
+                part_ids=panel.part_ids,
+                checkpoint_ids=panel.checkpoint_ids,
+                dependency_hash=panel.dependency_hash,
+                svg=panel.svg,
+                tools=panel.tools,
+                instruction=instruction(operations[panel.operation_id], plan),
+            )
+            for panel in manual.panels
+        ),
+        bill_of_materials=tuple(
+            ManualBillItem.model_validate(item, from_attributes=True)
+            for item in manual.bill_of_materials
+        ),
+    )
 
 
 class PlanService:
@@ -218,29 +267,7 @@ class PlanService:
         )
         if manual.status != "accepted":
             return PlanCompileResult(status=manual.status, blockers=manual.blockers)
-        operations = {operation.id: operation for operation in compiled.plan.operations}
-        document = ManualDocument(
-            project_id=project.id,
-            version_id=version_id,
-            panels=tuple(
-                ManualPanel(
-                    operation_id=panel.operation_id,
-                    part_ids=panel.part_ids,
-                    checkpoint_ids=panel.checkpoint_ids,
-                    dependency_hash=panel.dependency_hash,
-                    svg=panel.svg,
-                    tools=panel.tools,
-                    instruction=instruction(
-                        operations[panel.operation_id], compiled.plan
-                    ),
-                )
-                for panel in manual.panels
-            ),
-            bill_of_materials=tuple(
-                ManualBillItem.model_validate(item, from_attributes=True)
-                for item in manual.bill_of_materials
-            ),
-        )
+        document = manual_document(project.id, compiled.plan, manual)
         version = PlanVersion(
             project_id=project.id,
             version_id=version_id,

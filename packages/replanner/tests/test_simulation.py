@@ -284,6 +284,14 @@ def test_uncertain_stale_missing_history_blocks(change):
     assert run(data).status == "blocked"
 
 
+def test_failed_report_on_a_non_check_operation_still_blocks():
+    data = input_data()
+    data["events"][0].update(kind="observation", verification_state="failed")
+    result = run(data)
+    assert result.status == "blocked"
+    assert "needs_confirmation" in codes(result)
+
+
 def test_no_late_prerequisite_completion():
     assert "invalid_order" in codes(run(input_data(("cut_brace",))))
 

@@ -658,7 +658,7 @@ def test_persisted_transaction_on_unfinished_fit_blocks_six_prefix():
     ), result.blockers
 
 
-def test_failed_function_test_stays_needs_confirmation():
+def test_failed_function_test_is_redone_by_the_repair():
     base, snapshot, process = attached_snapshot()
     event = _extra_event(
         base,
@@ -669,9 +669,28 @@ def test_failed_function_test_stays_needs_confirmation():
         test_result="failed",
     )
     changed = snapshot.model_copy(update={"events": snapshot.events + (event,)})
+    before = changed.model_dump()
+    result = simulate(changed, process)
+    assert result.status == "feasible", result.blockers
+    assert changed.model_dump() == before
+    # The failed result is history; the new plan requires a fresh test.
+    assert "stand-functional-test" not in result.preserved_operation_ids
+    tests = [o for o in result.plan.operations if o.type == "functional_test"]
+    assert any(o.id in result.incomplete_operation_ids for o in tests)
+
+
+def test_failed_check_reported_by_the_system_still_blocks():
+    base, snapshot, process = attached_snapshot()
+    event = _extra_event(
+        base,
+        "synthetic-system-failed-fit",
+        "stand-inspect-fit",
+        actor="system",
+        verification_state="failed",
+    )
+    changed = snapshot.model_copy(update={"events": snapshot.events + (event,)})
     result = simulate(changed, process)
     assert result.status == "blocked"
-    assert result.plan is None
     assert any(b.code == "needs_confirmation" for b in result.blockers), result.blockers
 
 
