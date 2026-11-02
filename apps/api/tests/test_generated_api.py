@@ -9,6 +9,7 @@ from forma_api.design_runtime import (
     DesignErrorResponse,
     DesignGenerateRequest,
     DesignGenerateResult,
+    DesignReadiness,
     ProjectSnapshot,
     SnapshotToolArgs,
 )
@@ -19,6 +20,7 @@ from forma_api.intake_runtime import (
     IntakeRequest,
     IntakeResult,
 )
+from forma_api.projects import SavedProjectList, SavedProjectSummary
 from forma_api.proposal_service import IntakeObservation
 
 
@@ -103,6 +105,36 @@ def test_api_artifact_includes_canonical_design_records():
     assert 'readonly "tool_executions": number' in content
     assert '"generation_in_progress"' in content
     assert '"consent_required"' in content
+
+
+def test_api_artifact_includes_readiness_and_saved_project_records():
+    content = artifacts()[OUTPUT]
+    canonical = {
+        DesignReadiness: "forma_api.design_runtime",
+        SavedProjectSummary: "forma_api.projects",
+        SavedProjectList: "forma_api.projects",
+    }
+    for record, module in canonical.items():
+        assert record in API_RECORDS
+        assert record.__module__ == module
+        assert f"export type {record.__name__} = " in content
+    # Readiness is checklist completeness only, reusing the domain Blocker.
+    assert 'readonly "status": "inputs_complete" | "needs_input"' in content
+    assert 'readonly "missing_inputs": ReadonlyArray<string>' in content
+    assert 'readonly "blockers": ReadonlyArray<Blocker>' in content
+    assert 'readonly "inventory_revision_id": string' in content
+    assert '"ready_to_build"' not in content
+    # The nested summary is a registered root record referenced by the list,
+    # not an unknown domain reference, a duplicated domain export or media.
+    assert 'readonly "projects": ReadonlyArray<SavedProjectSummary>' in content
+    assert 'readonly "next_cursor"?: (string | null)' in content
+    assert 'readonly "inventory_confirmed"?: boolean' in content
+    assert 'readonly "active_version_id"?: (string | null)' in content
+    import_line = next(
+        line for line in content.splitlines() if line.startswith("import type")
+    )
+    assert "SavedProjectSummary" not in import_line
+    assert "DesignReadiness" not in import_line
 
 
 def test_generated_api_matches_checked_in_artifact_without_app_configuration():

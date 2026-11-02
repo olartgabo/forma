@@ -29,8 +29,8 @@ class Fake:
         return response
 
 
-def tool_call(project_id, revision_id, call_id="call-1"):
-    return {
+def tool_call(project_id, revision_id, call_id="call-1", usage=None):
+    response = {
         "choices": [
             {
                 "finish_reason": "tool_calls",
@@ -54,14 +54,20 @@ def tool_call(project_id, revision_id, call_id="call-1"):
             }
         ]
     }
+    if usage is not None:
+        response["usage"] = usage
+    return response
 
 
-def final(payload):
-    return {
+def final(payload, usage=None):
+    response = {
         "choices": [
             {"finish_reason": "stop", "message": {"content": json.dumps(payload)}}
         ]
     }
+    if usage is not None:
+        response["usage"] = usage
+    return response
 
 
 def seeded(tmp_path):
@@ -170,6 +176,60 @@ def test_runtime_tool_snapshot_and_real_compile(tmp_path):
         assert connection.execute("SELECT COUNT(*) FROM plans").fetchone()[0] == 1
 
 
+def test_runtime_usage_aggregates_exactly_over_two_rounds(tmp_path):
+    store, project, candidate, context = seeded(tmp_path)
+    fake = Fake(
+        tool_call(
+            project.id,
+            project.revision_id,
+            usage={"prompt_tokens": 11, "completion_tokens": 2},
+        ),
+        final(
+            {"candidates": [candidate.model_dump(mode="json")], "questions": []},
+            usage={"prompt_tokens": 20, "completion_tokens": 9},
+        ),
+    )
+    result = run(store, project, resolve(context, project), fake)
+    assert result.diagnostics.usage.model_calls == 2
+    assert result.diagnostics.usage.input_tokens == 31
+    assert result.diagnostics.usage.output_tokens == 11
+
+
+def test_runtime_usage_missing_in_one_round_stays_unknown_not_partial(tmp_path):
+    store, project, candidate, context = seeded(tmp_path)
+    fake = Fake(
+        tool_call(project.id, project.revision_id),
+        final(
+            {"candidates": [candidate.model_dump(mode="json")], "questions": []},
+            usage={"prompt_tokens": 20, "completion_tokens": 9},
+        ),
+    )
+    result = run(store, project, resolve(context, project), fake)
+    assert result.diagnostics.usage.model_calls == 2
+    assert result.diagnostics.usage.input_tokens is None
+    assert result.diagnostics.usage.output_tokens is None
+
+
+def test_runtime_usage_malformed_in_one_round_stays_unknown(tmp_path):
+    store, project, candidate, context = seeded(tmp_path)
+    fake = Fake(
+        tool_call(
+            project.id,
+            project.revision_id,
+            usage={"prompt_tokens": True, "completion_tokens": 2},
+        ),
+        final(
+            {"candidates": [candidate.model_dump(mode="json")], "questions": []},
+            usage={"prompt_tokens": 20, "completion_tokens": 9},
+        ),
+    )
+    result = run(store, project, resolve(context, project), fake)
+    assert result.diagnostics.usage.model_calls == 2
+    assert result.diagnostics.usage.input_tokens is None
+    # Output was valid in both rounds, so it aggregates exactly.
+    assert result.diagnostics.usage.output_tokens == 11
+
+
 def test_missing_inputs_match_compiler_valid_fixture_by_stock_kind(tmp_path):
     store, project, candidate, context = seeded(tmp_path)
     resolved = resolve(context, project)
@@ -213,6 +273,65 @@ def test_missing_inputs_match_compiler_valid_fixture_by_stock_kind(tmp_path):
         "remaining length of stock synthetic-tape-stock" in item for item in missing
     )
     assert not any("height of stock synthetic-tape-stock" in item for item in missing)
+
+
+def test_readiness_complete_is_checklist_only_and_missing_stays_missing(tmp_path):
+    store, project, candidate, context = seeded(tmp_path)
+    complete = design_runtime.build_readiness(project, resolve(context, project))
+    assert complete.project_id == project.id
+    assert complete.inventory_revision_id == project.revision_id
+    assert complete.inventory_confirmed is True
+    assert complete.status == "inputs_complete"
+    assert complete.missing_inputs == ()
+    assert complete.blockers == ()
+    # Unknown kind-relevant measurement stays missing; no value is invented.
+    sheet, tape = project.stocks
+    unknown = project.model_copy(
+        update={
+            "inventory_confirmed": False,
+            "stocks": (
+                sheet.model_copy(
+                    update={
+                        "thickness_mm": sheet.thickness_mm.model_copy(
+                            update={"value": None, "confirmed": False}
+                        )
+                    }
+                ),
+                tape,
+            ),
+        }
+    )
+    missing = design_runtime.build_readiness(unknown, resolve(context, project))
+    assert missing.status == "needs_input"
+    assert any(
+        "Confirm the saved inventory." in item for item in missing.missing_inputs
+    )
+    assert any(
+        "thickness of stock synthetic-sheet" in item for item in missing.missing_inputs
+    )
+    assert not any(
+        "height of stock synthetic-tape-stock" in item
+        for item in missing.missing_inputs
+    )
+
+
+def test_readiness_missing_and_malformed_context_blockers_are_safe(tmp_path):
+    _, project, _, context = seeded(tmp_path)
+    missing = design_runtime.build_readiness(project, resolve(None, project))
+    assert missing.status == "needs_input"
+    assert missing.blockers[0].code == "missing_measurement"
+    assert any("cutting process" in item for item in missing.missing_inputs)
+    assert any("joint profiles" in item for item in missing.missing_inputs)
+    path = tmp_path / "private-context.json"
+    path.write_text("{secret parser detail", encoding="utf-8")
+    invalid = design_runtime.build_readiness(
+        project, FileDesignContextResolver(path)(project.id, project.revision_id)
+    )
+    assert invalid.status == "needs_input"
+    assert invalid.blockers[0].code == "invalid_reference"
+    assert "secret" not in invalid.blockers[0].message
+    assert "private-context.json" not in invalid.blockers[0].message
+    assert str(tmp_path) not in invalid.model_dump_json()
 
 
 def test_runtime_missing_context_returns_questions_without_preview(tmp_path):

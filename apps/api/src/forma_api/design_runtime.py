@@ -13,6 +13,7 @@ from forma_api.model_gateway import GatewayError, MetaGateway, ProposalBudget, T
 from forma_api.plans import PlanService, PlanSummary
 from forma_api.projects import BuildRequirements, ProjectError, ProjectStore
 from forma_api.proposal_prompts import instructions
+from forma_api.provider_diagnostics import ProviderUsage, summarize_usage
 from forma_domain.models import (
     ID,
     Blocker,
@@ -62,6 +63,7 @@ class DesignDiagnostics(Record):
     elapsed_ms: int = Field(ge=0)
     model_rounds: int = Field(ge=0, le=4)
     tool_executions: int = Field(ge=0, le=4)
+    usage: ProviderUsage | None = None
 
 
 class DesignCandidateResult(Record):
@@ -127,6 +129,22 @@ class ProjectSnapshot(Record):
     selected_kerf_mm: float | None = None
     selected_edge_margin_mm: float | None = None
     missing_inputs: tuple[Text, ...] = Field(max_length=32)
+
+
+class DesignReadiness(Record):
+    """Saved-input checklist completeness for one project revision.
+
+    ``inputs_complete`` means only that the checklist in ``missing_inputs``
+    is currently empty. It is not compilation success, not a compiled
+    manual, and not evidence of physical safety or a physical pass.
+    """
+
+    project_id: ID
+    inventory_revision_id: ID
+    inventory_confirmed: bool
+    status: Literal["inputs_complete", "needs_input"]
+    missing_inputs: tuple[Text, ...] = Field(max_length=32)
+    blockers: tuple[Blocker, ...] = Field(max_length=32)
 
 
 def default_gateway_factory() -> MetaGateway:
@@ -219,6 +237,24 @@ def build_snapshot(project, resolved: ResolvedDesignContext) -> ProjectSnapshot:
     )
 
 
+def build_readiness(project, resolved: ResolvedDesignContext) -> DesignReadiness:
+    """Read-only readiness from saved facts and server-resolved context.
+
+    Reuses the snapshot/missing-input checklist; never invents measured
+    values, calibrated process facts or joint profiles that are absent.
+    """
+
+    missing = tuple(missing_inputs(project, resolved))
+    return DesignReadiness(
+        project_id=project.id,
+        inventory_revision_id=project.revision_id,
+        inventory_confirmed=project.inventory_confirmed,
+        status="inputs_complete" if not missing else "needs_input",
+        missing_inputs=missing,
+        blockers=tuple(resolved.blockers[:32]),
+    )
+
+
 def validate_candidate_references(
     candidate: DesignCandidate, snapshot: ProjectSnapshot
 ) -> tuple[Blocker, ...]:
@@ -294,6 +330,7 @@ def generate_designs(
         elapsed_ms=elapsed_ms,
         model_rounds=min(budget.rounds, 4),
         tool_executions=executions["count"],
+        usage=summarize_usage(budget.traces),
     )
     snapshot = build_snapshot(project, resolved)
     with store.transaction() as connection:

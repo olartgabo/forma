@@ -5,9 +5,15 @@ from typing import Literal
 
 from pydantic import Field, StrictBool
 
-from forma_api.model_gateway import GatewayError, ImageInput, MetaGateway
+from forma_api.model_gateway import (
+    GatewayError,
+    ImageInput,
+    MetaGateway,
+    ProposalBudget,
+)
 from forma_api.proposal_prompts import PROMPT_VERSION, SCHEMA_VERSION, TASK_PROMPTS
 from forma_api.proposal_service import IntakeObservation
+from forma_api.provider_diagnostics import ProviderUsage, summarize_usage
 from forma_domain.models import ID, Record, Text
 
 MAX_PROVIDER_IMAGE_BYTES = 5_000_000
@@ -38,6 +44,7 @@ class IntakeDiagnostics(Record):
     status: Literal["ok"]
     model: str = Field(min_length=1, max_length=80)
     elapsed_ms: int = Field(ge=0)
+    usage: ProviderUsage | None = None
 
 
 class IntakeErrorResponse(Record):
@@ -167,18 +174,27 @@ def observe_photo(
     if not 0 < len(image_data) <= MAX_PROVIDER_IMAGE_BYTES:
         raise GatewayError("invalid_image")
     start = time.monotonic()
+    budget = ProposalBudget(
+        max_rounds=getattr(gateway, "max_rounds", 4),
+        seconds=getattr(gateway, "budget", 60),
+    )
     observation = gateway.propose(
         INTAKE_PROMPT,
         IntakeObservation,
         image=ImageInput(image_data, content_type, True),  # type: ignore[arg-type]
+        request_budget=budget,
         system_prompt=INTAKE_SYSTEM_PROMPT,
         context={"project_goal": project_goal},
     )
+    if not any(item.strip() for item in (*observation.labels, *observation.questions)):
+        raise GatewayError("invalid_response")
     elapsed_ms = round((time.monotonic() - start) * 1000)
-    traces = getattr(gateway, "traces", [])
-    if traces:
-        elapsed_ms = traces[-1].elapsed_ms
+    if budget.traces:
+        elapsed_ms = budget.traces[-1].elapsed_ms
     model = str(getattr(gateway, "spark", "unknown"))[:80] or "unknown"
     return observation, IntakeDiagnostics(
-        status="ok", model=model, elapsed_ms=elapsed_ms
+        status="ok",
+        model=model,
+        elapsed_ms=elapsed_ms,
+        usage=summarize_usage(budget.traces),
     )
