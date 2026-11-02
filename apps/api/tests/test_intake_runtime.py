@@ -135,6 +135,58 @@ def test_observe_photo_malformed_input_tokens_unknown_not_partial(bad):
 
 
 @pytest.mark.parametrize(
+    "labels,questions",
+    [
+        ([], []),
+        (["  "], []),
+        ([], [" \t\n "]),
+        ([" "], ["\n"]),
+    ],
+)
+def test_observe_photo_rejects_unusable_empty_observation(labels, questions):
+    content = json.dumps(
+        {"labels": labels, "measurement_source": "unknown", "questions": questions}
+    )
+    fake = Fake(final(content))
+    with pytest.raises(GatewayError) as error:
+        intake_runtime.observe_photo(
+            MetaGateway(fake),
+            project_goal="stand",
+            image_data=PNG,
+            content_type="image/png",
+        )
+    assert error.value.code == "invalid_response"
+    assert intake_runtime.gateway_error_details(error.value.code) == (
+        502,
+        "invalid_response",
+        "Model provider returned an unusable response; retry",
+    )
+    assert len(fake.calls) == 1
+
+
+def test_observe_photo_question_only_is_valid_and_unknown():
+    content = json.dumps(
+        {
+            "labels": [],
+            "measurement_source": "unknown",
+            "questions": ["Measure its thickness"],
+        }
+    )
+    fake = Fake(final(content))
+    observation, diagnostics = intake_runtime.observe_photo(
+        MetaGateway(fake),
+        project_goal="stand",
+        image_data=PNG,
+        content_type="image/png",
+    )
+    assert observation.labels == ()
+    assert observation.questions == ("Measure its thickness",)
+    assert observation.measurement_source == "unknown"
+    assert diagnostics.status == "ok"
+    assert len(fake.calls) == 1
+
+
+@pytest.mark.parametrize(
     "code,status,stable",
     [
         ("missing_key", 503, "provider_not_configured"),

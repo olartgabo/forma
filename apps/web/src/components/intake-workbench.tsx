@@ -20,7 +20,9 @@ import type {
 } from "../lib/generated/api-contracts";
 import type { Measurement, Stock } from "../lib/generated/contracts";
 import BuildRequirementsFields from "./build-requirements-fields";
+import DesignReadinessPanel from "./design-readiness-panel";
 import PlanWorkbench from "./plan-workbench";
+import SavedProjectsPanel from "./saved-projects-panel";
 import {
   emptyRequirements,
   requirementsError,
@@ -603,6 +605,11 @@ function ProjectWorkbench({
                 </button>
               </fieldset>
             </form>
+            <SavedProjectsPanel
+              token={token}
+              disabled={locked}
+              onOpen={(id) => void openProject(id)}
+            />
           </section>
         </div>
       ) : (
@@ -1084,6 +1091,11 @@ function ProjectWorkbench({
             photos={photos}
             inventoryStale={stale || dirty}
             disabled={locked}
+          />
+          <DesignReadinessPanel
+            token={token}
+            project={project}
+            inventoryStale={stale || dirty}
           />
           <PlanWorkbench
             key={project.id}

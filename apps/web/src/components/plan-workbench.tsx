@@ -6,6 +6,7 @@ import {
   listPlans,
   loadPlan,
 } from "../lib/api";
+import MuseRequestDetails from "./muse-request-details";
 import type {
   DesignGenerateRequest,
   DesignGenerateResult,
@@ -589,13 +590,14 @@ export default function PlanWorkbench({
                 ))}
               </ul>
             )}
-            <p className="help">
-              Request diagnostics — status: {designResult.diagnostics.status};
-              model: {designResult.diagnostics.model}; rounds:{" "}
-              {designResult.diagnostics.model_rounds}; tool calls:{" "}
-              {designResult.diagnostics.tool_executions}; duration:{" "}
-              {designResult.diagnostics.elapsed_ms} ms.
-            </p>
+            <MuseRequestDetails
+              status={designResult.diagnostics.status}
+              model={designResult.diagnostics.model}
+              elapsedMs={designResult.diagnostics.elapsed_ms}
+              usage={designResult.diagnostics.usage}
+              modelRounds={designResult.diagnostics.model_rounds}
+              toolExecutions={designResult.diagnostics.tool_executions}
+            />
           </div>
         )}
       </div>
