@@ -1161,8 +1161,12 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         repair_report["previews"] = [
             {
                 "rank": preview.rank,
-                "feasible": preview.simulation.status == "feasible",
-                "blocker_count": len(preview.simulation.blockers),
+                # A simulation-feasible candidate whose manual cannot render
+                # carries render_blockers and cannot be approved.
+                "feasible": preview.simulation.status == "feasible"
+                and not preview.render_blockers,
+                "blocker_count": len(preview.simulation.blockers)
+                + len(preview.render_blockers),
             }
             for preview in simulate_result.previews
         ]
