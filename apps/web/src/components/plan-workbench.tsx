@@ -10,7 +10,7 @@ import AdaptWorkbench from "./adapt-workbench";
 import { operationTitles } from "../lib/operation-titles";
 import type { RepairHandoff } from "../lib/repair-handoff";
 import Diagram from "./manual-diagram";
-import MuseRequestDetails from "./muse-request-details";
+import MuseRequestStatus from "./muse-request-details";
 import PhysicalProgress from "./physical-progress";
 import type {
   DesignGenerateRequest,
@@ -74,7 +74,10 @@ export default function PlanWorkbench({
   const [designResult, setDesignResult] = useState<DesignGenerateResult | null>(
     null,
   );
-  const [designError, setDesignError] = useState("");
+  const [designFailure, setDesignFailure] = useState<{
+    code?: string;
+    message: string;
+  } | null>(null);
   const [designNotice, setDesignNotice] = useState("");
   const [designPending, setDesignPending] =
     useState<DesignGenerateRequest | null>(null);
@@ -96,7 +99,7 @@ export default function PlanWorkbench({
     designController.current = null;
     setDesignConsented(false);
     setDesignResult(null);
-    setDesignError("");
+    setDesignFailure(null);
     setDesignNotice("");
     setDesignPending(null);
     setDesignUnknown(false);
@@ -171,7 +174,7 @@ export default function PlanWorkbench({
     designController.current?.abort();
     designController.current = null;
     setDesignBusy(false);
-    setDesignError("");
+    setDesignFailure(null);
     setDesignUnknown(true);
     setDesignNotice(
       "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the request. Its outcome is unknown, so check saved previews before starting a new request.",
@@ -192,7 +195,7 @@ export default function PlanWorkbench({
     setDesignPending(body);
     setDesignUnknown(false);
     setDesignBusy(true);
-    setDesignError("");
+    setDesignFailure(null);
     setDesignNotice("");
     setDesignResult(null);
     try {
@@ -242,7 +245,10 @@ export default function PlanWorkbench({
         ].includes(error.code)
       )
         setDesignUnknown(true);
-      setDesignError(message(error));
+      setDesignFailure({
+        code: error instanceof ApiError ? error.code : undefined,
+        message: message(error),
+      });
       if (
         error instanceof ApiError &&
         error.status >= 400 &&
@@ -267,7 +273,7 @@ export default function PlanWorkbench({
     // the user consent again before Generate creates a fresh key.
     setDesignPending(null);
     setDesignUnknown(false);
-    setDesignError("");
+    setDesignFailure(null);
     setDesignConsented(false);
     setDesignNotice(
       "The previous request outcome may be unknown. Check saved previews, then consent again and use Generate with Muse to start a new request with a fresh key.",
@@ -432,28 +438,27 @@ export default function PlanWorkbench({
           >
             Generate with Muse
           </button>
-          {designBusy && (
-            <button type="button" className="secondary" onClick={cancelDesign}>
-              Cancel
-            </button>
-          )}
         </div>
-        {designBusy && (
-          <p className="help" aria-live="polite">
-            Asking Muse… Cancelling stops FORMA waiting; it does not guarantee
-            Muse stopped. There are no automatic retries.
-          </p>
-        )}
-        {designNotice && (
-          <p className="notice" aria-live="polite">
-            {designNotice}
-          </p>
-        )}
-        {designError && (
-          <p className="error" role="alert">
-            {designError}
-          </p>
-        )}
+        <MuseRequestStatus
+          busy={designBusy}
+          pendingMessage="Asking Muse… Cancelling stops FORMA waiting; it does not guarantee Muse stopped. There are no automatic retries."
+          onCancel={cancelDesign}
+          cancelledMessage={designNotice}
+          errorCode={designFailure?.code}
+          errorMessage={designFailure?.message}
+          diagnostics={
+            designResult
+              ? {
+                  status: designResult.diagnostics.status,
+                  model: designResult.diagnostics.model,
+                  elapsedMs: designResult.diagnostics.elapsed_ms,
+                  usage: designResult.diagnostics.usage,
+                  modelRounds: designResult.diagnostics.model_rounds,
+                  toolExecutions: designResult.diagnostics.tool_executions,
+                }
+              : null
+          }
+        />
         {designPending && !designBusy && designUnknown && (
           <aside className="retry-panel">
             <h3>Generation outcome unknown</h3>
@@ -562,14 +567,6 @@ export default function PlanWorkbench({
                 ))}
               </ul>
             )}
-            <MuseRequestDetails
-              status={designResult.diagnostics.status}
-              model={designResult.diagnostics.model}
-              elapsedMs={designResult.diagnostics.elapsed_ms}
-              usage={designResult.diagnostics.usage}
-              modelRounds={designResult.diagnostics.model_rounds}
-              toolExecutions={designResult.diagnostics.tool_executions}
-            />
           </div>
         )}
       </div>

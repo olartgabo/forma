@@ -31,9 +31,7 @@ export default function MuseRequestStatus({
   errorMessage?: string;
   diagnostics?: MuseDiagnostics | null;
 }) {
-  const failure = errorMessage
-    ? museRequestStatus({ errorCode })
-    : null;
+  const failure = errorMessage ? museRequestStatus({ errorCode }) : null;
   return (
     <>
       {busy && (

@@ -7,6 +7,7 @@ export type RepairHandoff = {
   targetIds: readonly string[];
   failureType: DiagnosisProposal["failure_type"];
   source: "muse_diagnosis";
+  nonce?: string;
 };
 
 export type RepairDraftFields = {

@@ -31,7 +31,13 @@ import {
 } from "../src/lib/build-requirements.ts";
 import { proofText, proofUnknowns } from "../src/lib/proof-report.ts";
 import { createDiagnosisPlanLoader } from "../src/lib/diagnosis-plan-loader.ts";
-import { formatProviderUsage } from "../src/lib/provider-usage.ts";
+import {
+  formatMuseLatency,
+  formatProviderUsage,
+  museRequestStatus,
+  museStatusKindForCode,
+  museStatusLabel,
+} from "../src/lib/provider-usage.ts";
 import {
   draftFromHandoff,
   handoffFromDiagnosis,
@@ -97,6 +103,93 @@ test("provider usage formats only provider-reported bounded counts", () => {
       output_tokens: 5,
     }),
     "Provider-reported usage — model calls: 1; input tokens: not reported; output tokens: 5.",
+  );
+});
+
+test("muse status kinds map each error code and fall back safely", () => {
+  assert.equal(museStatusKindForCode("timeout"), "timeout");
+  assert.equal(museStatusKindForCode("request_timeout"), "timeout");
+  assert.equal(museStatusKindForCode("rate_limit"), "rate_limit");
+  assert.equal(
+    museStatusKindForCode("provider_not_configured"),
+    "provider_not_configured",
+  );
+  assert.equal(museStatusKindForCode("invalid_response"), "invalid_response");
+  assert.equal(museStatusKindForCode("cancelled"), "cancelled");
+  for (const unknown of [
+    "provider_error",
+    "network_error",
+    "PRIVATE_CODE",
+    "",
+    null,
+    undefined,
+    42,
+    {},
+  ])
+    assert.equal(museStatusKindForCode(unknown), "provider_failure");
+  assert.deepEqual(museRequestStatus({ errorCode: "timeout" }), {
+    kind: "timeout",
+    label: "Request timed out",
+  });
+  assert.deepEqual(museRequestStatus({ errorCode: "rate_limit" }), {
+    kind: "rate_limit",
+    label: "Rate limit reached",
+  });
+  assert.deepEqual(
+    museRequestStatus({ errorCode: "provider_not_configured" }),
+    {
+      kind: "provider_not_configured",
+      label: "Muse is not configured",
+    },
+  );
+  assert.deepEqual(museRequestStatus({ errorCode: "invalid_response" }), {
+    kind: "invalid_response",
+    label: "Unusable Muse response",
+  });
+  assert.deepEqual(museRequestStatus({ errorCode: "something_else" }), {
+    kind: "provider_failure",
+    label: "Muse request failed",
+  });
+  assert.equal(museStatusLabel("provider_failure"), "Muse request failed");
+  assert.equal(museStatusLabel("nonsense"), "Muse request failed");
+});
+
+test("muse status kinds cover pending, cancelled and success states", () => {
+  assert.deepEqual(museRequestStatus({ busy: true }), {
+    kind: "pending",
+    label: "Waiting for Muse",
+  });
+  assert.deepEqual(museRequestStatus({ cancelled: true }), {
+    kind: "cancelled",
+    label: "Request cancelled",
+  });
+  assert.deepEqual(museRequestStatus({ errorCode: "cancelled" }), {
+    kind: "cancelled",
+    label: "Request cancelled",
+  });
+  assert.deepEqual(museRequestStatus({ succeeded: true }), {
+    kind: "success",
+    label: "Request completed",
+  });
+  // Busy wins while a request is in flight, even with a stale error code.
+  assert.equal(
+    museRequestStatus({ busy: true, errorCode: "timeout" }).kind,
+    "pending",
+  );
+});
+
+test("muse latency and usage formatting report unknowns without inventing values", () => {
+  assert.equal(formatMuseLatency(0), "duration: 0 ms");
+  assert.equal(formatMuseLatency(1234), "duration: 1234 ms");
+  for (const missing of [null, undefined, "12", Number.NaN, -1, Infinity, {}])
+    assert.equal(formatMuseLatency(missing), "duration: not reported");
+  assert.equal(
+    formatProviderUsage(null),
+    "Provider-reported usage: not reported.",
+  );
+  assert.equal(
+    formatProviderUsage(undefined),
+    "Provider-reported usage: not reported.",
   );
 });
 
