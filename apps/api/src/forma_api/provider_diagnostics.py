@@ -47,21 +47,17 @@ def _total(traces: list[Any], key: str) -> int | None:
 def summarize_usage(traces: Iterable[Any] | None) -> ProviderUsage:
     """Aggregate request-local traces; any missing/malformed count is unknown.
 
-    Traces for failed attempts with no provider response body
-    (``rate_limit`` / ``provider_http_error``) still count in
-    ``model_calls`` but are excluded from token totals.
+    All attempts count in ``model_calls``. An attempt with a missing or
+    malformed input (or output) count makes that corresponding aggregate
+    unknown rather than presenting a success-only total; unknown is not
+    zero. Genuinely reported zeros aggregate to zero.
     """
 
     local = list(traces) if traces is not None else []
-    token_traces = [
-        trace
-        for trace in local
-        if _reported(trace, "status") not in ("rate_limit", "provider_http_error")
-    ]
     return ProviderUsage(
         model_calls=len(local),
-        input_tokens=_total(token_traces, "input_tokens"),
-        output_tokens=_total(token_traces, "output_tokens"),
+        input_tokens=_total(local, "input_tokens"),
+        output_tokens=_total(local, "output_tokens"),
     )
 
 

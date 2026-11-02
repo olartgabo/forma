@@ -48,13 +48,25 @@ def _parse_retry_after(response) -> float | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
-        return float(value) if value >= 0 else None
+        if value < 0:
+            return None
+        # Clamp before float conversion: float() of a huge int overflows.
+        return 3.0 if value > 10**18 else float(value)
     if not isinstance(value, str):
         return None
     text = value.strip()
     if not re.fullmatch(r"\d+", text):
         return None
-    return float(int(text))
+    # Bound the parse before converting: int()/float() of a digit string
+    # with hundreds or thousands of digits raises ValueError/OverflowError.
+    # Any significant value this long far exceeds the 3s retry cap, so
+    # clamp it to the cap without ever materialising the huge number.
+    significant = text.lstrip("0")
+    if not significant:
+        return 0.0
+    if len(significant) > 18:
+        return 3.0
+    return float(int(significant))
 
 
 class GatewayError(Exception):
