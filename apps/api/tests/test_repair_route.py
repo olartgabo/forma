@@ -291,12 +291,18 @@ def test_provider_errors_redacted(
     client, monkeypatch, tmp_path, gateway_code, status, code
 ):
     project, version = active_project(client, tmp_path)
-    fake = Fake(GatewayError(gateway_code))
+    # Inject raw provider text into the exception passed to Fake. The
+    # gateway code stays stable, but str(exc) now carries the marker, so
+    # any route that echoes the exception/provider body would leak it.
+    provider_error = GatewayError(gateway_code)
+    provider_error.args = (gateway_code, "SECRET_PROVIDER_BODY")
+    assert "SECRET_PROVIDER_BODY" in str(provider_error)
+    fake = Fake(provider_error)
     install(monkeypatch, fake)
     before = snapshots(client, project, version)
     r = call(client, project, body(project, version))
     assert (r.status_code, r.json()["code"]) == (status, code)
-    assert "SECRET" not in r.text
+    assert "SECRET_PROVIDER_BODY" not in r.text
     assert snapshots(client, project, version) == before
 
 
