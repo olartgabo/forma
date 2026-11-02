@@ -8,6 +8,11 @@ available cardboard, electronics and bottles, the missing measurements, and
 the next bench sequence. Availability is user-reported; no inventory or
 profile is measured or verified yet.
 
+The [November 2 update](materials-intake-2026-11-02.md) adds user-reported plastic,
+string, tape, phones and webcams, and reconfirms cardboard and a Raspberry Pi 5.
+Sheet dimensions, connector lengths, tools and the test device remain unknown.
+Neither availability note establishes a physical attempt or a test result.
+
 Copy [BUILD-LOG.md](BUILD-LOG.md) per actual attempt. Store redacted measurements,
 outcomes and evidence manifests with stable build/evidence IDs. Mark planned,
 attempted, failed and passed separately. Retain failures and manual instruction
