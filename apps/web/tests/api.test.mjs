@@ -34,6 +34,8 @@ import {
 import { proofText, proofUnknowns } from "../src/lib/proof-report.ts";
 import { createDiagnosisPlanLoader } from "../src/lib/diagnosis-plan-loader.ts";
 import {
+  combineProviderUsage,
+  formatCombinedProviderUsage,
   formatMuseLatency,
   formatProviderUsage,
   museDiagnosticsFromResult,
@@ -432,6 +434,146 @@ test("museDiagnosticsFromResult maps diagnostics or returns null", () => {
     { model: "m", elapsed_ms: 1 },
   ])
     assert.equal(museDiagnosticsFromResult(bad), null);
+});
+
+test("combined provider usage sums exactly two requests with combined bound 32", () => {
+  const diagnosis = {
+    status: "ok",
+    model: "m",
+    elapsed_ms: 100,
+    usage: { model_calls: 16, input_tokens: 1234, output_tokens: 0 },
+  };
+  const repair = {
+    status: "ok",
+    model: "m",
+    elapsed_ms: 250,
+    usage: { model_calls: 16, input_tokens: 1, output_tokens: 5 },
+  };
+  // Valid combined model_calls is 32, above the per-request bound of 16.
+  assert.deepEqual(combineProviderUsage([diagnosis, repair]), {
+    modelCalls: 32,
+    inputTokens: 1235,
+    outputTokens: 5,
+    summedElapsedMs: 350,
+  });
+  assert.equal(
+    formatCombinedProviderUsage(diagnosis, repair),
+    "Diagnosis + repair usage — model calls: 32; input tokens: 1,235; output tokens: 5; summed request durations: 350 ms.",
+  );
+  assert.equal(
+    formatCombinedProviderUsage(diagnosis, repair, "es"),
+    "Uso de diagnóstico + reparación — llamadas al modelo: 32; tokens de entrada: 1,235; tokens de salida: 5; suma de duraciones de las solicitudes: 350 ms.",
+  );
+  // Summary-shaped records (elapsedMs) are also accepted.
+  assert.deepEqual(
+    combineProviderUsage([
+      {
+        elapsedMs: 0,
+        usage: { model_calls: 0, input_tokens: 0, output_tokens: 0 },
+      },
+      {
+        elapsedMs: 0,
+        usage: { model_calls: 0, input_tokens: 0, output_tokens: 0 },
+      },
+    ]),
+    { modelCalls: 0, inputTokens: 0, outputTokens: 0, summedElapsedMs: 0 },
+  );
+});
+
+test("combined provider usage propagates per-field unknowns and never fabricates zero", () => {
+  const base = {
+    elapsed_ms: 10,
+    usage: { model_calls: 1, input_tokens: 10, output_tokens: 5 },
+  };
+  // Missing input tokens in one request: only that field is unknown.
+  assert.deepEqual(
+    combineProviderUsage([
+      base,
+      { elapsed_ms: 10, usage: { model_calls: 2, output_tokens: 5 } },
+    ]),
+    { modelCalls: 3, inputTokens: null, outputTokens: 10, summedElapsedMs: 20 },
+  );
+  for (const bad of ["1", 1.5, -1, 17, true, null, Number.NaN, {}]) {
+    const combined = combineProviderUsage([
+      base,
+      {
+        elapsed_ms: 10,
+        usage: { model_calls: bad, input_tokens: 1, output_tokens: 1 },
+      },
+    ]);
+    assert.equal(combined.modelCalls, null);
+    assert.equal(combined.inputTokens, 11);
+  }
+  for (const bad of [
+    "5",
+    -1,
+    16_000_000_001,
+    false,
+    Number.POSITIVE_INFINITY,
+  ]) {
+    const combined = combineProviderUsage([
+      base,
+      {
+        elapsed_ms: 10,
+        usage: { model_calls: 1, input_tokens: bad, output_tokens: 1 },
+      },
+    ]);
+    assert.equal(combined.inputTokens, null);
+  }
+  // Missing/malformed elapsed stays unknown; counts still sum.
+  for (const bad of [undefined, null, "10", -1, Number.NaN, true]) {
+    const combined = combineProviderUsage([
+      base,
+      {
+        elapsed_ms: bad,
+        usage: { model_calls: 1, input_tokens: 1, output_tokens: 1 },
+      },
+    ]);
+    assert.equal(combined.summedElapsedMs, null);
+    assert.equal(combined.modelCalls, 2);
+  }
+  assert.match(
+    formatCombinedProviderUsage(base, {
+      usage: { model_calls: 1, input_tokens: 1, output_tokens: 1 },
+    }),
+    /summed request durations: not reported/,
+  );
+  // Missing diagnosis/repair record entirely: combined unavailable, not zero.
+  assert.equal(combineProviderUsage([null, base]), null);
+  assert.equal(combineProviderUsage([base]), null);
+  assert.equal(combineProviderUsage([base, base, base]), null);
+  assert.equal(combineProviderUsage("nope"), null);
+  assert.equal(
+    formatCombinedProviderUsage(null, base),
+    "Diagnosis + repair usage: not reported.",
+  );
+  assert.equal(
+    formatCombinedProviderUsage(undefined, base, "es"),
+    "Uso de diagnóstico + reparación: no informado.",
+  );
+});
+
+test("combined provider usage does not mutate frozen inputs", () => {
+  const diagnosis = Object.freeze({
+    elapsed_ms: 5,
+    usage: Object.freeze({ model_calls: 1, input_tokens: 2, output_tokens: 3 }),
+  });
+  const repair = Object.freeze({
+    elapsed_ms: 7,
+    usage: Object.freeze({ model_calls: 4, input_tokens: 5, output_tokens: 6 }),
+  });
+  const records = Object.freeze([diagnosis, repair]);
+  assert.deepEqual(combineProviderUsage(records), {
+    modelCalls: 5,
+    inputTokens: 7,
+    outputTokens: 9,
+    summedElapsedMs: 12,
+  });
+  assert.deepEqual(diagnosis.usage, {
+    model_calls: 1,
+    input_tokens: 2,
+    output_tokens: 3,
+  });
 });
 
 function deferred() {
@@ -2483,6 +2625,44 @@ test("repair handoff is built only for the matching project and active version",
     null,
   );
   assert.equal(handoffFromDiagnosis(diagnosisFor([]), handoffVersion), null);
+});
+
+test("repair handoff carries diagnosis diagnostics only for matching handoff", () => {
+  const diagnostics = {
+    status: "ok",
+    model: "muse-spark-test",
+    elapsed_ms: 42,
+    usage: { model_calls: 1, input_tokens: 10, output_tokens: 5 },
+  };
+  const matching = handoffFromDiagnosis(
+    diagnosisFor(["part-a"], "torn_slot", { diagnostics }),
+    handoffVersion,
+  );
+  assert.deepEqual(matching.diagnosisDiagnostics, diagnostics);
+  assert.equal(
+    handoffFromDiagnosis(
+      diagnosisFor(["part-a"], "torn_slot", {
+        diagnostics,
+        project_id: "project-other",
+      }),
+      handoffVersion,
+    ),
+    null,
+  );
+  assert.equal(
+    handoffFromDiagnosis(
+      diagnosisFor(["part-a"], "torn_slot", {
+        diagnostics,
+        active_version_id: "version-b",
+      }),
+      handoffVersion,
+    ),
+    null,
+  );
+  // Old handoffs without diagnostics remain compatible: no fabricated field.
+  const legacy = handoffFromDiagnosis(diagnosisFor(["part-a"]), handoffVersion);
+  assert.equal("diagnosisDiagnostics" in legacy, false);
+  assert.equal(legacy.diagnosisDiagnostics, undefined);
 });
 
 test("isHandoffCurrent matches only the handoff project and version", () => {

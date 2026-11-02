@@ -43,6 +43,129 @@ export function formatProviderUsage(
   return `${copy.usage.reportedPrefix} — ${copy.usage.modelCalls}: ${modelCalls}; ${copy.usage.inputTokens}: ${inputTokens}; ${copy.usage.outputTokens}: ${outputTokens}.`;
 }
 
+const MAX_COMBINED_MODEL_CALLS = 32;
+const MAX_COMBINED_TOKENS_TOTAL = 32_000_000_000;
+
+export type CombinedProviderUsage = {
+  modelCalls: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  summedElapsedMs: number | null;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validCount(value: unknown, max: number): number | null {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value > max
+  )
+    return null;
+  return value;
+}
+
+function sumCounts(
+  first: unknown,
+  second: unknown,
+  perRequestMax: number,
+): number | null {
+  const a = validCount(first, perRequestMax);
+  const b = validCount(second, perRequestMax);
+  if (a === null || b === null) return null;
+  return a + b;
+}
+
+function elapsedOf(record: Record<string, unknown>): unknown {
+  return "elapsedMs" in record ? record.elapsedMs : record.elapsed_ms;
+}
+
+function validElapsed(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+    return null;
+  return value;
+}
+
+// Pure aggregator for exactly two request records (diagnosis + repair).
+// Each record may be a raw diagnostics object ({ usage, elapsed_ms }) or a
+// MuseDiagnosticsSummary ({ usage, elapsedMs }). Inputs are never mutated.
+export function combineProviderUsage(
+  records: unknown,
+): CombinedProviderUsage | null {
+  if (!Array.isArray(records) || records.length !== 2) return null;
+  const [first, second] = records;
+  if (!isRecord(first) || !isRecord(second)) return null;
+  if (!isRecord(first.usage) || !isRecord(second.usage)) {
+    // A missing/malformed usage object makes every count unknown, but a
+    // record is still present; elapsed is handled per-field below.
+    const a = validElapsed(elapsedOf(first));
+    const b = validElapsed(elapsedOf(second));
+    return {
+      modelCalls: null,
+      inputTokens: null,
+      outputTokens: null,
+      summedElapsedMs: a === null || b === null ? null : a + b,
+    };
+  }
+  const firstElapsed = validElapsed(elapsedOf(first));
+  const secondElapsed = validElapsed(elapsedOf(second));
+  const summed =
+    firstElapsed === null || secondElapsed === null
+      ? null
+      : firstElapsed + secondElapsed;
+  return {
+    modelCalls: sumCounts(
+      first.usage.model_calls,
+      second.usage.model_calls,
+      MAX_MODEL_CALLS,
+    ),
+    inputTokens: sumCounts(
+      first.usage.input_tokens,
+      second.usage.input_tokens,
+      MAX_TOKENS_TOTAL,
+    ),
+    outputTokens: sumCounts(
+      first.usage.output_tokens,
+      second.usage.output_tokens,
+      MAX_TOKENS_TOTAL,
+    ),
+    summedElapsedMs: summed !== null && Number.isFinite(summed) ? summed : null,
+  };
+}
+
+export function formatCombinedProviderUsage(
+  diagnosisRecord: unknown,
+  repairRecord: unknown,
+  locale: unknown = "en",
+): string {
+  const copy = museCopyFor(locale);
+  const combined = combineProviderUsage([diagnosisRecord, repairRecord]);
+  if (combined === null) return copy.usage.combinedUnknown;
+  const modelCalls = formatCount(
+    combined.modelCalls,
+    MAX_COMBINED_MODEL_CALLS,
+    locale,
+  );
+  const inputTokens = formatCount(
+    combined.inputTokens,
+    MAX_COMBINED_TOKENS_TOTAL,
+    locale,
+  );
+  const outputTokens = formatCount(
+    combined.outputTokens,
+    MAX_COMBINED_TOKENS_TOTAL,
+    locale,
+  );
+  const duration =
+    combined.summedElapsedMs === null
+      ? copy.usage.combinedDurationUnknown
+      : copy.usage.combinedDuration(combined.summedElapsedMs);
+  return `${copy.usage.combinedPrefix} — ${copy.usage.modelCalls}: ${modelCalls}; ${copy.usage.inputTokens}: ${inputTokens}; ${copy.usage.outputTokens}: ${outputTokens}; ${duration}.`;
+}
+
 export type MuseStatusKind =
   | "pending"
   | "cancelled"

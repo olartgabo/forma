@@ -9,6 +9,7 @@ export type RepairHandoff = {
   source: "muse_diagnosis";
   nonce?: string;
   diagnosis?: DiagnosisProposal;
+  diagnosisDiagnostics?: DiagnosisResult["diagnostics"];
 };
 
 export type RepairDraftFields = {
@@ -43,6 +44,7 @@ export function handoffFromDiagnosis(
     failureType: result.diagnosis.failure_type,
     source: "muse_diagnosis",
     diagnosis: result.diagnosis,
+    ...(result.diagnostics ? { diagnosisDiagnostics: result.diagnostics } : {}),
   };
 }
 
