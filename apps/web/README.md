@@ -75,3 +75,24 @@ Known report changes invalidate pending exports, including while the panel is
 closed. Repair/invalidation coverage is explicitly unavailable. See the
 [Proof handoff](../../docs/handoffs/issue-14-proof-summary.md).
 See [contracts](../../docs/contracts.md) and [development](../../docs/development.md).
+
+## Diagnosis and Proof browser regression
+
+Saving an active-step diagnosis refreshes an open Proof snapshot and invalidates
+an export that began before the new evidence was saved. The browser regression
+exercises the actual connected components with intercepted API responses. It
+requires no API server, provider key or physical result.
+
+Install Playwright in a separate tools directory and install its Chromium browser
+(`npx playwright install chromium` from that directory), or set `CHROME_PATH` to
+an existing Chrome executable. Start `npm run dev -w @forma/web -- --port 3007`,
+then run from the repository root:
+
+```sh
+node apps/web/tests/diagnosis-proof.browser.mjs /absolute/path/to/playwright/index.mjs http://127.0.0.1:3007
+```
+
+The runner requires a local server URL and an explicit Playwright module path;
+missing prerequisites fail rather than skip. It is a separate browser check,
+not included in `npm run check`. Synthetic responses are UI regression data,
+not compiler validation, live-provider evidence or a physical pass.
