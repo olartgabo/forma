@@ -148,6 +148,8 @@ const en = {
     failureType: "Failure type:",
     affected: "Affected plan items:",
     noAffected: "No plan items were identified.",
+    noPartTarget:
+      "This diagnosis identified affected plan items, but no part-level repair target. Repair review requires an affected part; FORMA will not guess a part from these items.",
     measurementNote:
       "A photo does not confirm measurements or that a physical check passed; measure and check yourself.",
     repairHelp:
@@ -159,7 +161,7 @@ const en = {
     intro:
       "Muse can propose repair candidates from your reported problem, the Muse diagnosis (if present) and the active plan context. Proposals are unverified: they are only added to the candidate list below. Nothing is simulated or approved until you confirm remaining stock, press Simulate repairs and approve a preview yourself.",
     needsDiagnosis:
-      "A Muse diagnosis is needed first. Ask Muse what went wrong above and review a repair from that diagnosis, then return here. FORMA will not invent a diagnosis.",
+      "Repair options require a Muse diagnosis with an affected part in the active plan. Use Review a repair for that part above, then return here. FORMA will not guess a repair target.",
     sendsContext:
       "This request sends your reported problem, the Muse diagnosis from the handoff and the active plan context to Meta's Muse service for this one request.",
     problemLabel: "Reported problem",
@@ -368,6 +370,8 @@ const es: MuseCopy = {
     failureType: "Tipo de fallo:",
     affected: "Elementos del plan afectados:",
     noAffected: "No se identificaron elementos del plan.",
+    noPartTarget:
+      "Este diagnóstico identificó elementos del plan afectados, pero ninguna pieza para reparar. Revisar una reparación requiere una pieza afectada; FORMA no deducirá una pieza a partir de estos elementos.",
     measurementNote:
       "Una foto no confirma las medidas ni que una comprobación física haya pasado; mide y comprueba tú mismo.",
     repairHelp:
@@ -379,7 +383,7 @@ const es: MuseCopy = {
     intro:
       "Muse puede proponer reparaciones candidatas a partir del problema que informaste, el diagnóstico de Muse (si lo hay) y el contexto del plan activo. Las propuestas no están verificadas: solo se añaden a la lista de candidatas de abajo. Nada se simula ni se aprueba hasta que confirmes las existencias restantes, pulses Simular reparaciones y apruebes tú mismo una vista previa.",
     needsDiagnosis:
-      "Primero se necesita un diagnóstico de Muse. Pregunta arriba a Muse qué salió mal y revisa una reparación desde ese diagnóstico; luego vuelve aquí. FORMA no inventará un diagnóstico.",
+      "Las opciones de reparación requieren un diagnóstico de Muse con una pieza afectada del plan activo. Usa Revisar una reparación para esa pieza arriba y luego vuelve aquí. FORMA no adivinará qué pieza reparar.",
     sendsContext:
       "Esta solicitud envía el problema que informaste, el diagnóstico de Muse de la transferencia y el contexto del plan activo al servicio Muse de Meta solo para esta solicitud.",
     problemLabel: "Problema informado",

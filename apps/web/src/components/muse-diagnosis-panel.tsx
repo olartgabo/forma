@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ApiError, loadPlan, requestDiagnosis } from "../lib/api";
 import { createDiagnosisPlanLoader } from "../lib/diagnosis-plan-loader";
 import {
+  diagnosisHasNoPartTarget,
   handoffFromDiagnosis,
   type RepairHandoff,
 } from "../lib/repair-handoff";
@@ -477,6 +478,11 @@ export default function MuseDiagnosisPanel({
                   : ` ${copy.diagnosis.noAffected}`}{" "}
                 {copy.diagnosis.measurementNote}
               </p>
+              {activePlan && diagnosisHasNoPartTarget(result, activePlan) && (
+                <p className="help" role="note">
+                  {copy.diagnosis.noPartTarget}
+                </p>
+              )}
               {repairHandoff && onRepairHandoff && (
                 <div className="muse-actions">
                   <p className="help">{copy.diagnosis.repairHelp}</p>
