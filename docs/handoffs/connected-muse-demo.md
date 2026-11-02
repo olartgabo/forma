@@ -67,7 +67,7 @@ runtime database, generated image or unredacted private artifact is committed.
 
 ## Composition with saved requirements and manuals
 
-The owned integration branch combines PR #70 with PRs #68ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“69. Both authenticated
+The owned integration branch combines PR #70 with PRs #68ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ69. Both authenticated
 routers and both workbench panels are retained: Muse photo observations alongside
 saved requirements, immutable previews/manuals and explicit initial approval.
 Muse resolved the two source conflicts; independent integration review approved.
@@ -209,3 +209,18 @@ usage={model_calls:1,input_tokens:2904,output_tokens:1969}, exactly matching the
 safe trace from the actual Muse Spark1.3 response (11,859ms). Failure remained
 unknown with no affected IDs. These counts are provider-reported tokens, not a
 bill, estimated spending, physical evidence or additional inferred inventory.
+
+## Visible provider usage details
+
+All three successful connected-request panels now share compact request details:
+existing model/status/duration and design round/tool counts, plus optional
+provider-reported call and input/output token counts. Missing or malformed usage
+says not reported; genuine zero remains zero. No prices, billing estimates,
+private traces, extra requests or changes to consent/session controls are added.
+
+Muse implemented the six-file UI slice; independent final review approved it.
+Twenty-five client tests, TypeScript, formatting and production build passed.
+A real browser/photo/Meta Muse Spark1.3 diagnosis took 14,797ms and visibly showed
+one model call, 2,902 input tokens and 1,612 output tokens, matching the safe
+provider trace. Failure remained unknown and consent was consumed. Private DOM
+evidence remains uncommitted. Software acceptance is not a physical build pass.

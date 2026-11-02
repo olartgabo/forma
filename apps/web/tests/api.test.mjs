@@ -10,6 +10,8 @@ import {
   generateDesign,
   listPhotos,
   listPlans,
+  listSavedProjects,
+  loadDesignReadiness,
   loadPlan,
   loadProject,
   requestDiagnosis,
@@ -22,6 +24,166 @@ import {
   emptyRequirements,
   requirementsError,
 } from "../src/lib/build-requirements.ts";
+import { createDiagnosisPlanLoader } from "../src/lib/diagnosis-plan-loader.ts";
+import { formatProviderUsage } from "../src/lib/provider-usage.ts";
+
+test("provider usage formats only provider-reported bounded counts", () => {
+  assert.equal(
+    formatProviderUsage({
+      model_calls: 1,
+      input_tokens: 1234,
+      output_tokens: 56,
+    }),
+    "Provider-reported usage — model calls: 1; input tokens: 1,234; output tokens: 56.",
+  );
+  assert.equal(
+    formatProviderUsage({
+      model_calls: 2,
+      input_tokens: 1234567,
+      output_tokens: 89012,
+    }),
+    "Provider-reported usage — model calls: 2; input tokens: 1,234,567; output tokens: 89,012.",
+  );
+  for (const missing of [null, undefined, "PRIVATE", 42, true, []])
+    assert.equal(
+      formatProviderUsage(missing),
+      "Provider-reported usage: not reported.",
+    );
+  assert.equal(
+    formatProviderUsage({ model_calls: 1, input_tokens: null }),
+    "Provider-reported usage — model calls: 1; input tokens: not reported; output tokens: not reported.",
+  );
+  assert.equal(
+    formatProviderUsage({
+      model_calls: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+    }),
+    "Provider-reported usage — model calls: 0; input tokens: 0; output tokens: 0.",
+  );
+  for (const malformed of [
+    { model_calls: "1", input_tokens: 10, output_tokens: 5 },
+    { model_calls: 1.5, input_tokens: 10, output_tokens: 5 },
+    { model_calls: -1, input_tokens: 10, output_tokens: 5 },
+    { model_calls: 17, input_tokens: 10, output_tokens: 5 },
+    { model_calls: 1, input_tokens: Number.NaN, output_tokens: 5 },
+    {
+      model_calls: 1,
+      input_tokens: Number.POSITIVE_INFINITY,
+      output_tokens: 5,
+    },
+    { model_calls: 1, input_tokens: 16_000_000_001, output_tokens: 5 },
+    { model_calls: true, input_tokens: { value: 10 }, output_tokens: "5" },
+  ]) {
+    const formatted = formatProviderUsage(malformed);
+    assert.match(formatted, /not reported/);
+    assert.doesNotMatch(formatted, /PRIVATE|NaN|Infinity|\[object/);
+  }
+  assert.equal(
+    formatProviderUsage({
+      model_calls: 1,
+      input_tokens: "PRIVATE_TOKEN_COUNT",
+      output_tokens: 5,
+    }),
+    "Provider-reported usage — model calls: 1; input tokens: not reported; output tokens: 5.",
+  );
+});
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+const flushAsync = () => new Promise((resolve) => setImmediate(resolve));
+
+test("diagnosis plan loader retries only the current manual after failure", async () => {
+  const key = {
+    token: "token-a",
+    projectId: "project-a",
+    activeVersionId: "version-a",
+  };
+  const plan = { project_id: "project-a", version_id: "version-a" };
+  const calls = [];
+  const loader = createDiagnosisPlanLoader({
+    load: async (loadKey) => {
+      calls.push(loadKey);
+      if (calls.length === 1) throw new Error("transient");
+      return plan;
+    },
+    errorMessage: () => "The manual could not be loaded.",
+  });
+  loader.setKey(key);
+  assert.equal(loader.getState().loading, true);
+  assert.equal(loader.getState().plan, null);
+  await flushAsync();
+  assert.equal(loader.getState().loading, false);
+  assert.equal(loader.getState().plan, null);
+  assert.equal(loader.getState().error, "The manual could not be loaded.");
+  loader.retry();
+  assert.equal(loader.getState().loading, true);
+  assert.equal(loader.getState().error, "");
+  await flushAsync();
+  assert.deepEqual(loader.getState().plan, plan);
+  assert.equal(loader.getState().error, "");
+  assert.equal(loader.getState().loading, false);
+  assert.deepEqual(calls, [key, key]);
+  loader.dispose();
+});
+
+test("diagnosis plan loader ignores a retry result after session and version change", async () => {
+  const keyA = {
+    token: "token-a",
+    projectId: "project-a",
+    activeVersionId: "version-a",
+  };
+  const keyB = {
+    token: "token-b",
+    projectId: "project-a",
+    activeVersionId: "version-b",
+  };
+  const planA = { project_id: "project-a", version_id: "version-a" };
+  const planB = { project_id: "project-a", version_id: "version-b" };
+  const pending = [];
+  const signals = [];
+  const loader = createDiagnosisPlanLoader({
+    load: (loadKey, signal) => {
+      signals.push(signal);
+      const next = deferred();
+      pending.push(next);
+      return next.promise;
+    },
+    errorMessage: () => "The manual could not be loaded.",
+  });
+  loader.setKey(keyA);
+  pending[0].reject(new Error("transient"));
+  await flushAsync();
+  assert.equal(loader.getState().error, "The manual could not be loaded.");
+  loader.retry();
+  loader.retry();
+  assert.equal(pending.length, 2);
+  loader.setKey(keyB);
+  assert.deepEqual(loader.getState().key, keyB);
+  assert.equal(loader.getState().plan, null);
+  assert.equal(loader.getState().error, "");
+  assert.equal(loader.getState().loading, true);
+  assert.equal(signals[1].aborted, true);
+  pending[1].resolve(planA);
+  await flushAsync();
+  assert.deepEqual(loader.getState().key, keyB);
+  assert.equal(loader.getState().plan, null);
+  assert.equal(loader.getState().loading, true);
+  pending[2].resolve(planB);
+  await flushAsync();
+  assert.deepEqual(loader.getState().plan, planB);
+  assert.equal(loader.getState().loading, false);
+  loader.dispose();
+  assert.equal(loader.getState().plan, null);
+});
 
 const token = "synthetic-owner-credential";
 const savedProject = {
@@ -718,6 +880,218 @@ test("diagnosis cancellation aborts without leaking abort details", async (t) =>
     assert.doesNotMatch(error.message, /PRIVATE_ABORT_DETAIL/);
     return true;
   });
+  assert.equal(requestSignal.aborted, true);
+});
+
+const savedList = {
+  projects: [
+    {
+      id: "project-a",
+      goal: "A phone stand",
+      revision_id: "inventory-1",
+      inventory_confirmed: true,
+      active_version_id: null,
+    },
+    {
+      id: "project-b",
+      goal: "Un soporte",
+      revision_id: "inventory-2",
+      inventory_confirmed: false,
+      active_version_id: "version-1",
+    },
+  ],
+  next_cursor: "project-b",
+};
+
+test("saved projects request sends exact auth and bounded pagination query", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json(savedList);
+  });
+  const result = await listSavedProjects(token, {
+    limit: 2,
+    cursor: "project-0",
+  });
+  assert.deepEqual(result, savedList);
+  assert.equal(calls[0].path, "/api/projects?limit=2&cursor=project-0");
+  assert.equal(calls[0].options.method, "GET");
+  assert.equal(
+    calls[0].options.headers.get("Authorization"),
+    `Bearer ${token}`,
+  );
+  assert.equal(calls[0].options.credentials, "omit");
+  assert.equal(calls[0].options.cache, "no-store");
+  await assert.rejects(
+    listSavedProjects(token, { limit: 51 }),
+    (error) => error instanceof ApiError && error.code === "validation_error",
+  );
+  assert.equal(calls.length, 1);
+});
+
+test("saved projects mismatched, oversized and unordered shapes are rejected", async (t) => {
+  const payloads = [
+    { ...savedList, projects: [...savedList.projects, savedList.projects[1]] },
+    { projects: [{ ...savedList.projects[0], goal: 42 }], next_cursor: null },
+    {
+      projects: [savedList.projects[1], savedList.projects[0]],
+      next_cursor: null,
+    },
+    { projects: [], next_cursor: "project-b" },
+    { projects: savedList.projects, next_cursor: "project-other" },
+    { projects: savedList.projects, next_cursor: 7 },
+  ];
+  for (const payload of payloads) {
+    t.mock.method(globalThis, "fetch", async () => Response.json(payload));
+    await assert.rejects(
+      listSavedProjects(token, { limit: 2 }),
+      (error) => error instanceof ApiError && error.code === "invalid_response",
+    );
+    t.mock.restoreAll();
+  }
+});
+
+test("saved projects errors and cancellation stay safe", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { code: "PRIVATE_CODE", message: "PRIVATE_SERVER_TEXT" },
+      { status: 401 },
+    ),
+  );
+  await assert.rejects(listSavedProjects(token), (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 401);
+    assert.doesNotMatch(error.message, /PRIVATE/);
+    return true;
+  });
+  t.mock.restoreAll();
+  let requestSignal;
+  t.mock.method(globalThis, "fetch", (path, options) => {
+    requestSignal = options.signal;
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener(
+        "abort",
+        () => reject(new DOMException("PRIVATE_ABORT_DETAIL", "AbortError")),
+        { once: true },
+      );
+    });
+  });
+  const controller = new AbortController();
+  const pending = listSavedProjects(token, {}, controller.signal);
+  controller.abort();
+  await assert.rejects(
+    pending,
+    (error) =>
+      error instanceof ApiError &&
+      error.code === "cancelled" &&
+      !/PRIVATE/.test(error.message),
+  );
+  assert.equal(requestSignal.aborted, true);
+});
+
+const readinessResult = {
+  project_id: "project-a",
+  inventory_revision_id: "inventory-1",
+  inventory_confirmed: false,
+  status: "needs_input",
+  missing_inputs: ["Confirm the saved inventory."],
+  blockers: [{ code: "unsupported", message: "No profiles.", target_ids: [] }],
+};
+
+test("readiness request is scoped GET with caller auth and no body", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json(readinessResult);
+  });
+  const result = await loadDesignReadiness(token, "project-a", "inventory-1");
+  assert.deepEqual(result, readinessResult);
+  assert.equal(calls[0].path, "/api/projects/project-a/designs/readiness");
+  assert.equal(calls[0].options.method, "GET");
+  assert.equal(calls[0].options.body, undefined);
+  assert.equal(
+    calls[0].options.headers.get("Authorization"),
+    `Bearer ${token}`,
+  );
+});
+
+test("readiness mismatched revision and inconsistent completeness are rejected", async (t) => {
+  const payloads = [
+    { ...readinessResult, project_id: "project-other" },
+    { ...readinessResult, inventory_revision_id: "inventory-2" },
+    { ...readinessResult, status: "inputs_complete" },
+    { ...readinessResult, missing_inputs: "PRIVATE" },
+    {
+      ...readinessResult,
+      blockers: [{ code: "unsupported", message: 9, target_ids: [] }],
+    },
+    {
+      ...readinessResult,
+      blockers: Array.from({ length: 33 }, () => ({
+        code: "unsupported",
+        message: "x",
+        target_ids: [],
+      })),
+    },
+  ];
+  for (const payload of payloads) {
+    t.mock.method(globalThis, "fetch", async () => Response.json(payload));
+    await assert.rejects(
+      loadDesignReadiness(token, "project-a", "inventory-1"),
+      (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.code, "invalid_response");
+        assert.doesNotMatch(error.message, /PRIVATE/);
+        return true;
+      },
+    );
+    t.mock.restoreAll();
+  }
+});
+
+test("readiness errors and cancellation stay safe", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { code: "not_found", message: "PRIVATE_SERVER_TEXT" },
+      { status: 404 },
+    ),
+  );
+  await assert.rejects(
+    loadDesignReadiness(token, "project-a", "inventory-1"),
+    (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 404);
+      assert.doesNotMatch(error.message, /PRIVATE/);
+      return true;
+    },
+  );
+  t.mock.restoreAll();
+  let requestSignal;
+  t.mock.method(globalThis, "fetch", (path, options) => {
+    requestSignal = options.signal;
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener(
+        "abort",
+        () => reject(new DOMException("PRIVATE_ABORT_DETAIL", "AbortError")),
+        { once: true },
+      );
+    });
+  });
+  const controller = new AbortController();
+  const pending = loadDesignReadiness(
+    token,
+    "project-a",
+    "inventory-1",
+    controller.signal,
+  );
+  controller.abort();
+  await assert.rejects(
+    pending,
+    (error) =>
+      error instanceof ApiError &&
+      error.code === "cancelled" &&
+      !/PRIVATE/.test(error.message),
+  );
   assert.equal(requestSignal.aborted, true);
 });
 

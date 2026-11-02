@@ -89,6 +89,39 @@ def designs_router(
     Owner = Annotated[str, Depends(authenticate)]
     router = APIRouter(tags=["designs"], route_class=DesignRoute)
 
+    @router.get(
+        "/{project_id}/designs/readiness",
+        response_model=design_runtime.DesignReadiness,
+        responses={
+            status: {"model": design_runtime.DesignErrorResponse}
+            for status in (401, 404, 422)
+        },
+    )
+    def readiness(project_id: ID, owner: Owner):
+        # Read-only checklist: no gateway is constructed, no provider is
+        # called and no project, plan, request or history row is written.
+        # Client-supplied context is never accepted; context is resolved
+        # server-side for the exact saved project/revision only.
+        with store.transaction() as connection:
+            project = store.read(connection, owner, project_id)
+        # Transaction is closed before any manifest I/O in the resolver.
+        # Reread after resolver I/O and re-resolve if the revision moved,
+        # so readiness never mixes one revision's facts with another's
+        # resolved context.
+        resolver = context_resolver or design_runtime.default_context_resolver()
+        resolved = None
+        for _ in range(3):
+            resolved = resolver(project_id, project.revision_id)
+            with store.transaction() as connection:
+                current = store.read(connection, owner, project_id)
+            if current.revision_id == project.revision_id:
+                project = current
+                break
+            project = current
+        else:
+            resolved = resolver(project_id, project.revision_id)
+        return design_runtime.build_readiness(project, resolved)
+
     @router.post(
         "/{project_id}/designs/generate",
         response_model=design_runtime.DesignGenerateResult,
