@@ -1238,7 +1238,7 @@ function ProjectWorkbench({
             museAvailability={museAvailability}
             onDiagnosisSaved={() => {
               setDiagnosisSavedRevision((value) => value + 1);
-              setPhotoAttempt((value) => value + 1);
+              physicalProgressChanged();
             }}
             onRepairHandoff={(handoff, targetId) =>
               setPendingRepair({ handoff, targetId })

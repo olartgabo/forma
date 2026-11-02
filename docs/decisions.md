@@ -371,3 +371,12 @@ their 30-second browser deadline. The Next.js API rewrite uses a finite
 Cancellation stays available and the browser never retries provider requests.
 Server model budgets, retry counts, consent and physical evidence gates stay
 unchanged. Hosted infrastructure must also permit these response times.
+
+## D030: DigitalOcean hosting preference, November 2, 2026
+
+The user selects DigitalOcean for the hackathon deployment, with AWS available
+as an alternative. The user expects student credits; eligibility, activation and
+available balance remain unverified. This records the preferred provider without
+provisioning resources, committing spending or selecting a deployment region.
+Continue connected-flow work before spending more time on hosting. Hosted
+identity, storage, retention and actual deployment verification remain pending.
