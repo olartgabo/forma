@@ -2095,6 +2095,41 @@ def test_live_repair_simulate_missing_candidate_is_invalid_response():
     assert {"check": "simulate", "code": "invalid_response"} in report["errors"]
 
 
+def test_live_repair_render_blocked_preview_is_not_reported_feasible():
+    # The adapt route marks a simulation-feasible candidate whose manual
+    # cannot render with render_blockers and no version; commit rejects it
+    # ("cannot be approved"), so the smoke must not call it feasible.
+    payload = simulate_payload()
+    first = payload["previews"][0]
+    first["rank"] = 1
+    first["render_blockers"] = [
+        {
+            "code": "geometry_invalid",
+            "message": "secret render blocker text",
+            "target_ids": [],
+        }
+    ]
+    routes = _repair_routes(
+        {("POST", f"/api/projects/{PROJECT_ID}/adapt/simulate"): resp(payload=payload)}
+    )
+    fake = FakeTransport(routes)
+    code, report, text = invoke(
+        _repair_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 0
+    assert report["repair"]["previews"][0] == {
+        "rank": 1,
+        "feasible": False,
+        "blocker_count": 1,
+    }
+    assert report["repair"]["previews"][1] == {
+        "rank": None,
+        "feasible": False,
+        "blocker_count": 2,
+    }
+    assert "secret render blocker text" not in text
+
+
 def test_live_repair_simulate_failure():
     routes = _repair_routes(
         {
