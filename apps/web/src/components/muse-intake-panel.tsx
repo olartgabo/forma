@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ApiError, requestIntakeObservation } from "../lib/api";
-import MuseRequestDetails from "./muse-request-details";
+import MuseRequestStatus from "./muse-request-details";
 import type {
   IntakeResult,
   Media,
@@ -48,8 +48,10 @@ export default function MuseIntakePanel({
   const [selectedId, setSelectedId] = useState("");
   const [consented, setConsented] = useState(false);
   const [result, setResult] = useState<IntakeResult | null>(null);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [failure, setFailure] = useState<{ code?: string; message: string } | null>(
+    null,
+  );
+  const [cancelledMessage, setCancelledMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const controller = useRef<AbortController | null>(null);
   const epoch = useRef(0);
@@ -68,8 +70,8 @@ export default function MuseIntakePanel({
     controller.current = null;
     setConsented(false);
     setResult(null);
-    setError("");
-    setNotice("");
+    setFailure(null);
+    setCancelledMessage("");
     setBusy(false);
   }, [
     token,
@@ -99,8 +101,8 @@ export default function MuseIntakePanel({
     controller.current?.abort();
     controller.current = null;
     setBusy(false);
-    setError("");
-    setNotice(
+    setFailure(null);
+    setCancelledMessage(
       "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the photo, so no result was shown.",
     );
   }
