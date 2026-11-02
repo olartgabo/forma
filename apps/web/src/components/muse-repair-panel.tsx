@@ -8,6 +8,7 @@ import type {
   RepairPatch,
 } from "../lib/generated/contracts";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import type { MuseAvailability } from "../lib/muse-provider";
 import MuseRequestStatus from "./muse-request-status";
 
 function errorMessage(error: unknown) {
@@ -27,6 +28,7 @@ export default function MuseRepairPanel({
   progressLoaded,
   disabled,
   onCandidates,
+  museAvailability,
 }: {
   token: string;
   projectId: string;
@@ -36,6 +38,7 @@ export default function MuseRepairPanel({
   progressLoaded: boolean;
   disabled: boolean;
   onCandidates: (candidates: readonly RepairPatch[]) => MuseCandidateMerge;
+  museAvailability?: MuseAvailability;
 }) {
   const [problem, setProblem] = useState("");
   const [consented, setConsented] = useState(false);
@@ -111,6 +114,7 @@ export default function MuseRepairPanel({
       !problem.trim() ||
       busy ||
       disabled ||
+      museAvailability?.enabled === false ||
       !diagnosis
     )
       return;
@@ -182,6 +186,7 @@ export default function MuseRepairPanel({
     !problem.trim() ||
     busy ||
     disabled ||
+    museAvailability?.enabled === false ||
     !diagnosis;
 
   return (
@@ -217,12 +222,17 @@ export default function MuseRepairPanel({
         onChange={(event) => setProblem(event.target.value)}
         placeholder="For example: the brace tore at the slot"
       />
+      {museAvailability?.enabled === false && (
+        <p className="help" role="note">
+          {museAvailability.reason}
+        </p>
+      )}
       <label className="checkbox-label" htmlFor="muse-repair-consent">
         <input
           id="muse-repair-consent"
           type="checkbox"
           checked={consented}
-          disabled={busy}
+          disabled={busy || museAvailability?.enabled === false}
           onChange={(event) => setConsented(event.target.checked)}
         />
         Send my reported problem, the Muse diagnosis if present and the active

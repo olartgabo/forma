@@ -9,6 +9,7 @@ import {
   deletePhoto,
   fetchPhoto,
   generateDesign,
+  getProviderStatus,
   listPhotos,
   listPlans,
   listSavedProjects,
@@ -45,6 +46,7 @@ import {
   handoffFromDiagnosis,
   isHandoffCurrent,
 } from "../src/lib/repair-handoff.ts";
+import { museAvailability } from "../src/lib/muse-provider.ts";
 import {
   isCandidateSetCurrent,
   mergeMuseCandidates,
@@ -354,6 +356,120 @@ const savedProject = {
   revision_id: "inventory-1",
   stocks: [],
 };
+
+test("provider status returns configured model with scoped auth", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json({ configured: true, model: "muse-spark-test" });
+  });
+  const result = await getProviderStatus(token);
+  assert.deepEqual(result, { configured: true, model: "muse-spark-test" });
+  assert.equal(calls[0].path, "/api/provider/status");
+  assert.equal(calls[0].options.method, "GET");
+  assert.equal(
+    calls[0].options.headers.get("Authorization"),
+    `Bearer ${token}`,
+  );
+  assert.equal(calls[0].options.cache, "no-store");
+  assert.equal(calls[0].options.credentials, "omit");
+  assert.equal(calls[0].options.redirect, "error");
+});
+
+test("provider status accepts unconfigured and absent or null model", async (t) => {
+  const payloads = [
+    [{ configured: false, model: "muse-spark-test" }, "muse-spark-test"],
+    [{ configured: false }, null],
+    [{ configured: false, model: null }, null],
+    [{ configured: true, model: null }, null],
+  ];
+  for (const [payload, model] of payloads) {
+    t.mock.method(globalThis, "fetch", async () => Response.json(payload));
+    assert.deepEqual(await getProviderStatus(token), {
+      configured: payload.configured,
+      model,
+    });
+    t.mock.restoreAll();
+  }
+});
+
+test("provider status rejects malformed responses with ApiError", async (t) => {
+  const payloads = [
+    null,
+    "configured",
+    [],
+    { model: "muse-spark-test" },
+    { configured: "true", model: "muse-spark-test" },
+    { configured: 1, model: "muse-spark-test" },
+    { configured: true, model: 42 },
+    { configured: true, model: { id: "muse-spark-test" } },
+    { configured: false, model: ["muse-spark-test"] },
+  ];
+  for (const payload of payloads) {
+    t.mock.method(globalThis, "fetch", async () => Response.json(payload));
+    await assert.rejects(getProviderStatus(token), (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.code, "invalid_response");
+      assert.doesNotMatch(error.message, /muse-spark-test/);
+      return true;
+    });
+    t.mock.restoreAll();
+  }
+});
+
+test("provider status HTTP error stays a safe ApiError", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { code: "PRIVATE_CODE", message: "PRIVATE_SERVER_TEXT" },
+      { status: 503 },
+    ),
+  );
+  await assert.rejects(getProviderStatus(token), (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 503);
+    assert.doesNotMatch(error.message, /PRIVATE/);
+    return true;
+  });
+});
+
+test("museAvailability maps provider status without blocking on loading or failure", () => {
+  assert.deepEqual(museAvailability({ state: "loading" }), {
+    state: "loading",
+    enabled: true,
+    configured: null,
+    model: null,
+    reason: null,
+    notice: "Checking whether Muse is configured on this server…",
+  });
+  const configured = museAvailability({
+    state: "loaded",
+    configured: true,
+    model: "muse-spark-test",
+  });
+  assert.equal(configured.enabled, true);
+  assert.equal(configured.configured, true);
+  assert.equal(configured.model, "muse-spark-test");
+  assert.equal(configured.reason, null);
+  assert.match(configured.notice, /muse-spark-test/);
+  const unconfigured = museAvailability({
+    state: "loaded",
+    configured: false,
+    model: "muse-spark-test",
+  });
+  assert.equal(unconfigured.enabled, false);
+  assert.equal(unconfigured.configured, false);
+  // The model name is only shown when configured.
+  assert.equal(unconfigured.model, null);
+  assert.match(unconfigured.reason, /Muse isn't configured on this server/);
+  assert.match(unconfigured.notice, /Muse isn't configured on this server/);
+  assert.doesNotMatch(unconfigured.notice, /muse-spark-test/);
+  const failed = museAvailability({ state: "failed" });
+  assert.equal(failed.enabled, true);
+  assert.equal(failed.configured, null);
+  assert.equal(failed.model, null);
+  assert.equal(failed.reason, null);
+  assert.match(failed.notice, /Couldn't check whether Muse is configured/);
+});
 
 test("proof requests stay owner scoped and exports preserve failed versus unattempted claims", async (t) => {
   const calls = [];

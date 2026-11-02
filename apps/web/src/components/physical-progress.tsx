@@ -31,6 +31,7 @@ export default function PhysicalProgress({
   onReloadProject,
   onProgressChange,
   onDiagnoseFailure,
+  refreshKey,
 }: {
   token: string;
   projectId: string;
@@ -42,6 +43,7 @@ export default function PhysicalProgress({
   onReloadProject: () => void;
   onProgressChange: () => void;
   onDiagnoseFailure?: (focus: DiagnosisFocus) => void;
+  refreshKey?: number;
 }) {
   const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -158,7 +160,14 @@ export default function PhysicalProgress({
         if (!read.signal.aborted) setLoading(false);
       });
     return () => read.abort();
-  }, [token, projectId, version.version_id, attempt, onProgressChange]);
+  }, [
+    token,
+    projectId,
+    version.version_id,
+    attempt,
+    onProgressChange,
+    refreshKey,
+  ]);
 
   useEffect(() => {
     setChecks([]);
