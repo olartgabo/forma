@@ -778,7 +778,10 @@ def test_attached_brace_tape_undo_is_feasible_cost8_and_rendered():
         "stand-joint-apex-attach",
     }
     assert {c.id for c in base.checkpoints} <= {c.id for c in plan.checkpoints}
-    assert set(result.invalidated_checkpoint_ids) == {c.id for c in base.checkpoints}
+    # The preserved cut inspection keeps its checkpoint; nothing rechecks it.
+    assert set(result.invalidated_checkpoint_ids) == {
+        c.id for c in base.checkpoints
+    } - {"stand-inspect-cuts-check"}
     assert all(
         o.id not in {e.operation_id for e in _snapshot.events}
         for o in plan.operations
