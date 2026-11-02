@@ -2,12 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ApiError, proposeRepairs } from "../lib/api";
-import type { RepairProposeResult } from "../lib/generated/api-contracts";
+import type {
+  DiagnosisDiagnostics,
+  RepairProposeResult,
+} from "../lib/generated/api-contracts";
 import type {
   DiagnosisProposal,
   RepairPatch,
 } from "../lib/generated/contracts";
-import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import {
+  formatCombinedProviderUsage,
+  museDiagnosticsFromResult,
+} from "../lib/provider-usage";
 import {
   museFailureText,
   museNoticeText,
@@ -27,6 +33,7 @@ export default function MuseRepairPanel({
   versionId,
   lastEventId,
   diagnosis,
+  diagnosisDiagnostics,
   progressLoaded,
   disabled,
   onCandidates,
@@ -37,6 +44,7 @@ export default function MuseRepairPanel({
   versionId: string;
   lastEventId: string | null;
   diagnosis?: DiagnosisProposal | null;
+  diagnosisDiagnostics?: DiagnosisDiagnostics | null;
   progressLoaded: boolean;
   disabled: boolean;
   onCandidates: (candidates: readonly RepairPatch[]) => MuseCandidateMerge;
@@ -50,6 +58,8 @@ export default function MuseRepairPanel({
     null,
   );
   const [result, setResult] = useState<RepairProposeResult | null>(null);
+  const [combinedDiagnosis, setCombinedDiagnosis] =
+    useState<DiagnosisDiagnostics | null>(null);
   const [merge, setMerge] = useState<MuseCandidateMerge | null>(null);
   const { locale, copy } = useMuseLanguage();
   const controller = useRef<AbortController | null>(null);
@@ -61,6 +71,7 @@ export default function MuseRepairPanel({
   const onCandidatesRef = useRef(onCandidates);
   onCandidatesRef.current = onCandidates;
   const diagnosisRef = useRef(diagnosis);
+  const diagnosisDiagnosticsRef = useRef(diagnosisDiagnostics);
 
   useEffect(
     () => () => {
@@ -72,18 +83,24 @@ export default function MuseRepairPanel({
 
   // A new handoff (new diagnosis) aborts an in-flight Muse request.
   useEffect(() => {
-    if (diagnosisRef.current === diagnosis) return;
+    if (
+      diagnosisRef.current === diagnosis &&
+      diagnosisDiagnosticsRef.current === diagnosisDiagnostics
+    )
+      return;
     diagnosisRef.current = diagnosis;
+    diagnosisDiagnosticsRef.current = diagnosisDiagnostics;
     epoch.current += 1;
     controller.current?.abort();
     controller.current = null;
     setBusy(false);
     setConsented(false);
     setResult(null);
+    setCombinedDiagnosis(null);
     setMerge(null);
     setFailure(null);
     setCancelledNotice(null);
-  }, [diagnosis]);
+  }, [diagnosis, diagnosisDiagnostics]);
 
   // A new active version invalidates consent and any shown Muse result.
   useEffect(() => {
@@ -92,6 +109,7 @@ export default function MuseRepairPanel({
     controller.current = null;
     setConsented(false);
     setResult(null);
+    setCombinedDiagnosis(null);
     setMerge(null);
     setFailure(null);
     setCancelledNotice(null);
@@ -103,6 +121,9 @@ export default function MuseRepairPanel({
     controller.current?.abort();
     controller.current = null;
     setBusy(false);
+    setResult(null);
+    setCombinedDiagnosis(null);
+    setMerge(null);
     setFailure(null);
     setCancelledNotice("repair-cancelled");
   }
@@ -124,12 +145,14 @@ export default function MuseRepairPanel({
     const requestedVersion = versionId;
     const requestedProject = projectId;
     const requestedDiagnosis = diagnosis;
+    const requestedDiagnosisDiagnostics = diagnosisDiagnostics ?? null;
     // Consent covers this one request only: consume it on dispatch.
     setConsented(false);
     setBusy(true);
     setFailure(null);
     setCancelledNotice(null);
     setResult(null);
+    setCombinedDiagnosis(null);
     setMerge(null);
     try {
       const next = await proposeRepairs(
@@ -152,6 +175,7 @@ export default function MuseRepairPanel({
       )
         return;
       setResult(next);
+      setCombinedDiagnosis(requestedDiagnosisDiagnostics);
       setMerge(onCandidatesRef.current(next.candidates));
     } catch (failure) {
       if (
@@ -254,6 +278,17 @@ export default function MuseRepairPanel({
         }
         locale={locale}
       />
+      {result && (
+        <div className="muse-result">
+          <p className="help">
+            {formatCombinedProviderUsage(
+              combinedDiagnosis,
+              result.diagnostics,
+              locale,
+            )}
+          </p>
+        </div>
+      )}
       {result && merge && result.candidates.length > 0 && (
         <p className="notice" aria-live="polite">
           {merge.added > 0

@@ -831,6 +831,11 @@ export default function AdaptWorkbench({
                     ? (handoff?.diagnosis ?? null)
                     : null
                 }
+                diagnosisDiagnostics={
+                  isHandoffCurrent(handoff, projectId, version.version_id)
+                    ? (handoff?.diagnosisDiagnostics ?? null)
+                    : null
+                }
                 progressLoaded={progress !== null}
                 disabled={locked}
                 onCandidates={handleMuseCandidates}

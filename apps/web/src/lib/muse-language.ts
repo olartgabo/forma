@@ -49,6 +49,10 @@ const en = {
     outputTokens: "output tokens",
     duration: (ms: number) => `duration: ${ms} ms`,
     durationUnknown: "duration: not reported",
+    combinedPrefix: "Diagnosis + repair usage",
+    combinedUnknown: "Diagnosis + repair usage: not reported.",
+    combinedDuration: (ms: number) => `summed request durations: ${ms} ms`,
+    combinedDurationUnknown: "summed request durations: not reported",
   },
   diagnostics: {
     label: "Request diagnostics",
@@ -262,6 +266,12 @@ const es: MuseCopy = {
     outputTokens: "tokens de salida",
     duration: (ms: number) => `duración: ${ms} ms`,
     durationUnknown: "duración: no informada",
+    combinedPrefix: "Uso de diagnóstico + reparación",
+    combinedUnknown: "Uso de diagnóstico + reparación: no informado.",
+    combinedDuration: (ms: number) =>
+      `suma de duraciones de las solicitudes: ${ms} ms`,
+    combinedDurationUnknown:
+      "suma de duraciones de las solicitudes: no informada",
   },
   diagnostics: {
     label: "Diagnóstico de la solicitud",
