@@ -444,6 +444,110 @@ def test_http_transport_total_deadline_bounds_trickling_response():
         thread.join(timeout=5)
 
 
+class _FakeSocket:
+    def __init__(self):
+        self.timeout = None
+        self.closed = False
+
+    def settimeout(self, value):
+        self.timeout = value
+
+    def shutdown(self, how):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
+class _BlockingConnection:
+    """Fake connection whose DNS/connect stage stalls with no sock assigned.
+
+    ``connect()`` represents both name resolution and TCP connect, which
+    ``http.client`` performs inside ``connect()`` before ``sock`` exists.
+    """
+
+    instances = []
+
+    def __init__(self, host, port=None, timeout=None, **kwargs):
+        self.host = host
+        self.port = port
+        self.timeout = timeout
+        self.sock = None
+        self.closed = False
+        self.request_calls = []
+        self.connect_calls = 0
+        self.connect_started = threading.Event()
+        self.release_connect = threading.Event()
+        _BlockingConnection.instances.append(self)
+
+    def connect(self):
+        self.connect_calls += 1
+        self.connect_started.set()
+        # Bounded so a failing test cannot hang the suite forever.
+        self.release_connect.wait(timeout=10)
+        self.sock = _FakeSocket()
+
+    def request(self, method, url, body=None, headers=None):
+        self.request_calls.append((method, url, body))
+
+    def getresponse(self):  # pragma: no cover - must never be reached
+        raise AssertionError("getresponse must not be called after timeout")
+
+    def close(self):
+        self.closed = True
+        if self.sock is not None:
+            self.sock.close()
+
+
+def _wait_until(predicate, timeout=2.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return predicate()
+
+
+@pytest.mark.parametrize("method,body", [("GET", None), ("POST", b'{"x":1}')])
+def test_http_transport_stalled_connect_no_sock_times_out_and_never_dispatches(
+    monkeypatch, method, body
+):
+    _BlockingConnection.instances = []
+    monkeypatch.setattr(demo_smoke.http.client, "HTTPConnection", _BlockingConnection)
+    start = time.monotonic()
+    with pytest.raises(TransportError) as caught:
+        demo_smoke._http_transport(
+            HttpRequest(
+                method=method,
+                url="http://unresolvable.example.test:8000/api/health"
+                if method == "GET"
+                else "http://unresolvable.example.test:8000/api/projects/p/intake",
+                headers={"Authorization": "Bearer should-not-be-sent"},
+                body=body,
+                timeout=0.3,
+            )
+        )
+    elapsed = time.monotonic() - start
+    assert caught.value.code == "timeout"
+    # Caller returns near its deadline even though connect is still blocked
+    # and no socket was ever assigned (so shutdown could not interrupt it).
+    assert elapsed < 1.5
+    assert len(_BlockingConnection.instances) == 1
+    conn = _BlockingConnection.instances[0]
+    assert conn.connect_started.is_set()
+    assert conn.sock is None
+    assert conn.connect_calls == 1
+    assert conn.request_calls == []
+
+    # Releasing the blocked stage afterwards must not dispatch the request
+    # (critical for a late live-intake POST) and must clean up.
+    conn.release_connect.set()
+    assert _wait_until(lambda: conn.closed)
+    assert conn.request_calls == []
+    assert conn.connect_calls == 1  # no automatic reconnect/retry
+    assert conn.sock is not None and conn.sock.closed
+
+
 def test_missing_media_is_not_found():
     routes = healthy_routes(
         {("GET", f"/api/projects/{PROJECT_ID}/media"): resp(payload={"media": []})}

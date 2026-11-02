@@ -103,22 +103,73 @@ class _Parser(argparse.ArgumentParser):
         raise _ArgumentError("invalid_arguments")
 
 
+_WORKER_GRACE_SECONDS = 0.2
+
+
+def _shutdown_sock(sock) -> None:
+    if sock is not None:
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass  # A concurrently completed/closed socket needs no cancel.
+
+
 def _http_transport(request: HttpRequest) -> HttpResponse:
     """One bounded HTTP(S) request; redirects are never followed.
 
-    ``request.timeout`` is a total per-request deadline covering connection,
-    headers and body. A response that keeps trickling bytes therefore cannot
-    extend the request beyond the deadline: the socket timeout is repeatedly
-    capped at the remaining budget, a timer shuts the socket down at the
-    deadline, and the body is read in bounded ``read1`` chunks.
+    ``request.timeout`` is a total per-request deadline covering DNS,
+    connection, headers and body for the *caller*.
+
+    Name resolution and TCP/TLS connect inside ``HTTPConnection.connect()``
+    can block in an uninterruptible OS call before ``connection.sock`` is
+    assigned, so a socket-shutdown timer alone cannot stop them. The actual
+    work therefore runs on a bounded daemon worker: the caller joins it only
+    until the deadline (plus a short grace for cooperative cleanup) and then
+    returns ``TransportError("timeout")``.
+
+    Cancellation limitation, honestly: a worker stuck in OS resolution /
+    connect cannot be force-killed in Python and may stay blocked as a
+    daemon thread until the OS call eventually returns. It is *not* allowed
+    to do anything observable after that: the worker re-checks the expiry
+    flag immediately after the explicit ``connect()`` and before dispatch,
+    so a late connection never sends headers/body (including a live intake
+    POST), never reconnects/retries, and is closed in ``finally``.
     """
 
+    expired = threading.Event()
+    shared: dict = {}
+    outcome: dict = {}
+
+    def run() -> None:
+        try:
+            outcome["response"] = _http_transport_once(request, expired, shared)
+        except BaseException as exc:  # Propagated to caller below.
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=run, daemon=True, name="forma-smoke-http")
+    worker.start()
+    worker.join(request.timeout)
+    if worker.is_alive():
+        expired.set()
+        connection = shared.get("connection")
+        _shutdown_sock(connection.sock if connection is not None else None)
+        # Bounded grace for cooperative cleanup; a still-blocked daemon is
+        # abandoned and will self-clean (without dispatching) on return.
+        worker.join(_WORKER_GRACE_SECONDS)
+        raise TransportError("timeout")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["response"]
+
+
+def _http_transport_once(
+    request: HttpRequest, expired: threading.Event, shared: dict
+) -> HttpResponse:
     parts = urlsplit(request.url)
     host = parts.hostname
     if host is None:
         raise TransportError("invalid_origin")
     deadline = time.monotonic() + request.timeout
-    expired = threading.Event()
     active_socket: list[socket.socket] = []
     connection: http.client.HTTPConnection | None = None
 
@@ -127,11 +178,7 @@ def _http_transport(request: HttpRequest) -> HttpResponse:
         sock = active_socket[0] if active_socket else None
         if sock is None and connection is not None:
             sock = connection.sock
-        if sock is not None:
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass  # A concurrently completed/closed socket needs no cancel.
+        _shutdown_sock(sock)
 
     def remaining() -> float:
         left = deadline - time.monotonic()
@@ -147,6 +194,7 @@ def _http_transport(request: HttpRequest) -> HttpResponse:
         connection = http.client.HTTPConnection(
             host, parts.port, timeout=request.timeout
         )
+    shared["connection"] = connection
     timer = threading.Timer(request.timeout, interrupt_socket)
     timer.daemon = True
     timer.start()
@@ -154,12 +202,25 @@ def _http_transport(request: HttpRequest) -> HttpResponse:
         target = parts.path or "/"
         if parts.query:
             target += "?" + parts.query
+        # Explicit connect separates the (possibly uninterruptible) DNS /
+        # connect stage from dispatch. Checking the deadline immediately
+        # after it returns -- and requiring an assigned socket -- means a
+        # connection that only completes after expiry is closed without
+        # sending anything, and ``request()`` below cannot auto-reconnect
+        # (http.client only connects when ``sock is None``).
+        connection.connect()
+        remaining()
+        if connection.sock is None:
+            raise TransportError("network_error")
+        active_socket.append(connection.sock)
+        connection.sock.settimeout(remaining())
         connection.request(
             request.method, target, body=request.body, headers=request.headers
         )
         remaining()
         if connection.sock is not None:
-            active_socket.append(connection.sock)
+            if not active_socket:
+                active_socket.append(connection.sock)
             connection.sock.settimeout(remaining())
         response = connection.getresponse()
         remaining()
