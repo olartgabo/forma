@@ -22,6 +22,12 @@ from forma_api.intake_runtime import (
 )
 from forma_api.projects import SavedProjectList, SavedProjectSummary
 from forma_api.proposal_service import IntakeObservation
+from forma_api.repair_runtime import (
+    RepairProposeDiagnostics,
+    RepairProposeErrorResponse,
+    RepairProposeRequest,
+    RepairProposeResult,
+)
 
 
 def test_api_artifact_reuses_domain_types_and_reflects_route_models():
@@ -108,6 +114,24 @@ def test_api_artifact_includes_canonical_design_records():
     assert 'readonly "tool_executions": number' in content
     assert '"generation_in_progress"' in content
     assert '"consent_required"' in content
+
+
+def test_api_artifact_includes_canonical_repair_records():
+    content = artifacts()[OUTPUT]
+    canonical = {
+        RepairProposeRequest: "forma_api.repair_runtime",
+        RepairProposeResult: "forma_api.repair_runtime",
+        RepairProposeDiagnostics: "forma_api.repair_runtime",
+        RepairProposeErrorResponse: "forma_api.repair_runtime",
+    }
+    for record, module in canonical.items():
+        assert record in API_RECORDS
+        assert record.__module__ == module
+        assert f"export type {record.__name__} = " in content
+    assert 'readonly "provider_context_consented"?: boolean' in content
+    assert 'readonly "expected_last_event_id": (string | null)' in content
+    assert 'readonly "candidates": ReadonlyArray<RepairPatch>' in content
+    assert 'readonly "diagnosis": DiagnosisProposal' in content
 
 
 def test_api_artifact_includes_readiness_and_saved_project_records():

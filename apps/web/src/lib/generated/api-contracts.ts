@@ -404,6 +404,35 @@ export type RepairCost = {
   readonly "complete_estimate"?: false;
 };
 
+export type RepairProposeDiagnostics = {
+  readonly "status": "ok";
+  readonly "model": string;
+  readonly "elapsed_ms": number;
+  readonly "usage"?: (ProviderUsage | null);
+};
+
+export type RepairProposeErrorResponse = {
+  readonly "code": "validation_error" | "not_found" | "stale_version" | "consent_required" | "provider_not_configured" | "provider_authentication" | "access_denied" | "rate_limit" | "timeout" | "network_error" | "invalid_response" | "provider_http_error" | "provider_error";
+  readonly "message": string;
+};
+
+export type RepairProposeRequest = {
+  readonly "expected_version_id": string;
+  readonly "expected_last_event_id": (string | null);
+  readonly "reported_problem": string;
+  readonly "diagnosis": DiagnosisProposal;
+  readonly "provider_context_consented"?: boolean;
+};
+
+export type RepairProposeResult = {
+  readonly "project_id": string;
+  readonly "base_version_id": string;
+  readonly "base_last_event_id": (string | null);
+  readonly "candidates": ReadonlyArray<RepairPatch>;
+  readonly "questions": ReadonlyArray<string>;
+  readonly "diagnostics": RepairProposeDiagnostics;
+};
+
 export type SavedProjectList = {
   readonly "projects": ReadonlyArray<SavedProjectSummary>;
   readonly "next_cursor"?: (string | null);
