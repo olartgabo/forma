@@ -10,8 +10,10 @@ import {
   listPhotos,
   listPlans,
   loadPlan,
+  loadProgress,
   loadProject,
   saveInventory,
+  recordProgress,
   uploadPhoto,
 } from "../src/lib/api.ts";
 import {
@@ -27,6 +29,43 @@ const savedProject = {
   revision_id: "inventory-1",
   stocks: [],
 };
+
+test("physical reports bind the active version and history cursor without accepting raw events", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json({ progress: {} });
+  });
+  const report = {
+    expected_version_id: "version-a",
+    expected_last_event_id: null,
+    idempotency_key: "report-key",
+    operation_id: "stand-cut-panels",
+    result: "completed",
+    observation: "SYNTHETIC browser report",
+    user_confirmed: true,
+    checks_confirmed: true,
+    photo_ids: [],
+  };
+  await loadProgress(token, "project-a", "version-a");
+  await recordProgress(token, "project-a", report);
+  assert.equal(
+    calls[0].path,
+    "/api/projects/project-a/versions/version-a/progress",
+  );
+  assert.equal(calls[1].path, "/api/projects/project-a/events");
+  assert.equal(calls[1].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[1].options.body), report);
+  assert.equal(
+    Object.hasOwn(JSON.parse(calls[1].options.body), "event"),
+    false,
+  );
+  assert.equal(
+    calls[1].options.headers.get("Authorization"),
+    `Bearer ${token}`,
+  );
+  assert.equal(calls[1].options.cache, "no-store");
+});
 
 test("plan reads stay scoped and approval sends only a version reference", async (t) => {
   const calls = [];

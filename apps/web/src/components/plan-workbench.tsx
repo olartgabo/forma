@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { activatePlan, ApiError, listPlans, loadPlan } from "../lib/api";
+import PhysicalProgress from "./physical-progress";
 import type {
   ManualPanel,
+  Media,
   PlanActivation,
   PlanSummary,
   PlanVersion,
@@ -71,6 +73,7 @@ export default function PlanWorkbench({
   onLockChange,
   onActivated,
   onReload,
+  photos,
 }: {
   token: string;
   project: Project;
@@ -78,6 +81,7 @@ export default function PlanWorkbench({
   onLockChange: (locked: boolean) => void;
   onActivated: (next: Project) => void;
   onReload: () => void;
+  photos: readonly Media[];
 }) {
   const [plans, setPlans] = useState<readonly PlanSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -93,6 +97,7 @@ export default function PlanWorkbench({
     body: PlanActivation;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [progressPending, setProgressPending] = useState(false);
   const [activationError, setActivationError] = useState("");
   const [activationStale, setActivationStale] = useState(false);
   const controller = useRef(new AbortController());
@@ -235,7 +240,9 @@ export default function PlanWorkbench({
       <button
         type="button"
         className="secondary"
-        disabled={loading || pending !== null || approvalDisabled}
+        disabled={
+          loading || pending !== null || progressPending || approvalDisabled
+        }
         onClick={() => setAttempt((value) => value + 1)}
       >
         Refresh saved plans
@@ -253,7 +260,7 @@ export default function PlanWorkbench({
           <select
             id="plan-version"
             value={selected ?? ""}
-            disabled={pending !== null}
+            disabled={pending !== null || progressPending}
             onChange={(event) => {
               setSelected(event.target.value);
               setActivationError("");
@@ -275,7 +282,9 @@ export default function PlanWorkbench({
         <>
           <p className="plan-state">
             <strong>{current ? "Active plan" : "Plan preview"}</strong> ·
-            Physical verification not attempted
+            {current
+              ? "User-reported physical progress below"
+              : "Physical verification not attempted"}
           </p>
           {!current && (
             <p className="help">
@@ -331,7 +340,7 @@ export default function PlanWorkbench({
               <div className="manual-navigation">
                 <button
                   type="button"
-                  disabled={step === 0}
+                  disabled={step === 0 || progressPending}
                   onClick={() => setStep((value) => value - 1)}
                 >
                   Previous step
@@ -341,12 +350,30 @@ export default function PlanWorkbench({
                 </span>
                 <button
                   type="button"
-                  disabled={step + 1 >= version.manual.panels.length}
+                  disabled={
+                    step + 1 >= version.manual.panels.length || progressPending
+                  }
                   onClick={() => setStep((value) => value + 1)}
                 >
                   Next step
                 </button>
               </div>
+              {current && (
+                <PhysicalProgress
+                  key={version.version_id}
+                  token={token}
+                  projectId={project.id}
+                  version={version}
+                  operationId={panel.operation_id}
+                  photos={photos}
+                  disabled={approvalDisabled || pending !== null}
+                  onReloadProject={onReload}
+                  onLockChange={(locked) => {
+                    setProgressPending(locked);
+                    onLockChange(locked);
+                  }}
+                />
+              )}
             </article>
           )}
           <details className="manual-materials">

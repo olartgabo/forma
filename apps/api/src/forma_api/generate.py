@@ -18,6 +18,7 @@ from forma_api.plans import (
     PlanSummary,
     PlanVersion,
 )
+from forma_api.progress import ProgressResult, ProgressSnapshot, ProgressUpdate
 from forma_api.projects import (
     BuildRequirements,
     CreateProject,
@@ -50,6 +51,9 @@ API_RECORDS = (
     PlanVersion,
     Project,
     ProjectResult,
+    ProgressResult,
+    ProgressSnapshot,
+    ProgressUpdate,
 )
 OUTPUT = "apps/web/src/lib/generated/api-contracts.ts"
 

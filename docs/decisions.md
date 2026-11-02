@@ -159,3 +159,16 @@ Manuals include written instructions, checkpoints, BOM and authoritative SVG wit
 an enlarged view for inspecting dimensions on phones. Live model production,
 real measured process/profile intake, physical history and repair activation remain
 separate work. See the [handoff](handoffs/issue-6-plan-activation.md).
+
+## D015: Explicit physical reports and failed-check gating, November 1, 2026
+
+Issue #11 records authenticated user reports against the active plan and last
+physical-event cursor. The server derives immutable domain evidence/events and
+material receipts from the referenced operation. User-reported work is separate
+from approved plans; neither navigation nor models complete a step.
+
+Failed inspections/tests pause further confirmations. The current replanner has no
+same-plan failure-resolution contract, so a later pass cannot silently clear the
+failure. Diagnosis/revision integration must resolve it explicitly. Expected stock
+is a calculated, unconfirmed projection requiring actual reconciliation before
+repair. See the [handoff](handoffs/issue-11-physical-progress.md).

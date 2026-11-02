@@ -5,6 +5,9 @@ import type {
   PlanActivation,
   PlanList,
   PlanVersion,
+  ProgressUpdate,
+  ProgressSnapshot,
+  ProgressResult,
   CreateProject,
   InventoryUpdate,
   MediaList,
@@ -46,7 +49,7 @@ async function responseError(response: Response): Promise<ApiError> {
         ? "Materials or requirements changed in another session. Reload before saving again."
         : code === "idempotency_conflict"
           ? "This retry differs from the original request. Review your changes and try again."
-          : "This change is blocked. Remove photo references or reload the project.",
+          : "This change is blocked. Review the saved project and its linked evidence.",
     413: "The photo is too large. Choose an image smaller than 8 MiB and 20 million pixels.",
     415: "Choose a JPEG, PNG or WebP photo.",
     422: "Some details could not be accepted. Check your measurements and photo, then try again.",
@@ -240,6 +243,40 @@ export function activatePlan(
       body: JSON.stringify(body),
     },
     json<ActivationResult>,
+    signal,
+  );
+}
+
+export function loadProgress(
+  token: string,
+  id: string,
+  versionId: string,
+  signal?: AbortSignal,
+): Promise<ProgressSnapshot> {
+  return request(
+    token,
+    `${projectPath(id)}/versions/${encodeURIComponent(versionId)}/progress`,
+    { method: "GET" },
+    json<ProgressSnapshot>,
+    signal,
+  );
+}
+
+export function recordProgress(
+  token: string,
+  id: string,
+  body: ProgressUpdate,
+  signal?: AbortSignal,
+): Promise<ProgressResult> {
+  return request(
+    token,
+    `${projectPath(id)}/events`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    json<ProgressResult>,
     signal,
   );
 }

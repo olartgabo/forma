@@ -10,7 +10,7 @@ def test_api_artifact_reuses_domain_types_and_reflects_route_models():
     content = artifacts()[OUTPUT]
     assert artifacts() == artifacts()
     assert (
-        'import type { Blocker, BuildPlan, Constraints, DesignCandidate, Stock } from "./contracts";'
+        'import type { Blocker, BuildPlan, Constraints, DesignCandidate, Evidence, MaterialTransaction, PhysicalEvent, Stock } from "./contracts";'
         in content
     )
     assert "export type Stock" not in content

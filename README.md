@@ -6,11 +6,12 @@ FORMA helps a person turn measured reused materials into a small tabletop
 fixture, follow a deterministic assembly manual, and recover when the physical
 build disagrees with the plan.
 
-**Status: offline services and local intake.** Next.js supports goal intake,
+**Status: intake, saved manuals and user-reported progress.** Next.js supports goal intake,
 private photos and confirmed inventory editing through the scoped FastAPI API.
 The compiler, renderer, replanner and proposal service are implemented. Saved
 plan previews, explicit initial approval and immutable manual viewing are connected;
-live design generation, physical event recording, hosted identity and physical
+physical confirmations, evidence links and material receipts are persisted. Live
+design generation, diagnosis/repair activation, hosted identity and physical
 results remain pending.
 The original [formspec.md](formspec.md) is preserved as the product source of truth.
 

@@ -262,6 +262,16 @@ def media_router(store: ProjectStore, authenticate) -> APIRouter:
                     "blocked",
                     "Remove this photo from inventory before deleting it",
                 )
+            if (
+                connection.execute(
+                    "SELECT 1 FROM progress_evidence WHERE project_id=? AND asset_id=?",
+                    (project_id, media_id),
+                ).fetchone()
+                is not None
+            ):
+                raise ProjectError(
+                    409, "blocked", "This photo is linked to physical evidence"
+                )
             connection.execute(
                 "DELETE FROM media WHERE id=? AND project_id=?", (media_id, project_id)
             )

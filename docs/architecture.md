@@ -55,8 +55,9 @@ these rules.
 
 These three record types exist in domain contracts. Persistence currently stores
 projects, private photos, confirmed pre-plan inventory and immutable initial plans
-with rendered manuals. Material/physical history, evidence and approved repair
-adaptations remain pending.
+with rendered manuals. Append-only user reports now persist evidence and material
+receipts with a version/history cursor. Approved repair adaptations, evidence
+invalidation and actual remaining-material reconciliation remain pending.
 
 The development API uses SQLite and configured owner bearer credentials.
 Project create/read, inventory confirmation and logical deletion are scoped to
@@ -81,8 +82,8 @@ domain generation remains offline. See the [intake handoff](handoffs/issue-7-int
 ## Revision transaction
 
 This is the required end-to-end transaction. Offline simulation supplies preview
-data; authenticated event/history storage, revision review and atomic activation
-remain integration work in #6/#11/#12.
+data; repair-specific history reconciliation, revision review and atomic repair
+activation remain integration work in #6/#11/#12.
 
 1. Capture the active version, actual events and remaining stock.
 2. Obtain at most three typed patch proposals with bounded model/tool rounds.
@@ -151,7 +152,8 @@ The API mounts health, private project/inventory/photo routes and immutable
 plan/manual reads with explicit initial activation. The internal preview producer
 compiles saved inputs with trusted measured context and binds versions to an
 inventory revision. The browser reviews saved previews and manuals; step navigation
-records no physical work. Model generation, chronological events, repair revision
-activation and proof history remain unconnected. See the
+records no physical work. Active manuals support explicit scoped physical reports,
+failed-check gating and expected material accounting. Model generation, repair
+revision activation and complete proof history remain unconnected. See the
 [plan handoff](handoffs/issue-6-plan-activation.md). Compilation never records a
 physical test pass.

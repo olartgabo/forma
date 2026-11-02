@@ -32,8 +32,8 @@ exposes FastAPI's OpenAPI UI. No database or provider readiness is implied.
 needed. See the [root README](../../README.md) for pinned tools and setup.
 
 Project/inventory routes and local development authentication are implemented.
-Initial plan/manual persistence is implemented; event persistence and hosted
-authentication remain #6 work. The
+Initial plan/manual and user-reported event/evidence/material persistence are
+implemented; hosted authentication remains #6 work. The
 [#1 handoff](../../docs/handoffs/issue-1-workspace.md) reserves the service/domain
 boundary for review before those changes.
 
@@ -71,7 +71,7 @@ DELETE `/api/projects/{id}` takes `Idempotency-Key` in a header, removes the
 inventory and stored replay snapshots, and retains only a scoped deletion receipt.
 This is logical deletion; SQLite free pages and local backup copies are outside
 this deletion mechanism. These routes do not send
-data to providers. Consent/transfer, physical event/material history
+data to providers. Consent/transfer, actual remaining-stock reconciliation
 and repair revision activation remain open in #6/#12. See the
 [contract handoff](../../docs/handoffs/issue-6-persistence.md).
 
@@ -124,7 +124,31 @@ retries replay; changed keys/payloads or stale activation conflict. Read/approva
 responses prevent caching. Project deletion cascades plan/manual rows and purges
 their receipts. Approval creates no events, material consumption or test results.
 
-Provider-driven preview production, measured process/profile intake, physical
-events and repair activation remain pending. The browser can inspect and approve
+Provider-driven preview production, measured process/profile intake and repair
+activation remain pending. The browser can inspect and approve
 existing previews, navigate instructions and enlarge dimensions. See the
 [contract and evidence handoff](../../docs/handoffs/issue-6-plan-activation.md).
+
+## Physical progress (#6/#11)
+
+GET `/api/projects/{id}/versions/{version}/progress` returns chronological domain
+events, user evidence, material receipts, completed/failed IDs, an expected-stock
+projection and the last event cursor. POST `/api/projects/{id}/events` accepts an
+operation reference, expected active version/last event, retry key, result, notes,
+explicit confirmations and up to eight existing project photo IDs. It accepts no
+caller-authored events, ledger quantities or physical-test authority fields.
+
+Reports are appended atomically after scope, active version, cursor, prerequisites
+and duplicate checks. Exact retries return their original receipt; consumers must
+reload current history after replay because other reports may now exist. Checks
+use explicit pass/fail; failed checks stop further confirmation until diagnosis
+or a revision resolves them. Functional-test outcomes retain the stored named
+device/procedure/conditions and user provenance. Nothing infers physical function.
+
+Confirmed cuts consume the entire parent region and preserve declared offcuts;
+joins spend exact planned connector length once. Expected connector balances use
+decimal accounting and remain calculated/unconfirmed. They need actual material
+reconciliation before a repair. Original plan stock stays immutable. Photo evidence
+prevents individual asset deletion; deleting the whole project purges history and
+its retry snapshots. This slice exposes no event-writing model tool.
+See the [contract and validation](../../docs/handoffs/issue-11-physical-progress.md).

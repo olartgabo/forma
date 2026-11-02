@@ -1,4 +1,4 @@
-"""Local private project persistence; never activates plans or records physical work."""
+"""Private project storage and authenticated route composition."""
 
 import hashlib
 import json
@@ -130,6 +130,21 @@ class ProjectStore:
                 "REFERENCES projects(id) ON DELETE CASCADE, "
                 "inventory_revision_id TEXT NOT NULL, body TEXT NOT NULL, "
                 "process TEXT NOT NULL, parameters TEXT NOT NULL)"
+            )
+            for table in ("progress_events", "progress_material"):
+                connection.execute(
+                    f"CREATE TABLE IF NOT EXISTS {table} "
+                    "(id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
+                    "REFERENCES projects(id) ON DELETE CASCADE, "
+                    "version_id TEXT NOT NULL REFERENCES plans(version_id) ON DELETE CASCADE, "
+                    "body TEXT NOT NULL)"
+                )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS progress_evidence "
+                "(id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
+                "REFERENCES projects(id) ON DELETE CASCADE, "
+                "version_id TEXT NOT NULL REFERENCES plans(version_id) ON DELETE CASCADE, "
+                "asset_id TEXT REFERENCES media(id), body TEXT NOT NULL)"
             )
             yield connection
             connection.commit()
@@ -326,6 +341,10 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 (owner, project_id + ":plan-preview", project_id + ":plan-activation"),
             )
             connection.execute(
+                "DELETE FROM requests WHERE owner=? AND scope=?",
+                (owner, project_id + ":progress"),
+            )
+            connection.execute(
                 "UPDATE requests SET response=? WHERE owner=? AND scope='create' "
                 "AND json_extract(response, '$.project.id')=?",
                 (json.dumps({"deleted_project_id": project_id}), owner, project_id),
@@ -337,7 +356,9 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
 
     from forma_api.media import media_router
     from forma_api.plans import plan_router
+    from forma_api.progress import progress_router
 
     router.include_router(media_router(store, authenticate))
     router.include_router(plan_router(store, authenticate))
+    router.include_router(progress_router(store, authenticate))
     return router

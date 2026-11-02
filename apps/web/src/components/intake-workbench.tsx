@@ -1082,14 +1082,16 @@ function ProjectWorkbench({
               );
             }}
             onReload={() => void openProject(project.id)}
+            photos={photos}
           />
           <aside className="next-step-note">
             <h2>What comes next</h2>
             <p>
-              Live design generation and physical progress recording are still
-              being connected. Saved plan previews can be reviewed above. Saving
-              inventory records materials and requirements; it does not validate
-              a design. Model-assisted image review remains pending.
+              Live design generation and diagnosis/repair activation are still
+              being connected. Active plans support explicit physical reports
+              above. Saving inventory records materials and requirements; it
+              does not validate a design. Model-assisted image review remains
+              pending.
             </p>
           </aside>
         </>

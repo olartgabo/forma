@@ -75,7 +75,8 @@ input:disabled,
 select:disabled {
   background: #f1f4f2;
 }
-input[type="checkbox"] {
+input[type="checkbox"],
+input[type="radio"] {
   display: inline-block;
   width: 20px;
   min-height: 20px;
@@ -603,6 +604,44 @@ figcaption span {
 .manual-materials,
 .plan-approval {
   margin-top: 1.5rem;
+}
+.physical-progress {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+.physical-progress > button,
+.physical-progress textarea,
+.physical-checks,
+.physical-result,
+.progress-history,
+.progress-materials {
+  margin-bottom: 1.5rem;
+}
+.physical-checks legend,
+.physical-result legend,
+.progress-materials summary,
+.progress-history summary {
+  font-weight: 650;
+  padding: 0.75rem 0;
+}
+.progress-materials summary,
+.progress-history summary {
+  cursor: pointer;
+}
+.progress-history li {
+  margin-bottom: 1rem;
+}
+.test-conditions {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--mint);
+}
+.test-conditions dt {
+  font-weight: 650;
+}
+.test-conditions dd {
+  margin: 0 0 0.75rem;
 }
 .manual-materials summary {
   cursor: pointer;

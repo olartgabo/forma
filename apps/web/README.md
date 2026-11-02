@@ -1,6 +1,6 @@
 # Web product
 
-Owner: @olartgabo. Reviewer: @ResniDev. Status: local intake workbench.
+Owner: @olartgabo. Reviewer: @ResniDev. Status: intake, saved manuals and physical reports.
 Issues: #1, #7, #11, #12 and #14.
 
 Implement Next.js/React/TypeScript mobile flows: Start, Inventory, Design,
@@ -38,7 +38,7 @@ device mass/viewing angle/footprint limits and willingness to get more material.
 Blank measurements stay unknown; editing a value or its source clears confirmation.
 Requirements and stock share one revision and retry payload. Photos do not produce
 measurements or physical evidence. Segmentation boxes,
-live proposals, physical progress recording and revision/proof screens remain
+live proposals and revision/proof screens remain
 pending. See the [intake handoff](../../docs/handoffs/issue-7-intake.md).
 The [requirements handoff](../../docs/handoffs/issue-7-requirements.md) documents
 the persisted planning inputs and consumer boundary.
@@ -57,5 +57,13 @@ The trusted preview producer is an internal service; live design generation is
 not exposed through HTTP yet. Empty projects show no invented plan. See the
 [plan handoff](../../docs/handoffs/issue-6-plan-activation.md).
 
-Next connect physical events and the computed adaptation diff.
+An active manual now records explicit user reports, required checks, inspection/test
+pass or fail, notes and optional existing private photos. Progress survives refresh;
+duplicate/out-of-order reports are rejected. A failed check pauses further reports
+pending diagnosis/revision. Browsing steps records no work. Ambiguous writes retain
+their exact retry payload, and replay loads current history before enabling reports.
+Expected stock is calculated/unconfirmed, not an actual measurement. See the
+[progress handoff](../../docs/handoffs/issue-11-physical-progress.md).
+
+Next connect diagnosis, actual remaining-stock reconciliation and the adaptation diff.
 See [contracts](../../docs/contracts.md) and [development](../../docs/development.md).
