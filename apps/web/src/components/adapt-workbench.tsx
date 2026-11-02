@@ -22,6 +22,7 @@ import {
   type RepairHandoff,
 } from "../lib/repair-handoff";
 import Diagram from "./manual-diagram";
+import MuseRepairPanel from "./muse-repair-panel";
 
 function message(error: unknown) {
   return error instanceof ApiError
@@ -321,6 +322,10 @@ export default function AdaptWorkbench({
     useState<AdaptSimulateRequest | null>(null);
   const [pendingApproval, setPendingApproval] =
     useState<AdaptCommitRequest | null>(null);
+  const [draftChangeNotice, setDraftChangeNotice] = useState("");
+  const [museCandidateIds, setMuseCandidateIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const [handoffNote, setHandoffNote] = useState<"started" | "replace" | null>(
     null,
   );
@@ -328,6 +333,9 @@ export default function AdaptWorkbench({
     null,
   );
   const lifetime = useRef(new AbortController());
+  const previewsRef = useRef<AdaptPreviewSet | null>(null);
+  const choiceRef = useRef("");
+  const approvedRef = useRef(false);
   const openRef = useRef(false);
   const draftRef = useRef<Draft>(emptyDraft);
   const appliedDraftRef = useRef<Draft | null>(null);
@@ -362,6 +370,54 @@ export default function AdaptWorkbench({
   }, [open]);
 
   useEffect(() => {
+    previewsRef.current = previews;
+  }, [previews]);
+
+  useEffect(() => {
+    choiceRef.current = choice;
+  }, [choice]);
+
+  useEffect(() => {
+    approvedRef.current = approved;
+  }, [approved]);
+
+  function clearStalePreviews() {
+    const had =
+      previewsRef.current !== null ||
+      choiceRef.current !== "" ||
+      approvedRef.current;
+    previewsRef.current = null;
+    choiceRef.current = "";
+    approvedRef.current = false;
+    setPreviews(null);
+    setChoice("");
+    setApproved(false);
+    if (had)
+      setDraftChangeNotice(
+        "Earlier previews were cleared because the draft changed. Simulate again before approving a repair.",
+      );
+  }
+
+  function handleMuseCandidates(incoming: readonly RepairPatch[]) {
+    const existing = new Set(candidates.map((candidate) => candidate.id));
+    const fresh = incoming.filter((candidate) => !existing.has(candidate.id));
+    const capacity = Math.max(0, 3 - candidates.length);
+    const addedList = fresh.slice(0, capacity);
+    if (addedList.length > 0) {
+      setCandidates([...candidates, ...addedList]);
+      setMuseCandidateIds(
+        (current) =>
+          new Set([...current, ...addedList.map((candidate) => candidate.id)]),
+      );
+      clearStalePreviews();
+    }
+    return {
+      added: addedList.length,
+      skipped: incoming.length - addedList.length,
+    };
+  }
+
+  useEffect(() => {
     // A different active version invalidates every draft and preview.
     handledHandoffKey.current = null;
     appliedDraftRef.current = null;
@@ -377,6 +433,8 @@ export default function AdaptWorkbench({
     setPendingSimulation(null);
     setPendingApproval(null);
     setStale(false);
+    setDraftChangeNotice("");
+    setMuseCandidateIds(new Set());
   }, [version.version_id]);
 
   useEffect(() => {
@@ -400,6 +458,7 @@ export default function AdaptWorkbench({
     const key = `${handoff.projectId}:${handoff.versionId}:${handoff.targetIds.join(",")}:${handoff.failureType}:${target}:${handoff.nonce ?? ""}`;
     if (handledHandoffKey.current === key) return;
     handledHandoffKey.current = key;
+    if (openRef.current) clearStalePreviews();
     const nextDraft = draftFromHandoff(handoff, target);
     const currentDraft = draftRef.current;
     const untouched =
@@ -598,6 +657,18 @@ export default function AdaptWorkbench({
           }}
         />
       )}
+      {draftChangeNotice && (
+        <div className="notice" role="note">
+          <p>{draftChangeNotice}</p>
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => setDraftChangeNotice("")}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {!open ? (
         <button
           type="button"
@@ -744,6 +815,9 @@ export default function AdaptWorkbench({
                       {candidate.replacement_stock_id
                         ? ` from ${candidate.replacement_stock_id}`
                         : ""}{" "}
+                      {museCandidateIds.has(candidate.id) && !previews
+                        ? "— Muse proposal (unverified) "
+                        : ""}
                       <button
                         type="button"
                         className="quiet"
@@ -761,6 +835,20 @@ export default function AdaptWorkbench({
                   ))}
                 </ol>
               )}
+              <MuseRepairPanel
+                token={token}
+                projectId={projectId}
+                versionId={version.version_id}
+                lastEventId={progress.last_event_id ?? null}
+                diagnosis={
+                  isHandoffCurrent(handoff, projectId, version.version_id)
+                    ? (handoff?.diagnosis ?? null)
+                    : null
+                }
+                progressLoaded={progress !== null}
+                disabled={locked}
+                onCandidates={handleMuseCandidates}
+              />
               <form onSubmit={submitSimulation}>
                 <fieldset disabled={locked}>
                   <legend>Confirm what is left</legend>

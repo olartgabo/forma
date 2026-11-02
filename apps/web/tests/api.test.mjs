@@ -17,6 +17,7 @@ import {
   loadProgress,
   loadProject,
   loadProof,
+  proposeRepairs,
   requestDiagnosis,
   requestIntakeObservation,
   saveInventory,
@@ -34,6 +35,7 @@ import { createDiagnosisPlanLoader } from "../src/lib/diagnosis-plan-loader.ts";
 import {
   formatMuseLatency,
   formatProviderUsage,
+  museDiagnosticsFromResult,
   museRequestStatus,
   museStatusKindForCode,
   museStatusLabel,
@@ -191,6 +193,51 @@ test("muse latency and usage formatting report unknowns without inventing values
     formatProviderUsage(undefined),
     "Provider-reported usage: not reported.",
   );
+});
+
+test("museDiagnosticsFromResult maps diagnostics or returns null", () => {
+  assert.deepEqual(
+    museDiagnosticsFromResult({
+      status: "ok",
+      model: "muse-spark-test",
+      elapsed_ms: 42,
+      usage: { model_calls: 1, input_tokens: 10, output_tokens: 5 },
+      model_rounds: 2,
+      tool_executions: 1,
+    }),
+    {
+      status: "ok",
+      model: "muse-spark-test",
+      elapsedMs: 42,
+      usage: { model_calls: 1, input_tokens: 10, output_tokens: 5 },
+      modelRounds: 2,
+      toolExecutions: 1,
+    },
+  );
+  assert.deepEqual(
+    museDiagnosticsFromResult({
+      status: "ok",
+      model: "muse-spark-test",
+      elapsed_ms: 0,
+    }),
+    {
+      status: "ok",
+      model: "muse-spark-test",
+      elapsedMs: 0,
+      usage: null,
+    },
+  );
+  for (const bad of [
+    null,
+    undefined,
+    "ok",
+    [],
+    { status: "ok", model: "", elapsed_ms: 1 },
+    { status: "ok", model: "m", elapsed_ms: -1 },
+    { status: "ok", model: "m", elapsed_ms: Number.NaN },
+    { model: "m", elapsed_ms: 1 },
+  ])
+    assert.equal(museDiagnosticsFromResult(bad), null);
 });
 
 function deferred() {
@@ -1203,6 +1250,195 @@ test("diagnosis cancellation aborts without leaking abort details", async (t) =>
   assert.equal(requestSignal.aborted, true);
 });
 
+function repairCandidate(id, overrides = {}) {
+  return {
+    id,
+    base_version_id: "version-a",
+    kind: "replace_part",
+    target_id: "part-a",
+    replacement_stock_id: "stock-a",
+    replacement_profile_id: null,
+    width_mm: null,
+    height_mm: null,
+    angle_deg: null,
+    rationale: "Replace the torn part",
+    ...overrides,
+  };
+}
+
+const repairBody = {
+  expected_version_id: "version-a",
+  expected_last_event_id: "event-a",
+  reported_problem: "The slot tore",
+  diagnosis: {
+    visible_observations: ["A tear is visible"],
+    hypotheses: [],
+    questions_or_measurements: [],
+    affected_ids: ["part-a"],
+    failure_type: "torn_slot",
+  },
+  provider_context_consented: true,
+};
+
+const repairResult = {
+  project_id: "project-a",
+  base_version_id: "version-a",
+  base_last_event_id: "event-a",
+  candidates: [repairCandidate("repair-a")],
+  questions: [],
+  diagnostics: {
+    status: "ok",
+    model: "muse-spark-test",
+    elapsed_ms: 15,
+    usage: { model_calls: 1, input_tokens: 10, output_tokens: 5 },
+  },
+};
+
+test("proposeRepairs sends POST to repairs/propose with exact body and auth", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json(repairResult);
+  });
+  const result = await proposeRepairs(token, "project-a", repairBody);
+  assert.deepEqual(result, repairResult);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, "/api/projects/project-a/repairs/propose");
+  assert.equal(calls[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].options.body), repairBody);
+  assert.equal(
+    calls[0].options.headers.get("Authorization"),
+    `Bearer ${token}`,
+  );
+  assert.equal(calls[0].options.cache, "no-store");
+  assert.equal(calls[0].options.credentials, "omit");
+  assert.equal(calls[0].options.redirect, "error");
+});
+
+test("proposeRepairs accepts a question-only result", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({
+      ...repairResult,
+      candidates: [],
+      questions: ["How wide is the remaining stock?"],
+    }),
+  );
+  const result = await proposeRepairs(token, "project-a", repairBody);
+  assert.deepEqual(result.candidates, []);
+  assert.deepEqual(result.questions, ["How wide is the remaining stock?"]);
+});
+
+test("proposeRepairs rejects mismatched and malformed results", async (t) => {
+  const payloads = [
+    { ...repairResult, project_id: "project-other" },
+    { ...repairResult, base_version_id: "version-b" },
+    { ...repairResult, base_last_event_id: "event-b" },
+    {
+      ...repairResult,
+      candidates: [
+        repairCandidate("repair-a"),
+        repairCandidate("repair-b"),
+        repairCandidate("repair-c"),
+        repairCandidate("repair-d"),
+      ],
+    },
+    {
+      ...repairResult,
+      candidates: [
+        repairCandidate("repair-a", { base_version_id: "version-b" }),
+      ],
+    },
+    {
+      ...repairResult,
+      candidates: [repairCandidate("repair-a"), repairCandidate("repair-a")],
+    },
+    {
+      ...repairResult,
+      candidates: [repairCandidate("repair-a", { kind: "delete_part" })],
+    },
+    {
+      ...repairResult,
+      candidates: [repairCandidate("repair-a", { rationale: "" })],
+    },
+    {
+      ...repairResult,
+      diagnostics: {
+        status: "error",
+        model: "muse-spark-test",
+        elapsed_ms: 15,
+      },
+    },
+    {
+      ...repairResult,
+      diagnostics: { status: "ok", model: "", elapsed_ms: 15 },
+    },
+    {
+      ...repairResult,
+      diagnostics: { status: "ok", model: "muse-spark-test", elapsed_ms: -1 },
+    },
+    {
+      ...repairResult,
+      diagnostics: {
+        status: "ok",
+        model: "muse-spark-test",
+        elapsed_ms: 15,
+        usage: "PRIVATE",
+      },
+    },
+    { ...repairResult, extra: true },
+    { ...repairResult, questions: "How wide?" },
+    { ...repairResult, questions: [""] },
+    { ...repairResult, questions: ["x".repeat(2001)] },
+  ];
+  for (const payload of payloads) {
+    t.mock.method(globalThis, "fetch", async () => Response.json(payload));
+    await assert.rejects(
+      proposeRepairs(token, "project-a", repairBody),
+      (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.code, "invalid_response");
+        assert.doesNotMatch(error.message, /PRIVATE/);
+        return true;
+      },
+    );
+    t.mock.restoreAll();
+  }
+});
+
+test("proposeRepairs surfaces structured error codes without retrying", async (t) => {
+  const cases = [
+    [422, "consent_required", /Consent to send/],
+    [503, "provider_not_configured", /not configured/],
+    [409, "stale_version", /Reload the project/],
+    [429, "rate_limit", /rate limit/],
+    [504, "timeout", /timed out/],
+    [502, "invalid_response", /unusable response/],
+  ];
+  for (const [status, code, pattern] of cases) {
+    let calls = 0;
+    t.mock.method(globalThis, "fetch", async () => {
+      calls += 1;
+      return Response.json(
+        { code, message: "PRIVATE_PROVIDER_BODY sk-secret" },
+        { status },
+      );
+    });
+    await assert.rejects(
+      proposeRepairs(token, "project-a", repairBody),
+      (error) => {
+        assert.ok(error instanceof ApiError);
+        assert.equal(error.status, status);
+        assert.equal(error.code, code);
+        assert.match(error.message, pattern);
+        assert.doesNotMatch(error.message, /PRIVATE|sk-secret/);
+        return true;
+      },
+    );
+    assert.equal(calls, 1);
+    t.mock.restoreAll();
+  }
+});
+
 const savedList = {
   projects: [
     {
@@ -1462,6 +1698,21 @@ test("repair handoff is built only for the matching project and active version",
     targetIds: ["part-a", "part-b"],
     failureType: "torn_slot",
     source: "muse_diagnosis",
+    diagnosis: {
+      visible_observations: [],
+      hypotheses: [],
+      questions_or_measurements: [],
+      affected_ids: [
+        "joint-a",
+        "part-a",
+        "feature-a",
+        "part-b",
+        "part-a",
+        "operation-a",
+        "stock-a",
+      ],
+      failure_type: "torn_slot",
+    },
   });
   assert.equal(
     handoffFromDiagnosis(

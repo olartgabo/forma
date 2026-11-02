@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ApiError, requestIntakeObservation } from "../lib/api";
-import MuseRequestStatus from "./muse-request-details";
+import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import MuseRequestStatus from "./muse-request-status";
 import type {
   IntakeResult,
   Media,
@@ -253,14 +254,7 @@ export default function MuseIntakePanel({
             errorCode={failure?.code}
             errorMessage={failure?.message}
             diagnostics={
-              result
-                ? {
-                    status: result.diagnostics.status,
-                    model: result.diagnostics.model,
-                    elapsedMs: result.diagnostics.elapsed_ms,
-                    usage: result.diagnostics.usage,
-                  }
-                : null
+              result ? museDiagnosticsFromResult(result.diagnostics) : null
             }
           />
           {result && (
