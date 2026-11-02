@@ -11,6 +11,13 @@ design generation runs only with ``--live-design`` and
 ``--live-intake``, ``--live-diagnosis`` and ``--live-design`` are mutually
 exclusive so at most one provider-backed request is made per invocation.
 
+A live repair proposal runs only with ``--live-repair``,
+``--transfer-consent`` and a required ``--problem`` text (optionally scoped
+with ``--operation-id``), plus required ``--project-id`` and ``--media-id``.
+It makes one diagnosis call, one repair-proposal call and one read-only
+simulate preview; it never commits, approves or activates a repair.
+``--live-repair`` is mutually exclusive with the other live steps.
+
 Example live diagnosis run::
 
     python -m forma_api.demo_smoke --project-id project-abc \
@@ -22,11 +29,19 @@ Example live design run::
     python -m forma_api.demo_smoke --project-id project-abc \
         --live-design --transfer-consent
 
+Example live repair run::
+
+    python -m forma_api.demo_smoke --project-id project-abc \
+        --media-id media-abc --live-repair --transfer-consent \
+        --problem "The leg split at the slot"
+
 A passing live-diagnosis smoke proves only that the provider returned one
 validated response for that photo. It does not prove physical repair
 success, and this command never claims a physical test pass. A passing
 live-design smoke proves only one provider response and deterministic
-compile results, not physical build success.
+compile results, not physical build success. A passing live-repair smoke
+is NOT physical proof: it proves only one provider response plus
+deterministic simulation.
 
 The owner credential is read only from the ``FORMA_SMOKE_OWNER_TOKEN``
 environment variable or an optional credential file. It is never accepted as
@@ -55,6 +70,7 @@ from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 
+from forma_api.adapt import AdaptPreviewSet, AdaptSimulateRequest
 from forma_api.design_runtime import (
     MAX_NOTES_LENGTH,
     DesignGenerateRequest,
@@ -73,7 +89,9 @@ from forma_api.intake_runtime import (
     IntakeResult,
 )
 from forma_api.media import MediaList
+from forma_api.progress import ProgressSnapshot
 from forma_api.projects import Project
+from forma_api.repair_runtime import RepairProposeRequest, RepairProposeResult
 from forma_api.routes.health import HealthResponse
 
 CREDENTIAL_ENV_VAR = "FORMA_SMOKE_OWNER_TOKEN"
@@ -108,6 +126,16 @@ _SAFE_ERROR_CODES = frozenset(
         "validation_error",
     }
 )
+
+
+def _usage_report(usage) -> dict | None:
+    if usage is None:
+        return None
+    return {
+        "model_calls": usage.model_calls,
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+    }
 
 
 @dataclass(frozen=True)
@@ -385,8 +413,21 @@ def _build_parser() -> argparse.ArgumentParser:
             "success. Live design requires --live-design and "
             "--transfer-consent (optional --design-notes), and proves only "
             "one provider response and deterministic compile results, not "
-            "physical build success. Example: python -m forma_api.demo_smoke "
+            "physical build success. Live repair requires --live-repair, "
+            "--project-id, --media-id, --transfer-consent and --problem "
+            "(optional --operation-id), and proves only one provider "
+            "response plus deterministic simulation, not physical proof. "
+            "Example: python -m forma_api.demo_smoke "
             "--project-id project-abc --live-design --transfer-consent"
+        ),
+        epilog=(
+            "Live repair (--live-repair) requires --project-id, --media-id, "
+            "--transfer-consent and --problem (optional --operation-id). It "
+            "makes one diagnosis call, one repair-proposal call and one "
+            "read-only simulate preview; it never commits or approves a "
+            "repair. It is mutually exclusive with the other live steps. A "
+            "passing live-repair smoke is NOT physical proof: it proves "
+            "only one provider response plus deterministic simulation."
         ),
     )
     parser.add_argument("--api-origin", default=DEFAULT_ORIGIN)
@@ -398,6 +439,7 @@ def _build_parser() -> argparse.ArgumentParser:
     live_group.add_argument("--live-intake", action="store_true")
     live_group.add_argument("--live-diagnosis", action="store_true")
     live_group.add_argument("--live-design", action="store_true")
+    live_group.add_argument("--live-repair", action="store_true")
     parser.add_argument("--design-notes", default=None)
     parser.add_argument("--problem", default=None)
     parser.add_argument("--operation-id", default=None)
@@ -421,6 +463,7 @@ def _initial_report(origin: str | None) -> dict:
         "intake": {"status": "not_requested"},
         "diagnosis": {"status": "not_requested"},
         "design": {"status": "not_requested"},
+        "repair": {"status": "not_requested"},
         "physical_verification": "not_checked",
         "measurements": "unknown",
         "errors": [],
@@ -504,15 +547,26 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         _fail(report, "arguments", "design_notes_requires_live_design")
         return emit(2)
     problem: str | None = None
-    if args.live_diagnosis:
+    if args.live_diagnosis or args.live_repair:
+        live_check = "repair" if args.live_repair else "diagnosis"
+        requires_code = (
+            "live_repair_requires_project_and_media"
+            if args.live_repair
+            else "live_diagnosis_requires_project_and_media"
+        )
+        requires_problem_code = (
+            "live_repair_requires_problem"
+            if args.live_repair
+            else "live_diagnosis_requires_problem"
+        )
         if args.project_id is None or args.media_id is None:
-            _fail(report, "arguments", "live_diagnosis_requires_project_and_media")
+            _fail(report, "arguments", requires_code)
             return emit(2)
         if not args.transfer_consent:
-            _fail(report, "diagnosis", "consent_required")
+            _fail(report, live_check, "consent_required")
             return emit(2)
         if args.problem is None:
-            _fail(report, "arguments", "live_diagnosis_requires_problem")
+            _fail(report, "arguments", requires_problem_code)
             return emit(2)
         problem = args.problem.strip()
         if not 1 <= len(problem) <= MAX_REPORTED_PROBLEM_LENGTH:
@@ -534,7 +588,10 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
     if needs_credential:
         token, credential_error = _load_credential(env, args.credential_file)
         if credential_error is not None and (
-            args.live_intake or args.live_diagnosis or args.live_design
+            args.live_intake
+            or args.live_diagnosis
+            or args.live_design
+            or args.live_repair
         ):
             _fail(report, "credential", credential_error)
             return emit(2)
@@ -624,10 +681,14 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
     }
 
     # Operation scope requires an active plan; refuse before any POST.
-    if args.live_diagnosis and args.operation_id is not None:
+    if (args.live_diagnosis or args.live_repair) and args.operation_id is not None:
         if project.active_version_id is None:
-            report["diagnosis"] = {"status": "failed"}
-            _fail(report, "diagnosis", "active_plan_required")
+            if args.live_repair:
+                report["repair"] = {"status": "failed"}
+                _fail(report, "repair", "active_plan_required")
+            else:
+                report["diagnosis"] = {"status": "failed"}
+                _fail(report, "diagnosis", "active_plan_required")
             return emit(1)
 
     # The design route returns blocked for active plans; refuse locally
@@ -710,15 +771,7 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         }
         for candidate in design_result.candidates:
             candidate_counts[candidate.status] += 1
-        usage_report = (
-            {
-                "model_calls": diag.usage.model_calls,
-                "input_tokens": diag.usage.input_tokens,
-                "output_tokens": diag.usage.output_tokens,
-            }
-            if diag.usage is not None
-            else None
-        )
+        usage_report = _usage_report(diag.usage)
         report["design"] = {
             "status": design_result.status,
             "counts": candidate_counts,
@@ -736,7 +789,11 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         return emit(0)
 
     if args.media_id is None:
-        return emit(0 if not (args.live_intake or args.live_diagnosis) else 1)
+        return emit(
+            0
+            if not (args.live_intake or args.live_diagnosis or args.live_repair)
+            else 1
+        )
 
     # --- Saved media eligibility (metadata only; no bytes downloaded). ---
     response = checked_request("media", "GET", f"/api/projects/{args.project_id}/media")
@@ -775,11 +832,12 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         _fail(report, "media", "media_ineligible")
         return emit(1)
 
-    if not args.live_intake and not args.live_diagnosis:
+    if not args.live_intake and not args.live_diagnosis and not args.live_repair:
         return emit(0)
 
-    if args.live_diagnosis:
-        # --- Live diagnosis: only here, with consent already verified. ---
+    def run_live_diagnosis() -> DiagnosisResult | None:
+        """Shared live-diagnosis POST + validation + safe report building."""
+
         # Media eligibility above already refused ineligible photos with
         # no POST; operation scope was checked against the loaded project.
         report["diagnosis"] = {"status": "not_checked"}
@@ -802,13 +860,13 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         )
         if response is None:
             report["diagnosis"] = {"status": "failed"}
-            return emit(1)
+            return None
         try:
             diagnosis_result = DiagnosisResult.model_validate_json(response.body)
         except ValidationError:
             report["diagnosis"] = {"status": "failed"}
             _fail(report, "diagnosis", "invalid_response")
-            return emit(1)
+            return None
         if (
             diagnosis_result.project_id != args.project_id
             or diagnosis_result.media_id != args.media_id
@@ -823,7 +881,7 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
         ):
             report["diagnosis"] = {"status": "failed"}
             _fail(report, "diagnosis", "invalid_response")
-            return emit(1)
+            return None
         proposal = diagnosis_result.diagnosis
         diag = diagnosis_result.diagnostics
         counts = {
@@ -832,15 +890,6 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
             "questions_or_measurements": len(proposal.questions_or_measurements),
             "affected_ids": len(proposal.affected_ids),
         }
-        usage_report = (
-            {
-                "model_calls": diag.usage.model_calls,
-                "input_tokens": diag.usage.input_tokens,
-                "output_tokens": diag.usage.output_tokens,
-            }
-            if diag.usage is not None
-            else None
-        )
         report["diagnosis"] = {
             "status": diag.status,
             "failure_type": proposal.failure_type,
@@ -848,11 +897,145 @@ def run(argv=None, *, env=None, transport=None, out: TextIO | None = None) -> in
             "diagnostics": {
                 "model": diag.model,
                 "elapsed_ms": diag.elapsed_ms,
-                "usage": usage_report,
+                "usage": _usage_report(diag.usage),
             },
             "live_provider_call": True,
         }
+        return diagnosis_result
+
+    if args.live_repair:
+        # --- Live repair: diagnosis, propose, read-only simulate only. ---
+        active_version_id = project.active_version_id
+        if active_version_id is None:
+            report["repair"] = {"status": "failed"}
+            _fail(report, "repair", "active_plan_required")
+            return emit(1)
+        diagnosis_result = run_live_diagnosis()
+        if diagnosis_result is None:
+            return emit(1)
+        assert problem is not None  # Validated in preflight.
+        report["repair"] = {"status": "not_checked"}
+        response = checked_request(
+            "progress",
+            "GET",
+            f"/api/projects/{args.project_id}/versions/{active_version_id}/progress",
+        )
+        if response is None:
+            report["repair"] = {"status": "failed"}
+            return emit(1)
+        try:
+            progress = ProgressSnapshot.model_validate_json(response.body)
+        except ValidationError:
+            report["repair"] = {"status": "failed"}
+            _fail(report, "progress", "invalid_response")
+            return emit(1)
+        if progress.project_id != args.project_id or progress.version_id != (
+            active_version_id
+        ):
+            report["repair"] = {"status": "failed"}
+            _fail(report, "progress", "invalid_response")
+            return emit(1)
+        repair_payload = RepairProposeRequest(
+            expected_version_id=active_version_id,
+            expected_last_event_id=progress.last_event_id,
+            reported_problem=problem,
+            diagnosis=diagnosis_result.diagnosis,
+            provider_context_consented=True,
+        )
+        response = checked_request(
+            "repair",
+            "POST",
+            f"/api/projects/{args.project_id}/repairs/propose",
+            body=repair_payload.model_dump_json().encode(),
+        )
+        if response is None:
+            report["repair"] = {"status": "failed"}
+            return emit(1)
+        try:
+            repair_result = RepairProposeResult.model_validate_json(response.body)
+        except ValidationError:
+            report["repair"] = {"status": "failed"}
+            _fail(report, "repair", "invalid_response")
+            return emit(1)
+        if (
+            repair_result.project_id != args.project_id
+            or repair_result.base_version_id != active_version_id
+            or repair_result.base_last_event_id != progress.last_event_id
+        ):
+            report["repair"] = {"status": "failed"}
+            _fail(report, "repair", "invalid_response")
+            return emit(1)
+        rdiag = repair_result.diagnostics
+        repair_report: dict = {
+            "status": rdiag.status,
+            "candidate_count": len(repair_result.candidates),
+            "previews": [],
+            "question_count": len(repair_result.questions),
+            "diagnostics": {
+                "model": rdiag.model,
+                "elapsed_ms": rdiag.elapsed_ms,
+                "usage": _usage_report(rdiag.usage),
+            },
+            "live_provider_call": True,
+            "simulate": {"status": "not_requested", "preview_count": 0},
+        }
+        report["repair"] = repair_report
+        if not repair_result.candidates:
+            return emit(0)
+        simulate_payload = AdaptSimulateRequest(
+            expected_version_id=active_version_id,
+            expected_last_event_id=progress.last_event_id,
+            idempotency_key=f"smoke-repair-{uuid.uuid4().hex}",
+            candidates=repair_result.candidates,
+            remaining_confirmed=True,
+        )
+        response = checked_request(
+            "simulate",
+            "POST",
+            f"/api/projects/{args.project_id}/adapt/simulate",
+            body=simulate_payload.model_dump_json().encode(),
+        )
+        if response is None:
+            repair_report["status"] = "failed"
+            repair_report["simulate"] = {"status": "failed", "preview_count": 0}
+            return emit(1)
+        try:
+            simulate_result = AdaptPreviewSet.model_validate_json(response.body)
+        except ValidationError:
+            repair_report["status"] = "failed"
+            repair_report["simulate"] = {"status": "failed", "preview_count": 0}
+            _fail(report, "simulate", "invalid_response")
+            return emit(1)
+        preview_patch_ids = [preview.patch.id for preview in simulate_result.previews]
+        candidate_ids = [candidate.id for candidate in repair_result.candidates]
+        if (
+            simulate_result.project_id != args.project_id
+            or simulate_result.base_version_id != active_version_id
+            or simulate_result.base_last_event_id != progress.last_event_id
+            or len(preview_patch_ids) != len(candidate_ids)
+            or set(preview_patch_ids) != set(candidate_ids)
+        ):
+            repair_report["status"] = "failed"
+            repair_report["simulate"] = {"status": "failed", "preview_count": 0}
+            _fail(report, "simulate", "invalid_response")
+            return emit(1)
+        repair_report["previews"] = [
+            {
+                "rank": preview.rank,
+                "feasible": preview.simulation.status == "feasible",
+                "blocker_count": len(preview.simulation.blockers),
+            }
+            for preview in simulate_result.previews
+        ]
+        repair_report["simulate"] = {
+            "status": "ok",
+            "preview_count": len(simulate_result.previews),
+        }
         return emit(0)
+
+    if args.live_diagnosis:
+        # --- Live diagnosis: only here, with consent already verified. ---
+        return emit(0 if run_live_diagnosis() is not None else 1)
 
     # --- Live intake: only here, with explicit consent already verified. ---
     report["intake"] = {"status": "not_checked"}

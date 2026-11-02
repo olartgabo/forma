@@ -149,6 +149,180 @@ def design_payload(**overrides):
     return value
 
 
+LAST_EVENT_ID = "event-abc"
+REPAIR_CANDIDATE_A = "candidate-a"
+REPAIR_CANDIDATE_B = "candidate-b"
+SECRET_RATIONALE = "secret patch rationale text"
+SECRET_REPAIR_QUESTION = "secret repair question text"
+
+
+def repair_candidate(candidate_id, **overrides):
+    value = {
+        "id": candidate_id,
+        "base_version_id": ACTIVE_VERSION,
+        "kind": "resize_part",
+        "target_id": "part-abc",
+        "replacement_stock_id": None,
+        "replacement_profile_id": None,
+        "width_mm": 100.0,
+        "height_mm": 50.0,
+        "angle_deg": None,
+        "rationale": SECRET_RATIONALE,
+    }
+    value.update(overrides)
+    return value
+
+
+def progress_payload(**overrides):
+    value = {
+        "project_id": PROJECT_ID,
+        "version_id": ACTIVE_VERSION,
+        "last_event_id": LAST_EVENT_ID,
+        "events": [],
+        "evidence": [],
+        "material_transactions": [],
+        "completed_operation_ids": [],
+        "failed_operation_ids": [],
+        "expected_remaining_stock": [],
+        "status": "not_started",
+    }
+    value.update(overrides)
+    return value
+
+
+def repair_payload(**overrides):
+    value = {
+        "project_id": PROJECT_ID,
+        "base_version_id": ACTIVE_VERSION,
+        "base_last_event_id": LAST_EVENT_ID,
+        "candidates": [
+            repair_candidate(REPAIR_CANDIDATE_A),
+            repair_candidate(
+                REPAIR_CANDIDATE_B,
+                kind="change_angle",
+                target_id=ACTIVE_VERSION,
+                width_mm=None,
+                height_mm=None,
+                angle_deg=45.0,
+            ),
+        ],
+        "questions": [SECRET_REPAIR_QUESTION],
+        "diagnostics": {
+            "status": "ok",
+            "model": "muse-spark-1.3",
+            "elapsed_ms": 55,
+            "usage": {"model_calls": 1, "input_tokens": 15, "output_tokens": 9},
+        },
+    }
+    value.update(overrides)
+    return value
+
+
+def _minimal_plan():
+    unknown = {"value": None, "unit": "mm", "source": "unknown", "confirmed": False}
+    unknown_g = {"value": None, "unit": "g", "source": "unknown", "confirmed": False}
+    unknown_deg = {
+        "value": None,
+        "unit": "deg",
+        "source": "unknown",
+        "confirmed": False,
+    }
+    return {
+        "project_id": PROJECT_ID,
+        "version_id": "version-next",
+        "parent_version_id": ACTIVE_VERSION,
+        "family": "tabletop_fixture_v1",
+        "status": "draft",
+        "stocks": [],
+        "parts": [],
+        "joint_profiles": [],
+        "joints": [],
+        "operations": [],
+        "checkpoints": [],
+        "constraints": {
+            "device_mass_g": unknown_g,
+            "support_angle_deg": unknown_deg,
+            "max_footprint_width_mm": unknown,
+            "max_footprint_height_mm": dict(unknown),
+            "allowed_profile_ids": [],
+            "allow_purchases": False,
+        },
+        "compiler_version": "smoke-test",
+        "created_at": "2026-01-01T00:00:00Z",
+    }
+
+
+def _repair_cost():
+    return {
+        "irreversible_completed_actions_lost": 0,
+        "required_physical_undos": 0,
+        "new_irreversible_actions": 0,
+        "known_weighted_cost": 0,
+        "estimated_extra_minutes": None,
+        "material_waste_fraction": None,
+        "estimated_new_purchase_cost": None,
+        "complete_estimate": False,
+    }
+
+
+def simulate_payload(**overrides):
+    candidates = repair_payload()["candidates"]
+    value = {
+        "project_id": PROJECT_ID,
+        "base_version_id": ACTIVE_VERSION,
+        "base_last_event_id": LAST_EVENT_ID,
+        "remaining_stock": [],
+        "previews": [
+            {
+                "preview_id": "preview-a",
+                "rank": 1,
+                "patch": candidates[0],
+                "simulation": {
+                    "patch_id": REPAIR_CANDIDATE_A,
+                    "base_version_id": ACTIVE_VERSION,
+                    "status": "feasible",
+                    "plan": _minimal_plan(),
+                    "cost": _repair_cost(),
+                    "blockers": [],
+                },
+                "version": None,
+                "panel_diff": None,
+                "render_blockers": [],
+            },
+            {
+                "preview_id": "preview-b",
+                "rank": None,
+                "patch": candidates[1],
+                "simulation": {
+                    "patch_id": REPAIR_CANDIDATE_B,
+                    "base_version_id": ACTIVE_VERSION,
+                    "status": "blocked",
+                    "plan": None,
+                    "cost": None,
+                    "blockers": [
+                        {
+                            "code": "geometry_invalid",
+                            "message": "secret simulation blocker text",
+                            "target_ids": [],
+                        },
+                        {
+                            "code": "stock_exhausted",
+                            "message": "secret simulation blocker two",
+                            "target_ids": [],
+                        },
+                    ],
+                },
+                "version": None,
+                "panel_diff": None,
+                "render_blockers": [],
+            },
+        ],
+        "replayed": False,
+    }
+    value.update(overrides)
+    return value
+
+
 def intake_payload(**overrides):
     value = {
         "project_id": PROJECT_ID,
@@ -210,6 +384,16 @@ def healthy_routes(overrides=None):
         ),
         ("POST", f"/api/projects/{PROJECT_ID}/designs/generate"): resp(
             payload=design_payload()
+        ),
+        (
+            "GET",
+            f"/api/projects/{PROJECT_ID}/versions/{ACTIVE_VERSION}/progress",
+        ): resp(payload=progress_payload()),
+        ("POST", f"/api/projects/{PROJECT_ID}/repairs/propose"): resp(
+            payload=repair_payload()
+        ),
+        ("POST", f"/api/projects/{PROJECT_ID}/adapt/simulate"): resp(
+            payload=simulate_payload()
         ),
     }
     if overrides:
@@ -934,88 +1118,116 @@ def test_live_diagnosis_success_with_operation_scope():
 
 
 @pytest.mark.parametrize(
-    "extra",
+    "extra,expected_code",
     [
-        ["--live-diagnosis"],
-        ["--live-diagnosis", "--transfer-consent"],
-        ["--live-diagnosis", "--transfer-consent", "--problem", PROBLEM],
-        [
-            "--project-id",
-            PROJECT_ID,
-            "--live-diagnosis",
-            "--transfer-consent",
-            "--problem",
-            PROBLEM,
-        ],
-        [
-            "--project-id",
-            PROJECT_ID,
-            "--media-id",
-            MEDIA_ID,
-            "--live-diagnosis",
-            "--problem",
-            PROBLEM,
-        ],
-        [
-            "--project-id",
-            PROJECT_ID,
-            "--media-id",
-            MEDIA_ID,
-            "--live-diagnosis",
-            "--transfer-consent",
-        ],
-        [
-            "--project-id",
-            PROJECT_ID,
-            "--media-id",
-            MEDIA_ID,
-            "--live-diagnosis",
-            "--transfer-consent",
-            "--problem",
-            "   ",
-        ],
-        [
-            "--project-id",
-            PROJECT_ID,
-            "--media-id",
-            MEDIA_ID,
-            "--live-diagnosis",
-            "--transfer-consent",
-            "--problem",
-            "x" * 1001,
-        ],
-        [
-            "--project-id",
-            PROJECT_ID,
-            "--media-id",
-            MEDIA_ID,
-            "--live-diagnosis",
-            "--transfer-consent",
-            "--problem",
-            PROBLEM,
-            "--live-intake",
-        ],
-        [
-            "--project-id",
-            PROJECT_ID,
-            "--media-id",
-            MEDIA_ID,
-            "--live-diagnosis",
-            "--transfer-consent",
-            "--problem",
-            PROBLEM,
-            "--operation-id",
-            "bad id!",
-        ],
+        (["--live-diagnosis"], "live_diagnosis_requires_project_and_media"),
+        (
+            ["--live-diagnosis", "--transfer-consent"],
+            "live_diagnosis_requires_project_and_media",
+        ),
+        (
+            ["--live-diagnosis", "--transfer-consent", "--problem", PROBLEM],
+            "live_diagnosis_requires_project_and_media",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--live-diagnosis",
+                "--transfer-consent",
+                "--problem",
+                PROBLEM,
+            ],
+            "live_diagnosis_requires_project_and_media",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--media-id",
+                MEDIA_ID,
+                "--live-diagnosis",
+                "--problem",
+                PROBLEM,
+            ],
+            "consent_required",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--media-id",
+                MEDIA_ID,
+                "--live-diagnosis",
+                "--transfer-consent",
+            ],
+            "live_diagnosis_requires_problem",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--media-id",
+                MEDIA_ID,
+                "--live-diagnosis",
+                "--transfer-consent",
+                "--problem",
+                "   ",
+            ],
+            "invalid_problem",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--media-id",
+                MEDIA_ID,
+                "--live-diagnosis",
+                "--transfer-consent",
+                "--problem",
+                "x" * 1001,
+            ],
+            "invalid_problem",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--media-id",
+                MEDIA_ID,
+                "--live-diagnosis",
+                "--transfer-consent",
+                "--problem",
+                PROBLEM,
+                "--live-intake",
+            ],
+            "invalid_arguments",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--media-id",
+                MEDIA_ID,
+                "--live-diagnosis",
+                "--transfer-consent",
+                "--problem",
+                PROBLEM,
+                "--operation-id",
+                "bad id!",
+            ],
+            "invalid_operation_id",
+        ),
     ],
 )
-def test_live_diagnosis_parser_rejections_zero_transport(extra):
+def test_live_diagnosis_parser_rejections_zero_transport(extra, expected_code):
     fake = FakeTransport(healthy_routes())
     code, report, _ = invoke(
         base_argv(*extra), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
     )
-    assert code != 0
+    assert code == 2
     assert report["errors"]
+    assert report["errors"][0]["code"] == expected_code
     assert fake.requests == []
 
 
@@ -1216,45 +1428,72 @@ def test_live_design_success_with_notes_stripped_and_never_echoed():
 
 
 @pytest.mark.parametrize(
-    "extra",
+    "extra,expected_code",
     [
-        ["--live-design"],
-        ["--live-design", "--transfer-consent"],
-        ["--project-id", PROJECT_ID, "--live-design"],
-        [
-            "--project-id",
-            PROJECT_ID,
-            "--live-design",
-            "--transfer-consent",
-            "--live-intake",
-        ],
-        [
-            "--project-id",
-            PROJECT_ID,
-            "--live-design",
-            "--transfer-consent",
-            "--live-diagnosis",
-        ],
-        ["--project-id", PROJECT_ID, "--design-notes", DESIGN_NOTES],
-        [
-            "--project-id",
-            PROJECT_ID,
-            "--live-design",
-            "--transfer-consent",
-            "--design-notes",
-            "x" * 1001,
-        ],
+        (["--live-design"], "live_design_requires_project"),
+        (["--live-design", "--transfer-consent"], "live_design_requires_project"),
+        (["--project-id", PROJECT_ID, "--live-design"], "consent_required"),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--live-design",
+                "--transfer-consent",
+                "--live-intake",
+            ],
+            "invalid_arguments",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--live-design",
+                "--transfer-consent",
+                "--live-diagnosis",
+            ],
+            "invalid_arguments",
+        ),
+        (
+            ["--project-id", PROJECT_ID, "--design-notes", DESIGN_NOTES],
+            "design_notes_requires_live_design",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--live-design",
+                "--transfer-consent",
+                "--design-notes",
+                "x" * 1001,
+            ],
+            "invalid_design_notes",
+        ),
     ],
 )
-def test_live_design_parser_rejections_zero_transport(extra):
+def test_live_design_parser_rejections_zero_transport(extra, expected_code):
     fake = FakeTransport(healthy_routes())
     code, report, text = invoke(
         base_argv(*extra), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
     )
     assert code == 2
     assert report["errors"]
+    assert report["errors"][0]["code"] == expected_code
     assert fake.requests == []
     assert DESIGN_NOTES not in text
+
+
+def test_live_design_whitespace_only_notes_sent_as_no_notes():
+    fake = FakeTransport(healthy_routes())
+    code, report, text = invoke(
+        _design_argv("--design-notes", "   \t  "),
+        fake,
+        env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
+    )
+    assert code == 0
+    posts = [r for r in fake.requests if r.method == "POST"]
+    assert len(posts) == 1
+    assert json.loads(posts[0].body)["user_notes"] is None
+    assert report["design"]["live_provider_call"] is True
 
 
 def test_live_design_active_plan_refused_with_zero_generate_posts():
@@ -1336,6 +1575,460 @@ def test_live_design_provider_errors_surfaced():
         ]
         assert "provider secret" not in text
         assert DESIGN_NOTES not in text and TOKEN not in text
+
+
+def _repair_argv(*extra):
+    return base_argv(
+        "--project-id",
+        PROJECT_ID,
+        "--media-id",
+        MEDIA_ID,
+        "--live-repair",
+        "--transfer-consent",
+        "--problem",
+        PROBLEM,
+        *extra,
+    )
+
+
+def _repair_routes(overrides=None):
+    base = {
+        ("GET", f"/api/projects/{PROJECT_ID}"): resp(
+            payload=project_payload(active_version_id=ACTIVE_VERSION)
+        ),
+        ("POST", f"/api/projects/{PROJECT_ID}/diagnose"): resp(
+            payload=diagnosis_payload(
+                active_version_id=ACTIVE_VERSION,
+                current_operation_id=OPERATION_ID,
+            )
+        ),
+    }
+    if overrides:
+        base.update(overrides)
+    return healthy_routes(base)
+
+
+def test_live_repair_success_two_candidates_one_blocked():
+    fake = FakeTransport(_repair_routes())
+    code, report, text = invoke(
+        _repair_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 0
+    assert fake.paths() == [
+        ("GET", "/api/health"),
+        ("GET", f"/api/projects/{PROJECT_ID}"),
+        ("GET", f"/api/projects/{PROJECT_ID}/designs/readiness"),
+        ("GET", f"/api/projects/{PROJECT_ID}/media"),
+        ("POST", f"/api/projects/{PROJECT_ID}/diagnose"),
+        ("GET", f"/api/projects/{PROJECT_ID}/versions/{ACTIVE_VERSION}/progress"),
+        ("POST", f"/api/projects/{PROJECT_ID}/repairs/propose"),
+        ("POST", f"/api/projects/{PROJECT_ID}/adapt/simulate"),
+    ]
+    assert not any(
+        "commit" in path or "approve" in path or "activate" in path
+        for _, path in fake.paths()
+    )
+    propose = fake.requests[6]
+    propose_body = json.loads(propose.body)
+    assert propose_body["expected_version_id"] == ACTIVE_VERSION
+    assert propose_body["expected_last_event_id"] == LAST_EVENT_ID
+    assert propose_body["reported_problem"] == PROBLEM
+    assert propose_body["diagnosis"] == diagnosis_payload()["diagnosis"]
+    assert propose_body["provider_context_consented"] is True
+    simulate = fake.requests[7]
+    sim_body = json.loads(simulate.body)
+    assert sim_body["expected_version_id"] == ACTIVE_VERSION
+    assert sim_body["expected_last_event_id"] == LAST_EVENT_ID
+    assert sim_body["idempotency_key"].startswith("smoke-repair-")
+    assert [c["id"] for c in sim_body["candidates"]] == [
+        REPAIR_CANDIDATE_A,
+        REPAIR_CANDIDATE_B,
+    ]
+    assert sim_body["remaining_confirmed"] is True
+    assert sim_body["connector_measurements"] == []
+    assert report["diagnosis"]["status"] == "ok"
+    assert report["diagnosis"]["live_provider_call"] is True
+    assert report["repair"] == {
+        "status": "ok",
+        "candidate_count": 2,
+        "previews": [
+            {"rank": 1, "feasible": True, "blocker_count": 0},
+            {"rank": None, "feasible": False, "blocker_count": 2},
+        ],
+        "question_count": 1,
+        "diagnostics": {
+            "model": "muse-spark-1.3",
+            "elapsed_ms": 55,
+            "usage": {"model_calls": 1, "input_tokens": 15, "output_tokens": 9},
+        },
+        "live_provider_call": True,
+        "simulate": {"status": "ok", "preview_count": 2},
+    }
+    assert PROBLEM not in text
+    assert SECRET_RATIONALE not in text
+    assert SECRET_REPAIR_QUESTION not in text
+    assert "secret visible observation" not in text
+    assert "secret hypothesis text" not in text
+    assert "secret simulation blocker" not in text
+    assert TOKEN not in text
+
+
+def test_live_repair_success_with_operation_scope():
+    fake = FakeTransport(_repair_routes())
+    code, report, _ = invoke(
+        _repair_argv("--operation-id", OPERATION_ID),
+        fake,
+        env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN},
+    )
+    assert code == 0
+    diagnose_body = json.loads(fake.requests[4].body)
+    assert diagnose_body["expected_active_version_id"] == ACTIVE_VERSION
+    assert diagnose_body["current_operation_id"] == OPERATION_ID
+    assert report["repair"]["candidate_count"] == 2
+
+
+def test_live_repair_zero_candidates_no_simulate():
+    routes = _repair_routes(
+        {
+            ("POST", f"/api/projects/{PROJECT_ID}/repairs/propose"): resp(
+                payload=repair_payload(candidates=[], questions=["q-secret"])
+            )
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, text = invoke(
+        _repair_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 0
+    assert report["repair"]["candidate_count"] == 0
+    assert report["repair"]["previews"] == []
+    assert report["repair"]["simulate"] == {
+        "status": "not_requested",
+        "preview_count": 0,
+    }
+    assert not any(path.endswith("/adapt/simulate") for _, path in fake.paths())
+    assert "q-secret" not in text
+
+
+def test_live_repair_no_active_plan_exit1_zero_posts():
+    routes = healthy_routes()  # active_version_id is None
+    fake = FakeTransport(routes)
+    code, report, _ = invoke(
+        _repair_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 1
+    assert report["repair"] == {"status": "failed"}
+    assert {"check": "repair", "code": "active_plan_required"} in report["errors"]
+    assert all(m == "GET" for m, _ in fake.paths())
+
+
+@pytest.mark.parametrize(
+    "extra,expected_code,expected_check",
+    [
+        (["--live-repair"], "live_repair_requires_project_and_media", "arguments"),
+        (
+            ["--live-repair", "--transfer-consent"],
+            "live_repair_requires_project_and_media",
+            "arguments",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--live-repair",
+                "--transfer-consent",
+                "--problem",
+                PROBLEM,
+            ],
+            "live_repair_requires_project_and_media",
+            "arguments",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--media-id",
+                MEDIA_ID,
+                "--live-repair",
+                "--problem",
+                PROBLEM,
+            ],
+            "consent_required",
+            "repair",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--media-id",
+                MEDIA_ID,
+                "--live-repair",
+                "--transfer-consent",
+            ],
+            "live_repair_requires_problem",
+            "arguments",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--media-id",
+                MEDIA_ID,
+                "--live-repair",
+                "--transfer-consent",
+                "--problem",
+                "   ",
+            ],
+            "invalid_problem",
+            "arguments",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--media-id",
+                MEDIA_ID,
+                "--live-repair",
+                "--transfer-consent",
+                "--problem",
+                PROBLEM,
+                "--live-diagnosis",
+            ],
+            "invalid_arguments",
+            "arguments",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--media-id",
+                MEDIA_ID,
+                "--live-repair",
+                "--transfer-consent",
+                "--problem",
+                PROBLEM,
+                "--live-design",
+            ],
+            "invalid_arguments",
+            "arguments",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--media-id",
+                MEDIA_ID,
+                "--live-repair",
+                "--transfer-consent",
+                "--problem",
+                PROBLEM,
+                "--live-intake",
+            ],
+            "invalid_arguments",
+            "arguments",
+        ),
+        (
+            [
+                "--project-id",
+                PROJECT_ID,
+                "--media-id",
+                MEDIA_ID,
+                "--live-repair",
+                "--transfer-consent",
+                "--problem",
+                PROBLEM,
+                "--design-notes",
+                DESIGN_NOTES,
+            ],
+            "design_notes_requires_live_design",
+            "arguments",
+        ),
+        (
+            ["--problem", PROBLEM],
+            "problem_requires_live_diagnosis",
+            "arguments",
+        ),
+        (
+            ["--operation-id", OPERATION_ID],
+            "operation_id_requires_live_diagnosis",
+            "arguments",
+        ),
+    ],
+)
+def test_live_repair_parser_rejections_zero_transport(
+    extra, expected_code, expected_check
+):
+    fake = FakeTransport(healthy_routes())
+    code, report, text = invoke(
+        base_argv(*extra), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 2
+    assert report["errors"] == [{"check": expected_check, "code": expected_code}]
+    assert fake.requests == []
+    assert PROBLEM not in text and DESIGN_NOTES not in text
+
+
+def test_live_repair_missing_credential_exit2_zero_transport():
+    fake = FakeTransport(_repair_routes())
+    code, report, _ = invoke(_repair_argv(), fake, env={})
+    assert code == 2
+    assert report["errors"] == [{"check": "credential", "code": "credential_missing"}]
+    assert fake.requests == []
+
+
+def test_live_repair_diagnosis_failure_no_repair_call():
+    routes = _repair_routes(
+        {
+            ("POST", f"/api/projects/{PROJECT_ID}/diagnose"): resp(
+                503,
+                payload={"code": "provider_not_configured", "message": "x"},
+            )
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, _ = invoke(
+        _repair_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 1
+    assert report["diagnosis"] == {"status": "failed"}
+    assert report["errors"] == [
+        {"check": "diagnosis", "code": "provider_not_configured", "http_status": 503}
+    ]
+    assert not any("repairs" in path for _, path in fake.paths())
+    assert not any("adapt" in path for _, path in fake.paths())
+
+
+@pytest.mark.parametrize(
+    "status,server_code,expected",
+    [
+        (503, "provider_not_configured", "provider_not_configured"),
+        (429, "rate_limit", "rate_limit"),
+        (409, "stale_version", "stale_version"),
+        (504, "timeout", "timeout"),
+    ],
+)
+def test_live_repair_propose_provider_errors(status, server_code, expected):
+    routes = _repair_routes(
+        {
+            ("POST", f"/api/projects/{PROJECT_ID}/repairs/propose"): resp(
+                status, payload={"code": server_code, "message": "provider secret"}
+            )
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, text = invoke(
+        _repair_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 1
+    assert report["repair"] == {"status": "failed"}
+    assert report["errors"] == [
+        {"check": "repair", "code": expected, "http_status": status}
+    ]
+    assert "provider secret" not in text and PROBLEM not in text
+    assert not any("adapt" in path for _, path in fake.paths())
+
+
+def test_live_repair_malformed_propose_is_invalid_response():
+    for overrides in (
+        {"project_id": "project-other"},
+        {"base_version_id": "version-other"},
+        {"base_last_event_id": "event-other"},
+        {"base_last_event_id": None},
+    ):
+        routes = _repair_routes(
+            {
+                ("POST", f"/api/projects/{PROJECT_ID}/repairs/propose"): resp(
+                    payload=repair_payload(**overrides)
+                )
+            }
+        )
+        fake = FakeTransport(routes)
+        code, report, text = invoke(
+            _repair_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+        )
+        assert code == 1
+        assert report["repair"] == {"status": "failed"}
+        assert {"check": "repair", "code": "invalid_response"} in report["errors"]
+        assert "project-other" not in text and "version-other" not in text
+        assert not any("adapt" in path for _, path in fake.paths())
+
+
+def test_live_repair_progress_mismatch_is_invalid_response():
+    routes = _repair_routes(
+        {
+            (
+                "GET",
+                f"/api/projects/{PROJECT_ID}/versions/{ACTIVE_VERSION}/progress",
+            ): resp(payload=progress_payload(version_id="version-other"))
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, _ = invoke(
+        _repair_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 1
+    assert report["repair"] == {"status": "failed"}
+    assert {"check": "progress", "code": "invalid_response"} in report["errors"]
+    assert not any("repairs" in path for _, path in fake.paths())
+
+
+def test_live_repair_malformed_simulate_is_invalid_response():
+    for overrides in (
+        {"project_id": "project-other"},
+        {"base_version_id": "version-other"},
+        {"base_last_event_id": "event-other"},
+    ):
+        routes = _repair_routes(
+            {
+                ("POST", f"/api/projects/{PROJECT_ID}/adapt/simulate"): resp(
+                    payload=simulate_payload(**overrides)
+                )
+            }
+        )
+        fake = FakeTransport(routes)
+        code, report, _ = invoke(
+            _repair_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+        )
+        assert code == 1
+        assert report["repair"]["status"] == "failed"
+        assert {"check": "simulate", "code": "invalid_response"} in report["errors"]
+
+
+def test_live_repair_simulate_missing_candidate_is_invalid_response():
+    payload = simulate_payload()
+    payload["previews"] = payload["previews"][:1]
+    routes = _repair_routes(
+        {("POST", f"/api/projects/{PROJECT_ID}/adapt/simulate"): resp(payload=payload)}
+    )
+    fake = FakeTransport(routes)
+    code, report, _ = invoke(
+        _repair_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 1
+    assert report["repair"]["status"] == "failed"
+    assert {"check": "simulate", "code": "invalid_response"} in report["errors"]
+
+
+def test_live_repair_simulate_failure():
+    routes = _repair_routes(
+        {
+            ("POST", f"/api/projects/{PROJECT_ID}/adapt/simulate"): resp(
+                409, payload={"code": "stale_version", "message": "secret detail"}
+            )
+        }
+    )
+    fake = FakeTransport(routes)
+    code, report, text = invoke(
+        _repair_argv(), fake, env={demo_smoke.CREDENTIAL_ENV_VAR: TOKEN}
+    )
+    assert code == 1
+    assert report["repair"]["status"] == "failed"
+    assert report["repair"]["simulate"] == {"status": "failed", "preview_count": 0}
+    assert report["errors"] == [
+        {"check": "simulate", "code": "stale_version", "http_status": 409}
+    ]
+    assert "secret detail" not in text
+    assert not any("commit" in path or "approve" in path for _, path in fake.paths())
 
 
 def test_module_entrypoint_invalid_origin_is_json():
