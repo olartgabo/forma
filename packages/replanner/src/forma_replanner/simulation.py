@@ -1330,10 +1330,15 @@ def simulate_patch(
                     for c in base.checkpoints
                     if c.after_operation_id in reported_lost_operations
                 ),
+                # A preserved inspection keeps its checkpoint: nothing in the
+                # new plan could recheck it. Its unchanged targets stay
+                # measured, evidence naming the retired part still
+                # invalidates, and the replacement gets its own inspection.
                 *(
                     c.id
                     for c in base.checkpoints
                     if tape_peeled_ids
+                    and c.after_operation_id not in kept
                     and (
                         set(operations[c.after_operation_id].part_ids)
                         | set(

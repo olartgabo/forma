@@ -140,8 +140,11 @@ historical; peeled joins are lost work and their tape is never refunded.
 `required_undo_operation_ids` names the new peel operations. New work carries
 explicit device-removal, support, access and undamaged-partner human checks;
 scoped access and remaining-stock limits still gate the proposal. Dependent
-checks/evidence invalidate; no events, transactions, salvage or physical passes
-are created. The synthetic positive case has known weighted cost8 and consumes
+checks/evidence invalidate, and each invalidated checkpoint has an incomplete
+recheck in the new plan. The preserved cut inspection keeps its checkpoint for
+the unchanged support/base; evidence naming the retired brace still invalidates
+and the replacement brace gets its own inspection. No events, transactions,
+salvage or physical passes are created. The synthetic positive case has known weighted cost8 and consumes
 160mm of new tape after240mm historic consumption. These are fixture values,
 not measured user evidence.
 

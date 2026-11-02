@@ -284,7 +284,10 @@ def test_dependent_evidence_and_checkpoints_invalidate():
     assert result.status == "feasible", result.blockers
     assert result.invalidated_evidence_ids == (evidence.id,)
     assert "stand-inspect-fit-check" in result.invalidated_checkpoint_ids
-    assert "stand-inspect-cuts-check" in result.invalidated_checkpoint_ids
+    # Evidence about the retired brace invalidates, but the preserved cut
+    # inspection still measured the unchanged support and base.
+    assert "stand-inspect-cuts" in result.preserved_operation_ids
+    assert "stand-inspect-cuts-check" not in result.invalidated_checkpoint_ids
 
 
 def test_initial_399mm_tape_blocks_without_refund():
@@ -428,6 +431,23 @@ def seven_snapshot(tape_length=500):
         update={"events": events, "evidence": (fit_evidence,)}
     )
     return base, changed, process
+
+
+@pytest.mark.parametrize("make", [attached_snapshot, seven_snapshot, full_snapshot])
+def test_every_invalidated_checkpoint_has_an_incomplete_recheck(make):
+    base, snapshot, process = make()
+    result = simulate(snapshot, process)
+    assert result.status == "feasible", result.blockers
+    assert result.invalidated_checkpoint_ids
+    base_checks = {c.id: c for c in base.checkpoints}
+    for check_id in result.invalidated_checkpoint_ids:
+        old = base_checks[check_id]
+        assert old.after_operation_id not in result.preserved_operation_ids
+        assert any(
+            c.after_operation_id in result.incomplete_operation_ids
+            and (c.method, c.description) == (old.method, old.description)
+            for c in result.plan.checkpoints
+        ), check_id
 
 
 def test_seven_prefix_tape_undo_preserves_fit_and_regenerates_finals():
@@ -710,10 +730,10 @@ def test_fully_completed_build_tape_undo_preserves_original_history():
 
     checks = {c.after_operation_id: c.id for c in base.checkpoints}
     assert {
-        checks["stand-inspect-cuts"],
         checks["stand-inspect-fit"],
         checks["stand-functional-test"],
     } <= set(result.invalidated_checkpoint_ids)
+    assert checks["stand-inspect-cuts"] not in result.invalidated_checkpoint_ids
     assert set(result.invalidated_evidence_ids) == {e.id for e in snapshot.evidence}
     # Old evidence records themselves are not rewritten by simulation.
     assert tuple(e.id for e in snapshot.evidence) == (
