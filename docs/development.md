@@ -1,10 +1,11 @@
 # Development plan
 
-Status: October 31, 2026. Offline compiler, stand SVG, repair simulation and
-bounded proposals are implemented, along with private project/inventory/photo storage.
-The web supports local goal/photo/inventory intake. Install, dev and offline check commands are in the
-[root README](../README.md). Runtime integration, live provider compatibility
-and physical build/recovery evidence remain pending.
+Status: November 2, 2026. The local workbench connects private intake, consented
+Muse proposals, compiled manual approval, physical reports, repair review and
+atomic revision approval, and versioned Proof/export. Install, dev and offline
+check commands are in the [root README](../README.md); the connected sequence is
+in the [demo runbook](demo-runbook.md). Physical build/recovery evidence, hosted
+acceptance and the evaluation/submission package remain pending.
 
 ## Named ownership
 
@@ -28,37 +29,40 @@ The other engineer reviews each lane's changes. Both participate in real builds.
 
 ## Current progress and next work
 
-Merged software includes the workspace (#18), domain contracts (#20), gateway
-(#21/#35), compiler (#22/#30), stand renderer (#23/#34), bounded proposals
-(#24/#31), replanner (#25/#28/#29/#32) and first persistence slice (#26).
-PR numbers describe landed code; they do not establish the parent issue's
-complete acceptance or a physical pass. The tracker currently closes #3/#5/#10;
-their offline implementations still depend on real measurements and integration
-before the complete build/recovery flow can run.
+Merged software includes the core offline modules, scoped persistence, connected
+Muse requests, approved repair revisions and versioned Proof (#95). Subsequent
+merges through #110 add repair proposals in the browser, usage/consent handling,
+bounded retry behavior and diagnosis explanations. Merged code and issue closure
+do not establish physical acceptance. The connected handoffs record actual
+software observations with synthetic imagery; no physical result follows from them.
 
-| Available now                                                         | Remaining acceptance or integration                                                                    |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Pinned tooling, offline CI and generated contracts                    | #1 schema integration review remains recorded as pending                                               |
-| Pure stock/operation validator                                        | Measured inventory, cutting process and reviewed joint evidence from #2                                |
-| Narrow triangular tape-stand compiler and eight SVG panels            | #8 exact physical attempt, tested profiles and supported build evidence                                |
-| Scoped bounded intake/design/diagnosis/repair service                 | #4 live Spark/SAM evidence and #9 trusted callbacks/authenticated runtime integration                  |
-| Repair simulation, remaining-stock reconciliation and recheck preview | Family continuation wiring; unsupported strategy/angle changes and completed-work undo remain blocked  |
-| Owner-scoped SQLite project/inventory/photo routes with durable retries | #6 consented provider transfer, hosted identity/storage and immutable plan/event/material/evidence history |
-| Next.js intake, saved plan/manual approval, user physical reports and initial Proof/export | #7 provider interpretation, #11 diagnosis, #12 repair revision transaction and #14 cross-version evidence freshness |
+| Available now                                                                         | Remaining acceptance or integration                                                                        |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Pinned tooling, offline CI and generated contracts                                    | #1 schema integration review remains recorded as pending                                                   |
+| Pure stock/operation validator                                                        | Measured inventory, cutting process and reviewed joint evidence from #2                                    |
+| Narrow triangular tape-stand compiler and eight SVG panels                            | #8 exact physical attempt, tested profiles and supported build evidence                                    |
+| Scoped consented Muse intake/design/diagnosis/repair runtimes                         | #4 real-team-photo SAM evidence and account/deployment prerequisites; accepted real-build model output     |
+| Repair simulation, stand continuation and explicit revision approval                  | Generic strategy/angle changes and a second repair on a repaired version remain unsupported                |
+| Owner-scoped SQLite projects, private media and immutable plan/event/evidence history | #6 hosted identity/storage/retention; real remaining-material reconciliation                               |
+| Next.js manual approval, physical reports and versioned Proof/export                  | #13 actual build/recovery; #15 measured waste/salvage, timings, baseline comparisons and physical outcomes |
 
 Next work follows the physical P0 path:
 
 1. @olartgabo supplies the actual measurements, photos, tools, device/test
    conditions and upload decisions tracked in #2/#27. @ResniDev consumes reviewed
    process/profile records without replacing unknowns with fixture values.
-2. @ResniDev runs the consented live smoke after account/region/privacy/quota
-   prerequisites are confirmed, records sanitized results and connects trusted
-   compiler/replanner callbacks for #9. Smoke fixtures do not satisfy G0.
-3. @olartgabo connects live design production to the stored-preview service, then adds
-   physical event/evidence history and explicit approved repair activation.
-   Inventory revision IDs remain separate from active plan version IDs.
-4. Both perform the generated build and real recovery, record outcomes under
-   #13, then evaluate held-out cases and deployment under #15/#16.
+2. @ResniDev verifies remaining live compatibility prerequisites, especially SAM
+   on a consented real team photo, and supplies reviewed process/profile context
+   for the measured inventory. Existing synthetic-photo software observations
+   do not satisfy the complete G0 gate.
+3. Both use the connected runbook for a generated build and actual recovery
+   under #13. @olartgabo records physical events, named test conditions and
+   outcomes without replacing unknowns with synthetic values. Inventory revision
+   IDs remain separate from active plan version IDs.
+4. @olartgabo evaluates inventory B, held-out cases and comparable baselines
+   under #15, then verifies persistent hosting, fresh-session access, recording
+   and participant-portal requirements under #16. The evaluation harness remains
+   unimplemented; the protocol and build-log template define required evidence.
 
 Provider and persistence ownership share `apps/api`; keep edits disjoint and
 record contract handoffs before dependent changes. Use the
@@ -90,7 +94,7 @@ record contract handoffs before dependent changes. Use the
 | Nov 2-3: G4      | Second inventory, held-out failures, impossible case and baseline caveats       | @olartgabo                        |
 | Nov 3-4: G5      | Hosted flow, recorded backup, reproducible source and portal verification       | @olartgabo                        |
 
-Live and physical gates remain unverified; offline regression coverage exists
+Complete live and physical gates remain unverified; offline regression coverage exists
 for G1, but no new gate pass is inferred from merged code or issue closure.
 If G2/G3 miss October 31, narrow supported templates
 or operations and stop optional feature work. Confirm actual portal deadlines
@@ -102,4 +106,4 @@ Domain contracts are implemented. `npm run contracts:generate` regenerates
 JSON Schema/OpenAPI/TypeScript; `npm run contracts:check` rejects drift and is
 part of `npm run check`. The [handoff](handoffs/issue-3-domain.md) defines the
 consumer boundary. The offline compiler/renderer/replanner consume these types;
-the complete product journey and physical gates remain unverified.
+physical build/recovery and hosted acceptance remain unverified.
