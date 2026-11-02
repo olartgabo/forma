@@ -123,7 +123,11 @@ async function scenario({
       body = { configured: true, model: "synthetic-browser-model" };
     else if (path === "/api/projects")
       body = { projects: [], next_cursor: null };
-    else if (path === `/api/projects/${project.id}`) body = project;
+    else if (
+      path === `/api/projects/${project.id}` ||
+      path === "/api/projects/project-b"
+    )
+      body = project;
     else if (path.endsWith("/media"))
       body = {
         media: [
@@ -251,6 +255,10 @@ async function scenario({
       });
       return;
     }
+    if (path.startsWith("/api/projects/project-b"))
+      body = JSON.parse(
+        JSON.stringify(body).replaceAll("project-a", "project-b"),
+      );
     await route.fulfill({ json: body });
   });
   try {
@@ -512,6 +520,59 @@ async function scenario({
         1,
         "refresh and export never retry a provider request",
       );
+      if (lostDiagnosis === "cross-project") {
+        async function switchProject(id) {
+          await page
+            .getByRole("button", { name: "Start another project" })
+            .click();
+          await page.getByLabel("Project ID", { exact: true }).fill(id);
+          await page
+            .getByRole("button", { name: "Open project", exact: true })
+            .click();
+          await page.locator("#diagnosis-photo").waitFor();
+        }
+        await switchProject("project-b");
+        await proofPanel.locator(":scope > summary").click();
+        await proofPanel
+          .getByText("Saved proof snapshot", { exact: true })
+          .waitFor();
+        assert.equal(
+          await proofPanel.getByText(/diagnosis outcome is unknown/i).count(),
+          0,
+          "project A uncertainty must not contaminate project B",
+        );
+        await page.locator("#diagnosis-photo").selectOption("media-a");
+        await page
+          .locator("#diagnosis-problem")
+          .fill("SYNTHETIC project B report");
+        await page.locator("#diagnosis-operation").selectOption("inspect-a");
+        await page.locator("#diagnosis-consent").check();
+        await page
+          .getByRole("button", { name: "Ask Muse what went wrong" })
+          .click();
+        await page
+          .getByText("SYNTHETIC observation", { exact: true })
+          .waitFor();
+        await switchProject("project-a");
+        await proofPanel.locator(":scope > summary").click();
+        await proofPanel
+          .getByText("Saved proof snapshot", { exact: true })
+          .waitFor();
+        assert.equal(
+          await proofPanel
+            .getByRole("button", { name: "Download JSON report" })
+            .isDisabled(),
+          true,
+          "visiting and diagnosing project B must not erase project A's acknowledgement requirement",
+        );
+        await proofPanel.getByText(/diagnosis outcome is unknown/i).waitFor();
+        assert.equal(
+          await acknowledgement.count(),
+          0,
+          "returning to A still needs a fresh manual read before acknowledgement",
+        );
+        assert.equal(diagnosisCalls, 2);
+      }
       if (lostDiagnosis === "network") {
         await page.locator("#diagnosis-consent").check();
         await page
@@ -580,6 +641,7 @@ try {
   await scenario({ pendingExport: true, lostDiagnosis: "cancel" });
   await scenario({ pendingExport: true, lostDiagnosis: "network" });
   await scenario({ pendingExport: true, lostDiagnosis: "late" });
+  await scenario({ pendingExport: true, lostDiagnosis: "cross-project" });
   await scenario();
   await scenario({ pendingExport: true });
   for (const repairCase of ["edit", "reload", "uncheck", "retry", "approval"])

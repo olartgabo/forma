@@ -281,11 +281,9 @@ function ProjectWorkbench({
     null,
   );
   const [proofRevision, setProofRevision] = useState(0);
-  const [diagnosisHistory, setDiagnosisHistory] = useState({
-    projectId: "",
-    pending: false,
-    uncertain: false,
-  });
+  const [diagnosisHistory, setDiagnosisHistory] = useState<
+    Record<string, { pending: boolean; uncertain: boolean }>
+  >({});
   const physicalProgressChanged = useCallback(() => {
     setProofRevision((value) => value + 1);
     setPhotoAttempt((value) => value + 1);
@@ -1247,11 +1245,13 @@ function ProjectWorkbench({
             }}
             onDiagnosisOutcome={(outcome) => {
               setDiagnosisHistory((previous) => ({
-                projectId: project.id,
-                pending: outcome === "pending",
-                uncertain:
-                  outcome === "uncertain" ||
-                  (previous.projectId === project.id && previous.uncertain),
+                ...previous,
+                [project.id]: {
+                  pending: outcome === "pending",
+                  uncertain:
+                    outcome === "uncertain" ||
+                    Boolean(previous[project.id]?.uncertain),
+                },
               }));
               setProofRevision((value) => value + 1);
             }}
@@ -1289,13 +1289,9 @@ function ProjectWorkbench({
             token={token}
             project={project}
             revision={proofRevision}
-            diagnosisPending={
-              diagnosisHistory.projectId === project.id &&
-              diagnosisHistory.pending
-            }
+            diagnosisPending={diagnosisHistory[project.id]?.pending ?? false}
             diagnosisUncertain={
-              diagnosisHistory.projectId === project.id &&
-              diagnosisHistory.uncertain
+              diagnosisHistory[project.id]?.uncertain ?? false
             }
             disabled={locked}
           />

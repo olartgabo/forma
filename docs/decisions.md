@@ -406,8 +406,12 @@ of saved records, not proof that an unknown request finished; evidence may arriv
 later. A new request, refresh or snapshot context invalidates the acknowledgement.
 There is no automatic provider retry, and each new diagnosis needs fresh consent.
 
-This protection is limited to the current connected browser session. It adds no
-durable server job status or outcome reconciliation contract; reconnecting or
-refreshing the application cannot recover an earlier unknown request's status.
+This protection is limited to the current connected browser session.
+Uncertainty is retained separately for each project visited in that owner session;
+diagnosing another project cannot settle an earlier project's unknown outcome.
+Disconnecting clears the owner session and its in-memory history.
+It adds no durable server job status or outcome reconciliation contract;
+reconnecting or refreshing the application cannot recover an earlier unknown
+request's status.
 The browser regression intercepts synthetic API responses and establishes no live
 provider or physical result.
