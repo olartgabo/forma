@@ -37,3 +37,36 @@ two independent review repairs in progress in its separate lane. Because it uses
 existing endpoints and shares no export/UI files, the API export and UI coordinator
 can proceed in parallel; final combined checks/publication must still include the
 reviewed CLI commit. No incomplete smoke result may be called a live pass.
+
+## Reviewed connected acceptance (November 2 UTC)
+
+All three original Muse lanes completed in separate checkouts, followed by one
+Muse API-contract/UI coordinator. Independent scoped reviews approved the APIs,
+UI/contracts and the smoke CLI. The CLI review repairs enforce media project
+scope and a caller deadline even during blocked connection setup. An OS-blocked
+DNS/connect daemon may linger until the OS returns; it checks cancellation before
+sending HTTP headers/body and then closes. Caller cleanup grace is 0.2 seconds.
+
+Combined automated checks passed 457 Python tests and 31 client tests, with
+canonical contracts, formatting, lint and TypeScript checks. Production build
+results are recorded separately with the final publication evidence.
+
+Actual isolated HTTP/browser checks reopened the saved synthetic-photo project
+from the owner-scoped list and displayed the saved-input checklist. The checklist
+reported unconfirmed inventory and missing stock, requirements, reviewed joint
+profiles and measured process parameters without calling a model.
+
+The explicit opt-in smoke command sent the existing consented synthetic photo
+through the real application API to muse-spark-1.3: 12,641 ms, one model call,
+2,333 input and 1,442 output tokens reported by the provider, five candidate labels
+and four questions. The safe server trace matched these counts. These are usage
+counts, not a bill. Measurements remained unknown and physical verification was
+not checked. No inventory, plan approval or physical progress was fabricated.
+
+To repeat locally, provide an existing owner credential through
+FORMA_SMOKE_OWNER_TOKEN or --credential-file and run
+`python -m forma_api.demo_smoke --api-origin <origin> --project-id <id> --media-id <id> --timeout 30`.
+This is read-only by default. Add both `--live-intake --transfer-consent` only when
+authorized to transfer that saved photo and project goal to Muse. Provider keys
+remain server-only. The CLI prints redacted structured results, never the owner
+credential or photo bytes. Offline feature work remains paused.
