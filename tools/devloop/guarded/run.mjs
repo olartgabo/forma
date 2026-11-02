@@ -1,9 +1,7 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { spawn, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { workerConfig, workerPrompt } from "./worker-policy.mjs";
 
 export function parseArgs(args) {
   const result = {};
@@ -72,128 +70,10 @@ export function checkStatus(state, stopped, now = Date.now()) {
     throw Error("Shared lifetime budget cannot reserve another request");
 }
 
-export async function main(args = process.argv.slice(2)) {
-  const options = parseArgs(args);
-  const workspace = workspaceRoot(options.workspace);
-  const taskBytes = fs.readFileSync(options.taskFile);
-  if (taskBytes.length > 16000) throw Error("Task file exceeds 16KB");
-  const task = JSON.parse(taskBytes.toString("utf8"));
-  const prompt = workerPrompt(task);
-  const guardHome = path.resolve(
-    process.env.META_GUARD_HOME || path.join(os.homedir(), ".meta-budget"),
+export async function main() {
+  throw Error(
+    "Legacy Muse coding launcher is retired. Use native Codex Sol/Terra or Claude Code with explicit Sonnet selection for coding; MetaMuse is reserved for authorized app runtime tests.",
   );
-  const settings = JSON.parse(
-    fs.readFileSync(path.join(guardHome, "settings.json"), "utf8"),
-  );
-  const base = JSON.parse(
-    fs.readFileSync(path.join(guardHome, "opencode.json"), "utf8"),
-  );
-  if (
-    base.model !== "meta_guard/muse-wonder-1.0" ||
-    base.small_model !== base.model ||
-    JSON.stringify(base.enabled_providers) !== JSON.stringify(["meta_guard"]) ||
-    base.provider?.meta_guard?.options?.baseURL !== "http://127.0.0.1:18765/v1"
-  )
-    throw Error(
-      "Both generation and compaction must use the existing guarded provider",
-    );
-  const config = workerConfig(base, workspace, task);
-  config.permission.read = {
-    "*": "allow",
-    "**/.env*": "deny",
-    "**/.meta-budget/**": "deny",
-    "**/.git/**": "deny",
-    "**/*key.dpapi": "deny",
-  };
-  const stopped = () => fs.existsSync(path.join(guardHome, "STOP"));
-  if (
-    stopped() ||
-    !Number.isFinite(Date.parse(settings.expires)) ||
-    Date.now() >= Date.parse(settings.expires)
-  )
-    throw Error(
-      "STOP or expired verification; no provider or guard process started",
-    );
-  const status = async () => {
-    const r = await fetch("http://127.0.0.1:18765/status", {
-      headers: { authorization: `Bearer ${settings.localToken}` },
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!r.ok) throw Error("Guard status unavailable");
-    return r.json();
-  };
-  let guard, child;
-  try {
-    let state;
-    try {
-      state = await status();
-    } catch {
-      guard = spawn(process.execPath, [path.join(guardHome, "guard.mjs")], {
-        stdio: "ignore",
-        windowsHide: true,
-      });
-      guard.on("error", () => {});
-      for (let i = 0; i < 30; i++) {
-        await new Promise((r) => setTimeout(r, 200));
-        try {
-          state = await status();
-          break;
-        } catch {
-          /* bounded local startup */
-        }
-      }
-      if (!state) throw Error("Guard unavailable; no direct provider fallback");
-    }
-    checkStatus(state, stopped());
-    const env = { ...process.env };
-    const inheritedPath = Object.keys(env).find(
-      (k) => k.toLowerCase() === "path",
-    );
-    const toolDirs = [];
-    if (env.MUSE_TOOLS_BIN) toolDirs.unshift(path.resolve(env.MUSE_TOOLS_BIN));
-    const systemPath = inheritedPath ? env[inheritedPath] : "";
-    if (inheritedPath) delete env[inheritedPath];
-    env.PATH = [...toolDirs, systemPath, path.dirname(process.execPath)].join(
-      path.delimiter,
-    );
-    for (const name of Object.keys(env)) {
-      if (
-        name.startsWith("CODEX_") ||
-        /TOKEN|SECRET|PASSWORD|API_KEY|AUTH_TOKEN|BASE_URL/i.test(name)
-      )
-        delete env[name];
-    }
-    env.META_GUARD_TOKEN = settings.localToken;
-    env.OPENCODE_CONFIG = path.join(guardHome, "opencode.json");
-    env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
-    env.UV_OFFLINE = "1";
-    console.log(
-      `Starting fresh Muse feature session; shared recorded spend $${(state.combinedSpent / 1e6).toFixed(4)} / $${(state.cap / 1e6).toFixed(2)} verified funding ceiling.`,
-    );
-    const executable =
-      process.platform === "win32"
-        ? path.join(guardHome, "bin/opencode/opencode.exe")
-        : "opencode";
-    child = spawn(executable, ["run", prompt], {
-      cwd: workspace,
-      env,
-      stdio: "inherit",
-      windowsHide: true,
-    });
-    const interrupted = () => child.kill();
-    process.once("SIGINT", interrupted);
-    try {
-      const code = await new Promise((resolve, reject) => {
-        child.once("error", reject);
-        child.once("exit", (code) => resolve(code ?? 1));
-      });
-      process.exitCode = code;
-    } finally {
-      process.removeListener("SIGINT", interrupted);
-    }
-  } finally {
-    if (guard) guard.kill();
-  }
 }
 
 if (
