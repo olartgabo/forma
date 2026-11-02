@@ -16,6 +16,11 @@ import type {
 } from "../lib/generated/api-contracts";
 import type { BuildPlan } from "../lib/generated/contracts";
 import { operationTitles } from "../lib/operation-titles";
+import {
+  draftFromHandoff,
+  isHandoffCurrent,
+  type RepairHandoff,
+} from "../lib/repair-handoff";
 import Diagram from "./manual-diagram";
 
 function message(error: unknown) {
@@ -237,6 +242,28 @@ function Preview({
   );
 }
 
+function isEmptyDraft(draft: Draft): boolean {
+  return (
+    draft.kind === emptyDraft.kind &&
+    draft.targetId === emptyDraft.targetId &&
+    draft.stockId === emptyDraft.stockId &&
+    draft.width === emptyDraft.width &&
+    draft.height === emptyDraft.height &&
+    draft.rationale === emptyDraft.rationale
+  );
+}
+
+function sameDraft(a: Draft, b: Draft): boolean {
+  return (
+    a.kind === b.kind &&
+    a.targetId === b.targetId &&
+    a.stockId === b.stockId &&
+    a.width === b.width &&
+    a.height === b.height &&
+    a.rationale === b.rationale
+  );
+}
+
 export default function AdaptWorkbench({
   token,
   projectId,
@@ -244,6 +271,8 @@ export default function AdaptWorkbench({
   disabled,
   onApproved,
   onLockChange,
+  handoff,
+  handoffTargetId,
 }: {
   token: string;
   projectId: string;
@@ -251,6 +280,8 @@ export default function AdaptWorkbench({
   disabled: boolean;
   onApproved: () => void;
   onLockChange: (locked: boolean) => void;
+  handoff?: RepairHandoff | null;
+  handoffTargetId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [progress, setProgress] = useState<ProgressSnapshot | null>(null);
@@ -268,7 +299,16 @@ export default function AdaptWorkbench({
     useState<AdaptSimulateRequest | null>(null);
   const [pendingApproval, setPendingApproval] =
     useState<AdaptCommitRequest | null>(null);
+  const [handoffNote, setHandoffNote] = useState<
+    "started" | "stale" | "replace" | null
+  >(null);
+  const [pendingHandoffDraft, setPendingHandoffDraft] = useState<Draft | null>(
+    null,
+  );
   const lifetime = useRef(new AbortController());
+  const draftRef = useRef<Draft>(emptyDraft);
+  const appliedDraftRef = useRef<Draft | null>(null);
+  const handledHandoffKey = useRef<string | null>(null);
   const plan = version.plan;
   const spent =
     progress?.expected_remaining_stock.filter(
@@ -291,7 +331,15 @@ export default function AdaptWorkbench({
   }, []);
 
   useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  useEffect(() => {
     // A different active version invalidates every draft and preview.
+    handledHandoffKey.current = null;
+    appliedDraftRef.current = null;
+    setHandoffNote(null);
+    setPendingHandoffDraft(null);
     setProgress(null);
     setCandidates([]);
     setPreviews(null);
@@ -303,6 +351,52 @@ export default function AdaptWorkbench({
     setPendingApproval(null);
     setStale(false);
   }, [version.version_id]);
+
+  useEffect(() => {
+    if (!handoff) {
+      setHandoffNote(null);
+      setPendingHandoffDraft(null);
+      return;
+    }
+    if (!isHandoffCurrent(handoff, projectId, version.version_id)) {
+      setHandoffNote("stale");
+      setPendingHandoffDraft(null);
+      return;
+    }
+    const target =
+      handoffTargetId && handoff.targetIds.includes(handoffTargetId)
+        ? handoffTargetId
+        : handoff.targetIds[0];
+    if (!target) {
+      setHandoffNote("stale");
+      setPendingHandoffDraft(null);
+      return;
+    }
+    const key = `${handoff.projectId}:${handoff.versionId}:${handoff.targetIds.join(",")}:${handoff.failureType}:${target}`;
+    if (handledHandoffKey.current === key) return;
+    handledHandoffKey.current = key;
+    const nextDraft = draftFromHandoff(handoff, target);
+    const currentDraft = draftRef.current;
+    const untouched =
+      isEmptyDraft(currentDraft) ||
+      (appliedDraftRef.current !== null &&
+        sameDraft(currentDraft, appliedDraftRef.current));
+    if (untouched) {
+      appliedDraftRef.current = nextDraft;
+      draftRef.current = nextDraft;
+      setDraft(nextDraft);
+      setHandoffNote("started");
+      setPendingHandoffDraft(null);
+      setOpen(true);
+      void refresh();
+    } else {
+      // Never overwrite a draft the user is editing without explicit replace.
+      setPendingHandoffDraft(nextDraft);
+      setHandoffNote("replace");
+    }
+    // refresh is intentionally not a dependency: a handoff is handled once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handoff, handoffTargetId, projectId, version.version_id]);
 
   async function refresh() {
     const signal = lifetime.current.signal;
@@ -442,13 +536,84 @@ export default function AdaptWorkbench({
   const chosen = previews?.previews.find((item) => item.preview_id === choice);
 
   return (
-    <section className="adapt-workbench" aria-labelledby="adapt-title">
+    <section
+      className="adapt-workbench"
+      aria-labelledby="adapt-title"
+      id="repair-review"
+      tabIndex={-1}
+    >
       <h3 id="adapt-title">Adapt the plan</h3>
       <p className="help">
         Use this after a failed check, a damaged part or a wrong measurement.
         FORMA simulates each repair against your recorded work and remaining
         stock. Nothing changes until you approve one revision.
       </p>
+      {handoffNote === "started" && (
+        <div className="notice" role="note">
+          <p>
+            Started from Muse diagnosis (unverified). The draft below only names
+            the diagnosed part; choose the repair, stock and sizes yourself
+            before FORMA simulates it.
+          </p>
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => setHandoffNote(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      {handoffNote === "stale" && (
+        <div className="notice" role="note">
+          <p>
+            This Muse diagnosis is for a different project or plan version, so
+            it was not used. Diagnose again against the current active plan
+            before starting a repair.
+          </p>
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => setHandoffNote(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      {handoffNote === "replace" && pendingHandoffDraft && (
+        <div className="notice" role="note">
+          <p>
+            Started from Muse diagnosis (unverified), but you are already
+            editing a repair draft. Replace it with the diagnosis draft only if
+            you choose to.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            disabled={locked}
+            onClick={() => {
+              appliedDraftRef.current = pendingHandoffDraft;
+              draftRef.current = pendingHandoffDraft;
+              setDraft(pendingHandoffDraft);
+              setPendingHandoffDraft(null);
+              setHandoffNote("started");
+              setOpen(true);
+            }}
+          >
+            Replace my draft with the diagnosis draft
+          </button>{" "}
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => {
+              setPendingHandoffDraft(null);
+              setHandoffNote(null);
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {!open ? (
         <button
           type="button"

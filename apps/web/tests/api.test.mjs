@@ -32,6 +32,11 @@ import {
 import { proofText, proofUnknowns } from "../src/lib/proof-report.ts";
 import { createDiagnosisPlanLoader } from "../src/lib/diagnosis-plan-loader.ts";
 import { formatProviderUsage } from "../src/lib/provider-usage.ts";
+import {
+  draftFromHandoff,
+  handoffFromDiagnosis,
+  isHandoffCurrent,
+} from "../src/lib/repair-handoff.ts";
 
 test("provider usage formats only provider-reported bounded counts", () => {
   assert.equal(
@@ -1315,6 +1320,128 @@ test("readiness errors and cancellation stay safe", async (t) => {
       !/PRIVATE/.test(error.message),
   );
   assert.equal(requestSignal.aborted, true);
+});
+
+const handoffVersion = {
+  project_id: "project-a",
+  version_id: "version-a",
+  plan: {
+    parts: [{ id: "part-b" }, { id: "part-a" }],
+    joints: [{ id: "joint-a" }],
+    operations: [{ id: "operation-a" }],
+    stocks: [{ id: "stock-a" }],
+  },
+};
+
+function diagnosisFor(affectedIds, failureType = "torn_slot", overrides = {}) {
+  return {
+    project_id: "project-a",
+    active_version_id: "version-a",
+    diagnosis: {
+      visible_observations: [],
+      hypotheses: [],
+      questions_or_measurements: [],
+      affected_ids: affectedIds,
+      failure_type: failureType,
+    },
+    ...overrides,
+  };
+}
+
+test("repair handoff is built only for the matching project and active version", () => {
+  const handoff = handoffFromDiagnosis(
+    diagnosisFor([
+      "joint-a",
+      "part-a",
+      "feature-a",
+      "part-b",
+      "part-a",
+      "operation-a",
+      "stock-a",
+    ]),
+    handoffVersion,
+  );
+  // Only part IDs survive, deduped in the diagnosis's original order;
+  // joint, feature, operation and stock IDs are ignored.
+  assert.deepEqual(handoff, {
+    projectId: "project-a",
+    versionId: "version-a",
+    targetIds: ["part-a", "part-b"],
+    failureType: "torn_slot",
+    source: "muse_diagnosis",
+  });
+  assert.equal(
+    handoffFromDiagnosis(
+      diagnosisFor(["part-a"], "torn_slot", { project_id: "project-other" }),
+      handoffVersion,
+    ),
+    null,
+  );
+  assert.equal(
+    handoffFromDiagnosis(
+      diagnosisFor(["part-a"], "torn_slot", { active_version_id: "version-b" }),
+      handoffVersion,
+    ),
+    null,
+  );
+  assert.equal(
+    handoffFromDiagnosis(
+      diagnosisFor(["part-a"], "torn_slot", { active_version_id: null }),
+      handoffVersion,
+    ),
+    null,
+  );
+  assert.equal(
+    handoffFromDiagnosis(
+      diagnosisFor(["part-a"], "torn_slot", { active_version_id: undefined }),
+      handoffVersion,
+    ),
+    null,
+  );
+  assert.equal(
+    handoffFromDiagnosis(
+      diagnosisFor(["joint-a", "operation-a"]),
+      handoffVersion,
+    ),
+    null,
+  );
+  assert.equal(handoffFromDiagnosis(diagnosisFor([]), handoffVersion), null);
+});
+
+test("isHandoffCurrent matches only the handoff project and version", () => {
+  const handoff = handoffFromDiagnosis(
+    diagnosisFor(["part-a"]),
+    handoffVersion,
+  );
+  assert.equal(isHandoffCurrent(handoff, "project-a", "version-a"), true);
+  assert.equal(isHandoffCurrent(handoff, "project-other", "version-a"), false);
+  assert.equal(isHandoffCurrent(handoff, "project-a", "version-b"), false);
+  assert.equal(isHandoffCurrent(null, "project-a", "version-a"), false);
+  assert.equal(isHandoffCurrent(undefined, "project-a", "version-a"), false);
+});
+
+test("draftFromHandoff never picks a repair kind, stock or size from the failure type", () => {
+  for (const failureType of [
+    "torn_slot",
+    "wrong_dimension",
+    "missing_material",
+    "damaged_part",
+    "unstable",
+    "unknown",
+  ]) {
+    const handoff = handoffFromDiagnosis(
+      diagnosisFor(["part-a", "part-b"], failureType),
+      handoffVersion,
+    );
+    assert.deepEqual(draftFromHandoff(handoff, "part-b"), {
+      kind: "replace_part",
+      targetId: "part-b",
+      stockId: "",
+      width: "",
+      height: "",
+      rationale: `From Muse diagnosis (unverified): ${failureType}`,
+    });
+  }
 });
 
 test("deadline also aborts a stalled response body", async (t) => {

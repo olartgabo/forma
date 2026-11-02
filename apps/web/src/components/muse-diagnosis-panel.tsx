@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ApiError, loadPlan, requestDiagnosis } from "../lib/api";
 import { createDiagnosisPlanLoader } from "../lib/diagnosis-plan-loader";
+import {
+  handoffFromDiagnosis,
+  type RepairHandoff,
+} from "../lib/repair-handoff";
 import MuseRequestDetails from "./muse-request-details";
 import type {
   DiagnosisResult,
@@ -34,12 +38,14 @@ export default function MuseDiagnosisPanel({
   photos,
   inventoryStale,
   disabled,
+  onRepairHandoff,
 }: {
   token: string;
   project: Project;
   photos: Media[];
   inventoryStale: boolean;
   disabled: boolean;
+  onRepairHandoff?: (handoff: RepairHandoff, targetId: string) => void;
 }) {
   const [selectedId, setSelectedId] = useState("");
   const [problem, setProblem] = useState("");
@@ -233,6 +239,13 @@ export default function MuseDiagnosisPanel({
     disabled ||
     (hasActive && (!activePlan || !operationValid));
 
+  const repairHandoff =
+    result && activePlan ? handoffFromDiagnosis(result, activePlan) : null;
+  const partLabel = (partId: string) => {
+    const part = activePlan?.plan.parts.find((item) => item.id === partId);
+    return part ? part.id : partId;
+  };
+
   return (
     <section className="muse-panel" aria-labelledby="muse-diagnosis-title">
       <div className="section-title">
@@ -246,9 +259,9 @@ export default function MuseDiagnosisPanel({
         damage, or start a repair.
       </p>
       <p className="help">
-        Repair execution is not available yet. It stays unavailable until real
-        build history and the repair replanner are connected; approved repairs
-        will need separate review.
+        Muse&apos;s diagnosis is unverified. A repair is only a draft until
+        FORMA simulates it and you approve it; starting a repair review below
+        does not change your plan or materials.
       </p>
       {photos.length === 0 ? (
         <p className="empty-note">
@@ -442,6 +455,27 @@ export default function MuseDiagnosisPanel({
                 elapsedMs={result.diagnostics.elapsed_ms}
                 usage={result.diagnostics.usage}
               />
+              {repairHandoff && onRepairHandoff && (
+                <div className="muse-actions">
+                  <p className="help">
+                    Muse&apos;s diagnosis is unverified. Reviewing a repair only
+                    starts a draft; FORMA must simulate it and you must approve
+                    it before anything changes. Nothing is sent to any API by
+                    this action.
+                  </p>
+                  {repairHandoff.targetIds.map((targetId) => (
+                    <button
+                      key={targetId}
+                      type="button"
+                      className="secondary"
+                      disabled={disabled}
+                      onClick={() => onRepairHandoff(repairHandoff, targetId)}
+                    >
+                      Review a repair for {partLabel(targetId)}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </>
