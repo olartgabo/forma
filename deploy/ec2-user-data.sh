@@ -5,7 +5,7 @@ set -euxo pipefail
 FORMA_REF=__FORMA_REF__
 export DEBIAN_FRONTEND=noninteractive
 
-# The Next.js production build needs more than 2 GB at peak.
+# Headroom for the on-host Next.js production build on a 2 GB instance.
 fallocate -l 2G /swapfile
 chmod 600 /swapfile
 mkswap /swapfile
