@@ -6,6 +6,7 @@ import pytest
 
 from forma_api import diagnosis_runtime
 from forma_api.model_gateway import GatewayError, MetaGateway
+from forma_api.proposal_prompts import LANGUAGE_RULE
 from forma_domain.models import (
     BuildPlan,
     Constraints,
@@ -97,6 +98,8 @@ def test_photo_only_payload_schema_context_and_image_consent():
     )
     system = payload["messages"][0]["content"]
     assert "visible_observations" in system
+    assert system.count(LANGUAGE_RULE) == 1
+    assert "bounded-proposals-v2" in system
     user = payload["messages"][1]["content"]
     serialized = user[0]["text"]
     assert '"active_plan": null' in serialized
@@ -104,6 +107,45 @@ def test_photo_only_payload_schema_context_and_image_consent():
     assert '"reported_problem_is_observed_fact": false' in serialized
     assert '"completion_history_supplied": false' in serialized
     assert user[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_spanish_reported_problem_returns_spanish_text_unchanged():
+    context = diagnosis_runtime.build_context(
+        project_id="project-a",
+        revision_id="inventory-1",
+        project_goal="Necesito un soporte para el teléfono",
+        reported_problem="La pata se partió en la ranura",
+        stocks=(),
+        plan=None,
+    )
+    fake = Fake(
+        final(
+            proposal_json(
+                visible_observations=["La pata se partió en la ranura"],
+                hypotheses=["La ranura puede estar demasiado cerca del borde"],
+                questions_or_measurements=["¿Puedes medir la distancia al borde?"],
+                failure_type="torn_slot",
+            )
+        )
+    )
+    proposal, diagnostics = diagnosis_runtime.diagnose_photo(
+        MetaGateway(fake),
+        image_data=PNG,
+        content_type="image/png",
+        context=context,
+        plan=None,
+    )
+    assert diagnostics.status == "ok"
+    assert proposal.visible_observations == ("La pata se partió en la ranura",)
+    assert proposal.hypotheses == ("La ranura puede estar demasiado cerca del borde",)
+    assert proposal.questions_or_measurements == (
+        "¿Puedes medir la distancia al borde?",
+    )
+    assert proposal.failure_type == "torn_slot"
+    _, payload, _ = fake.calls[0]
+    system_prompt = payload["messages"][0]["content"]
+    assert system_prompt.count(LANGUAGE_RULE) == 1
+    assert "bounded-proposals-v2" in system_prompt
 
 
 def test_diagnosis_reports_provider_usage():

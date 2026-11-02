@@ -4,6 +4,7 @@ import pytest
 
 from forma_api import intake_runtime
 from forma_api.model_gateway import GatewayError, MetaGateway
+from forma_api.proposal_prompts import LANGUAGE_RULE
 from forma_api.proposal_service import IntakeObservation
 from forma_api.provider_diagnostics import ProviderUsage, summarize_usage
 
@@ -70,6 +71,9 @@ def test_observe_photo_uses_strict_intake_schema_without_tool():
     assert "SECRET GOAL" in serialized
     assert '"untrusted_context"' in serialized
     assert "required read-only tool" not in payload["messages"][0]["content"]
+    system_prompt = payload["messages"][0]["content"]
+    assert system_prompt.count(LANGUAGE_RULE) == 1
+    assert "bounded-proposals-v2" in system_prompt
     assert user[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
 
