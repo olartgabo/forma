@@ -3068,3 +3068,113 @@ test("deadline also aborts a stalled response body", async (t) => {
     return true;
   });
 });
+
+const runtimeRequests = [
+  {
+    name: "intake",
+    start: (signal) =>
+      requestIntakeObservation(
+        token,
+        "project-a",
+        "media-a",
+        "inventory-1",
+        signal,
+      ),
+    result: intakeResult,
+  },
+  {
+    name: "design",
+    start: (signal) => generateDesign(token, "project-a", designBody, signal),
+    result: designResult,
+  },
+  {
+    name: "diagnosis",
+    start: (signal) =>
+      requestDiagnosis(token, "project-a", diagnosisBody, signal),
+    result: diagnosisResult,
+  },
+  {
+    name: "repair",
+    start: (signal) => proposeRepairs(token, "project-a", repairBody, signal),
+    result: repairResult,
+  },
+];
+
+for (const runtime of runtimeRequests) {
+  test(`${runtime.name} accepts a valid response beyond the ordinary request deadline`, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let calls = 0;
+    let requestSignal;
+    t.mock.method(globalThis, "fetch", (path, options) => {
+      calls++;
+      requestSignal = options.signal;
+      return new Promise((resolve, reject) => {
+        options.signal.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+        setTimeout(() => resolve(Response.json(runtime.result)), 35_000);
+      });
+    });
+    const pending = runtime.start();
+    t.mock.timers.tick(30_000);
+    assert.equal(requestSignal.aborted, false);
+    t.mock.timers.tick(5_000);
+    assert.deepEqual(await pending, runtime.result);
+    t.mock.timers.tick(130_000);
+    assert.equal(requestSignal.aborted, false, "completed deadline is cleared");
+    assert.equal(calls, 1, "the browser never retries provider calls");
+  });
+
+  test(`${runtime.name} still bounds a stalled response body`, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let requestSignal;
+    t.mock.method(globalThis, "fetch", async (path, options) => {
+      requestSignal = options.signal;
+      return new Response(
+        new ReadableStream({
+          start(stream) {
+            options.signal.addEventListener("abort", () =>
+              stream.error(new DOMException("aborted", "AbortError")),
+            );
+          },
+        }),
+      );
+    });
+    const pending = runtime.start();
+    // Flush the response headers so this exercises body reading, not fetch.
+    await Promise.resolve();
+    t.mock.timers.tick(120_000);
+    assert.equal(requestSignal.aborted, false);
+    t.mock.timers.tick(10_000);
+    await assert.rejects(pending, { code: "request_timeout" });
+  });
+
+  test(`${runtime.name} can be cancelled while waiting past thirty seconds`, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    t.mock.method(
+      globalThis,
+      "fetch",
+      (path, options) =>
+        new Promise((resolve, reject) => {
+          options.signal.addEventListener("abort", () =>
+            reject(new DOMException("private details", "AbortError")),
+          );
+        }),
+    );
+    const controller = new AbortController();
+    const pending = runtime.start(controller.signal);
+    t.mock.timers.tick(35_000);
+    controller.abort();
+    await assert.rejects(pending, (error) => {
+      assert.equal(error.code, "cancelled");
+      assert.doesNotMatch(error.message, /private details/);
+      return true;
+    });
+  });
+}
+
+test("API rewrite allows bounded runtime calls to reach the browser deadline", async () => {
+  const { default: config } = await import("../next.config.ts");
+  assert.ok(config.experimental.proxyTimeout > 130_000);
+  assert.ok(config.experimental.proxyTimeout <= 150_000);
+});
