@@ -20,11 +20,15 @@ export default function ProofWorkbench({
   project,
   revision,
   disabled,
+  diagnosisPending = false,
+  diagnosisUncertain = false,
 }: {
   token: string;
   project: Project;
   revision: number;
   disabled: boolean;
+  diagnosisPending?: boolean;
+  diagnosisUncertain?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<ProofSnapshot | null>(null);
@@ -32,6 +36,9 @@ export default function ProofWorkbench({
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [asOfAcknowledged, setAsOfAcknowledged] = useState(false);
+  const [reconciled, setReconciled] = useState(false);
+  const manualRefresh = useRef(false);
   const lifetime = useRef(new AbortController());
   const epoch = useRef(0);
   useEffect(() => {
@@ -42,6 +49,15 @@ export default function ProofWorkbench({
 
   useEffect(() => {
     const requestEpoch = ++epoch.current;
+    const requestedReconciliation = manualRefresh.current;
+    manualRefresh.current = false;
+    setAsOfAcknowledged(false);
+    setReconciled(false);
+    setSnapshot(null);
+    if (diagnosisPending) {
+      setLoading(false);
+      return;
+    }
     if (!open) {
       setLoading(false);
       return;
@@ -51,8 +67,10 @@ export default function ProofWorkbench({
     setError("");
     void loadProof(token, project.id, controller.signal)
       .then((next) => {
-        if (!controller.signal.aborted && requestEpoch === epoch.current)
+        if (!controller.signal.aborted && requestEpoch === epoch.current) {
           setSnapshot(next);
+          setReconciled(requestedReconciliation);
+        }
       })
       .catch((failure: unknown) => {
         if (!controller.signal.aborted && requestEpoch === epoch.current) {
@@ -73,10 +91,19 @@ export default function ProofWorkbench({
     project.active_version_id,
     revision,
     attempt,
+    diagnosisPending,
+    diagnosisUncertain,
   ]);
 
   async function download(format: "json" | "txt") {
-    if (disabled || loading || exporting) return;
+    if (
+      disabled ||
+      loading ||
+      exporting ||
+      diagnosisPending ||
+      (diagnosisUncertain && !asOfAcknowledged)
+    )
+      return;
     const signal = lifetime.current.signal;
     const requestEpoch = ++epoch.current;
     setExporting(true);
@@ -130,27 +157,55 @@ export default function ProofWorkbench({
         <button
           type="button"
           className="secondary"
-          disabled={disabled || loading || exporting}
-          onClick={() => setAttempt((value) => value + 1)}
+          disabled={disabled || loading || exporting || diagnosisPending}
+          onClick={() => {
+            manualRefresh.current = true;
+            setAttempt((value) => value + 1);
+          }}
         >
           Refresh proof snapshot
         </button>
         <button
           type="button"
-          disabled={disabled || loading || exporting}
+          disabled={
+            disabled ||
+            loading ||
+            exporting ||
+            diagnosisPending ||
+            (diagnosisUncertain && !asOfAcknowledged)
+          }
           onClick={() => void download("txt")}
         >
           Download text summary
         </button>
         <button
           type="button"
-          disabled={disabled || loading || exporting}
+          disabled={
+            disabled ||
+            loading ||
+            exporting ||
+            diagnosisPending ||
+            (diagnosisUncertain && !asOfAcknowledged)
+          }
           onClick={() => void download("json")}
         >
           Download JSON report
         </button>
       </div>
       <div aria-live="polite">
+        {diagnosisPending && (
+          <p>
+            Diagnosis is pending. Earlier proof snapshots and downloads are
+            unavailable.
+          </p>
+        )}
+        {diagnosisUncertain && (
+          <p role="status">
+            The diagnosis outcome is unknown. It may still save evidence later.
+            Refresh to inspect current saved history; a snapshot does not
+            establish that the request finished.
+          </p>
+        )}
         {loading && <p>Loading saved proof…</p>}
         {exporting && <p>Preparing a fresh report…</p>}
         {error && (
@@ -159,6 +214,18 @@ export default function ProofWorkbench({
           </p>
         )}
       </div>
+      {diagnosisUncertain && reconciled && snapshot && !diagnosisPending && (
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={asOfAcknowledged}
+            onChange={(event) => setAsOfAcknowledged(event.target.checked)}
+          />
+          Use current saved snapshot for an as-of report despite the unknown
+          diagnosis outcome. The download fetches fresh history dated by its
+          generation time; the request may still save evidence later.
+        </label>
+      )}
       {snapshot && (
         <div className="proof-report" aria-busy={loading || exporting}>
           <h2>Saved proof snapshot</h2>

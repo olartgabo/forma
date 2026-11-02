@@ -79,14 +79,27 @@ const pixel = Buffer.from(
   "base64",
 );
 
-async function scenario({ pendingExport = false, repairCase = null } = {}) {
+async function scenario({
+  pendingExport = false,
+  repairCase = null,
+  lostDiagnosis = null,
+} = {}) {
   const context = await browser.newContext({ serviceWorkers: "block" });
   const page = await context.newPage();
-  page.setDefaultTimeout(10_000);
+  page.setDefaultTimeout(30_000);
   const errors = [];
   const unexpected = [];
   page.on("pageerror", (error) => errors.push(error.message));
   let saved = false;
+  let diagnosisCalls = 0;
+  let diagnosisStarted;
+  const diagnosisDispatched = new Promise((resolve) => {
+    diagnosisStarted = resolve;
+  });
+  let releaseDiagnosis;
+  const diagnosisReleased = new Promise((resolve) => {
+    releaseDiagnosis = resolve;
+  });
   let historyCursor = "event-a";
   const simulations = [];
   const approvals = [];
@@ -199,11 +212,18 @@ async function scenario({ pendingExport = false, repairCase = null } = {}) {
         await exportReleased;
       }
     } else if (path.endsWith("/diagnose")) {
+      diagnosisCalls++;
       assert.equal(request.method(), "POST");
       const input = request.postDataJSON();
       assert.equal(input.provider_transfer_consented, true);
       assert.equal(input.current_operation_id, "inspect-a");
-      saved = true;
+      saved = lostDiagnosis !== "late";
+      diagnosisStarted();
+      if (lostDiagnosis && diagnosisCalls === 1) {
+        if (lostDiagnosis === "cancel") await diagnosisReleased;
+        await route.abort("failed").catch(() => {});
+        return;
+      }
       body = {
         project_id: project.id,
         revision_id: project.revision_id,
@@ -235,7 +255,16 @@ async function scenario({ pendingExport = false, repairCase = null } = {}) {
   });
   try {
     await page.goto(new URL(`/?project=${project.id}`, origin).href);
-    await page.getByLabel("Owner credential").fill("synthetic-browser-owner");
+    // A development page can paint before hydration attaches input handlers.
+    // Repeat this user input only while its submit action remains disabled.
+    for (let attempt = 0; attempt < 50; attempt++) {
+      await page.getByLabel("Owner credential").fill("synthetic-browser-owner");
+      if (
+        await page.getByRole("button", { name: "Open workbench" }).isEnabled()
+      )
+        break;
+      await page.waitForTimeout(100);
+    }
     await page.getByRole("button", { name: "Open workbench" }).click();
     if (repairCase) {
       const repair = page.locator("#repair-review");
@@ -400,6 +429,119 @@ async function scenario({ pendingExport = false, repairCase = null } = {}) {
     await page
       .getByRole("button", { name: "Ask Muse what went wrong" })
       .click();
+    if (lostDiagnosis) {
+      await diagnosisDispatched;
+      if (lostDiagnosis === "cancel")
+        await page
+          .locator("#muse-diagnosis-panel")
+          .getByRole("button", { name: "Cancel", exact: true })
+          .click();
+      if (lostDiagnosis !== "cancel")
+        await page
+          .locator("#muse-diagnosis-panel")
+          .getByRole("alert")
+          .waitFor();
+      releaseExport();
+      await proofPanel
+        .getByText("Preparing a fresh report…", { exact: true })
+        .waitFor({ state: "hidden" });
+      assert.equal(
+        downloads.length,
+        0,
+        "a report started before an ambiguous diagnosis must never download",
+      );
+      await proofPanel
+        .getByText(/diagnosis outcome is unknown/i)
+        .waitFor({ timeout: 3000 });
+      assert.equal(
+        await proofPanel
+          .getByRole("button", { name: "Download JSON report" })
+          .isDisabled(),
+        true,
+      );
+      assert.equal(
+        downloads.length,
+        0,
+        "ambiguous diagnosis invalidates the old export",
+      );
+      await proofPanel
+        .getByRole("button", { name: "Refresh proof snapshot" })
+        .click();
+      await proofPanel
+        .getByText(
+          `Evidence provenance (${lostDiagnosis === "late" ? 0 : 1})`,
+          { exact: true },
+        )
+        .waitFor();
+      assert.equal(
+        await proofPanel
+          .getByRole("button", { name: "Download JSON report" })
+          .isDisabled(),
+        true,
+        "a snapshot cannot prove an unknown operation finished",
+      );
+      assert.equal(await page.locator("#diagnosis-consent").isChecked(), false);
+      const acknowledgement = proofPanel.getByRole("checkbox", {
+        name: /Use current saved snapshot/,
+      });
+      await acknowledgement.check();
+      if (lostDiagnosis === "late") {
+        saved = true;
+        await proofPanel
+          .getByRole("button", { name: "Refresh proof snapshot" })
+          .click();
+        await proofPanel
+          .getByText("Evidence provenance (1)", { exact: true })
+          .waitFor();
+        assert.equal(await acknowledgement.isChecked(), false);
+        await acknowledgement.check();
+      }
+      const downloaded = page.waitForEvent("download");
+      await proofPanel
+        .getByRole("button", { name: "Download JSON report" })
+        .click();
+      await downloaded;
+      await proofPanel.getByText(/diagnosis outcome is unknown/i).waitFor();
+      assert.equal(
+        downloads.length,
+        1,
+        "explicit acknowledgement permits an as-of export",
+      );
+      assert.equal(
+        diagnosisCalls,
+        1,
+        "refresh and export never retry a provider request",
+      );
+      if (lostDiagnosis === "network") {
+        await page.locator("#diagnosis-consent").check();
+        await page
+          .getByRole("button", { name: "Ask Muse what went wrong" })
+          .click();
+        await page
+          .getByText("SYNTHETIC observation", { exact: true })
+          .waitFor();
+        await proofPanel.getByText(/diagnosis outcome is unknown/i).waitFor();
+        assert.equal(
+          await proofPanel
+            .getByRole("button", { name: "Download JSON report" })
+            .isDisabled(),
+          true,
+          "a new success cannot settle an earlier unknown request",
+        );
+        assert.equal(
+          await acknowledgement.count(),
+          0,
+          "a new diagnosis invalidates the as-of acknowledgement",
+        );
+        assert.equal(diagnosisCalls, 2);
+      }
+      assert.deepEqual(errors, []);
+      assert.deepEqual(unexpected, []);
+      console.log(
+        `PASS: ${lostDiagnosis} diagnosis invalidates exports and retains uncertainty after refresh`,
+      );
+      return;
+    }
     await page.getByText("SYNTHETIC observation", { exact: true }).waitFor();
     await proofPanel
       .getByText("Evidence provenance (1)", { exact: true })
@@ -430,10 +572,14 @@ async function scenario({ pendingExport = false, repairCase = null } = {}) {
     throw error;
   } finally {
     releaseExport();
+    releaseDiagnosis();
     await context.close();
   }
 }
 try {
+  await scenario({ pendingExport: true, lostDiagnosis: "cancel" });
+  await scenario({ pendingExport: true, lostDiagnosis: "network" });
+  await scenario({ pendingExport: true, lostDiagnosis: "late" });
   await scenario();
   await scenario({ pendingExport: true });
   for (const repairCase of ["edit", "reload", "uncheck", "retry", "approval"])
