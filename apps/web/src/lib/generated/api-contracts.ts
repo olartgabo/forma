@@ -377,7 +377,7 @@ export type ProofSnapshot = {
   readonly "versions": ReadonlyArray<ProofVersion>;
   readonly "photos_omitted": number;
   readonly "photo_policy"?: "excluded";
-  readonly "coverage"?: "initial_plan_reports";
+  readonly "coverage"?: "versioned_plan_reports";
 };
 
 export type ProofVersion = {
@@ -385,6 +385,9 @@ export type ProofVersion = {
   readonly "candidate_id": string;
   readonly "plan": BuildPlan;
   readonly "progress": ProgressSnapshot;
+  readonly "state": "active" | "historical" | "preview";
+  readonly "revision"?: (PlanRevision | null);
+  readonly "invalidations"?: ReadonlyArray<EvidenceInvalidation>;
 };
 
 export type ProviderStatusResponse = {

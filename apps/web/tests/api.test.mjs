@@ -494,9 +494,10 @@ test("proof requests stay owner scoped and exports preserve failed versus unatte
     generated_at: "2026-11-01T00:00:00Z",
     photos_omitted: 2,
     photo_policy: "excluded",
-    coverage: "initial_plan_reports",
+    coverage: "versioned_plan_reports",
     versions: [
       {
+        state: "preview",
         inventory_revision_id: "inventory-1",
         candidate_id: "synthetic-candidate",
         plan: {
@@ -531,7 +532,10 @@ test("proof requests stay owner scoped and exports preserve failed versus unatte
   const initial = proofText(snapshot);
   assert.match(initial, /Result: not attempted/);
   assert.match(initial, /Private photos excluded: 2/);
-  assert.match(initial, /evidence invalidation are not integrated/);
+  assert.match(
+    initial,
+    /invalidated evidence does not verify the revised plan/,
+  );
   assert.doesNotMatch(initial, /User-reported result: passed/);
   snapshot.versions[0].progress.status = "needs_review";
   snapshot.versions[0].progress.events.push({
@@ -549,6 +553,134 @@ test("proof requests stay owner scoped and exports preserve failed versus unatte
   assert.match(failed, /Mass: 180 g/);
   assert.match(failed, /literal text/);
   assert.doesNotMatch(failed, /Result: not attempted/);
+});
+
+test("proof exports preserve version provenance, repair work and invalidated evidence", () => {
+  const emptyProgress = {
+    status: "building",
+    completed_operation_ids: [],
+    carried_operation_ids: [],
+    events: [],
+    evidence: [],
+    material_transactions: [],
+    expected_remaining_stock: [],
+  };
+  const snapshot = {
+    project: { ...savedProject, active_version_id: "version-repair" },
+    generated_at: "2026-11-02T00:00:00Z",
+    photos_omitted: 1,
+    versions: [
+      {
+        state: "historical",
+        inventory_revision_id: "inventory-1",
+        candidate_id: "stand-original",
+        plan: {
+          version_id: "version-original",
+          compiler_version: "fixture",
+          operations: [],
+        },
+        progress: {
+          ...emptyProgress,
+          status: "needs_review",
+          evidence: [
+            {
+              id: "fit-evidence",
+              kind: "user_report",
+              provenance: "user",
+              verification_state: "failed",
+              description: "The fit failed",
+              checkpoint_ids: ["fit-check"],
+            },
+          ],
+        },
+        invalidations: [
+          {
+            id: "invalidation-a",
+            evidence_id: "fit-evidence",
+            invalidated_for_version_id: "version-repair",
+            reason: "Brace geometry changed",
+            recorded_at: "2026-11-02T00:00:00Z",
+          },
+        ],
+      },
+      {
+        state: "preview",
+        inventory_revision_id: "inventory-1",
+        candidate_id: "unused-design",
+        plan: {
+          version_id: "version-unused",
+          compiler_version: "fixture",
+          operations: [],
+        },
+        progress: { ...emptyProgress, status: "not_started" },
+      },
+      {
+        state: "active",
+        inventory_revision_id: "inventory-1",
+        candidate_id: "repair-a",
+        plan: {
+          version_id: "version-repair",
+          compiler_version: "fixture",
+          operations: [
+            { id: "kept-cut", type: "cut_rect" },
+            { id: "new-cut", type: "cut_rect" },
+          ],
+        },
+        progress: {
+          ...emptyProgress,
+          completed_operation_ids: ["kept-cut"],
+          carried_operation_ids: ["kept-cut"],
+        },
+        revision: {
+          base_version_id: "version-original",
+          approved_at: "2026-11-02T00:00:00Z",
+          patch: { rationale: "Replace the damaged brace" },
+          simulation: {
+            preserved_operation_ids: ["kept-cut"],
+            required_undo_operation_ids: ["peel-tape"],
+            redo_operation_ids: ["new-fit"],
+            newly_required_operation_ids: ["new-cut"],
+            changed_part_ids: ["brace"],
+            lost_part_ids: ["old-brace"],
+            invalidated_checkpoint_ids: ["fit-check"],
+            proposed_material_deltas: [
+              {
+                kind: "consume",
+                quantity: 120,
+                unit: "mm2",
+                stock_id: "spare-sheet",
+                source_region_id: "spare-region",
+              },
+            ],
+          },
+        },
+      },
+    ],
+  };
+  const before = structuredClone(snapshot);
+  const text = proofText(snapshot);
+  assert.match(text, /Version: version-original \(Historical plan\)/);
+  assert.match(text, /Version: version-unused \(Saved preview\)/);
+  assert.match(text, /Version: version-repair \(Active plan\)/);
+  assert.match(
+    text,
+    /Carried from earlier reports: 1\nNew completion reports in this version: 0/,
+  );
+  assert.match(text, /Kept work: kept-cut/);
+  assert.match(text, /Physical undo required: peel-tape/);
+  assert.match(text, /Redo: new-fit/);
+  assert.match(text, /New work: new-cut/);
+  assert.match(text, /Lost parts: old-brace/);
+  assert.match(text, /Checks to repeat: fit-check/);
+  assert.match(text, /user_report \| user \| failed/);
+  assert.match(text, /Checkpoints: fit-check/);
+  assert.match(text, /Invalidated for version-repair .*Brace geometry changed/);
+  assert.match(
+    text,
+    /Planned material changes \(not physical receipts\): consume: 120 mm2 from spare-sheet \/ spare-region/,
+  );
+  assert.doesNotMatch(text, /test passed|version-original \(Saved preview\)/);
+  assert.deepEqual(snapshot, before);
 });
 
 test("proof unknowns report missing and unconfirmed inputs without inventing zeros", () => {

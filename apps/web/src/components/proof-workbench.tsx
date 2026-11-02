@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, loadProof } from "../lib/api";
-import { proofStatus, proofText, proofUnknowns } from "../lib/proof-report";
+import {
+  proofStatus,
+  proofText,
+  proofUnknowns,
+  proofVersionLabel,
+  revisionDetails,
+} from "../lib/proof-report";
 import type { Project, ProofSnapshot } from "../lib/generated/api-contracts";
 
 function message(error: unknown) {
@@ -167,10 +173,11 @@ export default function ProofWorkbench({
           </p>
           <p>{snapshot.photos_omitted} private photos excluded.</p>
           <p className="scope-note">
-            This report covers initial plans and user reports. Repair revisions,
-            preservation diffs and evidence invalidation are not integrated.
-            Recorded timestamps are ingestion times; build duration, measured
-            waste and salvage totals remain unavailable.
+            This report covers versioned plans, user reports, approved repairs
+            and evidence invalidations. Historical outcomes describe their
+            recorded version and do not verify a revised plan. Recorded
+            timestamps are ingestion times; build duration, measured waste and
+            salvage totals remain unavailable.
           </p>
           {snapshot.versions.length === 0 && (
             <p>No compiled plan or physical result is recorded.</p>
@@ -185,14 +192,11 @@ export default function ProofWorkbench({
           ) : (
             <p>None in the saved fields shown here.</p>
           )}
-          {snapshot.versions.map(
-            ({ plan, progress, inventory_revision_id }) => (
+          {snapshot.versions.map((version) => {
+            const { plan, progress, inventory_revision_id } = version;
+            return (
               <article className="proof-version" key={plan.version_id}>
-                <h3>
-                  {plan.version_id === snapshot.project.active_version_id
-                    ? "Active plan"
-                    : "Saved preview"}
-                </h3>
+                <h3>{proofVersionLabel(version.state)}</h3>
                 <p className="project-id">
                   {plan.version_id} · Inventory {inventory_revision_id}
                 </p>
@@ -201,8 +205,39 @@ export default function ProofWorkbench({
                 </p>
                 <p>
                   {progress.completed_operation_ids.length} of{" "}
-                  {plan.operations.length} operations confirmed by user reports.
+                  {plan.operations.length} operations completed, including{" "}
+                  {progress.carried_operation_ids?.length ?? 0} carried from
+                  earlier reports. This version has{" "}
+                  {
+                    progress.events.filter(
+                      (event) => event.kind === "operation_confirmed",
+                    ).length
+                  }{" "}
+                  new completion reports.
                 </p>
+                {version.state === "historical" && (
+                  <p className="scope-note">
+                    Historical reports remain unchanged. Check the invalidation
+                    notices below before using evidence for a later version.
+                  </p>
+                )}
+                {version.revision && (
+                  <details>
+                    <summary>Approved repair and required rechecks</summary>
+                    <p>
+                      Approval records the plan change. Physical undo, redo and
+                      new work still require user reports.
+                    </p>
+                    <dl>
+                      {revisionDetails(version).map(([label, value]) => (
+                        <div key={label}>
+                          <dt>{label}</dt>
+                          <dd>{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </details>
+                )}
                 <details>
                   <summary>Uncompleted operations and checks</summary>
                   <ul>
@@ -220,8 +255,8 @@ export default function ProofWorkbench({
                   {progress.completed_operation_ids.length ===
                     plan.operations.length && (
                     <p>
-                      All planned operations have user reports. Evidence
-                      coverage limits still apply.
+                      All planned operations are completed or carried from
+                      earlier reports. Evidence coverage limits still apply.
                     </p>
                   )}
                 </details>
@@ -301,6 +336,23 @@ export default function ProofWorkbench({
                           {item.provenance} ·{" "}
                           {item.verification_state.replaceAll("_", " ")}
                           <p>{item.description}</p>
+                          <p className="help">
+                            Checkpoints:{" "}
+                            {item.checkpoint_ids?.join(", ") || "None"}
+                          </p>
+                          {version.invalidations
+                            ?.filter(
+                              (invalidation) =>
+                                invalidation.evidence_id === item.id,
+                            )
+                            .map((invalidation) => (
+                              <p key={invalidation.id} className="scope-note">
+                                Invalidated for{" "}
+                                {invalidation.invalidated_for_version_id} at{" "}
+                                {invalidation.recorded_at}:{" "}
+                                {invalidation.reason}
+                              </p>
+                            ))}
                           {item.kind === "photo" && (
                             <p className="help">Private image excluded.</p>
                           )}
@@ -352,8 +404,8 @@ export default function ProofWorkbench({
                   </ul>
                 </details>
               </article>
-            ),
-          )}
+            );
+          })}
         </div>
       )}
     </details>

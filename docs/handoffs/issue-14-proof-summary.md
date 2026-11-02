@@ -1,4 +1,47 @@
-# Issue #14: initial plan and report Proof snapshot
+# Issue #14: versioned plans, repairs and evidence Proof
+
+## Revision Proof contract handoff, November 2, 2026
+
+The next slice on `issue/14-revision-proof` extends `ProofVersion` with
+`state: active | historical | preview`, optional `revision: PlanRevision` and
+`invalidations: tuple[EvidenceInvalidation]`. Historical versions are ancestors
+of the active plan; unselected designs remain previews. Invalidations attach to
+the version that owns the source evidence and retain the destination version,
+reason and timestamp. Original evidence verification states remain unchanged.
+Coverage becomes `versioned_plan_reports`. Revision simulation plans receive the
+same photo-ID exclusion as ordinary plans. The browser separates carried work
+from newly reported completions and displays stored repair/recheck details.
+These are read-only additions within the existing owner-scoped transaction.
+Pydantic generates the consumer types; no domain or compiler contract changes.
+
+## Revision Proof implementation and checks
+
+The snapshot now reads approved revisions and source-evidence invalidations in
+the same transaction as projects, plans and progress. Both the panel and text
+export distinguish historical plans from unused previews, carry earlier work
+separately from new completion reports, and show approved kept/undo/redo/new/lost
+work, material proposals, changed parts and required rechecks. Planned material
+deltas are labelled as proposals; original physical receipts remain separate.
+Evidence keeps its recorded provenance and outcome, with checkpoint IDs and
+dated notices naming the revision that invalidated it. Historical failed tests
+remain failed; approval does not create a physical pass or new report.
+
+The full npm run check exited 0: `807 passed in 42.36s`, formatting, Ruff,
+generated contracts, TypeScript and production build passed.
+The affected API suite reported `9 passed in 2.54s`; the web suite reported
+`# tests 44`, `# pass 44`, `# fail 0`. Web TypeScript completed successfully.
+Real compiled synthetic repair tests cover failed history, carried work,
+source-scoped invalidations, owner scope and unchanged canonical records.
+Photo exclusion covers the nested plan in `revision.simulation`, with a saved
+photo-linked repair proving the private revision remains intact. Text tests
+exercise historical/preview/active labels, required undo/rechecks, planned stock
+use and unchanged failed evidence. These are offline software checks.
+
+Measured waste/salvage, physical attempts, timing and actual recovery evidence
+remain pending. The implementation does not close every acceptance criterion
+of #14. The notes below record the original slice and its historical checks.
+
+## Original slice
 
 Owner: @olartgabo. Branch: `issue/14-proof-summary`, stacked on physical progress #81.
 

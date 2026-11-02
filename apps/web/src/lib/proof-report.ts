@@ -1,5 +1,54 @@
 import type { ProofSnapshot } from "./generated/api-contracts";
 
+type ProofVersion = ProofSnapshot["versions"][number];
+
+export function proofVersionLabel(state: ProofVersion["state"]): string {
+  return {
+    active: "Active plan",
+    historical: "Historical plan",
+    preview: "Saved preview",
+  }[state];
+}
+
+export function revisionDetails(version: ProofVersion): [string, string][] {
+  const revision = version.revision;
+  if (!revision) return [];
+  const simulation = revision.simulation;
+  const ids = (values: readonly string[] | undefined) =>
+    values?.length ? values.join(", ") : "None";
+  return [
+    ["Revised from", revision.base_version_id],
+    ["Approved", revision.approved_at],
+    ["Reason", revision.patch.rationale],
+    ["Kept work", ids(simulation.preserved_operation_ids)],
+    ["Physical undo required", ids(simulation.required_undo_operation_ids)],
+    ["Redo", ids(simulation.redo_operation_ids)],
+    ["New work", ids(simulation.newly_required_operation_ids)],
+    ["Changed parts", ids(simulation.changed_part_ids)],
+    ["Lost parts", ids(simulation.lost_part_ids)],
+    ["Lost work", ids(simulation.lost_operation_ids)],
+    ["Lost regions", ids(simulation.lost_region_ids)],
+    [
+      "Additional material stock",
+      ids(simulation.additional_material_stock_ids),
+    ],
+    ["New stock required", ids(simulation.required_new_stock_ids)],
+    ["Checks to repeat", ids(simulation.invalidated_checkpoint_ids)],
+    ["Unknown physical checks", ids(simulation.unknown_physical_checks)],
+    [
+      "Planned material changes (not physical receipts)",
+      simulation.proposed_material_deltas?.length
+        ? simulation.proposed_material_deltas
+            .map(
+              (item) =>
+                `${item.kind}: ${item.quantity} ${item.unit} from ${item.stock_id}${item.source_region_id ? ` / ${item.source_region_id}` : ""}`,
+            )
+            .join("; ")
+        : "None",
+    ],
+  ];
+}
+
 export function proofUnknowns(snapshot: ProofSnapshot): string[] {
   const unknowns: string[] = [];
   for (const stock of snapshot.project.stocks ?? []) {
@@ -64,9 +113,9 @@ export function proofText(snapshot: ProofSnapshot): string {
     `Goal: ${snapshot.project.goal}`,
     `Snapshot generated: ${snapshot.generated_at}`,
     `Active version: ${snapshot.project.active_version_id ?? "None"}`,
-    "Coverage: initial plans and user reports.",
+    "Coverage: versioned plans, user reports and approved repair revisions.",
     `Private photos excluded: ${snapshot.photos_omitted}.`,
-    "Repair revisions, preservation diffs and evidence invalidation are not integrated.",
+    "Historical outcomes describe their recorded version; invalidated evidence does not verify the revised plan.",
     "Expected stock is calculated and needs actual measurement/reconciliation before repair.",
     "Recorded timestamps are report ingestion times. Build duration, measured waste and salvage totals are unavailable.",
   ];
@@ -83,12 +132,15 @@ export function proofText(snapshot: ProofSnapshot): string {
     const { plan, progress } = version;
     lines.push(
       "",
-      `Version: ${plan.version_id}${snapshot.project.active_version_id === plan.version_id ? " (active)" : " (saved preview)"}`,
+      `Version: ${plan.version_id} (${proofVersionLabel(version.state)})`,
       `Inventory revision: ${version.inventory_revision_id}`,
       `Candidate: ${version.candidate_id}`,
       `Compiler: ${plan.compiler_version}`,
       `Physical outcome: ${proofStatus(progress.status)}`,
-      `Confirmed operations: ${progress.completed_operation_ids.length} / ${plan.operations.length}`,
+      `Completed operations: ${progress.completed_operation_ids.length} / ${plan.operations.length}`,
+      `Carried from earlier reports: ${progress.carried_operation_ids?.length ?? 0}`,
+      `New completion reports in this version: ${progress.events.filter((event) => event.kind === "operation_confirmed").length}`,
+      ...revisionDetails(version).map(([label, value]) => `${label}: ${value}`),
       "Uncompleted operations:",
     );
     const unfinished = plan.operations.filter(
@@ -140,6 +192,13 @@ export function proofText(snapshot: ProofSnapshot): string {
         ? progress.evidence.flatMap((item) => [
             `  ${item.id} | ${item.kind} | ${item.provenance} | ${item.verification_state}${item.kind === "photo" ? " | image excluded" : ""}`,
             `    ${item.description}`,
+            `    Checkpoints: ${item.checkpoint_ids?.join(", ") || "None"}`,
+            ...(version.invalidations ?? [])
+              .filter((invalidation) => invalidation.evidence_id === item.id)
+              .map(
+                (invalidation) =>
+                  `    Invalidated for ${invalidation.invalidated_for_version_id} at ${invalidation.recorded_at}: ${invalidation.reason}`,
+              ),
           ])
         : ["  No evidence recorded"]),
     );

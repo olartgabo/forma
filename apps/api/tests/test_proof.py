@@ -4,6 +4,8 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from threading import Event
 
 import pytest
+import test_adapt
+from test_adapt import commit, joined, patch, simulate
 from test_plans import AUTH, OTHER, stand_inputs
 from test_progress import complete, photo, post, progress, update
 from test_progress import preview_setup as preview_setup
@@ -13,6 +15,8 @@ from forma_api.plans import CompilePreview, PlanService
 from forma_api.progress import record_diagnosis_evidence
 from forma_api.projects import ProjectStore
 from forma_domain.models import DiagnosisProposal
+
+repair_setup = test_adapt.setup
 
 
 def proof(client, project_id, headers=AUTH):
@@ -70,7 +74,7 @@ def test_empty_project_returns_explicit_initial_report_coverage(preview_setup):
     assert report["versions"] == []
     assert report["photos_omitted"] == 0
     assert report["photo_policy"] == "excluded"
-    assert report["coverage"] == "initial_plan_reports"
+    assert report["coverage"] == "versioned_plan_reports"
     assert report["generated_at"].endswith("Z")
 
 
@@ -103,6 +107,8 @@ def test_saved_previews_remain_unattempted_in_stable_version_order(preview_setup
             item["progress"]["status"] == "not_started" for item in report["versions"]
         )
         assert all(item["progress"]["events"] == [] for item in report["versions"])
+        assert [item["state"] for item in report["versions"]] == ["preview", "active"]
+        assert all(item["revision"] is None for item in report["versions"])
 
 
 @pytest.mark.parametrize("outcome", ["failed", "passed"])
@@ -142,7 +148,11 @@ def test_proof_preserves_actual_user_report_outcomes_and_named_test_conditions(
 
 def test_photos_are_redacted_from_every_copy_without_changing_private_sources(
     preview_setup,
+    monkeypatch,
 ):
+    from forma_api import adapt
+
+    monkeypatch.setattr(adapt, "ALLOW_SYNTHETIC", True)
     client, first, directory = preview_setup
     photo_id = photo(client, first)
     original_photo = client.get(
@@ -159,13 +169,23 @@ def test_photos_are_redacted_from_every_copy_without_changing_private_sources(
     ).json()["media"]["id"]
     project = client.get(f"/api/projects/{first.project_id}", headers=AUTH).json()
     project["stocks"][0]["image_ids"] = [photo_id]
+    spare = {
+        **project["stocks"][0],
+        "id": "synthetic-spare",
+        "usable_regions": [
+            {
+                **project["stocks"][0]["usable_regions"][0],
+                "id": "synthetic-spare-region",
+            }
+        ],
+    }
     saved = client.put(
         f"/api/projects/{first.project_id}/inventory",
         headers=AUTH,
         json={
             "expected_revision_id": project["revision_id"],
             "idempotency_key": "proof-photo-inventory",
-            "stocks": project["stocks"],
+            "stocks": project["stocks"] + [spare],
             "user_confirmed": True,
         },
     )
@@ -228,6 +248,106 @@ def test_photos_are_redacted_from_every_copy_without_changing_private_sources(
         ).content
         == original_photo.content
     )
+    for index in range(1, 6):
+        complete(client, version, index)
+    current = progress(client, version).json()
+    remaining_tape = next(
+        stock["remaining_length_mm"]["value"]
+        for stock in current["expected_remaining_stock"]
+        if stock["id"] == "synthetic-tape-stock"
+    )
+    preview_response = simulate(
+        client, version.plan, current, [patch(version.plan)], tape=remaining_tape
+    )
+    assert preview_response.status_code == 200, preview_response.text
+    preview = preview_response.json()["previews"][0]
+    assert preview["version"] is not None, preview["simulation"]["blockers"]
+    approved = commit(client, version.plan, current, preview["preview_id"])
+    assert approved.status_code == 200, approved.text
+    response = proof(client, version.project_id)
+    assert response.status_code == 200, response.text
+    assert photo_id not in response.text and unlinked not in response.text
+    assert [item["state"] for item in response.json()["versions"]] == [
+        "preview",
+        "historical",
+        "active",
+    ]
+    repaired = response.json()["versions"][-1]
+    assert repaired["revision"] is not None
+    assert all(
+        stock["image_ids"] == []
+        for stock in repaired["revision"]["simulation"]["plan"]["stocks"]
+    )
+    with ProjectStore(directory).transaction() as connection:
+        original = connection.execute(
+            "SELECT body FROM plan_revisions WHERE id=?",
+            (repaired["plan"]["version_id"],),
+        ).fetchone()[0]
+    assert photo_id in original
+
+
+def test_repair_proof_keeps_failed_history_and_scopes_invalidations_to_its_source(
+    repair_setup,
+):
+    client, version, _ = repair_setup
+    joined(client, version)
+    complete(client, version, 6)
+    photo_id = photo(client, version)
+    failed = post(
+        client,
+        version,
+        {
+            **update(version, progress(client, version).json(), 7, result="failed"),
+            "photo_ids": [photo_id],
+        },
+    )
+    assert failed.status_code == 200, failed.text
+    original_progress = progress(client, version).json()
+    response = simulate(client, version.plan, original_progress, [patch(version.plan)])
+    assert response.status_code == 200, response.text
+    preview = response.json()["previews"][0]
+    approved = commit(client, version.plan, original_progress, preview["preview_id"])
+    assert approved.status_code == 200, approved.text
+    receipt = approved.json()
+    assert receipt["invalidations"]
+    report_response = proof(client, version.project_id)
+    assert report_response.status_code == 200, report_response.text
+    old, repaired = report_response.json()["versions"]
+    assert [old["state"], repaired["state"]] == ["historical", "active"]
+    assert old["revision"] is None
+    assert old["invalidations"] == receipt["invalidations"]
+    assert repaired["invalidations"] == []
+    assert repaired["revision"] == receipt["revision"]
+    assert old["progress"]["status"] == "needs_review"
+    assert old["progress"]["events"] == original_progress["events"]
+    assert (
+        old["progress"]["material_transactions"]
+        == original_progress["material_transactions"]
+    )
+    assert all(
+        item["evidence_id"] in {e["id"] for e in old["progress"]["evidence"]}
+        for item in old["invalidations"]
+    )
+    failed_evidence = next(
+        e for e in old["progress"]["evidence"] if e["kind"] == "physical_test"
+    )
+    assert failed_evidence["verification_state"] == "failed"
+    assert failed_evidence["checkpoint_ids"]
+    assert any(i["evidence_id"] == failed_evidence["id"] for i in old["invalidations"])
+    assert all(
+        i["invalidated_for_version_id"] == repaired["plan"]["version_id"]
+        and i["reason"]
+        for i in old["invalidations"]
+    )
+    assert repaired["progress"]["events"] == []
+    assert repaired["progress"]["status"] == "building"
+    assert (
+        repaired["progress"]["carried_operation_ids"]
+        == receipt["revision"]["carried_completed_operation_ids"]
+    )
+    assert photo_id not in report_response.text
+    assert progress(client, version).json() == original_progress
+    assert proof(client, version.project_id, OTHER).status_code == 404
 
 
 def test_proof_strips_diagnosis_evidence_asset_id(setup):
