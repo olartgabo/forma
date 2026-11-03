@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { StabilityOverlay } from "../../lib/generated/contracts";
 import { requestAnalysis, type AnalysisResponse } from "./client";
 import GeometryPreview from "./geometry-preview";
+import MeasurementCapture from "./measurement-capture";
 
 const label = (value: string) => value.replaceAll("_", " ");
 const number = (value: number) => Number(value.toPrecision(5)).toString();
@@ -88,6 +89,8 @@ export default function StabilityReportPanel({
   inventoryRevisionId,
   refreshKey = 0,
   disabled = false,
+  onMeasurementsSaved,
+  onMeasurementLockChange,
 }: {
   token: string;
   projectId: string;
@@ -95,7 +98,19 @@ export default function StabilityReportPanel({
   inventoryRevisionId: string;
   refreshKey?: number;
   disabled?: boolean;
+  onMeasurementsSaved?: () => void;
+  onMeasurementLockChange?: (active: boolean) => void;
 }) {
+  const measurementScope = JSON.stringify([
+    token,
+    projectId,
+    planVersionId,
+    inventoryRevisionId,
+  ]);
+  const [measurementNotice, setMeasurementNotice] = useState<string | null>(
+    null,
+  );
+  const [measurementHistorical, setMeasurementHistorical] = useState(false);
   const identity = JSON.stringify([
     token,
     projectId,
@@ -109,6 +124,8 @@ export default function StabilityReportPanel({
   const mounted = useRef(true);
   const controller = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
+  const [measurementActive, setMeasurementActive] = useState(false);
+  const [geometryReady, setGeometryReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<{
     identity: string;
@@ -121,6 +138,8 @@ export default function StabilityReportPanel({
     setBusy(false);
     setError(null);
     setSaved(null);
+    setMeasurementActive(false);
+    setGeometryReady(false);
     return () => {
       mounted.current = false;
       controller.current?.abort();
@@ -146,13 +165,18 @@ export default function StabilityReportPanel({
         !own.signal.aborted &&
         mounted.current &&
         current.current === requestedIdentity
-      )
+      ) {
+        setGeometryReady(
+          response.geometry_preview?.stage === "reported_assembled" ||
+            !!response.report,
+        );
         setSaved({
           identity: requestedIdentity,
           response,
           date: new Date().toISOString(),
           historical: false,
         });
+      }
     } catch (e) {
       if (mounted.current && current.current === requestedIdentity)
         setError(
@@ -174,12 +198,42 @@ export default function StabilityReportPanel({
       <p>Modeled calculations; physical verification is separate.</p>
       <button
         type="button"
-        disabled={disabled || busy || !token}
+        disabled={disabled || busy || measurementActive || !token}
         onClick={analyze}
       >
         {busy ? "Analyzing stability…" : "Analyze stability"}
       </button>
       {error && <p role="alert">{error}</p>}
+      {measurementNotice === measurementScope && (
+        <p role="status">
+          {measurementHistorical
+            ? "Recovered a saved measurement record for an earlier plan or inventory. Analyze the current plan to check what still applies."
+            : "Measurements saved. Analyze stability again to calculate from this new record."}
+        </p>
+      )}
+      <MeasurementCapture
+        key={identity}
+        token={token}
+        expected={{ projectId, planVersionId, inventoryRevisionId }}
+        available={geometryReady}
+        disabled={disabled || busy}
+        onSessionChange={(active) => {
+          setMeasurementActive(active);
+          onMeasurementLockChange?.(active);
+        }}
+        onInvalidate={() => {
+          setMeasurementNotice(null);
+          setSaved(null);
+          setError(null);
+        }}
+        onSaved={(historical = false) => {
+          setMeasurementHistorical(historical);
+          setMeasurementNotice(measurementScope);
+          setSaved(null);
+          setError(null);
+          onMeasurementsSaved?.();
+        }}
+      />
       {visible && (
         <div aria-live="polite">
           <p>

@@ -11,8 +11,9 @@ projection added under the user's November 3 ownership override. It validates
 the supported stand topology through the existing family validator and produces
 the Pydantic `CanonicalGeometryPreview` contract. Its nominal sheet facets,
 conditional uniform-sheet centroids and ground footprint do not establish actual
-mass, COM or contact. The default connected API shows this preview and the missing
-mechanical inputs, without inventing an analysis policy or a physical pass.
+mass, COM or contact. The default connected API shows this preview and missing mechanical inputs.
+A current user-confirmed typed measurement batch can supply the measured
+point-estimate adapter; its assumptions and limits remain explicit.
 
 Consumers including the assembly viewer should reuse this producer. Planned
 assembly and user-reported assembly have distinct stage labels; both remain
@@ -58,3 +59,12 @@ Run `uv run --locked pytest packages/stability/tests` for analytic reference
 checks. These tests establish software mathematics only, never a physical pass.
 Installed numerical distributions retain their own license notices; deployment
 binary and transitive-license verification remains a separate integration gate.
+
+## Direct engine lab
+
+Run `uv run --locked python -m forma_stability --lab --port 3031` and open the
+printed loopback URL. This user-requested diagnostic interface invokes the real
+pure evaluator with explicitly hypothetical inputs. It stores no project evidence
+and calls no provider. Exact JSON editing, downloadable input/report feedback and
+CLI replay (`--input case.json`) make behavior reproducible. See
+[the direct testing guide](../../docs/handoffs/stability-engine-lab.md).

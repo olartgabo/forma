@@ -35,8 +35,18 @@ def preview_geometry(snapshot: "StabilitySnapshot"):
     geometry = project_nominal_geometry(
         snapshot.version.plan, history_events=snapshot.history_events
     )
+    construction_evidence = {
+        evidence_id
+        for event in snapshot.history_events
+        if event.kind in ("operation_confirmed", "damage", "test")
+        for evidence_id in event.evidence_ids
+    }
+    # Only server-stored typed batches are numerical inputs, not construction
+    # evidence. Their invalidation blocks that batch but permits recapture.
+    numerical_evidence = set(snapshot.measurement_evidence_ids) - construction_evidence
     if geometry.stage == "reported_assembled" and any(
         item.invalidated_for_version_id == snapshot.version.version_id
+        and item.evidence_id not in numerical_evidence
         for item in snapshot.evidence_invalidations
     ):
         raise UnsupportedGeometry(
@@ -47,9 +57,9 @@ def preview_geometry(snapshot: "StabilitySnapshot"):
 
 def missing_mechanical_inputs(part_ids: tuple[str, ...]) -> tuple[str, ...]:
     return (
-        "Measure mass and establish center of mass for each stand part ("
+        "Measure assembled stand mass and world center of mass including all parts ("
         + ", ".join(part_ids)
-        + "); include connector mass and its distribution or an explicitly justified treatment",
+        + ") and all connectors together; do not count folded facets twice",
         "Bind device mass, world-space center of mass and device contact pose to typed measurement records",
         "Confirm actual supporting surface contacts; the preview footprint is nominal, not measured contact",
         "Supply explicit phone-orientation load cases, applicability assumptions and an analysis policy with a required physical margin",

@@ -22,6 +22,7 @@ from forma_domain.stability_contracts import (
     StabilityInput,
     StabilityReport,
 )
+from forma_domain.stability_measurements import StabilityMeasurementRecord
 
 
 class StabilityAnalysisRequest(Record):
@@ -69,6 +70,8 @@ class StabilitySnapshot:
     history_events: tuple[PhysicalEvent, ...]
     history_evidence: tuple[Evidence, ...]
     evidence_invalidations: tuple[EvidenceInvalidation, ...] = ()
+    measurements: StabilityMeasurementRecord | None = None
+    measurement_evidence_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -110,6 +113,21 @@ def analyze(snapshot: StabilitySnapshot, resolver: StabilityResolver | None = No
         except UnsupportedGeometry as error:
             return StabilityAnalysisResponse(
                 **fields, status="unsupported", blockers=(str(error),)
+            )
+        from forma_api.stability_measurements import measured_report
+
+        report = measured_report(snapshot, geometry)
+        if report is not None:
+            status = "complete"
+            if report.status == "needs_measurement":
+                status = "needs_measurement"
+            elif report.status in ("unsupported", "indeterminate"):
+                status = "unsupported"
+            return StabilityAnalysisResponse(
+                **fields,
+                status=status,
+                report=report,
+                blockers=report.unresolved_predicates,
             )
         return StabilityAnalysisResponse(
             **fields,

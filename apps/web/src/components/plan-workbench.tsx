@@ -74,6 +74,11 @@ export default function PlanWorkbench({
   const [version, setVersion] = useState<PlanVersion | null>(null);
   const [step, setStep] = useState(0);
   const [stabilityRefresh, setStabilityRefresh] = useState(0);
+  const [measurementRefresh, setMeasurementRefresh] = useState(0);
+  const [measurementPending, setMeasurementPending] = useState(false);
+  const handleMeasurementsSaved = useCallback(() => {
+    setMeasurementRefresh((value) => value + 1);
+  }, []);
   const handleProgressChange = useCallback(() => {
     setStabilityRefresh((value) => value + 1);
     onProgressChange();
@@ -710,12 +715,14 @@ export default function PlanWorkbench({
                   version={version}
                   operationId={panel.operation_id}
                   photos={photos}
-                  disabled={approvalDisabled || pending !== null}
+                  disabled={
+                    approvalDisabled || pending !== null || measurementPending
+                  }
                   onReloadProject={onReload}
                   onProgressChange={handleProgressChange}
                   onDiagnoseFailure={onDiagnoseFailure}
                   museAvailability={museAvailability}
-                  refreshKey={diagnosisRefreshKey}
+                  refreshKey={(diagnosisRefreshKey ?? 0) + measurementRefresh}
                   onLockChange={(locked) => {
                     setProgressPending(locked);
                     onLockChange(locked);
@@ -732,6 +739,8 @@ export default function PlanWorkbench({
               planVersionId={version.version_id}
               inventoryRevisionId={project.revision_id}
               refreshKey={stabilityRefresh + (diagnosisRefreshKey ?? 0)}
+              onMeasurementsSaved={handleMeasurementsSaved}
+              onMeasurementLockChange={setMeasurementPending}
               disabled={approvalDisabled || pending !== null || progressPending}
             />
           )}
@@ -740,7 +749,12 @@ export default function PlanWorkbench({
               token={token}
               projectId={project.id}
               version={version}
-              disabled={approvalDisabled || pending !== null || progressPending}
+              disabled={
+                approvalDisabled ||
+                pending !== null ||
+                progressPending ||
+                measurementPending
+              }
               onApproved={onReload}
               onLockChange={onLockChange}
               handoff={repairHandoff?.handoff ?? null}

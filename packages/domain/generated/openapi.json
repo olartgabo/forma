@@ -3245,6 +3245,115 @@
         "title": "MeasureArgs",
         "type": "object"
       },
+      "MeasuredBody": {
+        "additionalProperties": false,
+        "properties": {
+          "center_of_mass_m": {
+            "$ref": "#/components/schemas/Point3"
+          },
+          "mass_kg": {
+            "exclusiveMinimum": 0,
+            "title": "Mass Kg",
+            "type": "number"
+          },
+          "mass_resolution_kg": {
+            "exclusiveMinimum": 0,
+            "title": "Mass Resolution Kg",
+            "type": "number"
+          },
+          "method": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Method",
+            "type": "string"
+          },
+          "position_resolution_m": {
+            "exclusiveMinimum": 0,
+            "title": "Position Resolution M",
+            "type": "number"
+          }
+        },
+        "required": [
+          "mass_kg",
+          "center_of_mass_m",
+          "mass_resolution_kg",
+          "position_resolution_m",
+          "method"
+        ],
+        "title": "MeasuredBody",
+        "type": "object"
+      },
+      "MeasuredDeviceCase": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "$ref": "#/components/schemas/MeasuredBody"
+          },
+          "orientation": {
+            "enum": [
+              "portrait",
+              "landscape"
+            ],
+            "title": "Orientation",
+            "type": "string"
+          },
+          "pose_description": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Pose Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "orientation",
+          "device",
+          "pose_description"
+        ],
+        "title": "MeasuredDeviceCase",
+        "type": "object"
+      },
+      "MeasuredSupportRectangle": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Method",
+            "type": "string"
+          },
+          "resolution_m": {
+            "exclusiveMinimum": 0,
+            "title": "Resolution M",
+            "type": "number"
+          },
+          "x_max_m": {
+            "title": "X Max M",
+            "type": "number"
+          },
+          "x_min_m": {
+            "title": "X Min M",
+            "type": "number"
+          },
+          "y_max_m": {
+            "title": "Y Max M",
+            "type": "number"
+          },
+          "y_min_m": {
+            "title": "Y Min M",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x_min_m",
+          "x_max_m",
+          "y_min_m",
+          "y_max_m",
+          "resolution_m",
+          "method"
+        ],
+        "title": "MeasuredSupportRectangle",
+        "type": "object"
+      },
       "Measurement": {
         "additionalProperties": false,
         "properties": {
@@ -4162,6 +4271,160 @@
           "profile_version"
         ],
         "title": "StabilityInput",
+        "type": "object"
+      },
+      "StabilityMeasurementRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "based_on_last_event_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On Last Event Id"
+          },
+          "event_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "evidence_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "geometry_basis_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Geometry Basis Hash",
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "inventory_revision_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Inventory Revision Id",
+            "type": "string"
+          },
+          "measurements": {
+            "$ref": "#/components/schemas/StabilityMeasurements"
+          },
+          "plan_version_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Plan Version Id",
+            "type": "string"
+          },
+          "project_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "source_part_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Source Part Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "plan_version_id",
+          "inventory_revision_id",
+          "based_on_last_event_id",
+          "event_id",
+          "evidence_id",
+          "geometry_basis_hash",
+          "recorded_at",
+          "source_part_ids",
+          "measurements"
+        ],
+        "title": "StabilityMeasurementRecord",
+        "type": "object"
+      },
+      "StabilityMeasurements": {
+        "additionalProperties": false,
+        "properties": {
+          "actual_contacts_confirmed": {
+            "const": true,
+            "title": "Actual Contacts Confirmed",
+            "type": "boolean"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/MeasuredDeviceCase"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Cases",
+            "type": "array"
+          },
+          "gravity_only_assumed": {
+            "const": true,
+            "title": "Gravity Only Assumed",
+            "type": "boolean"
+          },
+          "horizontal_surface_confirmed": {
+            "const": true,
+            "title": "Horizontal Surface Confirmed",
+            "type": "boolean"
+          },
+          "required_margin_m": {
+            "minimum": 0,
+            "title": "Required Margin M",
+            "type": "number"
+          },
+          "rigid_assembly_assumed": {
+            "const": true,
+            "title": "Rigid Assembly Assumed",
+            "type": "boolean"
+          },
+          "stand": {
+            "$ref": "#/components/schemas/MeasuredBody"
+          },
+          "stand_includes_all_parts_and_connectors": {
+            "const": true,
+            "title": "Stand Includes All Parts And Connectors",
+            "type": "boolean"
+          },
+          "stationary_device_assumed": {
+            "const": true,
+            "title": "Stationary Device Assumed",
+            "type": "boolean"
+          },
+          "support": {
+            "$ref": "#/components/schemas/MeasuredSupportRectangle"
+          }
+        },
+        "required": [
+          "stand",
+          "cases",
+          "support",
+          "required_margin_m",
+          "stand_includes_all_parts_and_connectors",
+          "actual_contacts_confirmed",
+          "rigid_assembly_assumed",
+          "horizontal_surface_confirmed",
+          "stationary_device_assumed",
+          "gravity_only_assumed"
+        ],
+        "title": "StabilityMeasurements",
         "type": "object"
       },
       "StabilityOverlay": {

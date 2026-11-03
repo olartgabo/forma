@@ -1,6 +1,6 @@
 # Stability engine: mechanics and canonical nominal geometry
 
-Issue [#142](https://github.com/olartgabo/forma/issues/142), November 3, 2026.
+Current issue [#146](https://github.com/olartgabo/forma/issues/146); historical specification [#142](https://github.com/olartgabo/forma/issues/142), November 3, 2026.
 Owner: ResniDev. Shared interfaces remain available to the fabrication and viewer engines.
 
 November 3 user override: complete engine dependencies in this lane rather than
@@ -126,8 +126,9 @@ and current invalidations. Another owner's project/plan remains inaccessible.
 `StabilityResolver` is the server-side injection seam for the agreed canonical
 producer plus measured context and policy. The production default resolves the
 shared nominal geometry and returns a
-`geometry_preview` with `needs_measurement` and no numerical report until mass,
-device COM/contact and a justified analysis policy are available. Unsupported
+`geometry_preview` with `needs_measurement` while typed measurements are missing.
+A current authorized measurement batch resolves a numerical report through the
+real evaluator; no fixture resolver is needed. Unsupported
 geometry or construction states return explicit blockers. Synthetic analytical
 resolvers remain test-only; the default geometry path needs no injected fixture.
 The browser renders the actual typed report and SVG overlay when supplied, and
@@ -136,24 +137,69 @@ failure marks any retained result historical/stale; project/version/inventory,
 physical-write or diagnosis changes invalidate it. Generated browser types do
 not replace the server's Pydantic cross-field validation.
 
-The current generic Evidence record cannot bind a numeric mass/COM/gravity value
-to a property, unit and body. The S1 API therefore rejects `measured` or confirmed
-quantities until an explicit typed measurement binding exists; a photo,
-interpretation or free-text measurement event cannot establish that authority.
-Hypothetical unconfirmed values remain labeled in the report. Referenced
-evidence must also be current, scoped and applicable. This restriction is an
-additional measured-demo gate, not permission to describe assumptions as facts.
+## Measured point-estimate flow (#146)
 
-S2 still requires immutable report persistence/retrieval and a measured-input
-mechanical adapter; S3 still requires Muse tool registration. Do not configure a
-fixture resolver in production to substitute for missing physical inputs.
+`POST /api/projects/{id}/stability/measurements` records an explicit user-confirmed
+batch against the active plan, inventory revision and global history cursor.
+The stand must already be user-reported assembled through the supported operation
+sequence. The form starts blank, converts g/mm to SI, and requires each observation
+and applicability assumption to be reviewed. It cannot mark construction complete.
+
+The bounded input model weighs the assembled stand with all source parts and
+connectors together, with measured world COM. This avoids counting support/lip
+facets twice or guessing sheet density. Portrait and landscape each require a
+device mass/COM, measurement method/resolutions and pose description. Actual
+rectangular horizontal support must lie within the canonical base. The user
+chooses the required reserve; numeric tolerance is separately declared by the
+versioned point-estimate policy. Conventional standard gravity is an assumption.
+
+Typed immutable batches, their user measurement evidence and a measurement event
+are appended in one transaction. Retries use the same idempotency key; changes
+append a new batch. The adapter binds exact numeric fields to the typed record,
+source parts, event and evidence. Inventory, geometry, history or evidence changes
+invalidate reuse. Invalidated numerical evidence can be replaced without waiving
+construction-evidence invalidation. Generic photos/free-text measurement evidence
+still cannot authenticate arbitrary numbers in injected mechanical inputs.
+
+The report is explicitly a scalar point estimate: recorded instrument resolutions
+are not propagated into a conservative uncertainty guarantee. It does not verify
+phone retention, sliding, joint strength, cardboard deformation or physical success.
+A measurement save refreshes physical history/Proof and invalidates the displayed
+stability result; analysis is an explicit subsequent action. A save with unknown
+network outcome retains its exact request/key in bounded owner/project-scoped
+browser storage across remount and reload. Recovery requires an explicit retry;
+it never sends automatically. Storage failure blocks the initial write, and an
+unresolved save blocks competing construction edits until its outcome is resolved.
+
+Immutable numerical report storage/retrieval and Muse tools belong to #147; this
+packet persists the measurement history, not an additional report cache. No live
+provider call is necessary for these software checks.
+
+## Direct engine feedback
+
+The user-requested [pure engine lab](stability-engine-lab.md) runs at loopback with
+`python -m forma_stability --lab --port 3031`. It calls the same evaluator, exposes
+editable hypothetical g/mm inputs and raw JSON, plots returned geometry and
+exports reproducible feedback. It has no app account, project database or provider.
+Its synthetic examples cannot become saved user measurements. The compiled-stand
+diagnostic consumes the existing canonical producer and actual compiled operation
+IDs. Fixed projections show physical coordinates, with the final target clearly
+separated from unsupported intermediate states. The rectangle remains a small
+analytical unit case, not the stand model. Hypothetical stage selection records
+no actual construction, measurement or test event.
+
+Full intermediate 3D physical snapshots and component-specific mechanics remain
+[#153](https://github.com/olartgabo/forma/issues/153), owned here immediately after
+#146. Gabo retains fabrication/execution (#150), repair search (#151), and the
+interactive product viewer (#152). They consume the single physical producer;
+camera and exploded display offsets never change mechanical inputs.
 
 ## Remaining delivery gates
 
 1. Extend supported chronological stages and repair continuations through this
    shared producer; reject unsupported states until their geometry is validated.
-2. Bind typed numerical mass/COM/contact measurements and analysis policy to the
-   same approved plan, with evidence invalidation and stale-write checks.
+2. Validate the measured flow on actual observations; extend justified uncertainty
+   handling and supported contacts without treating point estimates as bounds.
 3. Complete immutable report storage/retrieval and measured mechanical cases;
    keep missing physical inputs explicit rather than choosing fixture values.
 4. Add bounded Muse tools, shared viewer overlays and actual physical observations

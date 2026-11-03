@@ -498,3 +498,35 @@ or completed construction. Unknown mass, device placement, material properties
 and physical observations remain unknown. Native independent review and passing
 checks still precede publication; provider STOPs and finite live-test controls
 remain unchanged. No physical success follows from this authorization.
+
+## D039: Measured stability and a separate engine lab, November 3, 2026
+
+Issue #17 now sequences ResniDev's #146–#149 separately from Gabo's #150–#152.
+The user requested continuing #146 and a direct way to assess the calculation
+engine. This work builds on PR #145 without merging that draft implicitly.
+
+The bounded measured model weighs the assembled stand including its connectors
+as one body covering all canonical source parts. It captures measured world COM,
+two explicit device orientation cases, actual rectangular support contacts and
+a chosen physical reserve. Typed immutable batches retain methods, instrument
+resolutions, observations, applicability assumptions and evidence references.
+They require reported assembly, owner scope, exact inventory/history and explicit
+confirmation. Corrections append records and invalidate previous calculations;
+measurement events do not complete construction or pass physical tests.
+
+The current numerical model evaluates point estimates. Instrument resolution is
+recorded and shown, but is not a conservative uncertainty bound or propagated
+error guarantee. Standard gravity and rigidity/stationary-load assumptions are
+explicit; sliding, retention, joint strength and deformation stay unverified.
+
+The loopback engine lab calls the same pure evaluator with hypothetical inputs.
+It has no project database, account, provider or evidence writes. Its examples
+test mathematics, and cannot be promoted to user measurements. Downloadable
+input/report JSON makes feedback reproducible independently of the app UI.
+
+User feedback correctly identified that a support rectangle does not demonstrate
+stage-aware 3D mechanics. The lab therefore inspects the actual compiled stand
+through the existing canonical producer, retaining the rectangle as an analytical
+unit case. Unsupported intermediate poses remain explicit rather than borrowing
+the final assembly's support. Issue #153 owns the next physical-stage extension;
+Gabo's fabrication, repair search and product viewer scopes remain separate.

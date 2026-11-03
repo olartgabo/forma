@@ -517,6 +517,29 @@ export type MeasureArgs = {
   readonly "method": "ruler" | "scale" | "protractor" | "known_reference";
 };
 
+export type MeasuredBody = {
+  readonly "mass_kg": number;
+  readonly "center_of_mass_m": Point3;
+  readonly "mass_resolution_kg": number;
+  readonly "position_resolution_m": number;
+  readonly "method": string;
+};
+
+export type MeasuredDeviceCase = {
+  readonly "orientation": "portrait" | "landscape";
+  readonly "device": MeasuredBody;
+  readonly "pose_description": string;
+};
+
+export type MeasuredSupportRectangle = {
+  readonly "x_min_m": number;
+  readonly "x_max_m": number;
+  readonly "y_min_m": number;
+  readonly "y_max_m": number;
+  readonly "resolution_m": number;
+  readonly "method": string;
+};
+
 export type Measurement = {
   readonly "value": (number | null);
   readonly "unit": "mm" | "g" | "deg";
@@ -661,6 +684,33 @@ export type StabilityInput = {
   readonly "cases": ReadonlyArray<LoadCase>;
   readonly "geometry_version": string;
   readonly "profile_version": string;
+};
+
+export type StabilityMeasurementRecord = {
+  readonly "id": string;
+  readonly "project_id": string;
+  readonly "plan_version_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "based_on_last_event_id": (string | null);
+  readonly "event_id": string;
+  readonly "evidence_id": string;
+  readonly "geometry_basis_hash": string;
+  readonly "recorded_at": string;
+  readonly "source_part_ids": ReadonlyArray<string>;
+  readonly "measurements": StabilityMeasurements;
+};
+
+export type StabilityMeasurements = {
+  readonly "stand": MeasuredBody;
+  readonly "cases": ReadonlyArray<MeasuredDeviceCase>;
+  readonly "support": MeasuredSupportRectangle;
+  readonly "required_margin_m": number;
+  readonly "stand_includes_all_parts_and_connectors": true;
+  readonly "actual_contacts_confirmed": true;
+  readonly "rigid_assembly_assumed": true;
+  readonly "horizontal_surface_confirmed": true;
+  readonly "stationary_device_assumed": true;
+  readonly "gravity_only_assumed": true;
 };
 
 export type StabilityOverlay = {

@@ -3,6 +3,7 @@
 Usage: uv run --locked python apps/web/tests/stability-fixture.py <output.json>
 """
 
+import copy
 import importlib
 import json
 import os
@@ -116,6 +117,92 @@ def main(output):
             assert fixture["blocked_response"]["report"] is None
             assert fixture["analytic_response"]["report"]["status"] == "modeled_pass"
             assert fixture["unknown_response"]["report"]["status"] != "modeled_pass"
+            # Exercise the default measured adapter using actual scoped routes.
+            # These are synthetic user reports in a temporary database, not evidence
+            # that any person assembled or measured an object.
+            measurements_test = importlib.import_module("test_stability_measurements")
+            measurement_body = measurements_test.capture_payload(
+                (
+                    client,
+                    f"/test/{project['id']}/stability/analyses",
+                    payload,
+                    Path(directory),
+                )
+            )
+            fixture["measurement_body"] = measurement_body
+            fixture["assembled_context"] = client.get(
+                base + "/stability/context",
+                params={"plan_version_id": version.version_id},
+                headers=t.AUTH,
+            ).json()
+            fixture["assembled_progress"] = client.get(
+                base + f"/versions/{version.version_id}/progress",
+                headers=t.AUTH,
+            ).json()
+            assembled = measurements_test.analyze(
+                client,
+                base + "/stability/analyses",
+                measurement_body,
+                measurement_body["expected_last_event_id"],
+            )
+            assert assembled.status_code == 200, assembled.text
+            fixture["assembled_response"] = assembled.json()
+            assert (
+                fixture["assembled_response"]["geometry_preview"]["stage"]
+                == "reported_assembled"
+            )
+            saved = client.post(
+                base + "/stability/measurements", headers=t.AUTH, json=measurement_body
+            )
+            assert saved.status_code == 200, saved.text
+            fixture["measurement_saved"] = saved.json()
+            fixture["measured_progress"] = client.get(
+                base + f"/versions/{version.version_id}/progress", headers=t.AUTH
+            ).json()
+            measured = measurements_test.analyze(
+                client,
+                base + "/stability/analyses",
+                measurement_body,
+                saved.json()["last_event_id"],
+            )
+            assert measured.status_code == 200, measured.text
+            fixture["measured_response"] = measured.json()
+            assert fixture["measured_response"]["report"]["status"] == "modeled_pass"
+            assert len(fixture["measured_response"]["report"]["overlays"]) == 2
+            changed = copy.deepcopy(measurement_body)
+            changed["expected_last_event_id"] = saved.json()["last_event_id"]
+            changed["idempotency_key"] = "synthetic-measurement-change"
+            changed["measurements"]["cases"][1]["device"]["center_of_mass_m"]["x"] = 1.0
+            fixture["changed_measurement_body"] = changed
+            saved_change = client.post(
+                base + "/stability/measurements", headers=t.AUTH, json=changed
+            )
+            assert saved_change.status_code == 200, saved_change.text
+            fixture["changed_measurement_saved"] = saved_change.json()
+            fixture["changed_measured_progress"] = client.get(
+                base + f"/versions/{version.version_id}/progress", headers=t.AUTH
+            ).json()
+            changed_report = measurements_test.analyze(
+                client,
+                base + "/stability/analyses",
+                changed,
+                saved_change.json()["last_event_id"],
+            )
+            assert changed_report.status_code == 200, changed_report.text
+            fixture["changed_measured_response"] = changed_report.json()
+            assert (
+                fixture["changed_measured_response"]["report"]["status"]
+                == "modeled_fail"
+            )
+            assert (
+                measurements_test.analyze(
+                    client,
+                    base + "/stability/analyses",
+                    changed,
+                    saved.json()["last_event_id"],
+                ).status_code
+                == 409
+            )
         Path(output).write_text(json.dumps(fixture), encoding="utf-8")
     print("wrote labeled synthetic stability fixture from actual API responses")
 

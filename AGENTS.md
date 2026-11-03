@@ -7,6 +7,20 @@ precedence. Record deliberate product changes in [docs/decisions.md](docs/decisi
 
 ## Ownership and coordination
 
+### November 3, 2026: current sequenced workstreams
+
+Issue #17 is the current assignment index. ResniDev owns #146 → #153 → #147 → #148 →
+#149 (measured stability, physical stage mechanics, reports/tools, synthesis, active measurement). Gabo owns
+#150 → #151, then #152 (fabrication, repair search, viewer). The old #139–#144
+issues are superseded historical specifications. PR #145 is the existing shared
+geometry/mechanics baseline, not completion of #146. Each owner delivers a full
+connected feature; shared registration/migration/mount edits remain serialized.
+The user explicitly requested a pure-engine test interface alongside #146;
+its labeled hypothetical examples must never become saved physical evidence.
+Issue #153 extends physical poses and stage mechanics, not Gabo's executable
+operation scheduler or interactive product viewer. The compiled-plan diagnostic
+exposes current unsupported stages; it does not complete that extension.
+
 ### November 3, 2026: engine completion takes priority
 
 The user explicitly directed that #142 must not remain incomplete because work

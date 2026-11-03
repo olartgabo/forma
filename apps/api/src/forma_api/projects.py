@@ -144,7 +144,11 @@ class ProjectStore:
                 "inventory_revision_id TEXT NOT NULL, body TEXT NOT NULL, "
                 "process TEXT NOT NULL, parameters TEXT NOT NULL)"
             )
-            for table in ("progress_events", "progress_material"):
+            for table in (
+                "progress_events",
+                "progress_material",
+                "stability_measurements",
+            ):
                 connection.execute(
                     f"CREATE TABLE IF NOT EXISTS {table} "
                     "(id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
@@ -408,7 +412,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 ),
             )
             connection.execute(
-                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?, ?, ?)",
+                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?, ?, ?, ?)",
                 (
                     owner,
                     project_id + ":progress",
@@ -416,6 +420,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                     project_id + ":materials",
                     project_id + ":adapt-simulate",
                     project_id + ":adapt-commit",
+                    project_id + ":stability-measurements",
                 ),
             )
             connection.execute(
