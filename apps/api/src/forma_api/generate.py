@@ -15,6 +15,10 @@ from forma_api.adapt import (
     ConnectorMeasurement,
     PanelDiff,
 )
+from forma_api.construction_runtime import (
+    ConstructionGenerateRequest,
+    ConstructionGenerateResult,
+)
 from forma_api.design_runtime import (
     DesignCandidateResult,
     DesignDiagnostics,
@@ -109,6 +113,8 @@ from forma_domain.repair_search_contracts import (
 )
 
 API_RECORDS = (
+    ConstructionGenerateRequest,
+    ConstructionGenerateResult,
     FabricationAssessment,
     StageAnalysisRequest,
     StageAnalysisResponse,

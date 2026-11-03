@@ -15,8 +15,9 @@
         <p class="eyebrow">FORMA / engine workbench</p>
         <h1>Build it. Turn it. Test it.</h1>
         <p class="notice">
-          <strong>Hypothetical inputs only.</strong> Nothing here is measured,
-          saved as physical evidence, or sent to a provider.
+          <strong>Plan and check before building.</strong> Material entries are
+          supplied by you, not independently verified. This workbench records no
+          physical work and sends nothing to a provider.
         </p>
       </header>
       <section id="assembly-workspace" aria-labelledby="assembly-title">
@@ -98,10 +99,10 @@
           </section>
           <section class="editor-card" aria-label="Assembly controls">
             <h3>Finished target</h3>
-            <p class="muted">
-              Shape examples assume 100 g per uniform panel, rigid connections
-              and full base contact. These invented loads do not scale with
-              dimensions or establish material strength.
+            <p class="muted" id="construction-physics-note">
+              Target dimensions describe the design. Actual mass and joint
+              strength remain unknown. Support and rigidity assumptions are not
+              physical observations.
             </p>
             <label
               >Shape<select id="construction-shape">
@@ -109,6 +110,11 @@
                 <option value="ramp">Ramp</option>
                 <option value="triangle">Flat triangle panel</option>
                 <option value="concave">Flat concave panel</option>
+                <option value="polygon">Flat polygon panel</option>
+                <option value="enclosure">
+                  Polygon enclosure — walls only
+                </option>
+                <option value="screen">Zigzag screen</option>
               </select></label
             >
             <div class="editor-grid">
@@ -132,16 +138,113 @@
                   value="100"
               /></label>
             </div>
+            <label id="construction-sides-label" hidden
+              >Sides / panels<input
+                id="construction-sides"
+                type="number"
+                min="3"
+                max="12"
+                step="1"
+                value="6"
+            /></label>
             <p class="muted" id="construction-height-note">
               Height applies to box and ramp targets. Triangle and concave
               targets are flat panels.
             </p>
+            <details id="construction-materials" open>
+              <summary>My materials</summary>
+              <p class="muted">
+                Add each available piece separately. Leave unknown measurements
+                blank. Saved material and process records can also be imported
+                below.
+              </p>
+              <div class="editor-grid two">
+                <label
+                  >Project reference<input
+                    id="materials-project"
+                    type="text"
+                    value="local-materials"
+                /></label>
+                <label
+                  >Inventory reference<input
+                    id="materials-revision"
+                    type="text"
+                    value="local-inventory"
+                /></label>
+              </div>
+              <p class="muted">
+                These local references do not connect to or update a saved
+                project.
+              </p>
+              <div id="materials-stocks"></div>
+              <button id="materials-add-sheet" type="button">+ Sheet</button>
+              <button id="materials-add-tape" type="button">+ Tape</button>
+              <fieldset>
+                <legend>Tools I have</legend>
+                <label class="check"
+                  ><input id="materials-tool-cutting" type="checkbox" />Scissors
+                  / cutting tool</label
+                >
+                <label class="check"
+                  ><input
+                    id="materials-tool-ruler"
+                    type="checkbox"
+                  />Ruler</label
+                >
+                <label class="check"
+                  ><input
+                    id="materials-tool-marker"
+                    type="checkbox"
+                  />Marker</label
+                >
+                <label class="check"
+                  ><input id="materials-safe-tools" type="checkbox" />I have
+                  checked that these tools are suitable for this work</label
+                >
+              </fieldset>
+              <div class="editor-grid two">
+                <label
+                  >Measured cut width / kerf (mm)<input
+                    id="materials-kerf"
+                    type="number"
+                    min="0"
+                    step="any"
+                /></label>
+                <label
+                  >Required edge margin (mm)<input
+                    id="materials-margin"
+                    type="number"
+                    min="0"
+                    step="any"
+                /></label>
+              </div>
+              <p class="muted">
+                Numbers alone do not establish a reviewed cutting process or
+                joint strength. Import the corresponding process and tested
+                joint records to assess fabrication.
+              </p>
+              <div id="materials-joints"></div>
+              <details>
+                <summary>Import reviewed material and process records</summary>
+                <label
+                  >Material context JSON<textarea
+                    id="materials-json"
+                    rows="6"
+                    spellcheck="false"
+                  ></textarea>
+                </label>
+                <button id="materials-import" type="button">
+                  Load material context
+                </button>
+                <p id="materials-import-status" role="status"></p>
+              </details>
+            </details>
             <label class="check"
               ><input id="construction-invented-stock" type="checkbox" />Use
               invented stock and process assumptions to demonstrate fabrication
               checks</label
             >
-            <p class="muted">
+            <p class="muted" id="construction-synthetic-note" hidden>
               Invented resources: 1000 × 1000 mm stock, 2 mm thick; 5000 mm
               tape; 2 mm kerf, 4 mm margin, 80 mm tape per joint. These are
               demonstration assumptions, not approval to build.
@@ -152,6 +255,18 @@
             <p id="construction-status" role="status">
               Choose the target dimensions, then generate.
             </p>
+            <details id="construction-pieces">
+              <summary>Piece names and references</summary>
+              <p class="muted">
+                The same reference identifies a piece in every step and diagram.
+                Names can be supplied by you or proposed by MetaMuse; a name
+                does not verify a material or measurement. Rename here, then
+                regenerate.
+              </p>
+              <div id="construction-piece-catalog">
+                Generate a target to list its pieces.
+              </div>
+            </details>
             <details id="construction-custom">
               <summary>Custom target and manual stage editor</summary>
               <p>

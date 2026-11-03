@@ -71,6 +71,11 @@ Rectangular-panel proposals can be assessed through the real fabrication engine
 using an explicitly selected synthetic resource fixture. This never approves or
 records physical work, and unsupported manufacturing operations remain blocked.
 
+The [material and naming extension](../../docs/handoffs/material-construction.md)
+accepts supplied stock/process records, variable-sided panel targets and stable
+piece references. The authenticated project consumer resolves saved inventory
+and trusted context server-side; the lab labels locally imported data unverified.
+
 The primary [assembly editor](../../docs/handoffs/generic-assembly-diagnostic.md)
 authors polygonal panels, edge joints and explicit physical stages. The generic
 `evaluate_assembly` producer validates these declarations without stand-specific

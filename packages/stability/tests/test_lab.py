@@ -127,7 +127,9 @@ def post(server, path="/evaluate", value=None, **headers):
 
 def test_http_serves_real_results_and_known_assets_only(server):
     with urlopen(server, timeout=5) as response:
-        assert b"Hypothetical inputs only" in response.read()
+        page = b" ".join(response.read().split())
+        assert b"not independently verified" in page
+        assert b"records no physical work" in page
         assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
     with post(server) as response:
         result = json.load(response)

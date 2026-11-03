@@ -434,6 +434,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
             return result
 
     from forma_api.adapt import adapt_router
+    from forma_api.construction_runtime import construction_router
     from forma_api.media import media_router
     from forma_api.plans import plan_router
     from forma_api.progress import progress_router
@@ -447,6 +448,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     from forma_api.routes.stability import stability_router
 
     router.include_router(media_router(store, authenticate))
+    router.include_router(construction_router(store, authenticate))
     router.include_router(intake_router(store, authenticate))
     router.include_router(plan_router(store, authenticate))
     router.include_router(progress_router(store, authenticate))

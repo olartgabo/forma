@@ -7,6 +7,17 @@ precedence. Record deliberate product changes in [docs/decisions.md](docs/decisi
 
 ## Ownership and coordination
 
+### November 3, 2026: material-bound proposals and piece references
+
+The user requests construction proposals using actual inventory, broader shapes,
+and consistent classified/named pieces across steps and diagrams. MetaMuse may
+propose geometry, names and roles; the engine validates identities, constraints
+and proposed operations. It does not replace model reasoning or establish visual
+or physical observations. Reuse Gabo's fabrication authority and trusted saved
+inventory/context. Local imported material records are explicitly unverified;
+missing process/profile evidence cannot be replaced with lab fixtures. Fresh
+construction proposals must not bypass history-aware repair of an active build.
+
 ### November 3, 2026: automatic construction proposals
 
 The user requests automatic construction-step generation for different target

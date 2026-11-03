@@ -238,6 +238,20 @@ export type Constraints = {
   readonly "allow_purchases"?: boolean;
 };
 
+export type ConstructionCutProcess = {
+  readonly "kerf_min_mm"?: (number | null);
+  readonly "edge_margin_min_mm"?: (number | null);
+  readonly "evidence"?: ReadonlyArray<Evidence>;
+};
+
+export type ConstructionJointMaterial = {
+  readonly "joint_id": string;
+  readonly "profile_id": string;
+  readonly "stock_id": string;
+  readonly "length_mm": number;
+  readonly "confirmed_accessible"?: (boolean | null);
+};
+
 export type ConstructionOperationBinding = {
   readonly "action": "place" | "join" | "inspect";
   readonly "subject_id": string;
@@ -248,13 +262,28 @@ export type ConstructionPlan = {
   readonly "generator_version": string;
   readonly "target_hash": string;
   readonly "request": ConstructionRequest;
+  readonly "piece_catalog": ReadonlyArray<PieceReference>;
   readonly "steps": ReadonlyArray<ConstructionStep>;
   readonly "limitations": ReadonlyArray<string>;
 };
 
 export type ConstructionRequest = {
   readonly "target": GenericAssemblyRequest;
+  readonly "piece_annotations"?: ReadonlyArray<PieceAnnotation>;
   readonly "operation_bindings"?: ReadonlyArray<ConstructionOperationBinding>;
+};
+
+export type ConstructionResources = {
+  readonly "project_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "active_version_id"?: (string | null);
+  readonly "stocks"?: ReadonlyArray<Stock>;
+  readonly "declared_tools"?: (ReadonlyArray<string> | null);
+  readonly "safe_tools_confirmed"?: boolean;
+  readonly "cut_process"?: (ConstructionCutProcess | null);
+  readonly "joint_profiles"?: ReadonlyArray<JointProfile>;
+  readonly "profile_evidence"?: ReadonlyArray<Evidence>;
+  readonly "joints"?: ReadonlyArray<ConstructionJointMaterial>;
 };
 
 export type ConstructionStep = {
@@ -793,6 +822,23 @@ export type PhysicalEvent = {
   readonly "observation": string;
   readonly "verification_state": "not_checked" | "user_confirmed" | "vision_observed" | "failed" | "unknown" | "invalidated";
   readonly "test_result"?: ("passed" | "failed" | "not_attempted" | null);
+};
+
+export type PieceAnnotation = {
+  readonly "part_id": string;
+  readonly "display_name": string;
+  readonly "role"?: (string | null);
+  readonly "proposed_classification"?: (string | null);
+  readonly "source": "user" | "model";
+};
+
+export type PieceReference = {
+  readonly "part_id": string;
+  readonly "reference": string;
+  readonly "display_name": string;
+  readonly "geometry_class": "triangle" | "rectangle" | "convex_polygon" | "concave_polygon" | "multi_facet";
+  readonly "role"?: (string | null);
+  readonly "annotation"?: (PieceAnnotation | null);
 };
 
 export type Point3 = {

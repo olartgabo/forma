@@ -13,6 +13,19 @@
     last = null;
   let generated = null,
     generatedIndex = 0;
+  let pieceAnnotations = [],
+    materialCounter = 0;
+  let resources = {
+    project_id: "local-materials",
+    inventory_revision_id: "local-inventory",
+    stocks: [],
+    declared_tools: [],
+    safe_tools_confirmed: false,
+    cut_process: null,
+    joint_profiles: [],
+    profile_evidence: [],
+    joints: [],
+  };
   const camera = { yaw: 315, pitch: 30, zoom: 1 };
   const pointers = new Map();
   let frame;
@@ -85,28 +98,438 @@
     ({ cut_rect: "Cut panels", tape_joint: "Tape joint", inspect: "Inspect" })[
       type
     ] ?? type.replaceAll("_", " ");
+  const pieceLabel = (id) => {
+    const piece = generated?.construction.piece_catalog?.find(
+      (p) => p.part_id === id,
+    );
+    return piece
+      ? `${piece.reference} · ${piece.display_name}`
+      : (editor.panels.find((p) => p.id === id)?.label ?? id);
+  };
+  function targetChanged() {
+    revision++;
+    $("construction-status").textContent =
+      "Target or materials changed. Generate again; any displayed sequence belongs to the previous inputs.";
+  }
+  const unknownMeasurement = () => ({
+    value: null,
+    unit: "mm",
+    source: "unknown",
+    confirmed: false,
+  });
+  function materialField(parent, label, value, change, type = "number") {
+    return field(
+      parent,
+      label,
+      value,
+      (v) => {
+        change(v);
+        targetChanged();
+      },
+      type,
+    );
+  }
+  function materialCheck(parent, label, value, change) {
+    check(parent, label, value, (v) => {
+      change(v);
+      targetChanged();
+    });
+  }
+  function renderMaterials() {
+    const list = $("materials-stocks");
+    list.replaceChildren();
+    resources.stocks.forEach((stock) => {
+      const card = node("fieldset");
+      card.append(
+        node(
+          "legend",
+          `${stock.kind === "tape" ? "Tape" : "Sheet"}: ${stock.id}`,
+        ),
+      );
+      materialField(
+        card,
+        "Material reference",
+        stock.id,
+        (v) => {
+          stock.id = v;
+        },
+        "text",
+      );
+      choose(
+        card,
+        "Material",
+        [
+          ["cardboard", "Cardboard"],
+          ["paperboard", "Paperboard"],
+          ["other_supported", "Other supported material"],
+        ],
+        stock.material,
+        (v) => {
+          stock.material = v;
+          targetChanged();
+        },
+      );
+      choose(
+        card,
+        "Condition",
+        [
+          ["uncertain", "Not checked"],
+          ["usable", "Usable"],
+          ["damaged", "Damaged"],
+        ],
+        stock.condition,
+        (v) => {
+          stock.condition = v;
+          targetChanged();
+        },
+      );
+      const dimensions = node("div", null, { class: "editor-grid two" });
+      const keys =
+        stock.kind === "tape"
+          ? [
+              ["width_mm", "Tape width (mm)"],
+              ["remaining_length_mm", "Remaining length (mm)"],
+            ]
+          : [
+              ["width_mm", "Width (mm)"],
+              ["height_mm", "Depth (mm)"],
+              ["thickness_mm", "Thickness (mm)"],
+            ];
+      for (const [key, title] of keys)
+        materialField(dimensions, title, stock[key].value, (v) => {
+          stock[key] =
+            v === null
+              ? unknownMeasurement()
+              : {
+                  value: v,
+                  unit: "mm",
+                  source: "user_ruler",
+                  confirmed: false,
+                };
+          // A dimensional edit invalidates the old region declaration.
+          if (stock.kind !== "tape") stock.usable_regions = [];
+          renderMaterials();
+        });
+      card.append(dimensions);
+      materialCheck(
+        card,
+        "I measured and confirm these entered dimensions",
+        keys.every(([k]) => stock[k].value !== null && stock[k].confirmed),
+        (confirmed) => {
+          for (const [key] of keys)
+            if (stock[key].value !== null)
+              stock[key] = { ...stock[key], confirmed };
+        },
+      );
+      if (stock.kind !== "tape") {
+        materialCheck(
+          card,
+          "The entire rectangle is available and undamaged",
+          !!stock.usable_regions?.length,
+          (confirmed) => {
+            if (
+              confirmed &&
+              stock.width_mm.value > 0 &&
+              stock.height_mm.value > 0
+            )
+              stock.usable_regions = [
+                {
+                  id: `${stock.id}-region`,
+                  geometry: {
+                    x: 0,
+                    y: 0,
+                    width: stock.width_mm.value,
+                    height: stock.height_mm.value,
+                  },
+                },
+              ];
+            else {
+              stock.usable_regions = [];
+              if (confirmed)
+                $("assembly-error").textContent =
+                  "Enter the sheet width and depth before confirming its available rectangle.";
+            }
+            renderMaterials();
+          },
+        );
+        if (stock.usable_regions?.length)
+          card.append(
+            node(
+              "p",
+              `${stock.usable_regions.length} declared usable region(s). Imported regions are preserved until a dimension is changed.`,
+              { class: "muted" },
+            ),
+          );
+      }
+      const remove = node("button", "Remove material", { type: "button" });
+      remove.addEventListener("click", () => {
+        resources.stocks = resources.stocks.filter((s) => s !== stock);
+        targetChanged();
+        renderMaterials();
+        renderMaterialJoints();
+      });
+      card.append(remove);
+      list.append(card);
+    });
+  }
+  function renderMaterialJoints() {
+    const list = $("materials-joints");
+    list.replaceChildren();
+    const joints = generated?.construction.request.target.assembly.joints ?? [];
+    if (!joints.length) return;
+    list.append(
+      node("h4", "Connections for this target"),
+      node(
+        "p",
+        "Choose a reviewed joint profile and connector amount for each connection. Blank choices remain unresolved.",
+        { class: "muted" },
+      ),
+    );
+    const facets = new Map(
+      generated.construction.request.target.assembly.parts.flatMap((p) =>
+        p.facets.map((f) => [f.facet_id, p.part_id]),
+      ),
+    );
+    for (const joint of joints) {
+      const card = node("fieldset");
+      card.append(
+        node(
+          "legend",
+          `${pieceLabel(facets.get(joint.first.facet_id))} + ${pieceLabel(facets.get(joint.second.facet_id))}`,
+        ),
+      );
+      let binding = resources.joints.find((j) => j.joint_id === joint.joint_id);
+      if (!binding) {
+        binding = {
+          joint_id: joint.joint_id,
+          profile_id: "",
+          stock_id: "",
+          length_mm: null,
+          confirmed_accessible: null,
+        };
+        resources.joints.push(binding);
+      }
+      choose(
+        card,
+        "Reviewed joint profile",
+        [
+          ["", "Select a profile"],
+          ...resources.joint_profiles.map((p) => [
+            p.id,
+            `${p.id} (${p.status})`,
+          ]),
+        ],
+        binding.profile_id,
+        (v) => {
+          binding.profile_id = v;
+          targetChanged();
+        },
+      );
+      choose(
+        card,
+        "Tape reference",
+        [
+          ["", "Select tape"],
+          ...resources.stocks
+            .filter((s) => s.kind === "tape")
+            .map((s) => [s.id, s.id]),
+        ],
+        binding.stock_id,
+        (v) => {
+          binding.stock_id = v;
+          targetChanged();
+        },
+      );
+      materialField(
+        card,
+        "Tape length for this connection (mm)",
+        binding.length_mm,
+        (v) => {
+          binding.length_mm = v;
+        },
+      );
+      materialCheck(
+        card,
+        "I checked that both joining surfaces are accessible",
+        binding.confirmed_accessible === true,
+        (v) => {
+          binding.confirmed_accessible = v ? true : null;
+        },
+      );
+      list.append(card);
+    }
+  }
+  function renderPieceCatalog() {
+    const list = $("construction-piece-catalog");
+    list.replaceChildren();
+    for (const piece of generated?.construction.piece_catalog ?? []) {
+      const card = node("fieldset", null, { "data-piece-id": piece.part_id });
+      card.append(
+        node("legend", piece.reference),
+        node(
+          "p",
+          `Geometry: ${piece.geometry_class.replaceAll("_", " ")}. Name source: ${piece.annotation?.source ?? "engine fallback"}.`,
+          { class: "muted" },
+        ),
+      );
+      const input = materialField(
+        card,
+        "Piece name",
+        piece.display_name,
+        (name) => {
+          pieceAnnotations = pieceAnnotations.filter(
+            (p) => p.part_id !== piece.part_id,
+          );
+          pieceAnnotations.push({
+            part_id: piece.part_id,
+            display_name: name.trim(),
+            role: piece.role,
+            proposed_classification: null,
+            source: "user",
+          });
+        },
+        "text",
+      );
+      input.maxLength = 120;
+      list.append(card);
+    }
+  }
+  function materialPayload() {
+    const output = clone(resources);
+    output.project_id = $("materials-project").value.trim();
+    output.inventory_revision_id = $("materials-revision").value.trim();
+    output.safe_tools_confirmed = $("materials-safe-tools").checked;
+    const tools = [
+      ["materials-tool-cutting", "scissors"],
+      ["materials-tool-ruler", "ruler"],
+      ["materials-tool-marker", "marker"],
+    ];
+    const represented = new Set(tools.map(([, name]) => name));
+    output.declared_tools = [
+      ...(resources.declared_tools ?? []).filter((t) => !represented.has(t)),
+      ...tools.filter(([id]) => $(id).checked).map(([, name]) => name),
+    ];
+    const kerf = $("materials-kerf").value,
+      margin = $("materials-margin").value;
+    output.cut_process =
+      kerf !== "" || margin !== "" || resources.cut_process
+        ? {
+            ...(resources.cut_process ?? { evidence: [] }),
+            kerf_min_mm: kerf === "" ? null : Number(kerf),
+            edge_margin_min_mm: margin === "" ? null : Number(margin),
+          }
+        : null;
+    output.joints = output.joints.filter(
+      (j) => j.profile_id && j.stock_id && j.length_mm !== null,
+    );
+    return output;
+  }
+  for (const kind of ["sheet", "tape"])
+    $("materials-add-" + kind).addEventListener("click", () => {
+      let id;
+      do {
+        id = `${kind}-${++materialCounter}`;
+      } while (resources.stocks.some((s) => s.id === id));
+      resources.stocks.push({
+        id,
+        kind,
+        material: kind === "tape" ? "other_supported" : "cardboard",
+        width_mm: unknownMeasurement(),
+        height_mm: unknownMeasurement(),
+        thickness_mm: unknownMeasurement(),
+        remaining_length_mm: unknownMeasurement(),
+        condition: "uncertain",
+        usable_regions: [],
+      });
+      targetChanged();
+      renderMaterials();
+      renderMaterialJoints();
+    });
+  $("materials-import").addEventListener("click", () => {
+    try {
+      const parsed = JSON.parse($("materials-json").value);
+      const next = parsed.request?.resources ?? parsed.resources ?? parsed;
+      if (
+        !next.project_id ||
+        !next.inventory_revision_id ||
+        !Array.isArray(next.stocks)
+      )
+        throw Error(
+          "Provide a material context with project_id, inventory_revision_id and stocks. It is validated by the engine when you generate.",
+        );
+      resources = {
+        joint_profiles: [],
+        profile_evidence: [],
+        joints: [],
+        ...clone(next),
+      };
+      $("materials-project").value = resources.project_id;
+      $("materials-revision").value = resources.inventory_revision_id;
+      $("materials-safe-tools").checked =
+        resources.safe_tools_confirmed === true;
+      for (const [id, tool] of [
+        ["materials-tool-cutting", "scissors"],
+        ["materials-tool-ruler", "ruler"],
+        ["materials-tool-marker", "marker"],
+      ])
+        $(id).checked = resources.declared_tools?.includes(tool) ?? false;
+      $("materials-kerf").value = resources.cut_process?.kerf_min_mm ?? "";
+      $("materials-margin").value =
+        resources.cut_process?.edge_margin_min_mm ?? "";
+      $("construction-invented-stock").checked = false;
+      updateMaterialMode();
+      renderMaterials();
+      renderMaterialJoints();
+      targetChanged();
+      $("materials-import-status").textContent =
+        "Material context loaded as supplied data. Generate to validate it; no saved inventory or physical history was changed.";
+    } catch (error) {
+      $("materials-import-status").textContent = error.message;
+    }
+  });
+  function updateMaterialMode() {
+    const synthetic = $("construction-invented-stock").checked;
+    $("construction-materials").hidden = synthetic;
+    $("construction-synthetic-note").hidden = !synthetic;
+    $("construction-physics-note").textContent = synthetic
+      ? "Synthetic examples use invented loads and declared support assumptions, not measured material strength."
+      : "Target dimensions describe the design. Actual mass and joint strength remain unknown. Support and rigidity assumptions are not physical observations.";
+  }
+  $("construction-invented-stock").addEventListener(
+    "change",
+    updateMaterialMode,
+  );
+  for (const id of [
+    "materials-project",
+    "materials-revision",
+    "materials-safe-tools",
+    "materials-tool-cutting",
+    "materials-tool-ruler",
+    "materials-tool-marker",
+    "materials-kerf",
+    "materials-margin",
+  ])
+    $(id).addEventListener("change", targetChanged);
   function humanText(text) {
     let value = String(text);
     for (const operation of generated?.fabrication_plan?.operations ?? []) {
       value = value.replaceAll(operation.id, operationName(operation.type));
-      if (operation.args?.stock_id)
+      if (
+        operation.args?.stock_id &&
+        generated.fabrication_basis === "explicit_synthetic_fixture"
+      )
         value = value.replaceAll(
           operation.args.stock_id,
           operation.type === "tape_joint" ? "tape stock" : "sheet stock",
         );
     }
-    return value.replace(
-      /fab-[a-f0-9]+-[a-z0-9-]+/g,
-      "referenced resource (see exact report)",
-    );
+    // Preserve arbitrary user/model names. Only known operation/resource IDs
+    // above are presentation aliases; names are never rewritten by a pattern.
+    return value;
   }
   function stepTitle(step) {
     if (step.action === "inspect") return "Inspect assembly";
-    const parts = step.part_ids.map(
-      (id) =>
-        editor.panels.find((p) => p.id === id)?.label ??
-        id.replaceAll("_", " "),
-    );
+    const parts = step.part_ids.map(pieceLabel);
     return `${step.action === "place" ? "Place" : "Join"} ${parts.join(" + ")}`;
   }
   function render() {
@@ -464,9 +887,14 @@
       required_margin_mm: 0,
     };
     current = selected = 0;
+    pieceAnnotations = [];
+    resources.joints = [];
     generated = null;
     $("construction-instruction").replaceChildren();
     $("construction-fabrication").replaceChildren();
+    $("construction-piece-catalog").textContent =
+      "Generate a target to list its pieces.";
+    $("materials-joints").replaceChildren();
     last = null;
     stale();
     render();
@@ -519,7 +947,7 @@
     target.append(
       node(
         "p",
-        `Future panels excluded from physics: ${(data.future_part_ids ?? []).map((id) => last.editor?.panels.find((p) => p.id === id)?.label ?? id).join(", ") || "none"}.`,
+        `Future panels excluded from physics: ${(data.future_part_ids ?? []).map(pieceLabel).join(", ") || "none"}.`,
       ),
     );
     reports.forEach((report, index) => {
@@ -594,6 +1022,13 @@
       "aria-label": "Evaluated assembly geometry; camera rotation only",
     });
     const colors = ["#8fb9a8", "#e7c48a", "#adc3dc", "#c5b2d6", "#e3b4a5"];
+    // Numbers are view callouts only. The full catalog determines them, so a
+    // piece keeps its callout when earlier/future parts are hidden by a step.
+    const catalog = [...(generated?.construction.piece_catalog ?? [])].sort(
+      (a, b) => (a.part_id < b.part_id ? -1 : a.part_id > b.part_id ? 1 : 0),
+    );
+    const callouts = new Map(catalog.map((p, i) => [p.part_id, i + 1]));
+    const markers = [];
     facets
       .map((f, i) => ({ f, i, depth: project(f.centroid)[2] }))
       .sort((a, b) => a.depth - b.depth)
@@ -609,6 +1044,39 @@
           }),
         );
         const at = xy(f.centroid);
+        const callout = callouts.get(f.part_id);
+        if (callout) {
+          const marker = svg("g", {
+            "data-piece-id": f.part_id,
+            "data-callout": callout,
+          });
+          const title = svg("title", {});
+          title.textContent = pieceLabel(f.part_id);
+          const number = svg("text", {
+            x: at[0],
+            y: at[1],
+            "text-anchor": "middle",
+            "dominant-baseline": "central",
+            fill: "#183e31",
+            "font-size": 24,
+            "font-weight": 700,
+          });
+          number.textContent = String(callout);
+          marker.append(
+            title,
+            svg("circle", {
+              cx: at[0],
+              cy: at[1],
+              r: 21,
+              fill: "white",
+              stroke: "#36574b",
+              "stroke-width": 2,
+            }),
+            number,
+          );
+          markers.push(marker);
+          return;
+        }
         const label = svg("text", {
           x: at[0],
           y: at[1],
@@ -616,12 +1084,30 @@
           fill: "#183e31",
           "font-size": 14,
         });
-        label.textContent =
-          last.editor?.panels.find((p) => p.id === f.part_id)?.label ??
-          f.part_id;
+        label.textContent = pieceLabel(f.part_id);
+        const title = svg("title", {});
+        title.textContent = pieceLabel(f.part_id);
+        label.append(title);
         image.append(label);
       });
+    image.append(...markers);
     viewport.append(image);
+    if (catalog.length) {
+      const present = new Set(facets.map((f) => f.part_id));
+      const legend = node("ol", null, {
+        "aria-label": "Diagram piece references",
+        "data-piece-legend": "true",
+      });
+      for (const piece of catalog.filter((p) => present.has(p.part_id))) {
+        const item = node("li", `${piece.display_name} · ${piece.reference}`, {
+          value: callouts.get(piece.part_id),
+          "data-piece-id": piece.part_id,
+        });
+        item.style.overflowWrap = "anywhere";
+        legend.append(item);
+      }
+      viewport.append(legend);
+    }
   }
   function cameraDraw() {
     camera.yaw = ((camera.yaw % 360) + 360) % 360;
@@ -821,14 +1307,16 @@
       fabrication.append(
         node(
           "p",
-          "No fabrication approval. Opt in to invented stock/process assumptions to run a clearly hypothetical demonstration.",
+          "No fabrication approval. Resolve the listed material, process or geometry blockers, then generate again.",
         ),
       );
     else {
       fabrication.append(
         node(
           "p",
-          `Hypothetical fabrication report: ${report.status ?? "inspect detailed checks"}. Invented resources are not physical evidence.`,
+          generated.fabrication_basis === "explicit_synthetic_fixture"
+            ? `Hypothetical fabrication report: ${report.status ?? "inspect detailed checks"}. Invented resources are not physical evidence.`
+            : `Supplied-material fabrication report: ${report.status ?? "inspect detailed checks"}. Entries are not independently verified; no operation is completed or approved.`,
         ),
       );
       for (const operation of report.operations ?? []) {
@@ -865,16 +1353,22 @@
     $("construction-status").textContent =
       "Generating construction steps from the finished target...";
     const synthetic_fabrication = $("construction-invented-stock").checked;
+    const context = {
+      synthetic_fabrication,
+      piece_annotations: pieceAnnotations,
+    };
+    if (!synthetic_fabrication) context.resources = materialPayload();
     const payload = custom
-      ? { editor, stage_index: current, synthetic_fabrication }
+      ? { editor, stage_index: current, ...context }
       : {
           shape: {
             kind: $("construction-shape").value,
             width_mm: Number($("construction-width").value),
             depth_mm: Number($("construction-depth").value),
             height_mm: Number($("construction-height").value),
+            sides: Number($("construction-sides").value),
           },
-          synthetic_fabrication,
+          ...context,
         };
     try {
       const response = await fetch("/generate-construction", {
@@ -888,6 +1382,7 @@
         throw Error(value.error || "Construction generation failed");
       if (own !== revision) return;
       generated = value;
+      pieceAnnotations = clone(value.request.piece_annotations ?? []);
       generatedIndex = 0;
       if (value.editor) {
         editor = value.editor;
@@ -896,6 +1391,8 @@
       }
       render();
       showGenerated();
+      renderPieceCatalog();
+      renderMaterialJoints();
       $("construction-status").textContent =
         `${generated.construction.steps.length} steps generated by the engine. All steps are planned, not completed.`;
     } catch (error) {
@@ -911,12 +1408,37 @@
     }
   }
   function updateShapeControls() {
-    const flat = ["triangle", "concave"].includes(
+    const flat = ["triangle", "concave", "polygon"].includes(
       $("construction-shape").value,
     );
     $("construction-height").disabled = flat;
+    const hasSides = ["polygon", "enclosure", "screen"].includes(
+      $("construction-shape").value,
+    );
+    $("construction-sides-label").hidden = !hasSides;
+    $("construction-sides-label").style.display = hasSides ? "block" : "none";
+    $("construction-sides").disabled = !hasSides;
+    $("construction-height-note").textContent = flat
+      ? "Flat panel: width and depth define its geometry. Polygon cutting remains subject to supported fabrication operations."
+      : ["enclosure", "screen"].includes($("construction-shape").value)
+        ? "Rectangular wall panels. Ground support and joint strength are not inferred from the shape."
+        : "Width, depth and height define the finished target.";
   }
-  $("construction-shape").addEventListener("change", updateShapeControls);
+  $("construction-shape").addEventListener("change", () => {
+    pieceAnnotations = [];
+    resources.joints = [];
+    $("materials-joints").replaceChildren();
+    $("construction-piece-catalog").textContent =
+      "Generate the changed target to list its pieces.";
+    updateShapeControls();
+  });
+  $("construction-sides").addEventListener("change", () => {
+    pieceAnnotations = [];
+    resources.joints = [];
+    $("materials-joints").replaceChildren();
+    $("construction-piece-catalog").textContent =
+      "Generate the changed target to list its pieces.";
+  });
   updateShapeControls();
   $("construction-generate").addEventListener("click", () => generate(false));
   $("construction-generate-custom").addEventListener("click", () =>
@@ -927,13 +1449,10 @@
     "construction-width",
     "construction-depth",
     "construction-height",
+    "construction-sides",
     "construction-invented-stock",
   ])
-    $(id).addEventListener("change", () => {
-      revision++;
-      $("construction-status").textContent =
-        "Target changed. Generate again; any displayed sequence belongs to the previous target.";
-    });
+    $(id).addEventListener("change", targetChanged);
   function example(kind) {
     const stages = [
       { id: "stage-1", label: "First panel on the table" },

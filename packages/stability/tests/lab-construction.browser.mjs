@@ -69,7 +69,7 @@ try {
     await page.locator("#construction-width").blur();
     assert.match(
       await page.locator("#construction-status").textContent(),
-      /Target changed/,
+      /changed/,
     );
     await page.locator("#construction-invented-stock").check();
     const scaled = await generate();

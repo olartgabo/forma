@@ -15,8 +15,9 @@ from forma_domain.construction_plan import (
 )
 from forma_domain.generic_assembly import GenericAssemblyRequest
 from forma_stability.generic_assembly import evaluate_assembly
+from forma_stability.piece_references import build_piece_catalog, piece_caption
 
-VERSION = "target-graph-construction-v1"
+VERSION = "target-graph-construction-v2"
 
 
 def bind_operations(plan: ConstructionPlan, bindings) -> ConstructionPlan:
@@ -26,7 +27,9 @@ def bind_operations(plan: ConstructionPlan, bindings) -> ConstructionPlan:
     permissions or existence. The fabrication bridge performs that validation.
     """
     request = ConstructionRequest(
-        target=plan.request.target, operation_bindings=bindings
+        target=plan.request.target,
+        piece_annotations=plan.request.piece_annotations,
+        operation_bindings=bindings,
     )
     subjects = {
         (
@@ -81,6 +84,8 @@ def generate_construction(request: ConstructionRequest) -> ConstructionPlan:
     # failed target is still useful for diagnosis, but never becomes approval.
     final = evaluate_assembly(target)
     assembly = target.assembly
+    catalog = build_piece_catalog(assembly, request.piece_annotations)
+    captions = {piece.part_id: piece_caption(piece) for piece in catalog}
     part_ids = {p.part_id for p in assembly.parts}
     joints = {j.joint_id: j for j in assembly.joints}
     if set(final.present_part_ids) != part_ids or set(final.active_joint_ids) != set(
@@ -222,7 +227,7 @@ def generate_construction(request: ConstructionRequest) -> ConstructionPlan:
             {pid},
             None,
             (),
-            f"Position source part {pid} at its supplied target pose; check its contact and support before releasing it.",
+            f"Position {captions[pid]} at its supplied target pose; check its contact and support before releasing it.",
         )
         for jid in sorted(set(joints) - joined):
             members = joint_parts[jid]
@@ -234,7 +239,7 @@ def generate_construction(request: ConstructionRequest) -> ConstructionPlan:
                     members,
                     jid,
                     [place_steps[p] for p in members],
-                    f"Connect declared joint {jid} between {' and '.join(sorted(members))}; its connector method and access must pass fabrication review.",
+                    f"Connect declared joint {jid} between {' and '.join(captions[p] for p in sorted(members))}; its connector method and access must pass fabrication review.",
                 )
     append(
         "inspect",
@@ -253,6 +258,7 @@ def generate_construction(request: ConstructionRequest) -> ConstructionPlan:
         generator_version=VERSION,
         target_hash=digest,
         request=request,
+        piece_catalog=catalog,
         steps=tuple(steps),
         limitations=(
             "Generated positions and connections are hypothetical assembly proposals, not cutting instructions, fabrication readiness, collision-free motions or completed work.",

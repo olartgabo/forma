@@ -2,10 +2,11 @@
 
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .generic_assembly import GenericAssemblyRequest, GenericAssemblyResult
 from .models import ID, Record, Text
+from .piece_references import PieceAnnotation, PieceReference
 from .stability_contracts import ContentHash
 
 ConstructionAction = Literal["place", "join", "inspect"]
@@ -21,9 +22,21 @@ class ConstructionOperationBinding(Record):
 
 class ConstructionRequest(Record):
     target: GenericAssemblyRequest
+    piece_annotations: tuple[PieceAnnotation, ...] = Field(default=(), max_length=16)
     operation_bindings: tuple[ConstructionOperationBinding, ...] = Field(
         default=(), max_length=64
     )
+
+    @model_validator(mode="after")
+    def annotation_references(self):
+        ids = [annotation.part_id for annotation in self.piece_annotations]
+        if len(set(ids)) != len(ids) or not set(ids) <= {
+            part.part_id for part in self.target.assembly.parts
+        }:
+            raise ValueError(
+                "Piece annotations must uniquely reference existing part IDs"
+            )
+        return self
 
 
 class ConstructionStep(Record):
@@ -44,5 +57,6 @@ class ConstructionPlan(Record):
     generator_version: Text
     target_hash: ContentHash
     request: ConstructionRequest
+    piece_catalog: tuple[PieceReference, ...] = Field(min_length=1, max_length=16)
     steps: tuple[ConstructionStep, ...] = Field(min_length=1, max_length=64)
     limitations: tuple[Text, ...] = Field(min_length=1, max_length=32)

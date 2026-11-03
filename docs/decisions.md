@@ -645,3 +645,21 @@ stock and unsupported process conditions remain blocked. This integrates the
 latest fabrication safeguards without creating a competing scheduler or recording
 completion. Production observed stock/process capture and physical approval remain
 separate. See [generated construction](handoffs/generated-construction.md).
+
+## D047: Material-bound construction and shared piece references, November 3, 2026
+
+The user requests real-material construction proposals, more shapes and a common
+piece vocabulary for MetaMuse, plans and diagrams. A supplied-material adapter
+allocates only declared stock regions and calls the existing fabrication engine.
+The authenticated read-only consumer resolves saved inventory and trusted process
+context, rejects stale revisions and directs active builds to the history-aware
+repair flow. Local lab imports remain explicitly unverified. Synthetic resources
+cannot be combined with actual-material input.
+
+Named pieces keep immutable mechanical IDs and derived stable references.
+Geometry classification is calculated; user/model role and naming suggestions
+are retained separately without becoming physical evidence. Parametric polygon,
+enclosure and screen targets share the generic constructor, while unsupported
+polygon cutting remains blocked. These interfaces support model proposals; they
+do not replace AI reasoning, infer photo measurements or record completion.
+See [material construction](handoffs/material-construction.md).

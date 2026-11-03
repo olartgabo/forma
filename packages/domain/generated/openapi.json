@@ -1533,6 +1533,93 @@
         "title": "Constraints",
         "type": "object"
       },
+      "ConstructionCutProcess": {
+        "additionalProperties": false,
+        "properties": {
+          "edge_margin_min_mm": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Edge Margin Min Mm"
+          },
+          "evidence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "maxItems": 64,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "kerf_min_mm": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kerf Min Mm"
+          }
+        },
+        "title": "ConstructionCutProcess",
+        "type": "object"
+      },
+      "ConstructionJointMaterial": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed_accessible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Confirmed Accessible"
+          },
+          "joint_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Joint Id",
+            "type": "string"
+          },
+          "length_mm": {
+            "exclusiveMinimum": 0,
+            "title": "Length Mm",
+            "type": "number"
+          },
+          "profile_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "stock_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Stock Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "joint_id",
+          "profile_id",
+          "stock_id",
+          "length_mm"
+        ],
+        "title": "ConstructionJointMaterial",
+        "type": "object"
+      },
       "ConstructionOperationBinding": {
         "additionalProperties": false,
         "description": "External operation association; the fabrication adapter must authenticate it.",
@@ -1585,6 +1672,15 @@
             "title": "Limitations",
             "type": "array"
           },
+          "piece_catalog": {
+            "items": {
+              "$ref": "#/components/schemas/PieceReference"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Piece Catalog",
+            "type": "array"
+          },
           "request": {
             "$ref": "#/components/schemas/ConstructionRequest"
           },
@@ -1607,6 +1703,7 @@
           "generator_version",
           "target_hash",
           "request",
+          "piece_catalog",
           "steps",
           "limitations"
         ],
@@ -1625,6 +1722,15 @@
             "title": "Operation Bindings",
             "type": "array"
           },
+          "piece_annotations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PieceAnnotation"
+            },
+            "maxItems": 16,
+            "title": "Piece Annotations",
+            "type": "array"
+          },
           "target": {
             "$ref": "#/components/schemas/GenericAssemblyRequest"
           }
@@ -1633,6 +1739,109 @@
           "target"
         ],
         "title": "ConstructionRequest",
+        "type": "object"
+      },
+      "ConstructionResources": {
+        "additionalProperties": false,
+        "properties": {
+          "active_version_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Active Version Id"
+          },
+          "cut_process": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConstructionCutProcess"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "declared_tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Declared Tools"
+          },
+          "inventory_revision_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Inventory Revision Id",
+            "type": "string"
+          },
+          "joint_profiles": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/JointProfile"
+            },
+            "maxItems": 32,
+            "title": "Joint Profiles",
+            "type": "array"
+          },
+          "joints": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ConstructionJointMaterial"
+            },
+            "maxItems": 32,
+            "title": "Joints",
+            "type": "array"
+          },
+          "profile_evidence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "maxItems": 64,
+            "title": "Profile Evidence",
+            "type": "array"
+          },
+          "project_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "safe_tools_confirmed": {
+            "default": false,
+            "title": "Safe Tools Confirmed",
+            "type": "boolean"
+          },
+          "stocks": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Stock"
+            },
+            "maxItems": 64,
+            "title": "Stocks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "inventory_revision_id"
+        ],
+        "title": "ConstructionResources",
         "type": "object"
       },
       "ConstructionStep": {
@@ -4910,6 +5119,131 @@
           "verification_state"
         ],
         "title": "PhysicalEvent",
+        "type": "object"
+      },
+      "PieceAnnotation": {
+        "additionalProperties": false,
+        "description": "User or model naming proposal, never a measurement or an observation.",
+        "properties": {
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "part_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Part Id",
+            "type": "string"
+          },
+          "proposed_classification": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Proposed Classification"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Role"
+          },
+          "source": {
+            "enum": [
+              "user",
+              "model"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "part_id",
+          "display_name",
+          "source"
+        ],
+        "title": "PieceAnnotation",
+        "type": "object"
+      },
+      "PieceReference": {
+        "additionalProperties": false,
+        "properties": {
+          "annotation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PieceAnnotation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "geometry_class": {
+            "enum": [
+              "triangle",
+              "rectangle",
+              "convex_polygon",
+              "concave_polygon",
+              "multi_facet"
+            ],
+            "title": "Geometry Class",
+            "type": "string"
+          },
+          "part_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Part Id",
+            "type": "string"
+          },
+          "reference": {
+            "pattern": "^P-[A-F0-9]{12}$",
+            "title": "Reference",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Role"
+          }
+        },
+        "required": [
+          "part_id",
+          "reference",
+          "display_name",
+          "geometry_class"
+        ],
+        "title": "PieceReference",
         "type": "object"
       },
       "Point3": {
