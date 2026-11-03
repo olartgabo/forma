@@ -97,6 +97,37 @@ def test_extra_operation_is_blocked():
     )
 
 
+def test_operation_type_outside_the_stand_family_is_blocked():
+    plan, _parameters, _process = build()
+    support = next(part for part in plan.parts if part.id == "stand-support")
+    template = plan.operations[1]
+    mark = m.Mark(
+        id="extra-mark",
+        type="mark",
+        depends_on=("stand-cut-panels",),
+        expected_state_id=template.expected_state_id,
+        preconditions=template.preconditions,
+        effects=template.effects,
+        args=m.MarkArgs(
+            part_id=support.id,
+            feature_id=support.features[0].id,
+            geometry=support.features[0].geometry,
+        ),
+    )
+    changed = plan.model_copy(update={"operations": plan.operations + (mark,)})
+    assert [
+        (b.code, b.message, b.target_ids[-1:])
+        for b in stand_continuation_blockers(changed)
+    ] == [
+        (
+            "unsupported",
+            "Core operations must be exactly cut_rect, inspect, fold, tape_joint, "
+            "tape_joint, tape_joint, inspect, functional_test.",
+            ("extra-mark",),
+        )
+    ]
+
+
 def test_validation_does_not_mutate_plan():
     plan, _parameters, _process = build()
     before = copy.deepcopy(plan)
@@ -979,11 +1010,42 @@ def test_attached_brace_tape_undo_insufficient_tape_blocks():
     assert any(b.code == "stock_exhausted" for b in result.blockers)
 
 
-@pytest.mark.parametrize("target", ["stand-base", "stand-support"])
-def test_attached_non_brace_targets_block(target):
+@pytest.mark.parametrize(
+    ("target", "blocked_operations"),
+    [
+        ("stand-base", ("stand-joint-front-attach", "stand-joint-rear-attach")),
+        (
+            "stand-support",
+            (
+                "stand-fold-lip",
+                "stand-joint-front-attach",
+                "stand-joint-apex-attach",
+            ),
+        ),
+    ],
+)
+def test_attached_non_brace_targets_block(target, blocked_operations):
     _base, _snapshot, result, _process = _attached_brace_replacement(target_id=target)
     assert result.status == "blocked"
     assert result.plan is None
+    # The support's completed lip fold blocks as unsupported alongside its joins.
+    assert [(b.code, b.target_ids) for b in result.blockers] == [
+        ("unsupported", (operation,)) for operation in blocked_operations
+    ]
+    assert {b.message for b in result.blockers} == {
+        "Replacing an attached or modified part requires explicit physical undo."
+    }
+
+
+def test_attached_brace_tape_undo_refunds_no_peeled_tape():
+    base, _snapshot, result, _process = _attached_brace_replacement()
+    assert result.status == "feasible"
+    peels = set(result.required_undo_operation_ids)
+    tape = [d for d in result.proposed_material_deltas if d.unit == "mm"]
+    # Only the two new attachments spend tape; peeling returns nothing.
+    assert [(d.kind, d.quantity) for d in tape] == [("consume", 80.0)] * 2
+    assert all(d.operation_id not in peels for d in result.proposed_material_deltas)
+    assert all(d.operation_id not in {o.id for o in base.operations} for d in tape)
 
 
 def test_attached_brace_irreversible_touching_tape_blocks():
