@@ -441,3 +441,17 @@ operation complete and needs no provider. The progress snapshot lists
 `damaged_part_ids`, and Adapt starts a repair draft on the first damaged part.
 Asking Muse to diagnose the damage stays optional. Standalone measurement events
 are not added because no compiled plan requires a recorded measurement.
+
+## D035: Recorded waste and salvage follow the replanner ledger, November 2, 2026
+
+`POST /projects/{id}/materials` records material the builder discarded, lost or
+recovered at a step, as a user-confirmed `measurement` event and evidence plus a
+`waste` or `salvage` material transaction. Only losses the replanner can
+reconcile are accepted: a whole current sheet region discarded, a measured
+connector length lost at a tape joint that uses it (up to the calculated
+remainder, with a confirmed original length), or a region wasted earlier in the
+same version recovered. Expected stock applies these records, so the remaining
+stock a repair simulation checks matches the ledger. Partial sheet waste needs a
+measured split and stays unsupported. Proof labels measurement evidence
+"manually measured", labels Muse evidence as unverified observations and
+hypotheses, and totals only the waste and salvage the builder recorded.

@@ -1,6 +1,35 @@
 import type { ProofSnapshot } from "./generated/api-contracts";
 
 type ProofVersion = ProofSnapshot["versions"][number];
+type ProofProgress = ProofVersion["progress"];
+
+// Names what kind of claim each evidence record is, so a reader can tell a
+// hand measurement from a user report or an unverified model reading.
+export function evidenceLabel(kind: string): string {
+  return (
+    {
+      measurement: "manually measured",
+      user_report: "user report",
+      photo: "photo",
+      physical_test: "physical test",
+      model_interpretation: "Muse observations and hypotheses (unverified)",
+    }[kind] ?? kind.replaceAll("_", " ")
+  );
+}
+
+// Totals of discarded and recovered material the builder recorded.
+export function recordedMaterial(progress: ProofProgress): string {
+  const total = (kind: string, unit: string) =>
+    progress.material_transactions
+      .filter((item) => item.kind === kind && item.unit === unit)
+      .reduce((sum, item) => sum + item.quantity, 0);
+  const sheetWaste = total("waste", "mm2");
+  const connectorWaste = total("waste", "mm");
+  const salvage = total("salvage", "mm2");
+  if (sheetWaste === 0 && connectorWaste === 0 && salvage === 0)
+    return "No discarded or recovered material recorded.";
+  return `Recorded waste: ${sheetWaste} mm2 of sheet, ${connectorWaste} mm of connector; recovered: ${salvage} mm2.`;
+}
 
 export function proofVersionLabel(state: ProofVersion["state"]): string {
   return {
@@ -117,7 +146,7 @@ export function proofText(snapshot: ProofSnapshot): string {
     `Private photos excluded: ${snapshot.photos_omitted}.`,
     "Historical outcomes describe their recorded version; invalidated evidence does not verify the revised plan.",
     "Expected stock is calculated and needs actual measurement/reconciliation before repair.",
-    "Recorded timestamps are report ingestion times. Build duration, measured waste and salvage totals are unavailable.",
+    "Recorded timestamps are report ingestion times. Build duration is unavailable; waste and salvage cover only what the builder recorded.",
   ];
   if (snapshot.versions.length === 0)
     lines.push("", "No compiled plan or physical result is recorded.");
@@ -140,6 +169,7 @@ export function proofText(snapshot: ProofSnapshot): string {
       `Completed operations: ${progress.completed_operation_ids.length} / ${plan.operations.length}`,
       `Carried from earlier reports: ${progress.carried_operation_ids?.length ?? 0}`,
       `New completion reports in this version: ${progress.events.filter((event) => event.kind === "operation_confirmed").length}`,
+      recordedMaterial(progress),
       ...revisionDetails(version).map(([label, value]) => `${label}: ${value}`),
       "Uncompleted operations:",
     );
@@ -190,7 +220,7 @@ export function proofText(snapshot: ProofSnapshot): string {
     lines.push(
       ...(progress.evidence.length
         ? progress.evidence.flatMap((item) => [
-            `  ${item.id} | ${item.kind} | ${item.provenance} | ${item.verification_state}${item.kind === "photo" ? " | image excluded" : ""}`,
+            `  ${item.id} | ${evidenceLabel(item.kind)} | ${item.provenance} | ${item.verification_state}${item.kind === "photo" ? " | image excluded" : ""}`,
             `    ${item.description}`,
             `    Checkpoints: ${item.checkpoint_ids?.join(", ") || "None"}`,
             ...(version.invalidations ?? [])
@@ -202,7 +232,9 @@ export function proofText(snapshot: ProofSnapshot): string {
           ])
         : ["  No evidence recorded"]),
     );
-    lines.push("Material receipts derived from reported operations:");
+    lines.push(
+      "Material receipts from reported operations and material records:",
+    );
     lines.push(
       ...(progress.material_transactions.length
         ? progress.material_transactions.map(

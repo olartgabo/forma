@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, loadProof } from "../lib/api";
 import {
   proofStatus,
+  evidenceLabel,
   proofText,
+  recordedMaterial,
   proofUnknowns,
   proofVersionLabel,
   revisionDetails,
@@ -243,8 +245,8 @@ export default function ProofWorkbench({
             This report covers versioned plans, user reports, approved repairs
             and evidence invalidations. Historical outcomes describe their
             recorded version and do not verify a revised plan. Recorded
-            timestamps are ingestion times; build duration, measured waste and
-            salvage totals remain unavailable.
+            timestamps are ingestion times; build duration is unavailable, and
+            waste and salvage cover only what the builder recorded.
           </p>
           {snapshot.versions.length === 0 && (
             <p>No compiled plan or physical result is recorded.</p>
@@ -399,7 +401,7 @@ export default function ProofWorkbench({
                     <ul>
                       {progress.evidence.map((item) => (
                         <li key={item.id}>
-                          <strong>{item.kind.replaceAll("_", " ")}</strong> ·{" "}
+                          <strong>{evidenceLabel(item.kind)}</strong> ·{" "}
                           {item.provenance} ·{" "}
                           {item.verification_state.replaceAll("_", " ")}
                           <p>{item.description}</p>
@@ -435,10 +437,12 @@ export default function ProofWorkbench({
                     Material receipts ({progress.material_transactions.length})
                   </summary>
                   <p className="help">
-                    Quantities derive from planned operations reported as
-                    performed. Whole-region consumption is the source area
-                    retired by a cut; measured waste totals remain unknown.
+                    Consumption derives from planned operations reported as
+                    performed; a cut retires its whole source region. Waste and
+                    recovered material come from the builder&apos;s material
+                    records.
                   </p>
+                  <p>{recordedMaterial(progress)}</p>
                   {progress.material_transactions.length ? (
                     <ul>
                       {progress.material_transactions.map((item) => (

@@ -53,6 +53,7 @@ from forma_api.plans import (
 )
 from forma_api.progress import (
     DamageReport,
+    MaterialReport,
     ProgressResult,
     ProgressSnapshot,
     ProgressUpdate,
@@ -117,6 +118,7 @@ API_RECORDS = (
     ManualDocument,
     ManualPanel,
     MaterialDelta,
+    MaterialReport,
     Media,
     MediaDeleteResult,
     MediaList,
