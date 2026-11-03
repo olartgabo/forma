@@ -8,8 +8,10 @@ services:
     environment:
       FORMA_API_TOKENS: ${FORMA_API_TOKENS:?Set owner bearer tokens in deploy/.env}
       MODEL_API_KEY: ${MODEL_API_KEY:-}
+      FORMA_DESIGN_CONTEXT_PATH: ${FORMA_DESIGN_CONTEXT_PATH:-}
     volumes:
       - forma-data:/data
+      - ./config:/config:ro
     restart: unless-stopped
 
   web:
