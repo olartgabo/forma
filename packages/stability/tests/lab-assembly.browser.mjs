@@ -20,6 +20,15 @@ try {
       if (r.url().endsWith("/evaluate-assembly")) analyses++;
     });
     await page.goto(base);
+    await page
+      .getByText("Examples, import and exact results", { exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Hypothetical polygon panels", exact: true })
+      .click();
+    await page
+      .getByText("Examples, import and exact results", { exact: true })
+      .click();
     await page.waitForSelector("#assembly-view polygon");
     const read = async () =>
       JSON.parse(await page.locator("#assembly-report").textContent());

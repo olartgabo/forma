@@ -629,3 +629,19 @@ history. Independent preparation precedes attachments; explicit supported
 join/detach/preparation/reattach sequences remain available. Declared access and
 tool availability establish neither observed usability nor physical suitability.
 No provider call or physical pass follows from these software checks.
+
+## D046: Generate construction proposals and retain fabrication authority, November 3, 2026
+
+The user requests automatic steps from a finished target rather than manually
+authored intermediate states. The generator expands the target part/joint graph
+and evaluates each proposed placement and connection with the shared physical
+engine. It neither invents temporary support nor reuses final load demands for
+different intermediate assemblies.
+
+A dedicated opt-in synthetic bridge proposes rectangular cut, inspection and tape
+operations, then calls Gabo's existing compiler/fabrication report. Fixed resources
+and profile/process fixtures are explicit. Nonrectangular cutting, inadequate
+stock and unsupported process conditions remain blocked. This integrates the
+latest fabrication safeguards without creating a competing scheduler or recording
+completion. Production observed stock/process capture and physical approval remain
+separate. See [generated construction](handoffs/generated-construction.md).

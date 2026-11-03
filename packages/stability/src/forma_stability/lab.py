@@ -246,6 +246,7 @@ def handler_for(port):
                 "/evaluate-input",
                 "/inspect-plan",
                 "/evaluate-assembly",
+                "/generate-construction",
             ):
                 return self.reply(404, {"error": "Not found"})
             if (
@@ -262,7 +263,11 @@ def handler_for(port):
             self.connection.settimeout(5)
             try:
                 data = json.loads(self.rfile.read(size))
-                if self.path == "/evaluate-assembly":
+                if self.path == "/generate-construction":
+                    from forma_stability.lab_construction import run_generation
+
+                    result = run_generation(data)
+                elif self.path == "/evaluate-assembly":
                     from forma_stability.lab_assembly import run_assembly
 
                     result = run_assembly(data)
@@ -290,6 +295,11 @@ def main(argv=None):
         "--input", type=Path, help="Evaluate a JSON file with input and policy"
     )
     mode.add_argument(
+        "--construction-input",
+        type=Path,
+        help="Replay a generated construction request or downloaded result",
+    )
+    mode.add_argument(
         "--assembly-input",
         type=Path,
         help="Replay a generic assembly editor request or downloaded experiment",
@@ -301,6 +311,24 @@ def main(argv=None):
     )
     parser.add_argument("--port", type=int, default=3031)
     args = parser.parse_args(argv)
+    if args.construction_input:
+        from forma_stability.lab_construction import run_generation
+
+        try:
+            if args.construction_input.stat().st_size > 16 * 1024 * 1024:
+                parser.error("Construction feedback exceeds 16 MiB")
+            payload = json.loads(args.construction_input.read_text(encoding="utf-8"))
+            request = (
+                payload.get("request", payload)
+                if isinstance(payload, dict)
+                else payload
+            )
+            if len(json.dumps(request).encode("utf-8")) > MAX_BODY:
+                parser.error("Construction request exceeds 131072 bytes")
+            print(json.dumps(run_generation(request), indent=2, allow_nan=False))
+        except (OSError, ValueError, ValidationError) as error:
+            parser.error(str(error))
+        return
     if args.assembly_input:
         from forma_stability.lab_assembly import run_assembly
 

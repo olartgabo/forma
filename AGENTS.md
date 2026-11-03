@@ -7,6 +7,16 @@ precedence. Record deliberate product changes in [docs/decisions.md](docs/decisi
 
 ## Ownership and coordination
 
+### November 3, 2026: automatic construction proposals
+
+The user requests automatic construction-step generation for different target
+shapes and compatibility with Gabo's fabrication engine. Generate proposed
+placement/connection states from the finished target graph; do not require manual
+stage authoring or implement another fabrication readiness authority. Real
+BuildPlan operation proposals must pass the existing compiler/fabrication report.
+Unsupported manufacturing shapes and missing real material/process evidence stay
+explicit. Synthetic lab stock is opt-in and cannot become approved physical work.
+
 ### November 3, 2026: combined latest work and generic engine diagnostic
 
 The user requests integrating Gabo's latest published work and a friendlier,

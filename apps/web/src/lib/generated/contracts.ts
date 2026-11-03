@@ -238,6 +238,39 @@ export type Constraints = {
   readonly "allow_purchases"?: boolean;
 };
 
+export type ConstructionOperationBinding = {
+  readonly "action": "place" | "join" | "inspect";
+  readonly "subject_id": string;
+  readonly "operation_id": string;
+};
+
+export type ConstructionPlan = {
+  readonly "generator_version": string;
+  readonly "target_hash": string;
+  readonly "request": ConstructionRequest;
+  readonly "steps": ReadonlyArray<ConstructionStep>;
+  readonly "limitations": ReadonlyArray<string>;
+};
+
+export type ConstructionRequest = {
+  readonly "target": GenericAssemblyRequest;
+  readonly "operation_bindings"?: ReadonlyArray<ConstructionOperationBinding>;
+};
+
+export type ConstructionStep = {
+  readonly "step_id": string;
+  readonly "index": number;
+  readonly "action": "place" | "join" | "inspect";
+  readonly "part_ids": ReadonlyArray<string>;
+  readonly "joint_id": (string | null);
+  readonly "depends_on_step_ids": ReadonlyArray<string>;
+  readonly "instruction": string;
+  readonly "operation_ids": ReadonlyArray<string>;
+  readonly "analysis": GenericAssemblyResult;
+  readonly "requires_external_support": boolean;
+  readonly "unresolved_predicates": ReadonlyArray<string>;
+};
+
 export type ConsumableJointArgs = {
   readonly "joint_id": string;
   readonly "stock_id": string;

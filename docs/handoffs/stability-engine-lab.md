@@ -1,5 +1,10 @@
 # Test the engine directly
 
+Start with **Generate construction steps**: choose the finished shape and its
+dimensions, then inspect automatically generated states. See the
+[construction and fabrication guide](generated-construction.md). Custom/manual
+stage tools below remain available as advanced diagnostics.
+
 From the repository root, run:
 
 ```powershell

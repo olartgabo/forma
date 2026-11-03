@@ -11,6 +11,8 @@
     selected = 0,
     revision = 0,
     last = null;
+  let generated = null,
+    generatedIndex = 0;
   const camera = { yaw: 315, pitch: 30, zoom: 1 };
   const pointers = new Map();
   let frame;
@@ -79,24 +81,60 @@
     parent.append(label);
     return select;
   }
+  const operationName = (type) =>
+    ({ cut_rect: "Cut panels", tape_joint: "Tape joint", inspect: "Inspect" })[
+      type
+    ] ?? type.replaceAll("_", " ");
+  function humanText(text) {
+    let value = String(text);
+    for (const operation of generated?.fabrication_plan?.operations ?? []) {
+      value = value.replaceAll(operation.id, operationName(operation.type));
+      if (operation.args?.stock_id)
+        value = value.replaceAll(
+          operation.args.stock_id,
+          operation.type === "tape_joint" ? "tape stock" : "sheet stock",
+        );
+    }
+    return value.replace(
+      /fab-[a-f0-9]+-[a-z0-9-]+/g,
+      "referenced resource (see exact report)",
+    );
+  }
+  function stepTitle(step) {
+    if (step.action === "inspect") return "Inspect assembly";
+    const parts = step.part_ids.map(
+      (id) =>
+        editor.panels.find((p) => p.id === id)?.label ??
+        id.replaceAll("_", " "),
+    );
+    return `${step.action === "place" ? "Place" : "Join"} ${parts.join(" + ")}`;
+  }
   function render() {
     $("assembly-margin").value = String(editor.required_margin_mm);
     const chips = $("assembly-stages");
     chips.replaceChildren();
-    editor.stages.forEach((stage, i) => {
+    const displayStages = generated
+      ? generated.construction.steps.map((step) => ({
+          label: stepTitle(step),
+        }))
+      : editor.stages;
+    const displayIndex = generated ? generatedIndex : current;
+    displayStages.forEach((stage, i) => {
       const button = node("button", `${i + 1}. ${stage.label}`, {
         type: "button",
-        "aria-current": i === current ? "step" : "false",
+        "aria-current": i === displayIndex ? "step" : "false",
       });
       button.addEventListener("click", () => selectStage(i));
       chips.append(button);
     });
     $("assembly-step-count").textContent =
-      `STEP ${current + 1} / ${editor.stages.length}`;
-    $("assembly-step-title").textContent = editor.stages[current].label;
+      `${generated ? "GENERATED STEP" : "STEP"} ${displayIndex + 1} / ${displayStages.length}`;
+    $("assembly-step-title").textContent = generated
+      ? stepTitle(generated.construction.steps[generatedIndex])
+      : editor.stages[current].label;
     $("assembly-stage-name").value = editor.stages[current].label;
-    $("assembly-prev").disabled = current === 0;
-    $("assembly-next").disabled = current === editor.stages.length - 1;
+    $("assembly-prev").disabled = displayIndex === 0;
+    $("assembly-next").disabled = displayIndex === displayStages.length - 1;
     const list = $("assembly-panel");
     list.replaceChildren();
     editor.panels.forEach((p, i) =>
@@ -109,6 +147,12 @@
     $("assembly-json").value = JSON.stringify(editor, null, 2);
   }
   function selectStage(index) {
+    if (generated) {
+      generatedIndex = index;
+      render();
+      showGenerated();
+      return;
+    }
     current = index;
     stale();
     render();
@@ -405,9 +449,14 @@
     editor.required_margin_mm = Number(e.target.value);
     stale();
   });
-  $("assembly-prev").addEventListener("click", () => selectStage(current - 1));
-  $("assembly-next").addEventListener("click", () => selectStage(current + 1));
+  $("assembly-prev").addEventListener("click", () =>
+    selectStage((generated ? generatedIndex : current) - 1),
+  );
+  $("assembly-next").addEventListener("click", () =>
+    selectStage((generated ? generatedIndex : current) + 1),
+  );
   $("assembly-new").addEventListener("click", () => {
+    $("construction-custom").open = true;
     editor = {
       panels: [],
       stages: [{ id: "stage-1", label: "Lay out the parts" }],
@@ -415,6 +464,9 @@
       required_margin_mm: 0,
     };
     current = selected = 0;
+    generated = null;
+    $("construction-instruction").replaceChildren();
+    $("construction-fabrication").replaceChildren();
     last = null;
     stale();
     render();
@@ -422,6 +474,10 @@
     $("assembly-results").replaceChildren();
   });
   async function evaluate() {
+    generated = null;
+    $("construction-instruction").replaceChildren();
+    $("construction-fabrication").replaceChildren();
+    render();
     const own = ++revision;
     $("assembly-evaluate").disabled = true;
     $("assembly-error").textContent = "";
@@ -640,6 +696,10 @@
   $("assembly-import").addEventListener("click", () => {
     try {
       const imported = JSON.parse($("assembly-json").value);
+      if (imported.construction)
+        throw Error(
+          "This import accepts manual editor drafts only. Replay generated construction with --construction-input, or generate again from the target controls.",
+        );
       const hasDraft = imported.draft_editor !== undefined;
       const next = hasDraft
         ? imported.draft_editor
@@ -664,6 +724,9 @@
       editor = next;
       current = nextStage;
       selected = 0;
+      generated = null;
+      $("construction-instruction").replaceChildren();
+      $("construction-fabrication").replaceChildren();
       last = null;
       stale();
       render();
@@ -683,13 +746,15 @@
       new Blob(
         [
           JSON.stringify(
-            last
-              ? {
-                  ...last,
-                  draft_editor: clone(editor),
-                  draft_stage_index: current,
-                }
-              : { editor: clone(editor), stage_index: current },
+            generated
+              ? { ...generated, selected_step_index: generatedIndex }
+              : last
+                ? {
+                    ...last,
+                    draft_editor: clone(editor),
+                    draft_stage_index: current,
+                  }
+                : { editor: clone(editor), stage_index: current },
             null,
             2,
           ),
@@ -699,11 +764,176 @@
     );
     const a = node("a", null, {
       href: url,
-      download: "forma-assembly-experiment.json",
+      download: generated
+        ? "forma-construction-experiment.json"
+        : "forma-assembly-experiment.json",
     });
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
+  function showGenerated() {
+    const step = generated.construction.steps[generatedIndex];
+    last = {
+      result: step.analysis,
+      request: step.analysis.request,
+      editor: generated.editor ?? editor,
+      generated_construction: generated,
+    };
+    $("assembly-report").textContent = JSON.stringify(last, null, 2);
+    show();
+    const instruction = $("construction-instruction");
+    instruction.replaceChildren();
+    instruction.append(
+      node("h3", "Planned instruction"),
+      node("p", humanText(step.instruction)),
+    );
+    instruction.append(
+      node("p", "This is a planned step. It has not been performed."),
+    );
+    if (step.requires_external_support)
+      instruction.append(
+        node(
+          "p",
+          "External support is required during this step; it is not modeled as a free-standing pass.",
+          { class: "notice" },
+        ),
+      );
+    for (const reason of step.unresolved_predicates ?? [])
+      instruction.append(
+        node(
+          "p",
+          humanText(
+            typeof reason === "string" ? reason : JSON.stringify(reason),
+          ),
+        ),
+      );
+    const fabrication = $("construction-fabrication");
+    fabrication.replaceChildren();
+    for (const blocker of generated.fabrication_blockers ?? [])
+      fabrication.append(node("p", humanText(blocker)));
+    for (const instruction of generated.fabrication_instructions ?? []) {
+      if ((step.operation_ids ?? []).includes(instruction.operation_id))
+        fabrication.append(node("p", humanText(instruction.instruction)));
+    }
+    const report = generated.fabrication_report;
+    fabrication.append(node("h3", "Fabrication compatibility"));
+    if (!report)
+      fabrication.append(
+        node(
+          "p",
+          "No fabrication approval. Opt in to invented stock/process assumptions to run a clearly hypothetical demonstration.",
+        ),
+      );
+    else {
+      fabrication.append(
+        node(
+          "p",
+          `Hypothetical fabrication report: ${report.status ?? "inspect detailed checks"}. Invented resources are not physical evidence.`,
+        ),
+      );
+      for (const operation of report.operations ?? []) {
+        if (!(step.operation_ids ?? []).includes(operation.operation_id))
+          continue;
+        const item = node(
+          "p",
+          `${operationName(operation.operation_type)}: ${operation.status}. ${operation.waiting_on_operation_ids.length ? `Waiting for ${operation.waiting_on_operation_ids.length} earlier operations.` : "No earlier operations pending."}`,
+        );
+        fabrication.append(item);
+        for (const blocker of operation.blockers)
+          fabrication.append(node("p", humanText(blocker.message)));
+        for (const confirmation of operation.required_confirmations)
+          fabrication.append(
+            node("p", `Required confirmation: ${humanText(confirmation)}`),
+          );
+      }
+      for (const blocker of report.blockers ?? [])
+        fabrication.append(node("p", humanText(blocker.message)));
+      const exact = node("details");
+      exact.append(
+        node("summary", "Exact fabrication report"),
+        node("pre", JSON.stringify(report, null, 2)),
+      );
+      fabrication.append(exact);
+    }
+  }
+  async function generate(custom) {
+    const own = ++revision;
+    $("construction-generate").disabled = $(
+      "construction-generate-custom",
+    ).disabled = true;
+    $("assembly-error").textContent = "";
+    $("construction-status").textContent =
+      "Generating construction steps from the finished target...";
+    const synthetic_fabrication = $("construction-invented-stock").checked;
+    const payload = custom
+      ? { editor, stage_index: current, synthetic_fabrication }
+      : {
+          shape: {
+            kind: $("construction-shape").value,
+            width_mm: Number($("construction-width").value),
+            depth_mm: Number($("construction-depth").value),
+            height_mm: Number($("construction-height").value),
+          },
+          synthetic_fabrication,
+        };
+    try {
+      const response = await fetch("/generate-construction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(30000),
+      });
+      const value = await response.json();
+      if (!response.ok)
+        throw Error(value.error || "Construction generation failed");
+      if (own !== revision) return;
+      generated = value;
+      generatedIndex = 0;
+      if (value.editor) {
+        editor = value.editor;
+        current = editor.stages.length - 1;
+        selected = 0;
+      }
+      render();
+      showGenerated();
+      $("construction-status").textContent =
+        `${generated.construction.steps.length} steps generated by the engine. All steps are planned, not completed.`;
+    } catch (error) {
+      if (own === revision) {
+        $("assembly-error").textContent = error.message;
+        $("construction-status").textContent =
+          "Generation failed. Any displayed sequence is historical.";
+      }
+    } finally {
+      $("construction-generate").disabled = $(
+        "construction-generate-custom",
+      ).disabled = false;
+    }
+  }
+  function updateShapeControls() {
+    const flat = ["triangle", "concave"].includes(
+      $("construction-shape").value,
+    );
+    $("construction-height").disabled = flat;
+  }
+  $("construction-shape").addEventListener("change", updateShapeControls);
+  updateShapeControls();
+  $("construction-generate").addEventListener("click", () => generate(false));
+  $("construction-generate-custom").addEventListener("click", () =>
+    generate(true),
+  );
+  for (const id of [
+    "construction-shape",
+    "construction-width",
+    "construction-depth",
+    "construction-height",
+    "construction-invented-stock",
+  ])
+    $(id).addEventListener("change", () => {
+      revision++;
+      $("construction-status").textContent =
+        "Target changed. Generate again; any displayed sequence belongs to the previous target.";
+    });
   function example(kind) {
     const stages = [
       { id: "stage-1", label: "First panel on the table" },
@@ -776,6 +1006,9 @@
       })),
     };
     current = selected = 0;
+    generated = null;
+    $("construction-instruction").replaceChildren();
+    $("construction-fabrication").replaceChildren();
     last = null;
     stale();
     render();
@@ -791,5 +1024,6 @@
   }
   render();
   cameraDraw();
-  example("polygons");
+  $("assembly-status").textContent =
+    "Choose a finished target and generate its construction steps.";
 })();

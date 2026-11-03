@@ -65,6 +65,12 @@ binary and transitive-license verification remains a separate integration gate.
 
 ## Direct engine lab
 
+The primary flow now [generates construction proposals](../../docs/handoffs/generated-construction.md)
+from a finished target, rather than requiring manual intermediate stages.
+Rectangular-panel proposals can be assessed through the real fabrication engine
+using an explicitly selected synthetic resource fixture. This never approves or
+records physical work, and unsupported manufacturing operations remain blocked.
+
 The primary [assembly editor](../../docs/handoffs/generic-assembly-diagnostic.md)
 authors polygonal panels, edge joints and explicit physical stages. The generic
 `evaluate_assembly` producer validates these declarations without stand-specific

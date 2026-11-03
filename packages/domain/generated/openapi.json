@@ -1533,6 +1533,210 @@
         "title": "Constraints",
         "type": "object"
       },
+      "ConstructionOperationBinding": {
+        "additionalProperties": false,
+        "description": "External operation association; the fabrication adapter must authenticate it.",
+        "properties": {
+          "action": {
+            "enum": [
+              "place",
+              "join",
+              "inspect"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "operation_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "subject_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Subject Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "subject_id",
+          "operation_id"
+        ],
+        "title": "ConstructionOperationBinding",
+        "type": "object"
+      },
+      "ConstructionPlan": {
+        "additionalProperties": false,
+        "properties": {
+          "generator_version": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Generator Version",
+            "type": "string"
+          },
+          "limitations": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Limitations",
+            "type": "array"
+          },
+          "request": {
+            "$ref": "#/components/schemas/ConstructionRequest"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/ConstructionStep"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Steps",
+            "type": "array"
+          },
+          "target_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Target Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "generator_version",
+          "target_hash",
+          "request",
+          "steps",
+          "limitations"
+        ],
+        "title": "ConstructionPlan",
+        "type": "object"
+      },
+      "ConstructionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "operation_bindings": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ConstructionOperationBinding"
+            },
+            "maxItems": 64,
+            "title": "Operation Bindings",
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/GenericAssemblyRequest"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "ConstructionRequest",
+        "type": "object"
+      },
+      "ConstructionStep": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "place",
+              "join",
+              "inspect"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "analysis": {
+            "$ref": "#/components/schemas/GenericAssemblyResult"
+          },
+          "depends_on_step_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Depends On Step Ids",
+            "type": "array"
+          },
+          "index": {
+            "maximum": 63,
+            "minimum": 0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "instruction": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "joint_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joint Id"
+          },
+          "operation_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Operation Ids",
+            "type": "array"
+          },
+          "part_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Part Ids",
+            "type": "array"
+          },
+          "requires_external_support": {
+            "title": "Requires External Support",
+            "type": "boolean"
+          },
+          "step_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Step Id",
+            "type": "string"
+          },
+          "unresolved_predicates": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 128,
+            "title": "Unresolved Predicates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "step_id",
+          "index",
+          "action",
+          "part_ids",
+          "joint_id",
+          "depends_on_step_ids",
+          "instruction",
+          "operation_ids",
+          "analysis",
+          "requires_external_support",
+          "unresolved_predicates"
+        ],
+        "title": "ConstructionStep",
+        "type": "object"
+      },
       "ConsumableJointArgs": {
         "additionalProperties": false,
         "properties": {

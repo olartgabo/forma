@@ -23,14 +23,16 @@
         <div class="workspace-heading">
           <div>
             <p class="eyebrow">Assembly sandbox</p>
-            <h2 id="assembly-title">Your shapes, one step at a time</h2>
+            <h2 id="assembly-title">
+              Choose a shape. Get the construction steps.
+            </h2>
           </div>
           <button id="assembly-new" type="button">New assembly</button>
         </div>
         <p class="workspace-intro">
-          Create panels, choose where they go, and test each construction stage.
-          Inputs are hypothetical. A green calculation is not a real-world
-          safety claim.
+          Define the finished target once. The engine generates a construction
+          sequence and checks its declared stages. Nothing is marked physically
+          completed.
         </p>
         <div
           id="assembly-stages"
@@ -90,48 +92,118 @@
               Start with a panel or a clearly labeled hypothetical example.
             </p>
             <div id="assembly-results"></div>
+            <div id="construction-instruction"></div>
+            <div id="construction-fabrication"></div>
             <p id="assembly-error" role="alert"></p>
           </section>
           <section class="editor-card" aria-label="Assembly controls">
-            <h3>Make it yours</h3>
-            <label
-              >Current stage name<input
-                id="assembly-stage-name"
-                type="text"
-                maxlength="100"
-            /></label>
-            <button id="assembly-add-stage" type="button">Add stage</button>
-            <hr />
-            <div class="workspace-heading">
-              <h3>Panels</h3>
-              <button id="assembly-add-panel" type="button">+ Add panel</button>
-            </div>
-            <label>Panel<select id="assembly-panel"></select></label>
-            <div id="assembly-panel-editor"></div>
-            <details>
-              <summary>Connect panel edges</summary>
-              <p>
-                Declare rigid joints explicitly. A future panel cannot support
-                an earlier stage. The engine checks whether the declared edges
-                coincide.
-              </p>
-              <div id="assembly-joints"></div>
-              <button id="assembly-add-joint" type="button">Add joint</button>
-            </details>
-            <label
-              >Required edge clearance (mm)<input
-                id="assembly-margin"
-                type="number"
-                step="any"
-                value="0"
-            /></label>
-            <button id="assembly-evaluate" class="primary" type="button">
-              Evaluate this stage
-            </button>
+            <h3>Finished target</h3>
             <p class="muted">
-              Edits need a new evaluation. Camera movement never changes
-              physics.
+              Shape examples assume 100 g per uniform panel, rigid connections
+              and full base contact. These invented loads do not scale with
+              dimensions or establish material strength.
             </p>
+            <label
+              >Shape<select id="construction-shape">
+                <option value="box">Open box</option>
+                <option value="ramp">Ramp</option>
+                <option value="triangle">Flat triangle panel</option>
+                <option value="concave">Flat concave panel</option>
+              </select></label
+            >
+            <div class="editor-grid">
+              <label
+                >Width (mm)<input
+                  id="construction-width"
+                  type="number"
+                  min="1"
+                  value="200" /></label
+              ><label
+                >Depth (mm)<input
+                  id="construction-depth"
+                  type="number"
+                  min="1"
+                  value="160" /></label
+              ><label
+                >Height (mm)<input
+                  id="construction-height"
+                  type="number"
+                  min="1"
+                  value="100"
+              /></label>
+            </div>
+            <p class="muted" id="construction-height-note">
+              Height applies to box and ramp targets. Triangle and concave
+              targets are flat panels.
+            </p>
+            <label class="check"
+              ><input id="construction-invented-stock" type="checkbox" />Use
+              invented stock and process assumptions to demonstrate fabrication
+              checks</label
+            >
+            <p class="muted">
+              Invented resources: 1000 × 1000 mm stock, 2 mm thick; 5000 mm
+              tape; 2 mm kerf, 4 mm margin, 80 mm tape per joint. These are
+              demonstration assumptions, not approval to build.
+            </p>
+            <button id="construction-generate" type="button" class="primary">
+              Generate construction steps
+            </button>
+            <p id="construction-status" role="status">
+              Choose the target dimensions, then generate.
+            </p>
+            <details id="construction-custom">
+              <summary>Custom target and manual stage editor</summary>
+              <p>
+                Define your own panels and final poses. Generate from the
+                currently selected design stage; the engine supplies the
+                sequence.
+              </p>
+              <button id="construction-generate-custom" type="button">
+                Generate from this custom target
+              </button>
+              <h3>Custom target</h3>
+              <label
+                >Current stage name<input
+                  id="assembly-stage-name"
+                  type="text"
+                  maxlength="100"
+              /></label>
+              <button id="assembly-add-stage" type="button">Add stage</button>
+              <hr />
+              <div class="workspace-heading">
+                <h3>Panels</h3>
+                <button id="assembly-add-panel" type="button">
+                  + Add panel
+                </button>
+              </div>
+              <label>Panel<select id="assembly-panel"></select></label>
+              <div id="assembly-panel-editor"></div>
+              <details>
+                <summary>Connect panel edges</summary>
+                <p>
+                  Declare rigid joints explicitly. A future panel cannot support
+                  an earlier stage. The engine checks whether the declared edges
+                  coincide.
+                </p>
+                <div id="assembly-joints"></div>
+                <button id="assembly-add-joint" type="button">Add joint</button>
+              </details>
+              <label
+                >Required edge clearance (mm)<input
+                  id="assembly-margin"
+                  type="number"
+                  step="any"
+                  value="0"
+              /></label>
+              <button id="assembly-evaluate" class="primary" type="button">
+                Evaluate this stage
+              </button>
+              <p class="muted">
+                Edits need a new evaluation. Camera movement never changes
+                physics.
+              </p>
+            </details>
           </section>
         </div>
         <details>
@@ -147,7 +219,8 @@
               rows="8"
               spellcheck="false"
             ></textarea></label
-          ><button id="assembly-import" type="button">Load editor JSON</button
+          ><button id="assembly-import" type="button">
+            Load manual editor draft</button
           ><button id="assembly-export" type="button">
             Download experiment
           </button>
