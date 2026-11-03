@@ -7,6 +7,18 @@ precedence. Record deliberate product changes in [docs/decisions.md](docs/decisi
 
 ## Ownership and coordination
 
+### November 3, 2026: connected MetaMuse construction proposals
+
+The user requests a photo/materials-and-goal flow where MetaMuse proposes named
+geometry and the engine generates checked construction stages. Reuse private
+saved inventory/photos, explicit provider consent, bounded model requests and
+Gabo's fabrication engine. Model-authored dimensions are design proposals, not
+photo measurements; model labels and roles are not physical observations.
+Preserve the existing product manual/repair flows and never activate a generic
+proposal or record work automatically. The expired external verification window
+still blocks agent live probes until explicitly renewed; offline integration
+checks do not renew it or establish a live provider pass.
+
 ### November 3, 2026: material-bound proposals and piece references
 
 The user requests construction proposals using actual inventory, broader shapes,

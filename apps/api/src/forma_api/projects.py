@@ -403,12 +403,13 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 (owner, project_id + ":media:%"),
             )
             connection.execute(
-                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?)",
+                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?, ?)",
                 (
                     owner,
                     project_id + ":plan-preview",
                     project_id + ":plan-activation",
                     project_id + ":design-generation",
+                    project_id + ":construction-proposal",
                 ),
             )
             connection.execute(
@@ -443,12 +444,14 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     from forma_api.routes.diagnosis import diagnosis_router
     from forma_api.routes.fabrication import fabrication_router
     from forma_api.routes.intake import intake_router
+    from forma_api.routes.muse_construction import muse_construction_router
     from forma_api.routes.repair_search import repair_search_router
     from forma_api.routes.repairs import repairs_router
     from forma_api.routes.stability import stability_router
 
     router.include_router(media_router(store, authenticate))
     router.include_router(construction_router(store, authenticate))
+    router.include_router(muse_construction_router(store, authenticate))
     router.include_router(intake_router(store, authenticate))
     router.include_router(plan_router(store, authenticate))
     router.include_router(progress_router(store, authenticate))

@@ -478,8 +478,15 @@ class MetaGateway:
         request_budget: ProposalBudget | None = None,
         system_prompt: str | None = None,
         context: dict | None = None,
+        max_completion_tokens: int = 2048,
     ) -> T:
         """Validate using the caller's domain model; tool must run before final output."""
+        if (
+            isinstance(max_completion_tokens, bool)
+            or not isinstance(max_completion_tokens, int)
+            or not 1 <= max_completion_tokens <= 8192
+        ):
+            raise ValueError("invalid completion token bound")
         if not 0 < len(prompt) <= 16000:
             raise GatewayError("invalid_prompt")
         if context is not None:
@@ -521,7 +528,7 @@ class MetaGateway:
             payload = {
                 "model": self.spark,
                 "messages": messages,
-                "max_completion_tokens": 2048,
+                "max_completion_tokens": max_completion_tokens,
             }
             if tool and not ran_tool:
                 payload.update(

@@ -663,3 +663,21 @@ enclosure and screen targets share the generic constructor, while unsupported
 polygon cutting remains blocked. These interfaces support model proposals; they
 do not replace AI reasoning, infer photo measurements or record completion.
 See [material construction](handoffs/material-construction.md).
+
+## D048: Connect MetaMuse to checked construction proposals, November 3, 2026
+
+The user requests photo/materials and goal intake that lets MetaMuse propose
+shapes, piece names and construction ideas using engine checks. A separate
+consented project route accepts notes and an optional saved photo, resolves
+inventory and reviewed context on the server, and sends a bounded typed proposal
+request through the existing gateway. Model geometry becomes a hypothetical
+finished target; the engine generates intermediate steps and calls Gabo's
+fabrication checks. Model output cannot confirm physical facts or activate work.
+
+At most two candidates are evaluated. One optional correction may use engine
+feedback while retaining the original rejection. Unsupported manufacturing and
+missing evidence stay blocked. Durable request receipts prevent changed-key
+retries from bypassing in-progress/unknown outcomes. The isolated proposal panel
+renders engine facets, names and reports without replacing the existing manual
+or repair viewer. Live acceptance remains a separate bounded, authorized test.
+See [MetaMuse construction](handoffs/muse-construction.md).

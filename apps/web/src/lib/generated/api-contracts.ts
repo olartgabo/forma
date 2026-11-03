@@ -348,6 +348,36 @@ export type MediaResult = {
   readonly "replayed"?: boolean;
 };
 
+export type MuseConstructionCandidateResult = {
+  readonly "candidate_id": string;
+  readonly "title": string;
+  readonly "rationale": string;
+  readonly "status": "proposed" | "needs_measurement" | "blocked";
+  readonly "construction": (ConstructionPlan | null);
+  readonly "fabrication_plan": (BuildPlan | null);
+  readonly "fabrication_report": (FabricationReport | null);
+  readonly "blockers": ReadonlyArray<string>;
+};
+
+export type MuseConstructionRequest = {
+  readonly "expected_revision_id": string;
+  readonly "user_notes"?: (string | null);
+  readonly "media_id"?: (string | null);
+  readonly "provider_context_consented"?: boolean;
+  readonly "provider_transfer_consented"?: boolean;
+  readonly "idempotency_key": string;
+};
+
+export type MuseConstructionResult = {
+  readonly "project_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "status": "proposed" | "needs_measurement" | "blocked";
+  readonly "candidates": ReadonlyArray<MuseConstructionCandidateResult>;
+  readonly "questions": ReadonlyArray<string>;
+  readonly "diagnostics": DesignDiagnostics;
+  readonly "replayed"?: boolean;
+};
+
 export type OperationReadiness = {
   readonly "operation_id": string;
   readonly "operation_type": "measure" | "mark" | "cut_rect" | "cut_slot" | "fold" | "insert_tab" | "tape_joint" | "tie_joint" | "attach_brace" | "detach" | "inspect" | "functional_test";

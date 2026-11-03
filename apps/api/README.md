@@ -1,5 +1,11 @@
 # API and orchestration
 
+POST `/api/projects/{id}/construction/propose` asks MetaMuse for named geometry
+using saved materials, the goal and an optionally consented private photo. The
+engine generates steps and checks fabrication; it never activates the proposal.
+The route uses durable request receipts and blocks new keys after uncertain
+provider outcomes. See [the connected construction handoff](../../docs/handoffs/muse-construction.md).
+
 POST `/api/projects/{id}/construction/generate` accepts a typed target, piece
 annotations and explicit joint material bindings against an expected inventory
 revision. It loads saved stock and trusted design context on the server, runs

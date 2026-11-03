@@ -43,6 +43,11 @@ from forma_api.intake_runtime import (
     IntakeResult,
 )
 from forma_api.media import Media, MediaDeleteResult, MediaList, MediaResult
+from forma_api.muse_construction import (
+    MuseConstructionCandidateResult,
+    MuseConstructionRequest,
+    MuseConstructionResult,
+)
 from forma_api.plans import (
     ActivationResult,
     CompilePreview,
@@ -113,6 +118,9 @@ from forma_domain.repair_search_contracts import (
 )
 
 API_RECORDS = (
+    MuseConstructionRequest,
+    MuseConstructionResult,
+    MuseConstructionCandidateResult,
     ConstructionGenerateRequest,
     ConstructionGenerateResult,
     FabricationAssessment,

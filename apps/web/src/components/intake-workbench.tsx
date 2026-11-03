@@ -23,6 +23,7 @@ import {
   type MuseProviderStatus,
 } from "../lib/muse-provider";
 import MuseIntakePanel from "./muse-intake-panel";
+import MuseConstructionPanel from "./muse-construction-panel";
 import MuseDiagnosisPanel from "./muse-diagnosis-panel";
 import MuseProviderBanner from "./muse-provider-banner";
 import type {
@@ -1224,6 +1225,14 @@ function ProjectWorkbench({
             </section>
           </div>
           <MuseIntakePanel
+            token={token}
+            project={project}
+            photos={photos}
+            inventoryStale={stale || dirty}
+            disabled={locked}
+            museAvailability={museAvailability}
+          />
+          <MuseConstructionPanel
             token={token}
             project={project}
             photos={photos}
