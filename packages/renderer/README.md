@@ -74,6 +74,9 @@ For a brace replacement, the original cut moves to new index 1 unchanged, the
 replacement cut is added at index 0, and core consumers at indices 2–8 change.
 Changed visible operation/state IDs count even when fold geometry is unchanged.
 A matching hash never establishes checkpoint freshness or physical validity.
+`previous_panel_indices(old, new)` uses the same alignment to map each new panel
+index to its old panel (added panels have no entry), so a review can show a
+changed step beside its original. For the brace replacement it maps 1–8 to 0–7.
 Identical visible plans compare unchanged; an actual no-op resize remains blocked
 by the replanner. A renderer given one plan cannot infer an ancestor's angle;
 unsupported angle repair is rejected by the replanner, not guessed from history.

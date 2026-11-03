@@ -45,6 +45,45 @@ const version = {
   plan,
   manual: { panels: [], bill_of_materials: [] },
 };
+function panel(operationId, instruction) {
+  return {
+    operation_id: operationId,
+    part_ids: ["part-a"],
+    checkpoint_ids: [],
+    dependency_hash: `synthetic-${operationId}-${instruction.length}`,
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><title>${instruction}</title></svg>`,
+    tools: [],
+    instruction,
+  };
+}
+// Only the approval case draws panels: a one-step base manual and a repair
+// preview with one new step followed by the inspection redrawn.
+const drawnVersion = {
+  ...version,
+  // The server always serializes preconditions; the drawn step reads them.
+  plan: {
+    ...plan,
+    operations: plan.operations.map((operation) => ({
+      ...operation,
+      preconditions: {},
+    })),
+  },
+  manual: {
+    panels: [panel("inspect-a", "SYNTHETIC original inspection")],
+    bill_of_materials: [],
+  },
+};
+const repairedVersion = {
+  ...version,
+  version_id: "version-b",
+  manual: {
+    panels: [
+      panel("cut-b", "SYNTHETIC replacement cut"),
+      panel("inspect-a", "SYNTHETIC repeated inspection"),
+    ],
+    bill_of_materials: [],
+  },
+};
 const evidence = {
   id: "synthetic-diagnosis",
   kind: "model_interpretation",
@@ -146,7 +185,8 @@ async function scenario({
       await route.fulfill({ contentType: "image/png", body: pixel });
       return;
     } else if (path.endsWith("/plans")) body = { plans: [] };
-    else if (path.endsWith(`/versions/${plan.version_id}`)) body = version;
+    else if (path.endsWith(`/versions/${plan.version_id}`))
+      body = repairCase === "approval" ? drawnVersion : version;
     else if (path.endsWith("/progress"))
       body = {
         project_id: project.id,
@@ -186,8 +226,18 @@ async function scenario({
           {
             preview_id: "synthetic-blocked",
             patch: input.candidates[0],
-            version: repairCase === "approval" ? version : null,
+            version: repairCase === "approval" ? repairedVersion : null,
             rank: repairCase === "approval" ? 1 : null,
+            panel_diff:
+              repairCase === "approval"
+                ? {
+                    unchanged: [],
+                    changed: [1],
+                    changed_from: [0],
+                    added: [0],
+                    removed: [],
+                  }
+                : null,
             simulation: {
               status: repairCase === "approval" ? "feasible" : "blocked",
               blockers: [],
@@ -311,6 +361,33 @@ async function scenario({
       }
       assert.equal(simulations.length, 1);
       if (repairCase === "approval") {
+        await repair
+          .getByText("Compare original and updated steps", { exact: true })
+          .click();
+        const pair = repair.locator(".panel-compare").nth(1);
+        await pair
+          .getByRole("heading", {
+            name: "Step 2: SYNTHETIC repeated inspection",
+          })
+          .waitFor();
+        assert.equal(
+          await pair.getByText("Before: original step 1").count(),
+          1,
+        );
+        assert.equal(await pair.getByText("After", { exact: true }).count(), 1);
+        assert.equal(
+          await repair
+            .locator(".panel-compare")
+            .first()
+            .getByText("New step with no original.")
+            .count(),
+          1,
+        );
+        assert.equal(
+          await repair.getByText("cannot be paired").count(),
+          0,
+          "a valid panel diff renders as before/after pairs",
+        );
         await repair
           .getByRole("checkbox", { name: /I approve this revision/ })
           .check();

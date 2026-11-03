@@ -16,6 +16,10 @@ import type {
 import type { BuildPlan } from "../lib/generated/contracts";
 import { operationTitles } from "../lib/operation-titles";
 import {
+  panelComparisons,
+  type PanelComparison,
+} from "../lib/panel-comparison";
+import {
   draftFromHandoff,
   isHandoffCurrent,
   type RepairHandoff,
@@ -131,6 +135,19 @@ function Preview({
   const updated = diff
     ? [...diff.changed, ...diff.added].sort((a, b) => a - b)
     : [];
+  let comparisons: PanelComparison[] | null = [];
+  if (diff) {
+    try {
+      comparisons = panelComparisons(
+        diff,
+        base.manual.panels.length,
+        panels.length,
+      );
+    } catch {
+      // Shown to the user below; the listed changes stay reviewable.
+      comparisons = null;
+    }
+  }
   return (
     <article className={`adapt-preview${selected ? " selected" : ""}`}>
       <h4>
@@ -219,22 +236,54 @@ function Preview({
                   ? "None"
                   : `Steps ${updated.map((index) => index + 1).join(", ")}`}{" "}
                 · {diff.unchanged.length} unchanged
+                {diff.removed.length > 0 &&
+                  ` · ${diff.removed.length} original removed`}
               </dd>
             </>
           )}
         </dl>
       )}
-      {updated.length > 0 && (
+      {comparisons === null && (
+        <p className="error">
+          The before and after steps cannot be paired for this option. Review
+          the listed changes instead.
+        </p>
+      )}
+      {comparisons !== null && comparisons.length > 0 && (
         <details>
-          <summary>Show updated steps</summary>
-          {updated.map((index) => (
-            <figure key={index}>
-              <figcaption>
-                Step {index + 1}: {panels[index].instruction}
-              </figcaption>
-              <Diagram panel={panels[index]} />
-            </figure>
-          ))}
+          <summary>Compare original and updated steps</summary>
+          {comparisons.map((comparison) =>
+            comparison.kind === "removed" ? (
+              <figure key={`removed-${comparison.previous}`}>
+                <figcaption>
+                  Removed: original step {comparison.previous + 1}:{" "}
+                  {base.manual.panels[comparison.previous].instruction}
+                </figcaption>
+                <Diagram panel={base.manual.panels[comparison.previous]} />
+              </figure>
+            ) : (
+              <section key={comparison.index} className="panel-compare">
+                <h5>
+                  Step {comparison.index + 1}:{" "}
+                  {panels[comparison.index].instruction}
+                </h5>
+                {comparison.kind === "changed" ? (
+                  <figure>
+                    <figcaption>
+                      Before: original step {comparison.previous + 1}
+                    </figcaption>
+                    <Diagram panel={base.manual.panels[comparison.previous]} />
+                  </figure>
+                ) : (
+                  <p>New step with no original.</p>
+                )}
+                <figure>
+                  <figcaption>After</figcaption>
+                  <Diagram panel={panels[comparison.index]} />
+                </figure>
+              </section>
+            ),
+          )}
         </details>
       )}
       {preview.version && (

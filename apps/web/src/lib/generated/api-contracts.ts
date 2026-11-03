@@ -285,6 +285,7 @@ export type MediaResult = {
 export type PanelDiff = {
   readonly "unchanged": ReadonlyArray<number>;
   readonly "changed": ReadonlyArray<number>;
+  readonly "changed_from": ReadonlyArray<number>;
   readonly "added": ReadonlyArray<number>;
   readonly "removed": ReadonlyArray<number>;
 };

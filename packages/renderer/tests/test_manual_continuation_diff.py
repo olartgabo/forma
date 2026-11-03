@@ -8,6 +8,7 @@ import pytest
 from forma_renderer import (
     ManualDiff,
     diff_manuals,
+    previous_panel_indices,
     render_manual,
     stand_continuation_blockers,
 )
@@ -61,6 +62,9 @@ def test_real_replacement_insertion_keeps_original_cut_aligned(role):
     assert diff(old, new) == ManualDiff(
         unchanged=(1,), changed=(2, 3, 4, 5, 6, 7, 8), added=(0,), removed=()
     )
+    # The inserted replacement cut has no original; every later step pairs
+    # with the original step one position earlier.
+    assert previous_panel_indices(old, new) == {i: i - 1 for i in range(1, 9)}
     assert all(
         p.step_key == f"core:{i}:{op.type}"
         for i, (p, op) in enumerate(zip(old.panels, original.operations))
@@ -98,6 +102,23 @@ def test_keyed_permutation_uses_new_indices_and_removal_uses_old_indices():
     assert diff(old, new) == ManualDiff(
         unchanged=(0,), changed=(2,), added=(1,), removed=(1, 3)
     )
+    before = deepcopy((old, new))
+    assert previous_panel_indices(old, new) == {0: 2, 2: 0}
+    assert (old, new) == before
+
+
+def test_previous_indices_are_positional_without_step_keys():
+    old = manual(*(replace(panel("unused", h), step_key=None) for h in "abc"))
+    new = manual(*(replace(panel("unused", h), step_key=None) for h in "axcd"))
+    assert previous_panel_indices(old, new) == {0: 0, 1: 1, 2: 2}
+    assert previous_panel_indices(new, old) == {0: 0, 1: 1, 2: 2}
+
+
+def test_previous_indices_reject_duplicate_keys_like_the_diff():
+    old = manual(panel("core:0:cut_rect", "a"))
+    new = manual(panel("core:0:cut_rect", "a"), panel("core:0:cut_rect", "b"))
+    with pytest.raises(ValueError, match="Duplicate step_key"):
+        previous_panel_indices(old, new)
 
 
 def test_step_key_metadata_does_not_change_visible_svg_hash():

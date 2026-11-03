@@ -1,5 +1,7 @@
 """Repair previews and explicit atomic approval; simulation never commits."""
 
+import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -9,6 +11,7 @@ from forma_compiler import CutProcess
 from forma_renderer import (
     StandParameters,
     diff_manuals,
+    previous_panel_indices,
     render_manual,
     stand_continuation_blockers,
 )
@@ -71,8 +74,13 @@ class AdaptSimulateRequest(Record):
 
 
 class PanelDiff(Record):
+    """Indices into the preview manual, except ``removed`` and ``changed_from``,
+    which index the base version's manual. ``changed_from[i]`` is the base panel
+    that ``changed[i]`` replaces."""
+
     unchanged: tuple[int, ...]
     changed: tuple[int, ...]
+    changed_from: tuple[int, ...]
     added: tuple[int, ...]
     removed: tuple[int, ...]
 
@@ -265,6 +273,60 @@ def _require_base(project: Project, base: _Base, body) -> None:
         raise ProjectError(409, "stale_version", "Physical history changed; reload it")
 
 
+def _upgrade_preview(connection, project_id: str, base_version_id: str, preview):
+    """Recover pre-alignment receipts from immutable saved panels, never positions."""
+    change = preview.get("panel_diff")
+    if change is None or "changed_from" in change:
+        return preview
+    row = connection.execute(
+        "SELECT body, process, parameters FROM plans WHERE project_id=? AND version_id=?",
+        (project_id, base_version_id),
+    ).fetchone()
+    if row is None or preview.get("version") is None:
+        raise ProjectError(409, "blocked", "Repair comparison history is incomplete")
+    process = CutProcess.model_validate_json(row[1])
+    parameters = StandParameters.model_validate_json(row[2])
+
+    def saved_manual(version):
+        rendered = render_manual(
+            version.plan,
+            process=process,
+            profile_evidence=parameters.profile_evidence,
+            allow_synthetic=ALLOW_SYNTHETIC,
+        )
+        saved = version.manual.panels
+        if rendered.status != "accepted" or tuple(
+            panel.operation_id for panel in rendered.panels
+        ) != tuple(panel.operation_id for panel in saved):
+            raise ProjectError(
+                409, "blocked", "Repair comparison cannot be reconstructed"
+            )
+        # Regenerate identity metadata only; comparison must describe the SVGs
+        # the user originally reviewed, even if renderer output later changes.
+        return replace(
+            rendered,
+            panels=tuple(
+                replace(panel, dependency_hash=stored.dependency_hash)
+                for panel, stored in zip(rendered.panels, saved, strict=True)
+            ),
+        )
+
+    old = saved_manual(PlanVersion.model_validate_json(row[0]))
+    new = saved_manual(PlanVersion.model_validate(preview["version"]))
+    change = diff_manuals(old, new)
+    previous = previous_panel_indices(old, new)
+    return {
+        **preview,
+        "panel_diff": PanelDiff(
+            unchanged=change.unchanged,
+            changed=change.changed,
+            changed_from=tuple(previous[index] for index in change.changed),
+            added=change.added,
+            removed=change.removed,
+        ).model_dump(mode="json"),
+    }
+
+
 def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
     router = APIRouter()
     Owner = Annotated[str, Depends(authenticate)]
@@ -285,7 +347,20 @@ def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
                 body.model_dump(mode="json"),
             )
             if replay is not None:
-                return replay
+                return AdaptPreviewSet.model_validate(
+                    {
+                        **replay,
+                        "previews": [
+                            _upgrade_preview(
+                                connection,
+                                project_id,
+                                replay["base_version_id"],
+                                preview,
+                            )
+                            for preview in replay["previews"]
+                        ],
+                    }
+                )
             if project.active_version_id != body.expected_version_id:
                 raise ProjectError(
                     409, "stale_version", "The active plan changed; reload it"
@@ -316,6 +391,7 @@ def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
                     manual = base.render(result.plan)
                     if manual.status == "accepted":
                         change = diff_manuals(old_manual, manual)
+                        previous = previous_panel_indices(old_manual, manual)
                         preview = preview.model_copy(
                             update={
                                 "rank": ranks[patch_id],
@@ -333,6 +409,9 @@ def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
                                 "panel_diff": PanelDiff(
                                     unchanged=change.unchanged,
                                     changed=change.changed,
+                                    changed_from=tuple(
+                                        previous[index] for index in change.changed
+                                    ),
                                     added=change.added,
                                     removed=change.removed,
                                 ),
@@ -397,7 +476,11 @@ def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
             ).fetchone()
             if row is None:
                 raise ProjectError(404, "not_found", "Repair preview not found")
-            stored = StoredPreview.model_validate_json(row[0])
+            saved = json.loads(row[0])
+            saved["preview"] = _upgrade_preview(
+                connection, project_id, body.expected_version_id, saved["preview"]
+            )
+            stored = StoredPreview.model_validate(saved)
             base = _Base(connection, project_id, body.expected_version_id)
             _require_base(project, base, body)
             if stored.base_last_event_id != body.expected_last_event_id:

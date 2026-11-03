@@ -842,3 +842,11 @@ figcaption span {
 .adapt-diff dd {
   margin: 0 0 0.75rem;
 }
+.panel-compare {
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+}
+.panel-compare h5 {
+  margin: 0 0 0.5rem;
+}

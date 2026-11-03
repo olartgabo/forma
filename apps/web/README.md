@@ -101,7 +101,8 @@ The same runner checks repair-stock confirmation: changing a connector length,
 withdrawing confirmation or reloading recorded work clears earlier previews and
 simulation retries. Reloading requires fresh measurements even if the read fails.
 An uncertain activation locks these inputs and retains its exact approval retry
-to resolve its outcome.
+to resolve its outcome. The approval case also checks that a repair preview shows
+each changed step beside its original step and marks new steps as having none.
 
 ## Mobile manual regression
 
