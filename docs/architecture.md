@@ -5,7 +5,9 @@ offline compiler/stand renderer/replanner, a bounded model gateway and proposal
 service, and private project/inventory/photo persistence. The web connects
 consented Muse intake, design, diagnosis and repair proposals to saved manual
 review, physical reports, explicit revision approval and versioned Proof.
-Hosted identity/storage and physical build/recovery acceptance remain pending.
+One EC2 host serves the stack with SQLite and photos on an encrypted volume
+([hosted deployment](deploy.md)); hosted sign-in and physical build/recovery
+acceptance remain pending.
 Recorded live software observations used synthetic imagery; see the
 [connected handoff](handoffs/connected-muse-demo.md).
 
@@ -75,7 +77,8 @@ photos. Evidence IDs remain rejected. See the
 [media handoff](handoffs/issue-6-private-media.md).
 
 PostgreSQL and private object storage remain the production targets in the spec.
-Hosted identity and production storage/retention remain
+The hackathon demo keeps SQLite and local media on one EC2 volume with daily
+snapshots (D033). Hosted sign-in and provider-side retention remain
 [pending decisions](decisions.md). Connected Muse actions require explicit
 transfer consent per request; storing a photo alone does not transfer it.
 

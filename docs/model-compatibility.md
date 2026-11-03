@@ -20,11 +20,11 @@ Two historical, server-only runtime calls to `muse-spark-1.3` succeeded on Novem
 
 Source: sanitized server-only runtime acceptance reports and a reservation/settlement ledger from a bounded two-call harness. Raw prompts, responses, images, identifiers, notes and local paths are not reproduced here.
 
-| Receipt | Route | Model | Reserved to settled (UTC) | Elapsed | Input tokens | Output tokens | Result |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Photo intake | `muse-spark-1.3` | 08:03:19 to 08:03:31 | 12,140 ms | 2,418 | 1,611 | `ok`: 5 labels, 4 questions, measurement source `unknown` |
-| 2 | Photo-only diagnosis | `muse-spark-1.3` | 08:03:46 to 08:04:00 | 14,109 ms | 2,975 | 2,025 | `ok`: 8 visible observations, 3 hypotheses, 4 questions or measurements, `failure_type` `unknown` |
-| Total | | | | | 5,393 | 3,636 | 2 settled attempts, 2 model calls |
+| Receipt | Route                | Model            | Reserved to settled (UTC) | Elapsed   | Input tokens | Output tokens | Result                                                                                            |
+| ------- | -------------------- | ---------------- | ------------------------- | --------- | ------------ | ------------- | ------------------------------------------------------------------------------------------------- |
+| 1       | Photo intake         | `muse-spark-1.3` | 08:03:19 to 08:03:31      | 12,140 ms | 2,418        | 1,611         | `ok`: 5 labels, 4 questions, measurement source `unknown`                                         |
+| 2       | Photo-only diagnosis | `muse-spark-1.3` | 08:03:46 to 08:04:00      | 14,109 ms | 2,975        | 2,025         | `ok`: 8 visible observations, 3 hypotheses, 4 questions or measurements, `failure_type` `unknown` |
+| Total   |                      |                  |                           |           | 5,393        | 3,636         | 2 settled attempts, 2 model calls                                                                 |
 
 - Sums: 2,418 + 2,975 = 5,393 input tokens; 1,611 + 2,025 = 3,636 output tokens. Each route made one model call.
 - Tokens are provider-reported usage and elapsed time is app-measured wall time. Token counts are not a charge. No actual billed amount, credit balance or dollar figure was recorded, and none is claimed. Live calls can consume credits; they are not free.
@@ -37,11 +37,11 @@ Source: sanitized server-only runtime acceptance reports and a reservation/settl
 
 A second, separate set. It is not merged into the table above; its counts are not added to the 5,393 / 3,636 totals. Source: sanitized private acceptance receipts and ledger from a new bounded harness, read at main `8d713154`. Project, revision and media identifiers, local paths, raw responses and the image are not reproduced. Full detail: [handoff](handoffs/issue-4-realistic-synthetic-photo.md).
 
-| Receipt | Route | Model | Reserved to settled (UTC) | Elapsed | Input tokens | Output tokens | Result |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 3 | Photo intake | `muse-spark-1.3` | 20:45:43 to 20:45:52 | 9,484 ms | 2,442 | 1,716 | HTTP 200, `ok`: 4 candidate labels, 5 questions, measurement source `unknown` |
-| 4 | Photo diagnosis | `muse-spark-1.3` | 20:45:52 to 20:46:03 | 11,219 ms | 3,033 | 1,584 | HTTP 200, `ok`: 8 observations, 3 hypotheses, 4 questions or measurements, `affected_ids` empty, `failure_type` `unknown` |
-| Total | | | | | 5,475 | 3,300 | 2 settled attempts, 2 model calls, no pending or unknown entries |
+| Receipt | Route           | Model            | Reserved to settled (UTC) | Elapsed   | Input tokens | Output tokens | Result                                                                                                                    |
+| ------- | --------------- | ---------------- | ------------------------- | --------- | ------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 3       | Photo intake    | `muse-spark-1.3` | 20:45:43 to 20:45:52      | 9,484 ms  | 2,442        | 1,716         | HTTP 200, `ok`: 4 candidate labels, 5 questions, measurement source `unknown`                                             |
+| 4       | Photo diagnosis | `muse-spark-1.3` | 20:45:52 to 20:46:03      | 11,219 ms | 3,033        | 1,584         | HTTP 200, `ok`: 8 observations, 3 hypotheses, 4 questions or measurements, `affected_ids` empty, `failure_type` `unknown` |
+| Total   |                 |                  |                           |           | 5,475        | 3,300         | 2 settled attempts, 2 model calls, no pending or unknown entries                                                          |
 
 - Sums: 2,442 + 3,033 = 5,475 input; 1,716 + 1,584 = 3,300 output. Tokens are provider-reported usage, not a charge; no billed amount is recorded or claimed.
 - These were actual app API calls to the configured provider, not an intercept or mock. Input was one ChatGPT-generated realistic synthetic photograph (SHA-256 `e2ca67b40670767b35ba3a254472eed43dd757e20262739b1ffb6ff3f53a354d`) of overlapping cardboard, tape, craft sticks, scissors and a folded cardboard stand, with no ruler or scale. It is not an inventory or a build and is not physical evidence.
@@ -50,22 +50,22 @@ A second, separate set. It is not merged into the table above; its counts are no
 
 ### Gate coverage
 
-| Check | State | Evidence |
-| --- | --- | --- |
-| Official protocol documentation | Checked | Links above, October 30, 2026; not re-verified since |
-| Server-side key accepted by provider | Observed four times | Receipts 1 to 4; current availability and funding unknown |
-| Spark image input with typed observations | Observed on synthetic images | Receipts 1 and 2 (software image), 3 and 4 (realistic synthetic photo) |
-| Photo-to-app API flow, configured provider | Observed once, synthetic photo | Receipts 3 and 4; no physical or team-photo claim |
-| Forced structured tool roundtrip | Not proven | Each receipt shows one model call; a tool roundtrip needs at least two |
-| SAM on any image | Not attempted | No SAM call in the receipts |
-| Consented real team photo | Missing | fixtures/ and data/ contain documentation/templates only |
-| Account, deployment region, allowed use, privacy mode | Not checked | No account/dashboard verification |
-| Hosted deployment | Not checked | Receipts came from a local server |
-| Latency, usage and billed cost | Four samples (two per route) | Not a distribution; no billed cost recorded |
-| Design, repair and replanning with a live model | Not requested | Receipts cover intake and diagnosis only |
-| Manual box/label fallback primitive | Offline tested | Box validates label and inclusive image bounds without key/network |
-| SAM masks/overlay UI | Not implemented | Caller must implement image review/correction |
-| Physical success | Not tested | Gateway has no physical-state authority |
+| Check                                                 | State                          | Evidence                                                                                                          |
+| ----------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Official protocol documentation                       | Checked                        | Links above, October 30, 2026; not re-verified since                                                              |
+| Server-side key accepted by provider                  | Observed four times            | Receipts 1 to 4; current availability and funding unknown                                                         |
+| Spark image input with typed observations             | Observed on synthetic images   | Receipts 1 and 2 (software image), 3 and 4 (realistic synthetic photo)                                            |
+| Photo-to-app API flow, configured provider            | Observed once, synthetic photo | Receipts 3 and 4; no physical or team-photo claim                                                                 |
+| Forced structured tool roundtrip                      | Not proven                     | Each receipt shows one model call; a tool roundtrip needs at least two                                            |
+| SAM on any image                                      | Not attempted                  | No SAM call in the receipts                                                                                       |
+| Consented real team photo                             | Missing                        | fixtures/ and data/ contain documentation/templates only                                                          |
+| Account, deployment region, allowed use, privacy mode | Not checked                    | No account/dashboard verification                                                                                 |
+| Hosted deployment                                     | Deployed without provider key  | AWS host verified for auth, isolation, uploads and persistence ([deploy](deploy.md)); no hosted provider call yet |
+| Latency, usage and billed cost                        | Four samples (two per route)   | Not a distribution; no billed cost recorded                                                                       |
+| Design, repair and replanning with a live model       | Not requested                  | Receipts cover intake and diagnosis only                                                                          |
+| Manual box/label fallback primitive                   | Offline tested                 | Box validates label and inclusive image bounds without key/network                                                |
+| SAM masks/overlay UI                                  | Not implemented                | Caller must implement image review/correction                                                                     |
+| Physical success                                      | Not tested                     | Gateway has no physical-state authority                                                                           |
 
 Intake and diagnosis output is untrusted proposal data. The receipts do not establish measured dimensions, stock, part identity, failure cause or any physical pass. Mocked responses in tests remain synthetic protocol cases. No guessed privacy-mode field is sent. Confirm Standard account privacy/retention settings and permitted region before private media use.
 
