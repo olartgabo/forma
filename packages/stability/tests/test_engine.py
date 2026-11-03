@@ -220,7 +220,7 @@ def test_required_matrix_named_cases_and_unsupported_checks():
     assert run(data, required_case_ids=["case", "missing"]).status == "indeterminate"
     assert (
         run(data, required_check_types=["tip", "slide", "joint", "deformation"]).status
-        == "unsupported"
+        == "needs_measurement"
     )
 
 

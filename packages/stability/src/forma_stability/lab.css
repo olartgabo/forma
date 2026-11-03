@@ -120,6 +120,26 @@ button:disabled {
   height: auto;
   background: white;
   border: 1px solid #c7d2cf;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+#stand-view.dragging svg {
+  cursor: grabbing;
+}
+#stand-view:focus-visible {
+  outline: 3px solid #d4a339;
+  outline-offset: 3px;
+}
+.camera-zoom {
+  max-width: 600px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.camera-zoom input {
+  flex: 1;
+  min-width: 0;
 }
 #stand-view li,
 #stand-operations li,

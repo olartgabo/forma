@@ -530,3 +530,18 @@ through the existing canonical producer, retaining the rectangle as an analytica
 unit case. Unsupported intermediate poses remain explicit rather than borrowing
 the final assembly's support. Issue #153 owns the next physical-stage extension;
 Gabo's fabrication, repair search and product viewer scopes remain separate.
+
+## D040: Explicit physical stages and bounded material checks, November 3, 2026
+
+The user requested 360-degree diagnostic rotation and implementation of
+intermediate physics, sliding, joint strength and deformation. The engine now
+accepts explicit stage transforms, source masses/COM and body contacts, partitions
+active load-bearing components and evaluates each separately. The direct lab's
+camera does not change physical coordinates or calculation identity.
+
+Additional checks use explicit Coulomb contact demands, named scalar joint
+allowables and named Euler-Bernoulli beam conditions. They do not infer friction,
+cardboard stiffness, joint capacity or internal load paths from appearance. Unknown
+properties remain unresolved. The stage API authenticates current reported work
+but accepts hypothetical physical inputs only; observed stage capture remains
+future work. See [stage mechanics](handoffs/stability-stage-mechanics.md).

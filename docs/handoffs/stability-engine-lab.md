@@ -21,17 +21,18 @@ and API software fixture, not drawn by hand. The sample remains synthetic.
 Paste a compiled `BuildPlan` or an API response containing `version.plan` to
 inspect another supported stand. Invalid/unsupported plans fail visibly.
 
-Isometric 3D, front and side projections display the returned canonical facets,
-source part IDs and fold area fractions. These fixed diagnostic projections
-contain no new physical geometry or product-viewer scene engine. The origin is
+Drag or use the arrow keys to rotate through 360 degrees; use zoom/reset controls
+or the fixed isometric, front and side views. These camera changes alter no
+physical inputs and request no new calculations. The view displays returned facets,
+source part IDs and fold area fractions. The origin is
 the front base hinge, x across width, y rearward, z up. This differs from the
 centered frame of the analytical rectangle cases below.
 
 Select each hypothetical operation prefix to inspect the actual plan's IDs,
 dependencies, attachment effects and existing manual instructions/tools. This
 creates only an in-memory synthetic replay; no physical event is saved. The
-initial view is a dashed planned-target reference. Prefixes 1–5 remain explicitly
-unsupported for assembled geometry/contact, with **no numerical report**. A dashed
+initial view is a dashed planned-target reference. Prefixes 1–5 without explicit
+stage inputs remain unresolved, with **no numerical report**. A dashed
 finished reference is not the current-stage shape. At prefix 6 or later the
 existing producer can resolve the nominal assembled state. Functional tests are
 never simulated as passed, including when their step is selected.
@@ -45,10 +46,20 @@ experiment; it does not measure a stand. Move device y outside the base or remov
 an assumption to inspect a failure or unresolved result. COM and critical-edge
 overlays come from the real evaluator.
 
-The standalone lab is an inspection tool, not Gabo's product 3D viewer or a new
-fabrication scheduler. Full physical poses/contacts at intermediate construction
-steps are not implemented by this diagnostic. Their unresolved state is itself
-an engine limitation to report, not a false staged-mechanics claim.
+At prefix 1 or 2, explicitly load the separated flat-panel example to calculate
+three independently supported source parts. Edit the physical snapshot to test
+other supported intermediate poses, contacts and masses; missing data cannot
+pass. This opt-in example invents placements and masses, not physical evidence.
+
+Named additional-check examples exercise sliding, scalar joint capacity and
+beam deflection using supplied hypothetical demands and material values. Their
+exact inputs and applicability are editable; they are not an internal load-path
+solution or a prediction of unmeasured cardboard strength. See
+[stage mechanics and limits](stability-stage-mechanics.md).
+
+The standalone lab remains a diagnostic, separate from Gabo's product viewer
+and fabrication scheduler. Repaired topology, general flexible mechanics and
+typed observation capture for arbitrary stages remain unfinished.
 
 Download **stand experiment and feedback** to preserve the exact original plan,
 selected prefix, hypothetical loads, canonical geometry and result. Replay it

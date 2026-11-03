@@ -7,6 +7,16 @@ precedence. Record deliberate product changes in [docs/decisions.md](docs/decisi
 
 ## Ownership and coordination
 
+### November 3, 2026: explicit engine expansion
+
+The user requests 360-degree rotation in the direct engine diagnostic, supported
+intermediate-stage physics, sliding, joint strength and deformation checks.
+This authorizes this bounded engine expansion despite the older offline-only
+pause. Diagnostic camera controls remain separate from physical transforms.
+Gabo retains fabrication rules, repair search and the product viewer; do not
+edit the active #154 fabrication implementation. Unknown physical properties
+remain unknown, and simplified constitutive checks must name their applicability.
+
 ### November 3, 2026: current sequenced workstreams
 
 Issue #17 is the current assignment index. ResniDev owns #146 → #153 → #147 → #148 →

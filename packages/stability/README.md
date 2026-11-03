@@ -40,7 +40,10 @@ The physical required margin is distinct from the numerical tolerance band:
 strictly above required margin plus tolerance passes; strictly below required
 margin minus tolerance fails; equality/overlap remains indeterminate. Negative
 restoring moment is overturning. No force or moment strength check is inferred.
-Sliding, retention, joints, deformation and dynamics remain unsupported.
+Optional scalar Coulomb sliding, supplied joint-demand/capacity and named beam
+deflection checks now accept explicit inputs. They do not solve internal loads,
+phone retention, general deformation or dynamics. See the
+[stage mechanics scope](../../docs/handoffs/stability-stage-mechanics.md).
 
 Reports evaluate the policy case/check matrix; missing required cases remain
 unresolved. Optional input cases outside that matrix are also evaluated. The union is capped
@@ -68,3 +71,8 @@ pure evaluator with explicitly hypothetical inputs. It stores no project evidenc
 and calls no provider. Exact JSON editing, downloadable input/report feedback and
 CLI replay (`--input case.json`) make behavior reproducible. See
 [the direct testing guide](../../docs/handoffs/stability-engine-lab.md).
+
+The compiled-stand diagnostic has camera-only orbit/zoom and accepts explicit
+physical stage snapshots through `forma_stability.stage.evaluate_stage`. The
+opt-in cut-panel example evaluates three separately supported components. Stage
+geometry and support do not come from the camera or the final assembly shortcut.

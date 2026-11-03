@@ -15,6 +15,11 @@ from forma_api.stability_measurements import (
     save_measurements,
     typed_evidence_ids,
 )
+from forma_api.stability_stages import (
+    StageAnalysisRequest,
+    StageAnalysisResponse,
+    analyze_stage,
+)
 from forma_domain.models import ID, Evidence, EvidenceInvalidation, PhysicalEvent
 
 
@@ -164,5 +169,37 @@ def stability_router(store: ProjectStore, authenticate, resolver=None) -> APIRou
                 typed_evidence_ids(connection, project_id, version.version_id),
             )
             return save_measurements(connection, store, owner, authorized, body)
+
+    @router.post(
+        "/{project_id}/stability/stage-analyses", response_model=StageAnalysisResponse
+    )
+    def stage_analysis(
+        project_id: ID, body: StageAnalysisRequest, owner: Owner, response: Response
+    ):
+        response.headers["Cache-Control"] = "no-store"
+        with store.transaction() as connection:
+            project = store.read(connection, owner, project_id)
+            version = PlanService(store).read(
+                connection, project_id, body.plan_version_id
+            )
+            current = snapshot(connection, version.plan)
+            row = connection.execute(
+                "SELECT id FROM progress_events WHERE project_id=? ORDER BY rowid DESC LIMIT 1",
+                (project_id,),
+            ).fetchone()
+            invalidations = tuple(
+                EvidenceInvalidation.model_validate_json(row[0])
+                for row in connection.execute(
+                    "SELECT body FROM evidence_invalidations WHERE project_id=? ORDER BY rowid",
+                    (project_id,),
+                )
+                if EvidenceInvalidation.model_validate_json(
+                    row[0]
+                ).invalidated_for_version_id
+                == version.version_id
+            )
+            return analyze_stage(
+                project, version, current, row[0] if row else None, body, invalidations
+            )
 
     return router

@@ -87,15 +87,19 @@ from forma_api.stability_runtime import (
     StabilityAnalysisResponse,
     StabilityContext,
 )
+from forma_api.stability_stages import StageAnalysisRequest, StageAnalysisResponse
 from forma_domain import (
     assembly_geometry_contracts,
     models,
     stability_contracts,
     stability_measurements,
+    stage_mechanics,
 )
 from forma_domain.generate import typescript
 
 API_RECORDS = (
+    StageAnalysisRequest,
+    StageAnalysisResponse,
     StabilityMeasurementRequest,
     StabilityMeasurementResponse,
     StabilityAnalysisRequest,
@@ -195,6 +199,7 @@ def artifacts():
                 stability_contracts,
                 assembly_geometry_contracts,
                 stability_measurements,
+                stage_mechanics,
             )
         ):
             raise ValueError(f"API schema references an unknown domain record: {name}")

@@ -9,7 +9,7 @@ from .models import ID, Nonnegative, Record, Text
 ContentHash = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 FiniteScalar = Annotated[float, Field(strict=True, allow_inf_nan=False)]
 SIUnit = Literal[
-    "1", "m", "m2", "m3", "kg", "s", "rad", "N", "N_m", "Pa", "kg_m3", "m_s2"
+    "1", "m", "m2", "m3", "m4", "kg", "s", "rad", "N", "N_m", "Pa", "kg_m3", "m_s2"
 ]
 CheckType = Literal["support", "tip", "slide", "joint", "deformation"]
 CheckStatus = Literal[
@@ -167,7 +167,7 @@ class StabilityReport(Record):
     overlays: tuple["StabilityOverlay", ...] = Field(default=(), max_length=16)
     assumption_ids: tuple[ID, ...] = Field(default=(), max_length=16512)
     state_basis: Literal["nominal", "observed"] | None = None
-    input_warnings: tuple[Text, ...] = Field(default=(), max_length=272)
+    input_warnings: tuple[Text, ...] = Field(default=(), max_length=288)
 
     @model_validator(mode="after")
     def aggregate(self):
@@ -264,12 +264,87 @@ class SupportContact(Record):
     assumption_ids: tuple[ID, ...] = Field(default=(), max_length=128)
 
 
+def _nonnegative_quantity(quantity, unit, *, positive=False):
+    if quantity.unit != unit:
+        raise ValueError(f"quantity requires {unit}")
+    value = quantity.value if quantity.kind == "scalar" else quantity.lower
+    if value is not None and (value < 0 or (positive and value == 0)):
+        raise ValueError(
+            "quantity must be positive" if positive else "quantity must be nonnegative"
+        )
+
+
+class SlidingDemand(Record):
+    """Single contact's supplied reaction demands, not a reaction-force solver."""
+
+    contact_id: ID
+    normal_force_n: QuantityEstimate
+    tangential_force_n: QuantityEstimate
+    friction_coefficient: QuantityEstimate
+    planar_coulomb_applicable: bool
+
+    @model_validator(mode="after")
+    def units_and_signs(self):
+        _nonnegative_quantity(self.normal_force_n, "N")
+        _nonnegative_quantity(self.tangential_force_n, "N")
+        _nonnegative_quantity(self.friction_coefficient, "1")
+        return self
+
+
+class JointDemand(Record):
+    """A named, explicitly supplied scalar failure-mode demand and allowable.
+
+    The stage adapter authenticates joint membership. A comparison does not solve
+    load distribution or infer peel, shear, moment and fatigue interaction.
+    """
+
+    joint_id: ID
+    demand_n: QuantityEstimate
+    allowable_n: QuantityEstimate
+    capacity_basis: Text
+    scalar_mode_applicable: bool
+
+    @model_validator(mode="after")
+    def units_and_signs(self):
+        _nonnegative_quantity(self.demand_n, "N")
+        _nonnegative_quantity(self.allowable_n, "N", positive=True)
+        return self
+
+
+class BeamDeflection(Record):
+    """Prismatic Euler-Bernoulli beam; no cardboard shell or buckling inference."""
+
+    member_id: ID
+    support_model: Literal["cantilever_end_load", "simply_supported_center_load"]
+    force_n: QuantityEstimate
+    length_m: QuantityEstimate
+    elastic_modulus_pa: QuantityEstimate
+    second_moment_m4: QuantityEstimate
+    allowable_deflection_m: QuantityEstimate
+    linear_elastic_small_deflection_applicable: bool
+
+    @model_validator(mode="after")
+    def units_and_signs(self):
+        _nonnegative_quantity(self.force_n, "N")
+        for quantity, unit in (
+            (self.length_m, "m"),
+            (self.elastic_modulus_pa, "Pa"),
+            (self.second_moment_m4, "m4"),
+            (self.allowable_deflection_m, "m"),
+        ):
+            _nonnegative_quantity(quantity, unit, positive=True)
+        return self
+
+
 class LoadCase(Record):
     case_id: ID
     orientation: Text
     body_ids: tuple[ID, ...] = Field(min_length=1, max_length=64)
     contact_ids: tuple[ID, ...] = Field(max_length=128)
     gravity_m_s2: QuantityEstimate
+    sliding: SlidingDemand | None = None
+    joint_demands: tuple[JointDemand, ...] = Field(default=(), max_length=16)
+    deformation: BeamDeflection | None = None
 
     @model_validator(mode="after")
     def gravity_and_ids(self):
@@ -278,6 +353,10 @@ class LoadCase(Record):
         for ids in (self.body_ids, self.contact_ids):
             if len(set(ids)) != len(ids):
                 raise ValueError("duplicate case reference")
+        if len({j.joint_id for j in self.joint_demands}) != len(self.joint_demands):
+            raise ValueError("duplicate joint demand")
+        if self.sliding is not None and self.sliding.contact_id not in self.contact_ids:
+            raise ValueError("sliding contact must belong to the case")
         if self.gravity_m_s2.kind == "scalar" and self.gravity_m_s2.value <= 0:
             raise ValueError("gravity magnitude must be positive")
         if self.gravity_m_s2.kind == "interval" and self.gravity_m_s2.lower <= 0:
@@ -343,6 +422,17 @@ class StabilityInput(Record):
                 raise ValueError("unknown case body/contact")
             if any(contacts[c].body_id not in case.body_ids for c in case.contact_ids):
                 raise ValueError("contact body absent from case")
+            if case.deformation is not None:
+                sources = {
+                    p
+                    for b in self.mechanical_snapshot.bodies
+                    if b.body_id in case.body_ids
+                    for p in b.source_part_ids
+                }
+                if case.deformation.member_id not in sources:
+                    raise ValueError(
+                        "deformation member must be a source part in the case"
+                    )
         return self
 
 

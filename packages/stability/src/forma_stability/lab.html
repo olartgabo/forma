@@ -64,19 +64,57 @@
             Front projection
           </button>
           <button type="button" data-stand-view="side">Side projection</button>
+          <button type="button" id="stand-reset-camera">Reset camera</button>
         </div>
-        <div id="stand-view"></div>
+        <p id="stand-camera-help">
+          Drag to rotate through 360°. On touch screens, drag with one finger
+          and pinch with two to zoom. With the model focused, use arrow keys to
+          rotate, +/− to zoom and Home to reset. Camera controls never
+          recalculate physics.
+        </p>
+        <label class="camera-zoom"
+          >Camera zoom
+          <input
+            id="stand-zoom"
+            type="range"
+            min="0.4"
+            max="3"
+            step="0.01"
+            value="1"
+        /></label>
+        <p id="stand-camera-state"></p>
+        <div
+          id="stand-view"
+          tabindex="0"
+          role="group"
+          aria-label="Interactive 3D diagnostic model"
+          aria-describedby="stand-camera-help stand-camera-state"
+        ></div>
         <p id="stand-geometry-caption"></p>
         <ol id="stand-operations"></ol>
-        <p>
-          <strong>Stage limit:</strong> the current canonical producer supports
-          the planned finished shape and fully assembled nominal state.
-          Intermediate poses/contacts are unresolved; their final shape is shown
-          only as a dashed reference and cannot produce a selected-stage
-          stability pass. This reads existing plan operations; it does not
-          implement new fabrication rules or record any work. Functional tests
-          are never simulated as passed.
-        </p>
+        <section aria-labelledby="stage-experiment-title">
+          <h3 id="stage-experiment-title">Intermediate construction physics</h3>
+          <p>
+            Supply explicit part poses, table contacts and masses. Each
+            disconnected component gets its own report. Selecting an operation
+            alone does not invent a physical pose. Functional tests are never
+            simulated as passed.
+          </p>
+          <button type="button" id="stand-stage-example">
+            Load hypothetical separated flat parts (step 1)
+          </button>
+          <label
+            >Explicit stage snapshot JSON (SI units, hypothetical only)<textarea
+              id="stand-snapshot"
+              rows="8"
+              spellcheck="false"
+              placeholder="Load the example to inspect and change its explicit poses, masses and contacts."
+            ></textarea>
+          </label>
+          <button type="button" id="run-stage-snapshot">
+            Evaluate explicit stage snapshot
+          </button>
+        </section>
         <form id="stand-loads">
           <h3>Hypothetical loads on this compiled stand</h3>
           <p>
@@ -157,6 +195,30 @@
               only</label
             >
           </fieldset>
+          <h3>Supplied-demand checks</h3>
+          <p>
+            These scalar experiments compare explicitly supplied forces and
+            material properties. They do not derive joint forces or predict how
+            the whole stand bends. All example numbers are invented assumptions.
+          </p>
+          <div class="presets">
+            <button type="button" data-check-example="sliding">
+              Hypothetical sliding example</button
+            ><button type="button" data-check-example="joint">
+              Hypothetical joint example</button
+            ><button type="button" data-check-example="beam">
+              Hypothetical beam example</button
+            ><button type="button" id="clear-checks">
+              Clear supplied checks
+            </button>
+          </div>
+          <label
+            >Supplied-demand JSON (SI units; editable)<textarea
+              id="stand-checks"
+              rows="8"
+              spellcheck="false"
+            ></textarea>
+          </label>
           <button class="primary" id="run-stand" type="submit">
             Evaluate selected stand stage
           </button>
@@ -164,8 +226,10 @@
         <p id="stand-status" aria-live="polite">Loading the compiled sample…</p>
         <div id="stand-result"></div>
         <p>
-          Static tipping only. Phone retention, sliding, connection strength,
-          deformation and physical success remain unverified.
+          Passing a declared scalar criterion is not a physical success claim.
+          Phone retention, impact, unmodeled load paths and real material
+          behavior remain unverified. Missing supplied checks cannot establish
+          sliding, joint or deformation performance.
         </p>
         <details>
           <summary>

@@ -462,6 +462,56 @@
       "title": "AttachBraceArgs",
       "type": "object"
     },
+    "BeamDeflection": {
+      "additionalProperties": false,
+      "description": "Prismatic Euler-Bernoulli beam; no cardboard shell or buckling inference.",
+      "properties": {
+        "allowable_deflection_m": {
+          "$ref": "#/$defs/QuantityEstimate"
+        },
+        "elastic_modulus_pa": {
+          "$ref": "#/$defs/QuantityEstimate"
+        },
+        "force_n": {
+          "$ref": "#/$defs/QuantityEstimate"
+        },
+        "length_m": {
+          "$ref": "#/$defs/QuantityEstimate"
+        },
+        "linear_elastic_small_deflection_applicable": {
+          "title": "Linear Elastic Small Deflection Applicable",
+          "type": "boolean"
+        },
+        "member_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Member Id",
+          "type": "string"
+        },
+        "second_moment_m4": {
+          "$ref": "#/$defs/QuantityEstimate"
+        },
+        "support_model": {
+          "enum": [
+            "cantilever_end_load",
+            "simply_supported_center_load"
+          ],
+          "title": "Support Model",
+          "type": "string"
+        }
+      },
+      "required": [
+        "member_id",
+        "support_model",
+        "force_n",
+        "length_m",
+        "elastic_modulus_pa",
+        "second_moment_m4",
+        "allowable_deflection_m",
+        "linear_elastic_small_deflection_applicable"
+      ],
+      "title": "BeamDeflection",
+      "type": "object"
+    },
     "Blocker": {
       "additionalProperties": false,
       "properties": {
@@ -2768,6 +2818,42 @@
       "title": "Joint",
       "type": "object"
     },
+    "JointDemand": {
+      "additionalProperties": false,
+      "description": "A named, explicitly supplied scalar failure-mode demand and allowable.\n\nThe stage adapter authenticates joint membership. A comparison does not solve\nload distribution or infer peel, shear, moment and fatigue interaction.",
+      "properties": {
+        "allowable_n": {
+          "$ref": "#/$defs/QuantityEstimate"
+        },
+        "capacity_basis": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Capacity Basis",
+          "type": "string"
+        },
+        "demand_n": {
+          "$ref": "#/$defs/QuantityEstimate"
+        },
+        "joint_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Joint Id",
+          "type": "string"
+        },
+        "scalar_mode_applicable": {
+          "title": "Scalar Mode Applicable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "joint_id",
+        "demand_n",
+        "allowable_n",
+        "capacity_basis",
+        "scalar_mode_applicable"
+      ],
+      "title": "JointDemand",
+      "type": "object"
+    },
     "JointProfile": {
       "additionalProperties": false,
       "properties": {
@@ -2898,14 +2984,45 @@
           "title": "Contact Ids",
           "type": "array"
         },
+        "deformation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BeamDeflection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "gravity_m_s2": {
           "$ref": "#/$defs/QuantityEstimate"
+        },
+        "joint_demands": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/JointDemand"
+          },
+          "maxItems": 16,
+          "title": "Joint Demands",
+          "type": "array"
         },
         "orientation": {
           "maxLength": 2000,
           "minLength": 1,
           "title": "Orientation",
           "type": "string"
+        },
+        "sliding": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SlidingDemand"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -3934,6 +4051,7 @@
             "m",
             "m2",
             "m3",
+            "m4",
             "kg",
             "s",
             "rad",
@@ -4229,6 +4347,110 @@
         "patch"
       ],
       "title": "ReplannerInput",
+      "type": "object"
+    },
+    "RigidTransform": {
+      "additionalProperties": false,
+      "description": "Right-handed local-to-world rotation and translation in metres.",
+      "properties": {
+        "rotation": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            }
+          ],
+          "title": "Rotation",
+          "type": "array"
+        },
+        "translation_m": {
+          "$ref": "#/$defs/Point3"
+        }
+      },
+      "required": [
+        "rotation",
+        "translation_m"
+      ],
+      "title": "RigidTransform",
+      "type": "object"
+    },
+    "SlidingDemand": {
+      "additionalProperties": false,
+      "description": "Single contact's supplied reaction demands, not a reaction-force solver.",
+      "properties": {
+        "contact_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Contact Id",
+          "type": "string"
+        },
+        "friction_coefficient": {
+          "$ref": "#/$defs/QuantityEstimate"
+        },
+        "normal_force_n": {
+          "$ref": "#/$defs/QuantityEstimate"
+        },
+        "planar_coulomb_applicable": {
+          "title": "Planar Coulomb Applicable",
+          "type": "boolean"
+        },
+        "tangential_force_n": {
+          "$ref": "#/$defs/QuantityEstimate"
+        }
+      },
+      "required": [
+        "contact_id",
+        "normal_force_n",
+        "tangential_force_n",
+        "friction_coefficient",
+        "planar_coulomb_applicable"
+      ],
+      "title": "SlidingDemand",
       "type": "object"
     },
     "StabilityInput": {
@@ -4533,7 +4755,7 @@
             "minLength": 1,
             "type": "string"
           },
-          "maxItems": 272,
+          "maxItems": 288,
           "title": "Input Warnings",
           "type": "array"
         },
@@ -4632,6 +4854,335 @@
         "coverage"
       ],
       "title": "StabilityReport",
+      "type": "object"
+    },
+    "StageAnalysisResult": {
+      "additionalProperties": false,
+      "properties": {
+        "active_joint_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Active Joint Ids",
+          "type": "array"
+        },
+        "blockers": {
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Blockers",
+          "type": "array"
+        },
+        "component_part_ids": {
+          "items": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Component Part Ids",
+          "type": "array"
+        },
+        "facets": {
+          "items": {
+            "$ref": "#/$defs/CanonicalFacet"
+          },
+          "title": "Facets",
+          "type": "array"
+        },
+        "future_part_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Future Part Ids",
+          "type": "array"
+        },
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/StabilityInput"
+          },
+          "title": "Inputs",
+          "type": "array"
+        },
+        "physical_evidence_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Physical Evidence Ids",
+          "type": "array"
+        },
+        "policies": {
+          "items": {
+            "$ref": "#/$defs/AnalysisPolicy"
+          },
+          "title": "Policies",
+          "type": "array"
+        },
+        "present_part_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "title": "Present Part Ids",
+          "type": "array"
+        },
+        "producer_version": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Producer Version",
+          "type": "string"
+        },
+        "reports": {
+          "items": {
+            "$ref": "#/$defs/StabilityReport"
+          },
+          "title": "Reports",
+          "type": "array"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/StageSnapshot"
+        },
+        "snapshot_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Snapshot Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "producer_version",
+        "snapshot_hash",
+        "snapshot",
+        "present_part_ids",
+        "future_part_ids",
+        "active_joint_ids",
+        "facets",
+        "component_part_ids",
+        "inputs",
+        "policies",
+        "reports",
+        "blockers"
+      ],
+      "title": "StageAnalysisResult",
+      "type": "object"
+    },
+    "StageContact": {
+      "additionalProperties": false,
+      "properties": {
+        "contact_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Contact Id",
+          "type": "string"
+        },
+        "polygon_world": {
+          "items": {
+            "$ref": "#/$defs/Point3"
+          },
+          "maxItems": 128,
+          "minItems": 3,
+          "title": "Polygon World",
+          "type": "array"
+        }
+      },
+      "required": [
+        "contact_id",
+        "polygon_world"
+      ],
+      "title": "StageContact",
+      "type": "object"
+    },
+    "StageFacetPose": {
+      "additionalProperties": false,
+      "properties": {
+        "facet_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Facet Id",
+          "type": "string"
+        },
+        "transform": {
+          "$ref": "#/$defs/RigidTransform"
+        }
+      },
+      "required": [
+        "facet_id",
+        "transform"
+      ],
+      "title": "StageFacetPose",
+      "type": "object"
+    },
+    "StagePart": {
+      "additionalProperties": false,
+      "properties": {
+        "center_of_mass_world": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Point3"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contacts": {
+          "items": {
+            "$ref": "#/$defs/StageContact"
+          },
+          "maxItems": 16,
+          "title": "Contacts",
+          "type": "array"
+        },
+        "facet_poses": {
+          "items": {
+            "$ref": "#/$defs/StageFacetPose"
+          },
+          "maxItems": 32,
+          "title": "Facet Poses",
+          "type": "array"
+        },
+        "mass_kg": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mass Kg"
+        },
+        "part_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Part Id",
+          "type": "string"
+        },
+        "rigid_body_assumed": {
+          "title": "Rigid Body Assumed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "part_id",
+        "mass_kg",
+        "center_of_mass_world",
+        "facet_poses",
+        "contacts",
+        "rigid_body_assumed"
+      ],
+      "title": "StagePart",
+      "type": "object"
+    },
+    "StageSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "assumption_notes": {
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Assumption Notes",
+          "type": "array"
+        },
+        "basis": {
+          "enum": [
+            "hypothetical",
+            "observed"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "completed_operation_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Completed Operation Ids",
+          "type": "array"
+        },
+        "component_loads": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LoadCase"
+          },
+          "maxItems": 16,
+          "title": "Component Loads",
+          "type": "array"
+        },
+        "gravity_world_m_s2": {
+          "$ref": "#/$defs/Point3"
+        },
+        "history_cursor": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "History Cursor"
+        },
+        "inventory_revision": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Inventory Revision",
+          "type": "string"
+        },
+        "parts": {
+          "items": {
+            "$ref": "#/$defs/StagePart"
+          },
+          "maxItems": 16,
+          "title": "Parts",
+          "type": "array"
+        },
+        "plan_version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Plan Version Id",
+          "type": "string"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "rigid_joint_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Rigid Joint Ids",
+          "type": "array"
+        },
+        "support_frame": {
+          "$ref": "#/$defs/RigidTransform"
+        }
+      },
+      "required": [
+        "project_id",
+        "plan_version_id",
+        "inventory_revision",
+        "history_cursor",
+        "completed_operation_ids",
+        "basis",
+        "support_frame",
+        "gravity_world_m_s2",
+        "parts",
+        "rigid_joint_ids",
+        "assumption_notes"
+      ],
+      "title": "StageSnapshot",
       "type": "object"
     },
     "Stock": {

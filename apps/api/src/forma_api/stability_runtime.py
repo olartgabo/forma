@@ -19,6 +19,7 @@ from forma_domain.models import (
 )
 from forma_domain.stability_contracts import (
     AnalysisPolicy,
+    QuantityEstimate,
     StabilityInput,
     StabilityReport,
 )
@@ -201,7 +202,27 @@ def analyze(snapshot: StabilitySnapshot, resolver: StabilityResolver | None = No
         for quantity in quantities:
             validate_quantity(quantity, set(body.source_part_ids))
     for case in analysis.cases:
-        validate_quantity(case.gravity_m_s2, set())
+        source_parts = {
+            part
+            for body in analysis.mechanical_snapshot.bodies
+            if body.body_id in case.body_ids
+            for part in body.source_part_ids
+        }
+
+        def visit(value):
+            if isinstance(value, dict):
+                if {"kind", "unit", "provenance", "confirmed"} <= value.keys():
+                    validate_quantity(
+                        QuantityEstimate.model_validate(value), source_parts
+                    )
+                else:
+                    for child in value.values():
+                        visit(child)
+            elif isinstance(value, list):
+                for child in value:
+                    visit(child)
+
+        visit(case.model_dump(mode="json"))
     report = evaluate_stability(analysis, policy)
     status = "complete"
     if report.status == "needs_measurement":

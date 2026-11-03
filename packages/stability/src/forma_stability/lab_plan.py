@@ -9,12 +9,27 @@ from forma_renderer.svg import instruction, tools_for
 from pydantic import BaseModel, ConfigDict, Field
 
 from forma_domain.models import BuildPlan, PhysicalEvent
-from forma_domain.stability_contracts import AnalysisPolicy, StabilityInput
+from forma_domain.stability_contracts import (
+    AnalysisPolicy,
+    BeamDeflection,
+    JointDemand,
+    SlidingDemand,
+    StabilityInput,
+)
+from forma_domain.stage_mechanics import StageSnapshot
 from forma_stability import evaluate_stability
 from forma_stability.geometry import UnsupportedGeometry, project_nominal_geometry
+from forma_stability.stage import evaluate_stage, flat_parts_example, transform_point
 
 Finite = Annotated[float, Field(allow_inf_nan=False)]
 Positive = Annotated[float, Field(gt=0, allow_inf_nan=False)]
+
+
+class CaseChecks(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sliding: SlidingDemand | None = None
+    joint_demands: tuple[JointDemand, ...] = Field(default=(), max_length=32)
+    deformation: BeamDeflection | None = None
 
 
 class PlanLoads(BaseModel):
@@ -31,6 +46,7 @@ class PlanLoads(BaseModel):
     connector_shares_included: bool
     full_base_contact_assumed: bool
     rigid_device_attachment_assumed: bool
+    case_checks: CaseChecks | None = None
 
 
 class PlanExperiment(BaseModel):
@@ -38,6 +54,9 @@ class PlanExperiment(BaseModel):
     plan: BuildPlan
     completed_prefix: Annotated[int, Field(strict=True, ge=0, le=64)]
     loads: PlanLoads | None = None
+    stage_snapshot: StageSnapshot | None = None
+    stage_example: bool = False
+    stage_policy: AnalysisPolicy | None = None
 
 
 def _quantity(value, unit, provenance="assumed"):
@@ -53,6 +72,13 @@ def _quantity(value, unit, provenance="assumed"):
 def _packet(plan, geometry, loads):
     if set(loads.part_mass_g) != set(geometry.active_part_ids):
         raise ValueError("Supply exactly one mass for each canonical source part")
+    if loads.case_checks and loads.case_checks.joint_demands:
+        if {j.joint_id for j in loads.case_checks.joint_demands} != set(
+            geometry.attached_joint_ids
+        ):
+            raise ValueError(
+                "Joint checks must cover exactly the assembled stage's active joints"
+            )
     centers = {item.part_id: item.centroid for item in geometry.part_centroids}
     bodies = []
     for part_id in geometry.active_part_ids:
@@ -165,6 +191,11 @@ def _packet(plan, geometry, loads):
                     body_ids=[b["body_id"] for b in bodies],
                     contact_ids=[c["contact_id"] for c in contacts],
                     gravity_m_s2=_quantity(loads.gravity_m_s2, "m_s2"),
+                    **(
+                        loads.case_checks.model_dump(mode="python")
+                        if loads.case_checks
+                        else {}
+                    ),
                 )
             ],
         )
@@ -179,7 +210,8 @@ def _packet(plan, geometry, loads):
         required_margin_m=loads.required_margin_mm / 1000,
         uncertainty_method="analytic_interval",
         evaluation_budget=16,
-        required_check_types=("support", "tip"),
+        required_check_types=("support", "tip")
+        + (("slide", "joint", "deformation") if loads.case_checks else ()),
         required_case_ids=("compiled-stand-lab",),
     )
     return analysis, policy
@@ -191,6 +223,60 @@ def inspect_plan(payload):
     if prefix > len(plan.operations):
         raise ValueError("Selected prefix exceeds the plan's operation count")
     reference = project_nominal_geometry(plan)
+    if request.stage_example:
+        if request.stage_snapshot is not None:
+            raise ValueError("Choose the example or an explicit snapshot, not both")
+        request = request.model_copy(
+            update=dict(
+                stage_snapshot=flat_parts_example(plan, prefix), stage_example=False
+            )
+        )
+    stage_result = None
+    stage_overlays = []
+    if request.stage_snapshot is not None:
+        if request.stage_snapshot.basis != "hypothetical":
+            raise ValueError("The lab accepts hypothetical stage inputs only")
+        expected = tuple(
+            o.id for o in plan.operations[:prefix] if o.type != "functional_test"
+        )
+        if request.stage_snapshot.completed_operation_ids != expected:
+            raise ValueError(
+                "Stage snapshot completion must match the selected diagnostic prefix"
+            )
+        policy = request.stage_policy or AnalysisPolicy(
+            policy_id="stage-lab-policy",
+            version="v1",
+            length_tolerance_m=1e-9,
+            force_tolerance_n=1e-9,
+            moment_tolerance_n_m=1e-9,
+            relative_tolerance=1e-12,
+            required_margin_m=0.0,
+            uncertainty_method="analytic_interval",
+            evaluation_budget=16,
+            required_check_types=("support", "tip"),
+            required_case_ids=("component-1",),
+        )
+        stage_result = evaluate_stage(plan, request.stage_snapshot, policy)
+        for component in stage_result.reports:
+            for overlay in component.overlays:
+                stage_overlays.append(
+                    overlay.model_copy(
+                        update=dict(
+                            center_of_mass=transform_point(
+                                request.stage_snapshot.support_frame,
+                                overlay.center_of_mass,
+                            ),
+                            support_polygon=tuple(
+                                transform_point(request.stage_snapshot.support_frame, p)
+                                for p in overlay.support_polygon
+                            ),
+                            critical_edge=tuple(
+                                transform_point(request.stage_snapshot.support_frame, p)
+                                for p in overlay.critical_edge
+                            ),
+                        )
+                    ).model_dump(mode="json")
+                )
     # In-memory diagnostic replay only. These records are never persisted or
     # represented as actual user work. Functional tests are never marked passed.
     events = tuple(
@@ -228,7 +314,7 @@ def inspect_plan(payload):
         )
     return dict(
         label="HYPOTHETICAL COMPILED-PLAN INSPECTION - no physical work, evidence or test result is saved",
-        request=request.model_dump(mode="json"),
+        request=request.model_dump(mode="json", exclude_unset=True),
         reference_geometry=reference.model_dump(mode="json"),
         selected_geometry=geometry.model_dump(mode="json")
         if geometry is not None
@@ -256,4 +342,6 @@ def inspect_plan(payload):
         input=analysis.model_dump(mode="json") if analysis else None,
         policy=policy.model_dump(mode="json") if policy else None,
         report=report.model_dump(mode="json") if report else None,
+        stage_analysis=stage_result.model_dump(mode="json") if stage_result else None,
+        stage_analysis_world_overlays=stage_overlays,
     )

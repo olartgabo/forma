@@ -18,7 +18,9 @@ from forma_domain.stability_contracts import (
     StabilityReport,
 )
 
-ENGINE_VERSION = "s1.0.0"
+from .physical_checks import evaluate_physical_check, quantities_for_case
+
+ENGINE_VERSION = "s1.1.0"
 
 
 class _InvalidGeometry(ValueError):
@@ -59,6 +61,15 @@ def _cache_hash(analysis, policy):
 
 def _case(analysis, case, policy):
     snapshot = analysis.mechanical_snapshot
+    if case.sliding is not None and (
+        case.sliding.tangential_force_n.kind != "scalar"
+        or case.sliding.tangential_force_n.value != 0
+    ):
+        return (
+            "unsupported",
+            "Supplied tangential contact demand is not incorporated into the gravity-only tipping load model",
+            None,
+        )
     if not (
         snapshot.rigid_assembly
         and snapshot.horizontal_support
@@ -243,11 +254,14 @@ def evaluate_stability(
         for check in sorted(set(policy.required_check_types) | {"support", "tip"}):
             check_status, explanation, mode = status, reason, computation
             if check not in ("support", "tip"):
-                check_status, explanation, mode = (
-                    "unsupported",
-                    "S1 does not model sliding, joints or deformation",
+                if case is not None and computation not in (
                     "not_run",
-                )
+                    "budget_exhausted",
+                ):
+                    results.append(
+                        evaluate_physical_check(analysis, case, policy, check)
+                    )
+                    continue
             unresolved = (
                 ()
                 if check_status in ("modeled_pass", "modeled_fail")
@@ -311,6 +325,11 @@ def evaluate_stability(
         ):
             warnings.append(
                 f"{case.case_id} gravity: {quantity.provenance}, confirmed={quantity.confirmed}"
+            )
+        if quantities_for_case(case):
+            warnings.append(
+                f"{case.case_id}: additional checks compare supplied scalar demands/material values. "
+                "They do not solve joint reactions or verify applicability, calibration, other failure modes or physical success; input provenance remains explicit."
             )
     return StabilityReport(
         identity=analysis.identity,

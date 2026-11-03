@@ -67,6 +67,17 @@ export type AttachBraceArgs = {
   readonly "underlying_joint_ids": ReadonlyArray<string>;
 };
 
+export type BeamDeflection = {
+  readonly "member_id": string;
+  readonly "support_model": "cantilever_end_load" | "simply_supported_center_load";
+  readonly "force_n": QuantityEstimate;
+  readonly "length_m": QuantityEstimate;
+  readonly "elastic_modulus_pa": QuantityEstimate;
+  readonly "second_moment_m4": QuantityEstimate;
+  readonly "allowable_deflection_m": QuantityEstimate;
+  readonly "linear_elastic_small_deflection_applicable": boolean;
+};
+
 export type Blocker = {
   readonly "code": "invalid_reference" | "missing_measurement" | "stock_exhausted" | "geometry_invalid" | "unsupported_profile" | "invalid_order" | "irreversible_conflict" | "needs_confirmation" | "stale_version" | "unsupported" | "no_feasible_repair";
   readonly "message": string;
@@ -441,6 +452,14 @@ export type Joint = {
   readonly "confirmed_accessible"?: (boolean | null);
 };
 
+export type JointDemand = {
+  readonly "joint_id": string;
+  readonly "demand_n": QuantityEstimate;
+  readonly "allowable_n": QuantityEstimate;
+  readonly "capacity_basis": string;
+  readonly "scalar_mode_applicable": boolean;
+};
+
 export type JointProfile = {
   readonly "id": string;
   readonly "strategy": "tab_slot" | "fold_brace" | "tape" | "tie";
@@ -459,6 +478,9 @@ export type LoadCase = {
   readonly "body_ids": ReadonlyArray<string>;
   readonly "contact_ids": ReadonlyArray<string>;
   readonly "gravity_m_s2": QuantityEstimate;
+  readonly "sliding"?: (SlidingDemand | null);
+  readonly "joint_demands"?: ReadonlyArray<JointDemand>;
+  readonly "deformation"?: (BeamDeflection | null);
 };
 
 export type Mark = {
@@ -626,7 +648,7 @@ export type Preconditions = {
 
 export type QuantityEstimate = {
   readonly "kind": "scalar" | "interval" | "unknown";
-  readonly "unit": "1" | "m" | "m2" | "m3" | "kg" | "s" | "rad" | "N" | "N_m" | "Pa" | "kg_m3" | "m_s2";
+  readonly "unit": "1" | "m" | "m2" | "m3" | "m4" | "kg" | "s" | "rad" | "N" | "N_m" | "Pa" | "kg_m3" | "m_s2";
   readonly "value"?: (number | null);
   readonly "lower"?: (number | null);
   readonly "upper"?: (number | null);
@@ -676,6 +698,19 @@ export type ReplannerInput = {
   readonly "material_transactions": ReadonlyArray<MaterialTransaction>;
   readonly "remaining_stock": ReadonlyArray<Stock>;
   readonly "patch": RepairPatch;
+};
+
+export type RigidTransform = {
+  readonly "rotation": readonly [readonly [number, number, number], readonly [number, number, number], readonly [number, number, number]];
+  readonly "translation_m": Point3;
+};
+
+export type SlidingDemand = {
+  readonly "contact_id": string;
+  readonly "normal_force_n": QuantityEstimate;
+  readonly "tangential_force_n": QuantityEstimate;
+  readonly "friction_coefficient": QuantityEstimate;
+  readonly "planar_coulomb_applicable": boolean;
 };
 
 export type StabilityInput = {
@@ -740,6 +775,56 @@ export type StabilityReport = {
   readonly "assumption_ids"?: ReadonlyArray<string>;
   readonly "state_basis"?: ("nominal" | "observed" | null);
   readonly "input_warnings"?: ReadonlyArray<string>;
+};
+
+export type StageAnalysisResult = {
+  readonly "producer_version": string;
+  readonly "snapshot_hash": string;
+  readonly "snapshot": StageSnapshot;
+  readonly "present_part_ids": ReadonlyArray<string>;
+  readonly "future_part_ids": ReadonlyArray<string>;
+  readonly "active_joint_ids": ReadonlyArray<string>;
+  readonly "facets": ReadonlyArray<CanonicalFacet>;
+  readonly "component_part_ids": ReadonlyArray<ReadonlyArray<string>>;
+  readonly "inputs": ReadonlyArray<StabilityInput>;
+  readonly "policies": ReadonlyArray<AnalysisPolicy>;
+  readonly "reports": ReadonlyArray<StabilityReport>;
+  readonly "blockers": ReadonlyArray<string>;
+  readonly "physical_evidence_ids"?: ReadonlyArray<string>;
+};
+
+export type StageContact = {
+  readonly "contact_id": string;
+  readonly "polygon_world": ReadonlyArray<Point3>;
+};
+
+export type StageFacetPose = {
+  readonly "facet_id": string;
+  readonly "transform": RigidTransform;
+};
+
+export type StagePart = {
+  readonly "part_id": string;
+  readonly "mass_kg": (number | null);
+  readonly "center_of_mass_world": (Point3 | null);
+  readonly "facet_poses": ReadonlyArray<StageFacetPose>;
+  readonly "contacts": ReadonlyArray<StageContact>;
+  readonly "rigid_body_assumed": boolean;
+};
+
+export type StageSnapshot = {
+  readonly "project_id": string;
+  readonly "plan_version_id": string;
+  readonly "inventory_revision": string;
+  readonly "history_cursor": (string | null);
+  readonly "completed_operation_ids": ReadonlyArray<string>;
+  readonly "basis": "hypothetical" | "observed";
+  readonly "support_frame": RigidTransform;
+  readonly "gravity_world_m_s2": Point3;
+  readonly "parts": ReadonlyArray<StagePart>;
+  readonly "rigid_joint_ids": ReadonlyArray<string>;
+  readonly "assumption_notes": ReadonlyArray<string>;
+  readonly "component_loads"?: ReadonlyArray<LoadCase>;
 };
 
 export type Stock = {
