@@ -506,6 +506,57 @@
         "title": "Blocker",
         "type": "object"
       },
+      "BodyMass": {
+        "additionalProperties": false,
+        "properties": {
+          "body_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Body Id",
+            "type": "string"
+          },
+          "body_kind": {
+            "default": "stand_part",
+            "enum": [
+              "stand_part",
+              "device"
+            ],
+            "title": "Body Kind",
+            "type": "string"
+          },
+          "center_of_mass": {
+            "$ref": "#/components/schemas/CenterOfMass"
+          },
+          "mass": {
+            "$ref": "#/components/schemas/QuantityEstimate"
+          },
+          "source_part_ids": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 128,
+            "title": "Source Part Ids",
+            "type": "array"
+          },
+          "state": {
+            "default": "present",
+            "enum": [
+              "present",
+              "future"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body_id",
+          "mass",
+          "center_of_mass"
+        ],
+        "title": "BodyMass",
+        "type": "object"
+      },
       "BuildPlan": {
         "additionalProperties": false,
         "properties": {
@@ -674,6 +725,27 @@
           "created_at"
         ],
         "title": "BuildPlan",
+        "type": "object"
+      },
+      "CenterOfMass": {
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "$ref": "#/components/schemas/QuantityEstimate"
+          },
+          "y": {
+            "$ref": "#/components/schemas/QuantityEstimate"
+          },
+          "z": {
+            "$ref": "#/components/schemas/QuantityEstimate"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "z"
+        ],
+        "title": "CenterOfMass",
         "type": "object"
       },
       "CheckResult": {
@@ -2577,6 +2649,53 @@
         "title": "JointProfile",
         "type": "object"
       },
+      "LoadCase": {
+        "additionalProperties": false,
+        "properties": {
+          "body_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Body Ids",
+            "type": "array"
+          },
+          "case_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "contact_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 128,
+            "title": "Contact Ids",
+            "type": "array"
+          },
+          "gravity_m_s2": {
+            "$ref": "#/components/schemas/QuantityEstimate"
+          },
+          "orientation": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Orientation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "orientation",
+          "body_ids",
+          "contact_ids",
+          "gravity_m_s2"
+        ],
+        "title": "LoadCase",
+        "type": "object"
+      },
       "Mark": {
         "additionalProperties": false,
         "properties": {
@@ -2959,6 +3078,69 @@
         "title": "Measurement",
         "type": "object"
       },
+      "MechanicalSnapshot": {
+        "additionalProperties": false,
+        "description": "Mechanical consumer projection, supplied by the canonical pose producer.\n\nThis is not a scene/pose producer. Nominal and observed are declarations,\nnever inferred evidence. Contacts and rigid-body applicability are explicit.",
+        "properties": {
+          "assumption_ids": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 128,
+            "title": "Assumption Ids",
+            "type": "array"
+          },
+          "bodies": {
+            "items": {
+              "$ref": "#/components/schemas/BodyMass"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Bodies",
+            "type": "array"
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/SupportContact"
+            },
+            "maxItems": 128,
+            "title": "Contacts",
+            "type": "array"
+          },
+          "gravity_only": {
+            "title": "Gravity Only",
+            "type": "boolean"
+          },
+          "horizontal_support": {
+            "title": "Horizontal Support",
+            "type": "boolean"
+          },
+          "rigid_assembly": {
+            "title": "Rigid Assembly",
+            "type": "boolean"
+          },
+          "state_basis": {
+            "enum": [
+              "nominal",
+              "observed"
+            ],
+            "title": "State Basis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bodies",
+          "contacts",
+          "rigid_assembly",
+          "horizontal_support",
+          "gravity_only",
+          "state_basis"
+        ],
+        "title": "MechanicalSnapshot",
+        "type": "object"
+      },
       "Mutation": {
         "additionalProperties": false,
         "properties": {
@@ -3239,6 +3421,31 @@
           "verification_state"
         ],
         "title": "PhysicalEvent",
+        "type": "object"
+      },
+      "Point3": {
+        "additionalProperties": false,
+        "description": "World SI coordinates: right-handed x/y, z upward; never viewer offsets.",
+        "properties": {
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          },
+          "z": {
+            "title": "Z",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "z"
+        ],
+        "title": "Point3",
         "type": "object"
       },
       "Preconditions": {
@@ -3674,10 +3881,118 @@
         "title": "ReplannerInput",
         "type": "object"
       },
+      "StabilityInput": {
+        "additionalProperties": false,
+        "properties": {
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/LoadCase"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Cases",
+            "type": "array"
+          },
+          "geometry_version": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Geometry Version",
+            "type": "string"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/AnalysisIdentity"
+          },
+          "mechanical_snapshot": {
+            "$ref": "#/components/schemas/MechanicalSnapshot"
+          },
+          "profile_version": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Profile Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity",
+          "mechanical_snapshot",
+          "cases",
+          "geometry_version",
+          "profile_version"
+        ],
+        "title": "StabilityInput",
+        "type": "object"
+      },
+      "StabilityOverlay": {
+        "additionalProperties": false,
+        "description": "Server-computed modeled geometry only, never physical evidence.",
+        "properties": {
+          "case_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "center_of_mass": {
+            "$ref": "#/components/schemas/Point3"
+          },
+          "critical_edge": {
+            "items": {
+              "$ref": "#/components/schemas/Point3"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Critical Edge",
+            "type": "array"
+          },
+          "orientation": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Orientation",
+            "type": "string"
+          },
+          "restoring_moment_n_m": {
+            "title": "Restoring Moment N M",
+            "type": "number"
+          },
+          "signed_margin_m": {
+            "title": "Signed Margin M",
+            "type": "number"
+          },
+          "support_polygon": {
+            "items": {
+              "$ref": "#/components/schemas/Point3"
+            },
+            "maxItems": 16384,
+            "minItems": 3,
+            "title": "Support Polygon",
+            "type": "array"
+          }
+        },
+        "required": [
+          "case_id",
+          "orientation",
+          "center_of_mass",
+          "support_polygon",
+          "critical_edge",
+          "signed_margin_m",
+          "restoring_moment_n_m"
+        ],
+        "title": "StabilityOverlay",
+        "type": "object"
+      },
       "StabilityReport": {
         "additionalProperties": false,
         "description": "Modeled result only. Physical evidence references confer no physical pass.\n\nRequired coverage is the policy's case/check Cartesian product. Additional\ncases may be reported, but cannot hide an unresolved required check.",
         "properties": {
+          "assumption_ids": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 16512,
+            "title": "Assumption Ids",
+            "type": "array"
+          },
           "cache_hash": {
             "pattern": "^[0-9a-f]{64}$",
             "title": "Cache Hash",
@@ -3706,6 +4021,26 @@
           },
           "identity": {
             "$ref": "#/components/schemas/AnalysisIdentity"
+          },
+          "input_warnings": {
+            "default": [],
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 272,
+            "title": "Input Warnings",
+            "type": "array"
+          },
+          "overlays": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StabilityOverlay"
+            },
+            "maxItems": 16,
+            "title": "Overlays",
+            "type": "array"
           },
           "physical_evidence_ids": {
             "default": [],
@@ -3740,6 +4075,22 @@
             "maxItems": 80,
             "title": "Results",
             "type": "array"
+          },
+          "state_basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "nominal",
+                  "observed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "State Basis"
           },
           "status": {
             "enum": [
@@ -3873,6 +4224,52 @@
           "condition"
         ],
         "title": "Stock",
+        "type": "object"
+      },
+      "SupportContact": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "assumption_ids": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 128,
+            "title": "Assumption Ids",
+            "type": "array"
+          },
+          "body_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Body Id",
+            "type": "string"
+          },
+          "contact_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Contact Id",
+            "type": "string"
+          },
+          "polygon_world": {
+            "items": {
+              "$ref": "#/components/schemas/Point3"
+            },
+            "maxItems": 128,
+            "minItems": 3,
+            "title": "Polygon World",
+            "type": "array"
+          }
+        },
+        "required": [
+          "contact_id",
+          "body_id",
+          "polygon_world",
+          "active"
+        ],
+        "title": "SupportContact",
         "type": "object"
       },
       "TapeJoint": {

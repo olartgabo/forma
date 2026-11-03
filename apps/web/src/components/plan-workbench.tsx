@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   activatePlan,
   ApiError,
@@ -23,6 +23,7 @@ import type { MuseAvailability } from "../lib/muse-provider";
 import MuseRequestStatus from "./muse-request-status";
 import { useMuseLanguage } from "./muse-language-provider";
 import PhysicalProgress from "./physical-progress";
+import StabilityReportPanel from "./stability-report";
 import type {
   DesignGenerateRequest,
   DesignGenerateResult,
@@ -72,6 +73,11 @@ export default function PlanWorkbench({
   const shownActive = useRef<string | null | undefined>(undefined);
   const [version, setVersion] = useState<PlanVersion | null>(null);
   const [step, setStep] = useState(0);
+  const [stabilityRefresh, setStabilityRefresh] = useState(0);
+  const handleProgressChange = useCallback(() => {
+    setStabilityRefresh((value) => value + 1);
+    onProgressChange();
+  }, [onProgressChange]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
   const [planError, setPlanError] = useState("");
@@ -706,7 +712,7 @@ export default function PlanWorkbench({
                   photos={photos}
                   disabled={approvalDisabled || pending !== null}
                   onReloadProject={onReload}
-                  onProgressChange={onProgressChange}
+                  onProgressChange={handleProgressChange}
                   onDiagnoseFailure={onDiagnoseFailure}
                   museAvailability={museAvailability}
                   refreshKey={diagnosisRefreshKey}
@@ -717,6 +723,17 @@ export default function PlanWorkbench({
                 />
               )}
             </article>
+          )}
+          {current && version && (
+            <StabilityReportPanel
+              key={`${project.id}:${version.version_id}`}
+              token={token}
+              projectId={project.id}
+              planVersionId={version.version_id}
+              inventoryRevisionId={project.revision_id}
+              refreshKey={stabilityRefresh + (diagnosisRefreshKey ?? 0)}
+              disabled={approvalDisabled || pending !== null || progressPending}
+            />
           )}
           {current && (
             <AdaptWorkbench

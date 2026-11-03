@@ -73,6 +73,15 @@ export type Blocker = {
   readonly "target_ids"?: ReadonlyArray<string>;
 };
 
+export type BodyMass = {
+  readonly "body_id": string;
+  readonly "body_kind"?: "stand_part" | "device";
+  readonly "source_part_ids"?: ReadonlyArray<string>;
+  readonly "mass": QuantityEstimate;
+  readonly "center_of_mass": CenterOfMass;
+  readonly "state"?: "present" | "future";
+};
+
 export type BuildPlan = {
   readonly "project_id": string;
   readonly "version_id": string;
@@ -88,6 +97,12 @@ export type BuildPlan = {
   readonly "constraints": Constraints;
   readonly "compiler_version": string;
   readonly "created_at": string;
+};
+
+export type CenterOfMass = {
+  readonly "x": QuantityEstimate;
+  readonly "y": QuantityEstimate;
+  readonly "z": QuantityEstimate;
 };
 
 export type CheckResult = {
@@ -408,6 +423,14 @@ export type JointProfile = {
   readonly "limitations"?: ReadonlyArray<string>;
 };
 
+export type LoadCase = {
+  readonly "case_id": string;
+  readonly "orientation": string;
+  readonly "body_ids": ReadonlyArray<string>;
+  readonly "contact_ids": ReadonlyArray<string>;
+  readonly "gravity_m_s2": QuantityEstimate;
+};
+
 export type Mark = {
   readonly "id": string;
   readonly "part_ids"?: ReadonlyArray<string>;
@@ -472,6 +495,16 @@ export type Measurement = {
   readonly "evidence_ids"?: ReadonlyArray<string>;
 };
 
+export type MechanicalSnapshot = {
+  readonly "bodies": ReadonlyArray<BodyMass>;
+  readonly "contacts": ReadonlyArray<SupportContact>;
+  readonly "rigid_assembly": boolean;
+  readonly "horizontal_support": boolean;
+  readonly "gravity_only": boolean;
+  readonly "state_basis": "nominal" | "observed";
+  readonly "assumption_ids"?: ReadonlyArray<string>;
+};
+
 export type Mutation = {
   readonly "project_id": string;
   readonly "expected_version_id": string;
@@ -517,6 +550,12 @@ export type PhysicalEvent = {
   readonly "observation": string;
   readonly "verification_state": "not_checked" | "user_confirmed" | "vision_observed" | "failed" | "unknown" | "invalidated";
   readonly "test_result"?: ("passed" | "failed" | "not_attempted" | null);
+};
+
+export type Point3 = {
+  readonly "x": number;
+  readonly "y": number;
+  readonly "z": number;
 };
 
 export type Preconditions = {
@@ -581,6 +620,24 @@ export type ReplannerInput = {
   readonly "patch": RepairPatch;
 };
 
+export type StabilityInput = {
+  readonly "identity": AnalysisIdentity;
+  readonly "mechanical_snapshot": MechanicalSnapshot;
+  readonly "cases": ReadonlyArray<LoadCase>;
+  readonly "geometry_version": string;
+  readonly "profile_version": string;
+};
+
+export type StabilityOverlay = {
+  readonly "case_id": string;
+  readonly "orientation": string;
+  readonly "center_of_mass": Point3;
+  readonly "support_polygon": ReadonlyArray<Point3>;
+  readonly "critical_edge": ReadonlyArray<Point3>;
+  readonly "signed_margin_m": number;
+  readonly "restoring_moment_n_m": number;
+};
+
 export type StabilityReport = {
   readonly "identity": AnalysisIdentity;
   readonly "report_version": string;
@@ -594,6 +651,10 @@ export type StabilityReport = {
   readonly "results"?: ReadonlyArray<CheckResult>;
   readonly "unresolved_predicates"?: ReadonlyArray<string>;
   readonly "physical_evidence_ids"?: ReadonlyArray<string>;
+  readonly "overlays"?: ReadonlyArray<StabilityOverlay>;
+  readonly "assumption_ids"?: ReadonlyArray<string>;
+  readonly "state_basis"?: ("nominal" | "observed" | null);
+  readonly "input_warnings"?: ReadonlyArray<string>;
 };
 
 export type Stock = {
@@ -608,6 +669,14 @@ export type Stock = {
   readonly "usable_regions"?: ReadonlyArray<Region>;
   readonly "image_ids"?: ReadonlyArray<string>;
   readonly "allowed_rotations_deg"?: ReadonlyArray<0 | 90>;
+};
+
+export type SupportContact = {
+  readonly "contact_id": string;
+  readonly "body_id": string;
+  readonly "polygon_world": ReadonlyArray<Point3>;
+  readonly "active": boolean;
+  readonly "assumption_ids"?: ReadonlyArray<string>;
 };
 
 export type TapeJoint = {

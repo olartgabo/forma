@@ -467,3 +467,19 @@ feature. The shared assembled-geometry producer belongs to #144, and operation
 state semantics belong to #141. Their handoff remains a dependency before the
 mechanical adapter consumes actual plans. Do not reconstruct a second geometry
 authority from cutting rectangles. See [the stability handoff](handoffs/engine-stability.md).
+
+## D037: Connect conditional tipping reports without inventing poses, November 3, 2026
+
+#142 now computes scalar, gravity-only tipping from externally resolved physical
+geometry, with explicit provenance, uncertainty blockers and separate strength
+and sliding limitations. NumPy and Shapely are pinned dependencies; installed
+distribution notices are retained. The active manual can request a scoped
+read-only analysis and display its report and SVG overlay. Only server-resolved
+physical inputs are accepted; current inventory, active plan and full history
+cursor gate the computation. Requests create no physical observations or approval.
+
+The #144 canonical geometry producer is not implemented in this lane. Its owner
+must agree the published frame/stage handoff and supply the shared producer.
+Until then, production shows missing geometry, while explicitly labeled analytic
+software tests exercise the calculation and connected rendering. This does not
+complete S1 same-plan acceptance, S2 persistent reports or a physical demo.

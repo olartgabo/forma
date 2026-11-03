@@ -164,6 +164,10 @@ class StabilityReport(Record):
     results: tuple[CheckResult, ...] = Field(default=(), max_length=80)
     unresolved_predicates: tuple[Text, ...] = Field(default=(), max_length=128)
     physical_evidence_ids: tuple[ID, ...] = Field(default=(), max_length=128)
+    overlays: tuple["StabilityOverlay", ...] = Field(default=(), max_length=16)
+    assumption_ids: tuple[ID, ...] = Field(default=(), max_length=16512)
+    state_basis: Literal["nominal", "observed"] | None = None
+    input_warnings: tuple[Text, ...] = Field(default=(), max_length=272)
 
     @model_validator(mode="after")
     def aggregate(self):
@@ -203,3 +207,155 @@ class StabilityReport(Record):
         if self.status == "not_applicable":
             raise ValueError("required analysis cannot be wholly not applicable")
         return self
+
+
+class Point3(Record):
+    """World SI coordinates: right-handed x/y, z upward; never viewer offsets."""
+
+    x: FiniteScalar
+    y: FiniteScalar
+    z: FiniteScalar
+
+
+class CenterOfMass(Record):
+    x: QuantityEstimate
+    y: QuantityEstimate
+    z: QuantityEstimate
+
+    @model_validator(mode="after")
+    def units(self):
+        if any(q.unit != "m" for q in (self.x, self.y, self.z)):
+            raise ValueError("world center of mass requires metres")
+        return self
+
+
+class BodyMass(Record):
+    body_id: ID
+    body_kind: Literal["stand_part", "device"] = "stand_part"
+    source_part_ids: tuple[ID, ...] = Field(default=(), max_length=128)
+    mass: QuantityEstimate
+    center_of_mass: CenterOfMass
+    state: Literal["present", "future"] = "present"
+
+    @model_validator(mode="after")
+    def positive_mass(self):
+        if (self.body_kind == "stand_part" and not self.source_part_ids) or (
+            self.body_kind == "device" and self.source_part_ids
+        ):
+            raise ValueError(
+                "stand mass requires source parts; device mass has no stock source parts"
+            )
+        if len(set(self.source_part_ids)) != len(self.source_part_ids):
+            raise ValueError("duplicate mass source part")
+        if self.mass.unit != "kg":
+            raise ValueError("mass requires kilograms")
+        if self.mass.kind == "scalar" and self.mass.value <= 0:
+            raise ValueError("known mass must be positive")
+        if self.mass.kind == "interval" and self.mass.lower <= 0:
+            raise ValueError("mass bounds must be positive")
+        return self
+
+
+class SupportContact(Record):
+    contact_id: ID
+    body_id: ID
+    polygon_world: tuple[Point3, ...] = Field(min_length=3, max_length=128)
+    active: bool
+    assumption_ids: tuple[ID, ...] = Field(default=(), max_length=128)
+
+
+class LoadCase(Record):
+    case_id: ID
+    orientation: Text
+    body_ids: tuple[ID, ...] = Field(min_length=1, max_length=64)
+    contact_ids: tuple[ID, ...] = Field(max_length=128)
+    gravity_m_s2: QuantityEstimate
+
+    @model_validator(mode="after")
+    def gravity_and_ids(self):
+        if self.gravity_m_s2.unit != "m_s2":
+            raise ValueError("gravity requires m_s2")
+        for ids in (self.body_ids, self.contact_ids):
+            if len(set(ids)) != len(ids):
+                raise ValueError("duplicate case reference")
+        if self.gravity_m_s2.kind == "scalar" and self.gravity_m_s2.value <= 0:
+            raise ValueError("gravity magnitude must be positive")
+        if self.gravity_m_s2.kind == "interval" and self.gravity_m_s2.lower <= 0:
+            raise ValueError("gravity bounds must be positive")
+        return self
+
+
+class MechanicalSnapshot(Record):
+    """Mechanical consumer projection, supplied by the canonical pose producer.
+
+    This is not a scene/pose producer. Nominal and observed are declarations,
+    never inferred evidence. Contacts and rigid-body applicability are explicit.
+    """
+
+    bodies: tuple[BodyMass, ...] = Field(min_length=1, max_length=64)
+    contacts: tuple[SupportContact, ...] = Field(max_length=128)
+    rigid_assembly: bool
+    horizontal_support: bool
+    gravity_only: bool
+    state_basis: Literal["nominal", "observed"]
+    assumption_ids: tuple[ID, ...] = Field(default=(), max_length=128)
+
+    @model_validator(mode="after")
+    def references(self):
+        bodies = {b.body_id for b in self.bodies}
+        if len(bodies) != len(self.bodies):
+            raise ValueError("duplicate body ID")
+        if len({c.contact_id for c in self.contacts}) != len(self.contacts):
+            raise ValueError("duplicate contact ID")
+        sources = [p for b in self.bodies for p in b.source_part_ids]
+        if len(set(sources)) != len(sources):
+            raise ValueError("duplicate mass source contribution")
+        if any(c.body_id not in bodies for c in self.contacts):
+            raise ValueError("unknown contact body")
+        return self
+
+
+class StabilityInput(Record):
+    identity: AnalysisIdentity
+    mechanical_snapshot: MechanicalSnapshot
+    cases: tuple[LoadCase, ...] = Field(min_length=1, max_length=16)
+    geometry_version: Text
+    profile_version: Text
+
+    @model_validator(mode="after")
+    def references(self):
+        if len({c.case_id for c in self.cases}) != len(self.cases):
+            raise ValueError("duplicate case ID")
+        bodies = {b.body_id for b in self.mechanical_snapshot.bodies}
+        contacts = {c.contact_id: c for c in self.mechanical_snapshot.contacts}
+        device_ids = {
+            b.body_id
+            for b in self.mechanical_snapshot.bodies
+            if b.body_kind == "device"
+        }
+        for case in self.cases:
+            if len(device_ids.intersection(case.body_ids)) > 1:
+                raise ValueError("case permits at most one device")
+            if (
+                not set(case.body_ids) <= bodies
+                or not set(case.contact_ids) <= contacts.keys()
+            ):
+                raise ValueError("unknown case body/contact")
+            if any(contacts[c].body_id not in case.body_ids for c in case.contact_ids):
+                raise ValueError("contact body absent from case")
+        return self
+
+
+class StabilityOverlay(Record):
+    """Server-computed modeled geometry only, never physical evidence."""
+
+    case_id: ID
+    orientation: Text
+    center_of_mass: Point3
+    support_polygon: tuple[Point3, ...] = Field(min_length=3, max_length=16384)
+    critical_edge: tuple[Point3, ...] = Field(min_length=2, max_length=2)
+    signed_margin_m: FiniteScalar
+    restoring_moment_n_m: FiniteScalar
+
+
+StabilityReport.model_rebuild()
