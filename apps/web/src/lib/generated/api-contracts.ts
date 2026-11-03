@@ -168,6 +168,35 @@ export type DiagnosisResult = {
   readonly "diagnostics": DiagnosisDiagnostics;
 };
 
+export type FabricationReport = {
+  readonly "snapshot": FabricationSnapshot;
+  readonly "status": "ready" | "blocked" | "complete" | "history_conflict";
+  readonly "current_state_id": string;
+  readonly "attached_joint_ids": ReadonlyArray<string>;
+  readonly "damaged_part_ids": ReadonlyArray<string>;
+  readonly "failed_operation_ids": ReadonlyArray<string>;
+  readonly "next_operation_id": (string | null);
+  readonly "operations": ReadonlyArray<OperationReadiness>;
+  readonly "supported_order": ReadonlyArray<OrderStep>;
+  readonly "order_status": "complete" | "blocked" | "cycle";
+  readonly "order_blockers": ReadonlyArray<Blocker>;
+  readonly "blockers": ReadonlyArray<Blocker>;
+  readonly "access_basis": "declared_rules";
+  readonly "observed_usability": "not_assessed";
+};
+
+export type FabricationSnapshot = {
+  readonly "project_id": string;
+  readonly "version_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "last_event_id": (string | null);
+  readonly "plan_sha256": string;
+  readonly "history_sha256": string;
+  readonly "process_sha256": string;
+  readonly "rules_version": "fabrication-rules-v1";
+  readonly "compiler_version": string;
+};
+
 export type IntakeDiagnostics = {
   readonly "status": "ok";
   readonly "model": string;
@@ -280,6 +309,24 @@ export type MediaList = {
 export type MediaResult = {
   readonly "media": Media;
   readonly "replayed"?: boolean;
+};
+
+export type OperationReadiness = {
+  readonly "operation_id": string;
+  readonly "operation_type": "measure" | "mark" | "cut_rect" | "cut_slot" | "fold" | "insert_tab" | "tape_joint" | "tie_joint" | "attach_brace" | "detach" | "inspect" | "functional_test";
+  readonly "status": "completed" | "ready" | "waiting" | "blocked";
+  readonly "completed_in_version_id": (string | null);
+  readonly "waiting_on_operation_ids": ReadonlyArray<string>;
+  readonly "blockers": ReadonlyArray<Blocker>;
+  readonly "tools": ReadonlyArray<ToolCheck>;
+  readonly "required_confirmations": ReadonlyArray<string>;
+  readonly "next_state_id": (string | null);
+};
+
+export type OrderStep = {
+  readonly "operation_id": string;
+  readonly "state_id": string;
+  readonly "reordered": boolean;
 };
 
 export type PanelDiff = {
@@ -509,4 +556,10 @@ export type SimulationResult = {
 export type SnapshotToolArgs = {
   readonly "project_id": string;
   readonly "inventory_revision_id": string;
+};
+
+export type ToolCheck = {
+  readonly "tool": "cutting_tool" | "ruler" | "marker" | "scale" | "protractor";
+  readonly "status": "declared" | "not_declared" | "unknown";
+  readonly "declared_name": (string | null);
 };
