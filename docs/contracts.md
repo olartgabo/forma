@@ -56,6 +56,13 @@ Project-scoped interpret, candidates, compile, versions, manual, events,
 diagnose, adapt/simulate, adapt/commit, functional-test, proof and job-status
 routes remain pending. Offline service implementations do not imply HTTP wiring.
 
+GET `/api/projects/{id}/versions/{version_id}/fabrication` and GET
+`/api/projects/{id}/adapt/previews/{preview_id}/fabrication` return a read-only
+`FabricationReport` (contracts in `forma_domain.fabrication_contracts`) for the
+active version or a saved preview. A version that is no longer active, or a
+preview whose base history changed, returns 409. See the
+[fabrication handoff](handoffs/issue-150-fabrication-report.md).
+
 Every mutation validates authenticated project scope, runtime input and
 idempotency. `adapt/commit` checks expected active version and returns 409 for
 stale writes. Neither simulation nor provider tools activate a plan.

@@ -142,7 +142,7 @@ class _Base:
         self.process = CutProcess.model_validate_json(row[1])
         self.parameters = StandParameters.model_validate_json(row[2])
         self.progress = snapshot(connection, self.version.plan)
-        self.ancestors = _ancestors(connection, project_id, self.version.plan)
+        self.ancestors = plan_ancestors(connection, project_id, self.version.plan)
         versions = (self.version.plan.version_id,) + tuple(
             plan.version_id for plan in self.ancestors
         )
@@ -201,7 +201,9 @@ class _Base:
         )
 
 
-def _ancestors(connection, project_id: str, plan: BuildPlan) -> tuple[BuildPlan, ...]:
+def plan_ancestors(
+    connection, project_id: str, plan: BuildPlan
+) -> tuple[BuildPlan, ...]:
     found = []
     parent = plan.parent_version_id
     while parent is not None:
@@ -325,6 +327,29 @@ def _upgrade_preview(connection, project_id: str, base_version_id: str, preview)
             removed=change.removed,
         ).model_dump(mode="json"),
     }
+
+
+def read_preview(
+    connection, project_id: str, base_version_id: str, preview_id: str
+) -> StoredPreview:
+    row = connection.execute(
+        "SELECT body FROM adapt_previews WHERE id=? AND project_id=? "
+        "AND base_version_id=?",
+        (preview_id, project_id, base_version_id),
+    ).fetchone()
+    if row is None:
+        raise ProjectError(404, "not_found", "Repair preview not found")
+    saved = json.loads(row[0])
+    saved["preview"] = _upgrade_preview(
+        connection, project_id, base_version_id, saved["preview"]
+    )
+    return StoredPreview.model_validate(saved)
+
+
+def carried_operation_ids(result: SimulationResult) -> tuple[str, ...]:
+    """Work an approved preview keeps as already done in the new version."""
+    incomplete = set(result.incomplete_operation_ids)
+    return tuple(op.id for op in result.plan.operations if op.id not in incomplete)
 
 
 def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
@@ -469,18 +494,9 @@ def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
                 raise ProjectError(
                     409, "stale_version", "The active plan changed; reload it"
                 )
-            row = connection.execute(
-                "SELECT body FROM adapt_previews WHERE id=? AND project_id=? "
-                "AND base_version_id=?",
-                (body.preview_id, project_id, body.expected_version_id),
-            ).fetchone()
-            if row is None:
-                raise ProjectError(404, "not_found", "Repair preview not found")
-            saved = json.loads(row[0])
-            saved["preview"] = _upgrade_preview(
-                connection, project_id, body.expected_version_id, saved["preview"]
+            stored = read_preview(
+                connection, project_id, body.expected_version_id, body.preview_id
             )
-            stored = StoredPreview.model_validate(saved)
             base = _Base(connection, project_id, body.expected_version_id)
             _require_base(project, base, body)
             if stored.base_last_event_id != body.expected_last_event_id:
@@ -499,10 +515,7 @@ def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
                 raise ProjectError(
                     409, "stale_version", "Repair inputs changed; simulate again"
                 )
-            incomplete = set(result.incomplete_operation_ids)
-            carried = tuple(
-                op.id for op in result.plan.operations if op.id not in incomplete
-            )
+            carried = carried_operation_ids(result)
             if not set(carried) <= set(base.progress.completed_operation_ids):
                 raise ProjectError(
                     409, "blocked", "Repair preview does not match recorded work"

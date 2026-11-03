@@ -455,3 +455,19 @@ stock a repair simulation checks matches the ledger. Partial sheet waste needs a
 measured split and stays unsupported. Proof labels measurement evidence
 "manually measured", labels Muse evidence as unverified observations and
 hypotheses, and totals only the waste and salvage the builder recorded.
+
+## D036: Fabrication reports model the next step from declared rules, November 3, 2026
+
+Issue #150 adds a read-only fabrication report for the active manual and each
+saved repair preview. It replays the plan lineage's recorded reports, derives
+joint attach/detach from confirmed operation effects, reruns the existing
+compiler and reads the existing expected-stock ledger. Declared rules
+(`fabrication-rules-v1`) add what the compiler does not check: the family's
+recordable operation types, conservative access (a part held by an attached
+joint cannot be marked, slotted or folded until an explicit detach) and tool
+classes per operation. Unknown joint access and unknown connector lengths block.
+Tool gaps are listed as required confirmations instead of blockers, because
+saved tools are locked while a plan is active and a blocker would leave the
+builder no way forward. The report is modeled, not observed: it never completes
+a step, authorizes cutting or changes stock. See the
+[fabrication handoff](handoffs/issue-150-fabrication-report.md).
