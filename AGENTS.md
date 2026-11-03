@@ -7,6 +7,17 @@ precedence. Record deliberate product changes in [docs/decisions.md](docs/decisi
 
 ## Ownership and coordination
 
+### November 3, 2026: engine completion takes priority
+
+The user explicitly directed that #142 must not remain incomplete because work
+was left for Gabo. Implement the canonical geometry and integration dependencies
+needed to complete the stability engine in this lane, documenting their shared
+interfaces for reuse by #141/#144. This supersedes the earlier requirement to
+wait for that owner's producer or agreement. Check for active overlapping work
+and keep one canonical implementation, rather than parallel geometry authorities.
+Existing review, exact-head checks, physical-evidence gates and provider controls
+still apply. This is implementation authorization, not a physical-test claim.
+
 - @ResniDev owns domain, compiler, replanner, renderer, model gateway and prompts.
 - @olartgabo owns web, project/persistence API, physical validation, proof and evaluation.
 - Shared API files require a contract handoff before either lane changes them.

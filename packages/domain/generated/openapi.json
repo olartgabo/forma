@@ -727,6 +727,229 @@
         "title": "BuildPlan",
         "type": "object"
       },
+      "CanonicalFacet": {
+        "additionalProperties": false,
+        "properties": {
+          "area_fraction": {
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "title": "Area Fraction",
+            "type": "number"
+          },
+          "centroid": {
+            "$ref": "#/components/schemas/Point3"
+          },
+          "facet_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Facet Id",
+            "type": "string"
+          },
+          "feature_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Feature Id"
+          },
+          "part_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Part Id",
+            "type": "string"
+          },
+          "vertices": {
+            "items": {
+              "$ref": "#/components/schemas/Point3"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Vertices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "facet_id",
+          "part_id",
+          "vertices",
+          "centroid",
+          "area_fraction"
+        ],
+        "title": "CanonicalFacet",
+        "type": "object"
+      },
+      "CanonicalGeometryPreview": {
+        "additionalProperties": false,
+        "properties": {
+          "active_part_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Active Part Ids",
+            "type": "array"
+          },
+          "assumption_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Assumption Ids",
+            "type": "array"
+          },
+          "assumptions": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "attached_joint_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Attached Joint Ids",
+            "type": "array"
+          },
+          "completed_operation_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Completed Operation Ids",
+            "type": "array"
+          },
+          "coordinate_frame": {
+            "const": "x_across_y_rearward_z_up_m",
+            "default": "x_across_y_rearward_z_up_m",
+            "title": "Coordinate Frame",
+            "type": "string"
+          },
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/CanonicalFacet"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Facets",
+            "type": "array"
+          },
+          "geometry_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Geometry Hash",
+            "type": "string"
+          },
+          "ground_part_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Ground Part Id",
+            "type": "string"
+          },
+          "ground_polygon": {
+            "items": {
+              "$ref": "#/components/schemas/Point3"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Ground Polygon",
+            "type": "array"
+          },
+          "history_cursor": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Cursor"
+          },
+          "nominal_joint_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Nominal Joint Ids",
+            "type": "array"
+          },
+          "part_centroids": {
+            "items": {
+              "$ref": "#/components/schemas/PartCentroid"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Part Centroids",
+            "type": "array"
+          },
+          "plan_version_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Plan Version Id",
+            "type": "string"
+          },
+          "producer_version": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Producer Version",
+            "type": "string"
+          },
+          "project_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "stage": {
+            "enum": [
+              "planned_preview",
+              "reported_assembled"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "state_basis": {
+            "const": "nominal",
+            "default": "nominal",
+            "title": "State Basis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "plan_version_id",
+          "producer_version",
+          "geometry_hash",
+          "history_cursor",
+          "stage",
+          "active_part_ids",
+          "nominal_joint_ids",
+          "attached_joint_ids",
+          "completed_operation_ids",
+          "facets",
+          "part_centroids",
+          "ground_part_id",
+          "ground_polygon",
+          "assumption_ids",
+          "assumptions"
+        ],
+        "title": "CanonicalGeometryPreview",
+        "type": "object"
+      },
       "CenterOfMass": {
         "additionalProperties": false,
         "properties": {
@@ -3308,6 +3531,25 @@
           "condition"
         ],
         "title": "Part",
+        "type": "object"
+      },
+      "PartCentroid": {
+        "additionalProperties": false,
+        "properties": {
+          "centroid": {
+            "$ref": "#/components/schemas/Point3"
+          },
+          "part_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Part Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "part_id",
+          "centroid"
+        ],
+        "title": "PartCentroid",
         "type": "object"
       },
       "PhysicalEvent": {

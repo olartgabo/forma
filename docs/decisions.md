@@ -483,3 +483,18 @@ must agree the published frame/stage handoff and supply the shared producer.
 Until then, production shows missing geometry, while explicitly labeled analytic
 software tests exercise the calculation and connected rendering. This does not
 complete S1 same-plan acceptance, S2 persistent reports or a physical demo.
+
+## D038: Complete stability dependencies in this lane, November 3, 2026
+
+The user explicitly superseded the ownership wait in D036/D037: do not leave
+work for Gabo if that prevents completing the engine. This lane now implements
+the shared canonical geometry and connected stability dependencies, with a
+documented interface reusable by the viewer and fabrication engines. The prior
+handoff proposal remains historical; another engineer's agreement is no longer
+a prerequisite for implementation. One canonical producer must serve consumers.
+
+Supported nominal geometry describes the planned assembly, not observed contact
+or completed construction. Unknown mass, device placement, material properties
+and physical observations remain unknown. Native independent review and passing
+checks still precede publication; provider STOPs and finite live-test controls
+remain unchanged. No physical success follows from this authorization.

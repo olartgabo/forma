@@ -1,14 +1,18 @@
-# Stability engine: S1 mechanics and initial connected report
+# Stability engine: mechanics and canonical nominal geometry
 
 Issue [#142](https://github.com/olartgabo/forma/issues/142), November 3, 2026.
-Owner: ResniDev. Feature reviewer and geometry interface partner: olartgabo.
+Owner: ResniDev. Shared interfaces remain available to the fabrication and viewer engines.
+
+November 3 user override: complete engine dependencies in this lane rather than
+waiting for Gabo. This supersedes the earlier producer-ownership wait; see D038
+and AGENTS.md. It does not waive evidence or independent review requirements.
 
 The initial slice introduced validated quantities, identity, policy and reports.
 The next packet adds the pure S1 scalar mechanics consumer, generated inputs and
 overlays, scoped read-only API and an explicitly requested report in the active
-manual. The shared geometry/stage agreement and actual plan producer remain
-pending. S1 mathematical software checks are not the S1 same-plan acceptance
-gate, and this initial API/UI path does not complete S2–S7.
+manual. This packet implements the shared canonical nominal geometry producer
+and connects its preview to the same authorized plan. This does not complete
+S2–S7, establish physical contact, or provide missing numerical measurements.
 Schema validation does not authenticate evidence, establish freshness or prove a
 physical result. API consumers must resolve all references in an authorized
 project snapshot before using these records.
@@ -20,11 +24,11 @@ come from the existing domain generator; do not maintain a second schema.
 Measurements can be a finite scalar, ordered inclusive interval or unknown.
 Units are explicit SI. Provenance, confirmation, evidence and correlated
 dependencies travel with the estimate. An interval is not automatically a
-defensible physical bound; the future engine must validate its applicability.
+defensible physical bound; the current scalar engine leaves intervals unresolved.
 
 An analysis identifies the exact plan, inventory, construction history, geometry,
-evidence and profile revisions. The future server must reject stale contexts and
-derive hashes from normalized authoritative inputs, never from display rounding.
+evidence and profile revisions. The server rejects stale contexts; hashes derive
+from normalized authoritative inputs, never from display rounding.
 Identity fields alone do not implement a cache or revision check.
 
 Reports cover a declared case/check matrix. Missing required checks and failed
@@ -33,32 +37,29 @@ separate references to existing evidence; a modeled pass creates no physical
 event. A tipping result does not establish phone retention, sliding resistance,
 joint capacity or cardboard strength.
 
-## Geometry handoff still required
+## Shared geometry contract and ownership override
 
-The [concrete producer proposal](https://github.com/olartgabo/forma/issues/144#issuecomment-6597156231)
-was published November 3. No owner agreement is inferred from posting it.
-For x across width, y rearward and z upward, proposed nominal centerlines are
-F=(0,0,0), R=(0,D,0), A=(0,S cos(theta),S sin(theta)), and
-L=(0,-lip sin(theta),lip cos(theta)), extruded across x in [-W/2,W/2].
-They match the existing template/side-view interpretation, not actual contact
-measurements. The stability package deliberately does not implement these poses.
+The earlier [producer proposal](https://github.com/olartgabo/forma/issues/144#issuecomment-6597156231)
+is historical. The user's November 3 instruction authorizes implementing the
+needed producer here; another owner's acceptance is no longer an implementation
+prerequisite. The viewer should consume this shared producer rather than create
+a second geometry authority.
 
-[#144](https://github.com/olartgabo/forma/issues/144#issuecomment-6596884972)
-owns the canonical pose producer; #141 owns chronological fabrication semantics.
-No competing pose producer or AssembledGeometry schema is introduced here.
-Before S1 integration, agree and publish:
+`forma_stability.geometry.project_nominal_geometry` projects validated canonical
+stand topology into `forma_domain.assembly_geometry_contracts.CanonicalGeometryPreview`.
+Pydantic generates the shared browser schema. Physical units are metres, with
+x across width, y rearward and z upward. Nominal centerlines are F=(0,0,0),
+R=(0,D,0), A=(0,S cos(theta),S sin(theta)), and L=(0,-lip sin(theta),lip cos(theta)).
+The original support source splits into support/lip facets; area fractions sum
+to one. Uniform-sheet centroids are explicitly conditional, not measured COM.
+Flat cutting offsets are never world placements.
 
-- Right-handed physical frame: x across, y along the base, z upward; explicit
-  support plane and SI conversion from the existing mm/g/degree inputs.
-- Physical transforms and part/facet IDs, preserving folded-part mass totals.
-- Active stage-specific contacts and attachments, excluding future braces.
-- Nominal versus observed geometry and explicit contact assumptions.
-- Canonical geometry hash and binding to the exact operation/history state.
-
-Camera motion and exploded display offsets never alter these inputs. Until the
-shared producer exists, analytic reference cases may test mathematics but cannot
-satisfy connected acceptance. The next slice must consume that producer, not
-infer assembled poses from flat rectangles or SVG pixels.
+The initial supported topology is the original triangular tape stand. Nominal
+planned assembly is distinct from user-reported assembly; either remains nominal
+geometry, not observed contact. Unsupported intermediate, damaged, detached or
+repaired configurations fail visibly. Camera, explosion and visibility controls
+are absent from the physical contract. Hashes bind geometry and applicable
+chronological history; the API also binds the inventory and global history cursor.
 
 ## Applicability and numeric policy for S1
 
@@ -70,10 +71,10 @@ infer assembled poses from flat rectangles or SVG pixels.
 | Dynamic response | Separate future capability | No physical claim from animation |
 
 Caller-selected physical clearance and numerical tolerance must be separate.
-For the future signed-clearance test, a lower bound strictly above the required
+For signed clearance, a lower bound strictly above the required
 clearance plus tolerance may pass; an upper bound below the required clearance
-minus tolerance fails; the boundary/overlap is indeterminate. These are proposed
-engine semantics, not a solver implemented by this contract slice. No default
+minus tolerance fails; the boundary/overlap is indeterminate. The scalar engine
+implements these thresholds; conservative interval solving remains pending. No default
 engineering reserve, material property or maximum payload is invented.
 Finite sampling alone cannot justify a conservative interval guarantee.
 
@@ -123,10 +124,12 @@ owner and require the active plan. POST rejects stale inventory/history with
 and current invalidations. Another owner's project/plan remains inaccessible.
 
 `StabilityResolver` is the server-side injection seam for the agreed canonical
-producer plus measured context and policy. The production default has no
-producer and returns `needs_geometry`, with no fabricated report or geometry
-hash. Synthetic integration tests inject a clearly labeled analytical resolver;
-they are not a connected test of the user's actual stand or a #144 producer.
+producer plus measured context and policy. The production default resolves the
+shared nominal geometry and returns a
+`geometry_preview` with `needs_measurement` and no numerical report until mass,
+device COM/contact and a justified analysis policy are available. Unsupported
+geometry or construction states return explicit blockers. Synthetic analytical
+resolvers remain test-only; the default geometry path needs no injected fixture.
 The browser renders the actual typed report and SVG overlay when supplied, and
 shows the missing prerequisites otherwise. No request occurs on mount. Network
 failure marks any retained result historical/stale; project/version/inventory,
@@ -141,20 +144,22 @@ Hypothetical unconfirmed values remain labeled in the report. Referenced
 evidence must also be current, scoped and applicable. This restriction is an
 additional measured-demo gate, not permission to describe assumptions as facts.
 
-S2 still requires immutable report persistence/retrieval and the actual canonical
-producer adapter; S3 still requires Muse tool registration. Do not configure a
+S2 still requires immutable report persistence/retrieval and a measured-input
+mechanical adapter; S3 still requires Muse tool registration. Do not configure a
 fixture resolver in production to substitute for missing physical inputs.
 
 ## Remaining delivery gates
 
-1. Obtain the #144/#141 owner agreement and producer. The mechanical input models
-   are implemented; shared scene/stage acceptance is still outstanding.
-2. Consume that producer for the same approved plan and verify dimensions, active
-   IDs, stage parity and folded-part mass conservation before claiming S1 acceptance.
-3. Complete S2 immutable storage/retrieval and bind actual measurements/evidence
-   to the connected report; preserve unknown mass, phone contact and properties.
+1. Extend supported chronological stages and repair continuations through this
+   shared producer; reject unsupported states until their geometry is validated.
+2. Bind typed numerical mass/COM/contact measurements and analysis policy to the
+   same approved plan, with evidence invalidation and stale-write checks.
+3. Complete immutable report storage/retrieval and measured mechanical cases;
+   keep missing physical inputs explicit rather than choosing fixture values.
 4. Add bounded Muse tools, shared viewer overlays and actual physical observations
    in S3/S4. Existing live-call windows and STOP controls remain unchanged.
+
+These are work retained in this lane, not an implementation assignment to Gabo.
 
 Run domain tests, generated-contract freshness and the repository check command.
 Independent Sol/Terra review is required before publication; feature review and
@@ -165,12 +170,13 @@ software checks establishes a physical pass.
 
 Run `uv run --locked python apps/web/tests/stability-fixture.py <output.json>`.
 The exporter uses the existing synthetic compiler inputs, a temporary actual
-API/database, real activation and the new routes. It exports missing-geometry,
-computed analytical and unknown-input responses; providers are prohibited.
+API/database, real activation and the new routes. It exports canonical nominal
+geometry with measurement blockers, computed analytical and unknown-input
+responses; providers are prohibited.
 Start the local web app with `npm run dev -w @forma/web -- --port 3024`, then run
 `node apps/web/tests/stability-report.browser.mjs <playwright-index.mjs> http://127.0.0.1:3024 <output.json>`.
 Use `CHROME_PATH` when the local Playwright browser is not installed.
 The test intercepts the exported API responses and rejects unexpected requests.
-It covers 390px/1280px rendering, explicit analysis, history invalidation without
+It covers 390px/1280px nominal geometry rendering, explicit analysis, history invalidation without
 automatic requests, stale network-failure display, unknown inputs and cancelled
 late responses. It is a connected software check, not provider/physical acceptance.

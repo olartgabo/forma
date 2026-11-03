@@ -45,6 +45,125 @@ const response = () => ({
     ],
   },
 });
+const geometryResponse = () => {
+  const vertices = [
+    { x: 0, y: 0, z: 0 },
+    { x: 0.1, y: 0, z: 0 },
+    { x: 0.1, y: 0.1, z: 0 },
+    { x: 0, y: 0.1, z: 0 },
+  ];
+  return {
+    ...context,
+    status: "needs_measurement",
+    blockers: ["Body mass is unknown"],
+    report: null,
+    geometry_preview: {
+      project_id: "p",
+      plan_version_id: "v",
+      history_cursor: null,
+      producer_version: "nominal-v1",
+      geometry_hash: "a".repeat(64),
+      coordinate_frame: "x_across_y_rearward_z_up_m",
+      stage: "planned_preview",
+      state_basis: "nominal",
+      active_part_ids: ["base"],
+      nominal_joint_ids: [],
+      attached_joint_ids: [],
+      completed_operation_ids: [],
+      facets: [
+        {
+          facet_id: "base-face",
+          part_id: "base",
+          vertices,
+          centroid: { x: 0.05, y: 0.05, z: 0 },
+          area_fraction: 1,
+        },
+      ],
+      ground_polygon: vertices,
+      assumption_ids: ["nominal_only"],
+      assumptions: ["Nominal geometry only"],
+    },
+  };
+};
+test("nominal geometry is scoped and cannot claim physical completion or a calculation", () => {
+  const value = geometryResponse();
+  assert.equal(
+    validateAnalysis(value, expected, null).geometry_preview.stage,
+    "planned_preview",
+  );
+  assert.equal(validateAnalysis(value, expected, null).report, null);
+  for (const mutation of [
+    (g) => {
+      g.project_id = "foreign";
+    },
+    (g) => {
+      g.plan_version_id = "old";
+    },
+    (g) => {
+      g.history_cursor = "old";
+    },
+    (g) => {
+      g.geometry_hash = "not-a-hash";
+    },
+    (g) => {
+      g.coordinate_frame = "pixels";
+    },
+    (g) => {
+      g.state_basis = "observed";
+    },
+    (g) => {
+      g.stage = "reported_assembled";
+    },
+    (g) => {
+      g.attached_joint_ids = ["unreported"];
+    },
+    (g) => {
+      g.facets[0].vertices[0].z = Infinity;
+    },
+    (g) => {
+      g.facets[0].area_fraction = 0.5;
+    },
+    (g) => {
+      g.facets[0].part_id = "foreign-part";
+    },
+    (g) => {
+      g.facets = [];
+    },
+    (g) => {
+      g.facets.push(structuredClone(g.facets[0]));
+    },
+  ]) {
+    const changed = geometryResponse();
+    mutation(changed.geometry_preview);
+    assert.throws(
+      () => validateAnalysis(changed, expected, null),
+      /geometry preview/,
+    );
+  }
+});
+test("finite out-of-bounds centroids cannot overflow nominal SVG label projection", () => {
+  for (const axis of ["x", "y", "z"]) {
+    for (const value of [-1e304, -0.01, 0.11, 1e304]) {
+      const response = geometryResponse();
+      const facet = response.geometry_preview.facets[0];
+      facet.centroid[axis] = value;
+      assert.throws(
+        () => validateAnalysis(response, expected, null),
+        /geometry preview/,
+      );
+    }
+  }
+  const response = geometryResponse();
+  response.geometry_preview.facets[0].vertices = Array.from(
+    { length: 4 },
+    () => ({ x: 0, y: 0, z: 0 }),
+  );
+  response.geometry_preview.facets[0].centroid = { x: 0, y: 1e304, z: 0 };
+  assert.throws(
+    () => validateAnalysis(response, expected, null),
+    /geometry preview/,
+  );
+});
 test("explicit empty history is valid while missing and stale context are rejected", () => {
   assert.equal(validateContext(context, expected).last_event_id, null);
   for (const changed of [

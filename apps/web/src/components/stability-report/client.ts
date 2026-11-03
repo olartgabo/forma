@@ -39,8 +39,109 @@ function strings(value: unknown): value is string[] {
 function finite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
-function point(value: unknown) {
+function point(value: unknown): value is { x: number; y: number; z: number } {
   return object(value) && finite(value.x) && finite(value.y) && finite(value.z);
+}
+function validGeometry(
+  value: unknown,
+  expected: ExpectedContext,
+  cursor: string | null,
+) {
+  if (
+    !object(value) ||
+    value.project_id !== expected.projectId ||
+    value.plan_version_id !== expected.planVersionId ||
+    value.history_cursor !== cursor ||
+    value.coordinate_frame !== "x_across_y_rearward_z_up_m" ||
+    typeof value.producer_version !== "string" ||
+    !value.producer_version ||
+    typeof value.geometry_hash !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.geometry_hash) ||
+    !["planned_preview", "reported_assembled"].includes(String(value.stage)) ||
+    value.state_basis !== "nominal" ||
+    !strings(value.active_part_ids) ||
+    !value.active_part_ids.length ||
+    value.active_part_ids.length > 16 ||
+    new Set(value.active_part_ids).size !== value.active_part_ids.length ||
+    !strings(value.attached_joint_ids) ||
+    !strings(value.nominal_joint_ids) ||
+    !strings(value.completed_operation_ids) ||
+    !strings(value.assumption_ids) ||
+    !value.assumption_ids.length ||
+    !strings(value.assumptions) ||
+    !value.assumptions.length ||
+    !Array.isArray(value.facets) ||
+    !value.facets.length ||
+    value.facets.length > 32 ||
+    !Array.isArray(value.ground_polygon) ||
+    value.ground_polygon.length !== 4 ||
+    !value.ground_polygon.every(point)
+  )
+    return false;
+  const attachedJoints = value.attached_joint_ids;
+  const nominalJoints = value.nominal_joint_ids;
+  if (
+    attachedJoints.some((id) => !nominalJoints.includes(id)) ||
+    (value.stage === "planned_preview" &&
+      (value.attached_joint_ids.length ||
+        value.completed_operation_ids.length)) ||
+    (value.stage === "reported_assembled" &&
+      (!value.completed_operation_ids.length ||
+        nominalJoints.some((id) => !attachedJoints.includes(id))))
+  )
+    return false;
+  const facetIds = new Set<string>();
+  const parts = new Set(value.active_part_ids);
+  const fractions = new Map<string, number>();
+  for (const facet of value.facets) {
+    if (
+      !object(facet) ||
+      typeof facet.facet_id !== "string" ||
+      !facet.facet_id ||
+      facetIds.has(facet.facet_id) ||
+      typeof facet.part_id !== "string" ||
+      !parts.has(facet.part_id) ||
+      !Array.isArray(facet.vertices) ||
+      facet.vertices.length !== 4 ||
+      !facet.vertices.every(point) ||
+      !point(facet.centroid) ||
+      !finite(facet.area_fraction) ||
+      facet.area_fraction <= 0 ||
+      facet.area_fraction > 1
+    )
+      return false;
+    // A canonical facet centroid must lie inside its vertices' coordinate bounds.
+    // Otherwise even finite input could overflow the label projection at its
+    // minimum diagram span (scale 240000), or put the label outside the facet.
+    for (const axis of ["x", "y", "z"] as const) {
+      const coordinates = facet.vertices.map((vertex) => vertex[axis]);
+      if (
+        facet.centroid[axis] < Math.min(...coordinates) ||
+        facet.centroid[axis] > Math.max(...coordinates)
+      )
+        return false;
+    }
+    facetIds.add(facet.facet_id);
+    fractions.set(
+      facet.part_id,
+      (fractions.get(facet.part_id) ?? 0) + facet.area_fraction,
+    );
+  }
+  if (
+    [...parts].some((part) => Math.abs((fractions.get(part) ?? 0) - 1) > 1e-9)
+  )
+    return false;
+  // Keep finite server data from overflowing projection arithmetic in the browser.
+  const points = value.facets.flatMap((facet) => [
+    ...facet.vertices,
+    facet.centroid,
+  ]);
+  for (const axis of ["x", "y", "z"]) {
+    const coordinates = points.map((p) => p[axis]);
+    const span = Math.max(...coordinates) - Math.min(...coordinates);
+    if (!Number.isFinite(span) || span * 240 === Infinity) return false;
+  }
+  return true;
 }
 export function validateContext(
   value: unknown,
@@ -78,6 +179,13 @@ export function validateAnalysis(
   )
     throw new Error(
       "The analysis response is invalid or stale. Reload before analyzing again.",
+    );
+  if (
+    value.geometry_preview != null &&
+    !validGeometry(value.geometry_preview, expected, cursor)
+  )
+    throw new Error(
+      "The server returned an invalid or stale nominal geometry preview.",
     );
   if (value.report === null) {
     if (value.status === "complete")

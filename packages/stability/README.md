@@ -2,9 +2,22 @@
 
 Pure `forma_stability.evaluate_stability(analysis: StabilityInput,
 policy: AnalysisPolicy) -> StabilityReport` evaluates every declared and required named case.
-Inputs are the mechanical consumer snapshot supplied externally by the canonical
-geometry producer. This package produces no poses and imports no BuildPlan,
-viewer, provider, storage or HTTP code. No canonical producer is connected yet.
+Inputs are the mechanical consumer snapshot supplied by the canonical geometry
+and measured-input adapters. The numerical evaluator has no viewer, provider,
+storage or HTTP dependency.
+
+`forma_stability.geometry.project_nominal_geometry` is the shared canonical plan
+projection added under the user's November 3 ownership override. It validates
+the supported stand topology through the existing family validator and produces
+the Pydantic `CanonicalGeometryPreview` contract. Its nominal sheet facets,
+conditional uniform-sheet centroids and ground footprint do not establish actual
+mass, COM or contact. The default connected API shows this preview and the missing
+mechanical inputs, without inventing an analysis policy or a physical pass.
+
+Consumers including the assembly viewer should reuse this producer. Planned
+assembly and user-reported assembly have distinct stage labels; both remain
+nominal geometry. Unsupported intermediate, damaged, detached and repaired states
+fail visibly. Camera or exploded-view controls cannot alter physical coordinates.
 
 Coordinates are SI metres, right-handed world x across, y rearward, z upward.
 Each case explicitly selects present bodies and active supporting contacts.

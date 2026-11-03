@@ -144,7 +144,7 @@ try {
     await analyze.click();
     try {
       await panel
-        .getByText("Status: needs geometry", { exact: true })
+        .getByText("Status: needs measurement", { exact: true })
         .waitFor();
     } catch (error) {
       console.error({
@@ -155,7 +155,33 @@ try {
       });
       throw error;
     }
-    assert.equal(await panel.locator("svg").count(), 0);
+    await panel
+      .getByRole("img", {
+        name: "Nominal assembly side view with numbered facets",
+      })
+      .waitFor();
+    await panel
+      .getByText("Nominal assembly — planned preview", { exact: true })
+      .waitFor();
+    await panel
+      .getByText("This is not a measured shape", { exact: false })
+      .waitFor();
+    assert.equal(
+      await panel.getByText("Signed margin:", { exact: false }).count(),
+      0,
+    );
+    assert.equal(
+      await panel.locator("svg polygon").count(),
+      blocked_response.geometry_preview.facets.length,
+    );
+    const nominalBox = await page.evaluate(() => ({
+      width: innerWidth,
+      scroll: document.documentElement.scrollWidth,
+    }));
+    assert(
+      nominalBox.scroll <= nominalBox.width + 1,
+      JSON.stringify(nominalBox),
+    );
     mode = "analytic";
     await analyze.click();
     await panel
@@ -220,7 +246,7 @@ try {
     );
     assert.equal(analyses.length, 6);
     console.log(
-      `PASS ${width}px missing geometry, computed overlay, history invalidation, stale error, unknown input, late cancellation; ${analyses.length} analysis requests`,
+      `PASS ${width}px canonical nominal geometry, measurement blockers, computed overlay, history invalidation, stale error, unknown input, late cancellation; ${analyses.length} analysis requests`,
     );
     await context.close();
   }

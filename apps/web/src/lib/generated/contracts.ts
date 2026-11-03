@@ -99,6 +99,36 @@ export type BuildPlan = {
   readonly "created_at": string;
 };
 
+export type CanonicalFacet = {
+  readonly "facet_id": string;
+  readonly "part_id": string;
+  readonly "feature_id"?: (string | null);
+  readonly "vertices": ReadonlyArray<Point3>;
+  readonly "centroid": Point3;
+  readonly "area_fraction": number;
+};
+
+export type CanonicalGeometryPreview = {
+  readonly "project_id": string;
+  readonly "plan_version_id": string;
+  readonly "producer_version": string;
+  readonly "geometry_hash": string;
+  readonly "history_cursor": (string | null);
+  readonly "stage": "planned_preview" | "reported_assembled";
+  readonly "state_basis"?: "nominal";
+  readonly "coordinate_frame"?: "x_across_y_rearward_z_up_m";
+  readonly "active_part_ids": ReadonlyArray<string>;
+  readonly "nominal_joint_ids": ReadonlyArray<string>;
+  readonly "attached_joint_ids": ReadonlyArray<string>;
+  readonly "completed_operation_ids": ReadonlyArray<string>;
+  readonly "facets": ReadonlyArray<CanonicalFacet>;
+  readonly "part_centroids": ReadonlyArray<PartCentroid>;
+  readonly "ground_part_id": string;
+  readonly "ground_polygon": ReadonlyArray<Point3>;
+  readonly "assumption_ids": ReadonlyArray<string>;
+  readonly "assumptions": ReadonlyArray<string>;
+};
+
 export type CenterOfMass = {
   readonly "x": QuantityEstimate;
   readonly "y": QuantityEstimate;
@@ -536,6 +566,11 @@ export type Part = {
   readonly "geometry": Rect;
   readonly "features"?: ReadonlyArray<Feature>;
   readonly "condition": "usable" | "damaged" | "uncertain";
+};
+
+export type PartCentroid = {
+  readonly "part_id": string;
+  readonly "centroid": Point3;
 };
 
 export type PhysicalEvent = {

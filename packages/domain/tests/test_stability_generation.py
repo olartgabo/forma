@@ -10,7 +10,12 @@ def test_stability_contracts_are_exported_from_pydantic():
     schema = json.loads(outputs["packages/domain/generated/contracts.schema.json"])
     api = json.loads(outputs["packages/domain/generated/openapi.json"])
     browser = outputs["apps/web/src/lib/generated/contracts.ts"]
-    for name in ("AnalysisIdentity", "QuantityEstimate", "StabilityReport"):
+    for name in (
+        "AnalysisIdentity",
+        "QuantityEstimate",
+        "StabilityReport",
+        "CanonicalGeometryPreview",
+    ):
         assert name in schema["$defs"]
         assert name in api["components"]["schemas"]
         assert f"export type {name} =" in browser

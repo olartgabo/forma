@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { StabilityOverlay } from "../../lib/generated/contracts";
 import { requestAnalysis, type AnalysisResponse } from "./client";
+import GeometryPreview from "./geometry-preview";
 
 const label = (value: string) => value.replaceAll("_", " ");
 const number = (value: number) => Number(value.toPrecision(5)).toString();
@@ -194,6 +195,9 @@ export default function StabilityReportPanel({
                 <li key={i}>{b}</li>
               ))}
             </ul>
+          )}
+          {visible.response.geometry_preview && (
+            <GeometryPreview geometry={visible.response.geometry_preview} />
           )}
           {visible.response.report && (
             <>

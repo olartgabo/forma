@@ -65,9 +65,10 @@ def test_default_is_blocked_and_read_only(connected):
     response = client.post(url, headers=AUTH, json=payload)
     assert response.status_code == 200, response.text
     assert response.headers["cache-control"] == "no-store"
-    assert response.json()["status"] == "needs_geometry"
+    assert response.json()["status"] == "needs_measurement"
     assert response.json()["report"] is None
-    assert len(response.json()["blockers"]) == 3
+    assert response.json()["geometry_preview"]["stage"] == "planned_preview"
+    assert len(response.json()["blockers"]) == 4
     with sqlite3.connect(directory / "projects.sqlite3") as db:
         assert tuple(db.iterdump()) == before
 
@@ -84,8 +85,12 @@ def test_production_routes_registered_and_authenticated(connected):
     assert context.status_code == 200, context.text
     response = client.post(production, json=payload, headers=AUTH)
     assert response.status_code == 200, response.text
-    assert response.json()["status"] == "needs_geometry"
+    assert response.json()["status"] == "needs_measurement"
     assert response.json()["report"] is None
+    assert (
+        response.json()["geometry_preview"]["plan_version_id"]
+        == payload["plan_version_id"]
+    )
 
 
 def test_owner_scope_and_authentication(connected):

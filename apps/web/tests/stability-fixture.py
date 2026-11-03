@@ -108,7 +108,12 @@ def main(output):
                 )
                 assert response.status_code == 200, response.text
                 fixture[key] = response.json()
-            assert fixture["blocked_response"]["status"] == "needs_geometry"
+            assert fixture["blocked_response"]["status"] == "needs_measurement"
+            geometry = fixture["blocked_response"]["geometry_preview"]
+            assert geometry["plan_version_id"] == version.version_id
+            assert geometry["stage"] == "planned_preview"
+            assert len(geometry["facets"]) == 4
+            assert fixture["blocked_response"]["report"] is None
             assert fixture["analytic_response"]["report"]["status"] == "modeled_pass"
             assert fixture["unknown_response"]["report"]["status"] != "modeled_pass"
         Path(output).write_text(json.dumps(fixture), encoding="utf-8")

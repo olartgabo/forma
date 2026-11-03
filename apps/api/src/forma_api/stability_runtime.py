@@ -1,13 +1,15 @@
-"""Initial read-only S1 adapter. Canonical pose production and S2 storage are absent."""
+"""Read-only stability analysis with shared canonical nominal geometry."""
 
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from forma_stability import evaluate_stability
+from pydantic import model_validator
 
 from forma_api.plans import PlanVersion
 from forma_api.progress import ProgressSnapshot
 from forma_api.projects import Project
+from forma_domain.assembly_geometry_contracts import CanonicalGeometryPreview
 from forma_domain.models import (
     ID,
     Evidence,
@@ -39,6 +41,23 @@ class StabilityAnalysisResponse(StabilityContext):
     status: Literal["complete", "needs_geometry", "needs_measurement", "unsupported"]
     report: StabilityReport | None = None
     blockers: tuple[str, ...] = ()
+    geometry_preview: CanonicalGeometryPreview | None = None
+
+    @model_validator(mode="after")
+    def preview_identity(self):
+        geometry = self.geometry_preview
+        if geometry is not None:
+            if (
+                geometry.project_id != self.project_id
+                or geometry.plan_version_id != self.plan_version_id
+                or geometry.history_cursor != self.last_event_id
+            ):
+                raise ValueError("Geometry preview must match response identity")
+            if self.status != "needs_measurement" or self.report is not None:
+                raise ValueError(
+                    "Unresolved geometry preview cannot establish a stability report"
+                )
+        return self
 
 
 @dataclass(frozen=True)
@@ -63,7 +82,7 @@ class StabilityResolver(Protocol):
 
 
 MISSING_PREREQUISITES = (
-    "Canonical world poses and active support contacts from the geometry producer (#144) are unavailable",
+    "The configured mechanical resolver did not supply canonical world poses and active support contacts",
     "Version-bound body mass and center-of-mass measurements or explicit unknown estimates are required",
     "Server-owned load cases, applicability assumptions and analysis policy are required",
 )
@@ -76,7 +95,29 @@ def analyze(snapshot: StabilitySnapshot, resolver: StabilityResolver | None = No
         inventory_revision_id=snapshot.project.revision_id,
         last_event_id=snapshot.last_event_id,
     )
-    resolved = resolver(snapshot) if resolver is not None else None
+    if resolver is None:
+        # Local import keeps the snapshot type available to the pure adapter
+        # without a runtime import cycle. No fixture resolver is installed here.
+        from forma_stability.geometry import UnsupportedGeometry
+
+        from forma_api.stability_geometry import (
+            missing_mechanical_inputs,
+            preview_geometry,
+        )
+
+        try:
+            geometry = preview_geometry(snapshot)
+        except UnsupportedGeometry as error:
+            return StabilityAnalysisResponse(
+                **fields, status="unsupported", blockers=(str(error),)
+            )
+        return StabilityAnalysisResponse(
+            **fields,
+            status="needs_measurement",
+            geometry_preview=geometry,
+            blockers=missing_mechanical_inputs(geometry.active_part_ids),
+        )
+    resolved = resolver(snapshot)
     if resolved is None:
         return StabilityAnalysisResponse(
             **fields, status="needs_geometry", blockers=MISSING_PREREQUISITES
