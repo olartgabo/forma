@@ -31,6 +31,8 @@ const MESSAGES: Record<string, string> = {
     "The connection ended before the outcome was known. Check the original request.",
   invalid_response:
     "The response could not be read. Check the original request before generating another.",
+  proposal_rejected:
+    "The server rejected the model output and resolved this request. Review your notes before starting another proposal.",
   validation_error:
     "The proposal request was rejected. Check the saved materials and selected photo.",
 };
@@ -91,13 +93,19 @@ export async function proposeConstruction(
     );
   }
   if (!response.ok) {
-    const code =
+    const serverCode =
       typeof value === "object" &&
       value !== null &&
       "code" in value &&
       typeof value.code === "string"
         ? value.code
         : "provider_error";
+    // This parsed server rejection clears its receipt. Unreadable responses
+    // and invalid successful results remain uncertain client invalid_response.
+    const code =
+      serverCode === "invalid_response" && response.status === 502
+        ? "proposal_rejected"
+        : serverCode;
     throw new ApiError(
       response.status,
       code in MESSAGES ? code : "provider_error",

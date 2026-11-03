@@ -97,6 +97,35 @@ requests can only check the same request identity, not silently dispatch a new
 one. Changes in project, revision, goal, notes or photo invalidate earlier
 consent and results.
 
+The browser now writes the original construction request before dispatch under
+a SHA-256 credential digest and project scope. It stores no credential or model
+response. Navigation and reload recover the exact notes, selected-photo identity,
+revision and idempotency key without sending a request. Checking the original
+request requires fresh context and photo consent. Other owners/projects cannot
+recover its local receipt. Malformed or unavailable recovery storage blocks
+dispatch; changed inventory, goal or selected-photo metadata retain the receipt
+and block replay until the original context is restored or an operator reconciles
+the request.
+
+Successful responses retain their receipt until the user explicitly chooses
+**Start another proposal**. Definitive server rejection codes also permit this
+explicit restart. Parsed server `invalid_response` errors (HTTP 502) become the
+client-only `proposal_rejected` code; unreadable or foreign responses retain
+the uncertain `invalid_response` code. Network failures, unknown/in-progress
+outcomes, stale writes and identity conflicts cannot discard the original key.
+This distinguishes a resolved unusable model output from a lost paid response.
+
+November 3 merge repair verification, without provider calls:
+
+- `npm run typecheck`: `next typegen && tsc --noEmit`, `✓ Types generated successfully`, exit 0.
+- `npm run test:web`: `# tests 147`, `# pass 147`, `# fail 0`.
+- Formatted the touched TypeScript and browser/unit test files with repository Prettier.
+- The local intercepted browser regression passed at 390px and 1280px. It reloads
+  after dispatch while the response is withheld, recovers the exact original key
+  with fresh consent and verifies receipt replay without another provider
+  dispatch. It also checks terminal rejection restart and unknown/stale blocking.
+  Exact output at each width: `PASS <width>px consent/photo, engine steps/names, camera-only, durable reload recovery, terminal start-over and unknown/stale request blocking; offline replay only`.
+
 Offline tests use injected gateways and provider-compatible response fixtures,
 including malformed geometry, reference failures, photos, bounded correction,
 ownership, stale races and receipt semantics. Browser tests intercept provider

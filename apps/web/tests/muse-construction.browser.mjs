@@ -22,6 +22,12 @@ try {
       unexpected = [],
       requests = [];
     let mode = "success";
+    let providerDispatches = 0;
+    const receipts = new Map();
+    let dispatched;
+    const dispatchObserved = new Promise((resolve) => {
+      dispatched = resolve;
+    });
     page.on("pageerror", (e) => errors.push(e.message));
     const base = `/api/projects/${fixture.project.id}`;
     const photo = {
@@ -69,7 +75,38 @@ try {
         assert.equal(body.provider_context_consented, true);
         assert.equal(body.provider_transfer_consented, true);
         assert.equal(body.media_id, "photo-one");
-        if (mode === "uncertain")
+        if (receipts.has(body.idempotency_key)) {
+          const receipt = receipts.get(body.idempotency_key);
+          return route.fulfill(
+            receipt === "unknown"
+              ? {
+                  status: 409,
+                  json: {
+                    code: "generation_outcome_unknown",
+                    message: "private-server-detail",
+                  },
+                }
+              : { json: { ...receipt, replayed: true } },
+          );
+        }
+        providerDispatches++;
+        if (mode === "delayed") {
+          // The server completes the paid request, but navigation loses its
+          // response. Recovery must use this completed receipt, never a new key.
+          receipts.set(body.idempotency_key, fixture.result);
+          dispatched();
+          return;
+        }
+        if (mode === "rejected")
+          return route.fulfill({
+            status: 502,
+            json: {
+              code: "invalid_response",
+              message: "private-provider-detail",
+            },
+          });
+        if (mode === "uncertain") {
+          receipts.set(body.idempotency_key, "unknown");
           return route.fulfill({
             status: 409,
             json: {
@@ -77,6 +114,8 @@ try {
               message: "private-server-detail",
             },
           });
+        }
+        receipts.set(body.idempotency_key, fixture.result);
         return route.fulfill({ json: fixture.result });
       }
       if (url.pathname === `${base}/media/photo-one`)
@@ -162,14 +201,78 @@ try {
       await panel.screenshot({
         path: `${process.env.SCREENSHOT_DIR}/muse-construction-${width}.png`,
       });
-    mode = "uncertain";
+    await panel.getByRole("button", { name: "Start another proposal" }).click();
+    mode = "delayed";
     await consent.check();
     await photoConsent.check();
     await ask.click();
+    await dispatchObserved;
+    const retained = await page.evaluate(() =>
+      Object.entries(localStorage).filter(([key]) =>
+        key.startsWith("forma-construction-pending-v1:"),
+      ),
+    );
+    assert.equal(retained.length, 1);
+    assert.deepEqual(JSON.parse(retained[0][1]).payload, requests[1]);
+    assert.ok(!JSON.stringify(retained).includes("offline-owner"));
+    await page.reload();
+    await page.getByLabel("Owner credential").fill("offline-owner");
+    await page.getByRole("button", { name: "Open workbench" }).click();
     const retry = panel.getByRole("button", {
       name: "Check original proposal request",
     });
     await retry.waitFor();
+    assert.equal(requests.length, 2, "reload must not dispatch automatically");
+    assert.equal(
+      await panel.getByLabel("What should the design do?").inputValue(),
+      "Hold my pencils.",
+    );
+    assert.equal(
+      await panel.getByLabel("Material photo (optional)").inputValue(),
+      "photo-one",
+    );
+    assert.equal(await consent.isChecked(), false);
+    assert.equal(await photoConsent.isChecked(), false);
+    assert.equal(await retry.isDisabled(), true);
+    assert.equal(
+      await panel
+        .getByRole("button", { name: "Start another proposal" })
+        .count(),
+      0,
+    );
+    await consent.check();
+    await photoConsent.check();
+    await retry.click();
+    await panel.getByRole("heading", { name: "Proposed organizer" }).waitFor();
+    assert.deepEqual(
+      requests[1],
+      requests[2],
+      "reload recovers exact paid request payload/key",
+    );
+    assert.equal(
+      providerDispatches,
+      2,
+      "recovery replays completed receipt without another provider dispatch",
+    );
+
+    await panel.getByRole("button", { name: "Start another proposal" }).click();
+    mode = "rejected";
+    await consent.check();
+    await photoConsent.check();
+    await ask.click();
+    await panel.getByText(/server rejected the model output/).waitFor();
+    assert.ok(!(await panel.innerText()).includes("private-provider-detail"));
+    await panel.getByRole("button", { name: "Start another proposal" }).click();
+    assert.equal(
+      await panel.getByLabel("What should the design do?").isEnabled(),
+      true,
+    );
+    assert.equal(await consent.isChecked(), false);
+    mode = "uncertain";
+    await consent.check();
+    await photoConsent.check();
+    await ask.click();
+    await panel.getByText(/original provider outcome is unknown/).waitFor();
     assert.match(await panel.innerText(), /provider outcome is unknown/);
     assert.ok(!(await panel.innerText()).includes("private-server-detail"));
     assert.equal(
@@ -184,11 +287,33 @@ try {
       document.body.textContent.includes("provider outcome is unknown"),
     );
     assert.deepEqual(
-      requests[1],
-      requests[2],
+      requests[4],
+      requests[5],
       "uncertain retry must preserve exact original payload/key",
     );
-    assert.equal(requests.length, 3);
+    assert.equal(requests.length, 6);
+    assert.equal(
+      await panel
+        .getByRole("button", { name: "Start another proposal" })
+        .count(),
+      0,
+    );
+    responses.set(base, {
+      ...fixture.project,
+      goal: "Changed saved goal",
+      revision_id: "new-inventory",
+    });
+    await page.reload();
+    await page.getByLabel("Owner credential").fill("offline-owner");
+    await page.getByRole("button", { name: "Open workbench" }).click();
+    await panel.getByText(/retained request belongs to an earlier/).waitFor();
+    assert.equal(await retry.isDisabled(), true);
+    assert.equal(await consent.isDisabled(), true);
+    assert.equal(
+      requests.length,
+      6,
+      "changed context preserves unknown request without automatic replay",
+    );
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
     assert.ok(
@@ -197,7 +322,7 @@ try {
     );
     await context.close();
     console.log(
-      `PASS ${width}px consent/photo, engine steps/names, camera-only, unknown outcome original-key retry; offline replay only`,
+      `PASS ${width}px consent/photo, engine steps/names, camera-only, durable reload recovery, terminal start-over and unknown/stale request blocking; offline replay only`,
     );
   }
 } finally {

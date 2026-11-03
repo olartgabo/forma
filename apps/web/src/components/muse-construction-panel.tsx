@@ -4,17 +4,21 @@ import { useEffect, useRef, useState } from "react";
 import type {
   Media,
   Project,
-  MuseConstructionRequest,
   MuseConstructionResult,
   MuseConstructionCandidateResult,
 } from "../lib/generated/api-contracts";
 import type { ConstructionPlan } from "../lib/generated/contracts";
 import type { MuseAvailability } from "../lib/muse-provider";
 import { ApiError } from "../lib/api";
+import { proposeConstruction } from "../lib/muse-construction-client";
 import {
-  proposeConstruction,
-  uncertainConstructionOutcome,
-} from "../lib/muse-construction-client";
+  pendingConstruction,
+  retainConstruction,
+  clearConstruction,
+  constructionContextChanged,
+  constructionRequestCanRestart,
+  type PendingConstruction,
+} from "../lib/muse-construction-pending";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
 import MuseRequestStatus from "./muse-request-status";
 import {
@@ -288,7 +292,23 @@ function Candidate({
   );
 }
 
-export default function MuseConstructionPanel({
+export default function MuseConstructionPanel(props: {
+  token: string;
+  project: Project;
+  photos: Media[];
+  inventoryStale: boolean;
+  disabled: boolean;
+  museAvailability?: MuseAvailability;
+}) {
+  return (
+    <ConstructionPanel
+      key={JSON.stringify([props.token, props.project.id])}
+      {...props}
+    />
+  );
+}
+
+function ConstructionPanel({
   token,
   project,
   photos,
@@ -310,12 +330,23 @@ export default function MuseConstructionPanel({
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<MuseConstructionResult | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
-  const [pending, setPending] = useState<MuseConstructionRequest | null>(null);
+  const [pending, setPending] = useState<PendingConstruction | null>(null);
+  const [recoveryContext, setRecoveryContext] = useState<string | null>(null);
+  const [storageBlocked, setStorageBlocked] = useState(false);
   const controller = useRef<AbortController | null>(null);
   const epoch = useRef(0);
   const photosKey = photos
     .map((p) => `${p.id}:${p.byte_count}:${p.content_type}`)
     .join(",");
+  const contextIdentity = JSON.stringify([
+    project.revision_id,
+    project.goal,
+    photosKey,
+  ]);
+  const currentContext = useRef(contextIdentity);
+  currentContext.current = contextIdentity;
+  const stalePending =
+    !!pending && constructionContextChanged(pending, project, photos);
   const selected = photos.find((p) => p.id === photo);
   const eligible =
     !photo ||
@@ -324,14 +355,29 @@ export default function MuseConstructionPanel({
       selected.byte_count > 0 &&
       selected.byte_count <= 5_000_000);
   useEffect(() => {
-    epoch.current++;
+    const current = ++epoch.current;
     controller.current?.abort();
     setBusy(false);
     setResult(null);
     setConsent(false);
     setPhotoConsent(false);
     setError(null);
-    setPending(null);
+    setRecoveryContext(null);
+    void pendingConstruction(token, project.id)
+      .then((record) => {
+        if (current !== epoch.current) return;
+        setPending(record);
+        if (record) {
+          setNotes(record.payload.user_notes ?? "");
+          setPhoto(record.payload.media_id ?? "");
+        }
+        setStorageBlocked(false);
+        setRecoveryContext(contextIdentity);
+      })
+      .catch((failure) => {
+        if (current !== epoch.current) return;
+        storageFailure(failure);
+      });
   }, [token, project.id, project.revision_id, project.goal, photosKey]);
   useEffect(
     () => () => {
@@ -346,11 +392,26 @@ export default function MuseConstructionPanel({
     setResult(null);
     setError(null);
   }
+  function storageFailure(failure: unknown) {
+    setStorageBlocked(true);
+    setError(
+      new ApiError(
+        0,
+        "recovery_storage",
+        failure instanceof Error
+          ? failure.message
+          : "Browser recovery storage is unavailable. Proposal requests are blocked.",
+      ),
+    );
+  }
   const unavailable =
     disabled ||
     inventoryStale ||
     !!project.active_version_id ||
-    museAvailability?.enabled === false;
+    museAvailability?.enabled === false ||
+    recoveryContext !== contextIdentity ||
+    storageBlocked ||
+    stalePending;
   async function ask() {
     if (
       unavailable ||
@@ -360,33 +421,61 @@ export default function MuseConstructionPanel({
       !eligible
     )
       return;
-    const body = pending ?? {
-      expected_revision_id: project.revision_id,
-      user_notes: notes.trim() || null,
-      media_id: photo || null,
-      provider_context_consented: true,
-      provider_transfer_consented: !!photo,
-      idempotency_key: crypto.randomUUID(),
+    const record: PendingConstruction = pending ?? {
+      version: 1,
+      project_id: project.id,
+      goal: project.goal,
+      photo: selected
+        ? {
+            id: selected.id,
+            byte_count: selected.byte_count,
+            content_type: selected.content_type,
+          }
+        : null,
+      payload: {
+        expected_revision_id: project.revision_id,
+        user_notes: notes.trim() || null,
+        media_id: photo || null,
+        provider_context_consented: true,
+        provider_transfer_consented: !!photo,
+        idempotency_key: crypto.randomUUID(),
+      },
     };
+    const requestedContext = contextIdentity;
     const current = ++epoch.current;
     const abort = new AbortController();
     controller.current = abort;
-    setPending(body);
     setBusy(true);
     setError(null);
     setResult(null);
     setConsent(false);
     setPhotoConsent(false);
+    setPending(record);
     try {
+      // Retain the exact paid-request identity before dispatch, including retries.
+      try {
+        await retainConstruction(token, record);
+      } catch (failure) {
+        if (current === epoch.current) storageFailure(failure);
+        return;
+      }
+      if (
+        current !== epoch.current ||
+        currentContext.current !== requestedContext
+      )
+        return;
       const value = await proposeConstruction(
         token,
         project.id,
-        body,
+        record.payload,
         abort.signal,
       );
-      if (current !== epoch.current) return;
+      if (
+        current !== epoch.current ||
+        currentContext.current !== requestedContext
+      )
+        return;
       setResult(value);
-      setPending(null);
     } catch (failure) {
       if (current !== epoch.current) return;
       const apiError =
@@ -398,12 +487,35 @@ export default function MuseConstructionPanel({
               "The outcome is unknown. Check the original request before starting another.",
             );
       setError(apiError);
-      if (!uncertainConstructionOutcome(apiError.code)) setPending(null);
     } finally {
       if (current === epoch.current) {
         controller.current = null;
         setBusy(false);
       }
+    }
+  }
+  async function startAnother() {
+    if (
+      (!result && !constructionRequestCanRestart(error?.code)) ||
+      !pending ||
+      busy ||
+      unavailable
+    )
+      return;
+    const current = ++epoch.current;
+    setBusy(true);
+    setConsent(false);
+    setPhotoConsent(false);
+    try {
+      await clearConstruction(token, pending);
+      if (current !== epoch.current) return;
+      setPending(null);
+      setResult(null);
+      setError(null);
+    } catch (failure) {
+      if (current === epoch.current) storageFailure(failure);
+    } finally {
+      if (current === epoch.current) setBusy(false);
     }
   }
   function cancel() {
@@ -551,6 +663,14 @@ export default function MuseConstructionPanel({
       {museAvailability?.enabled === false && (
         <p className="notice">{museAvailability.reason}</p>
       )}
+      {stalePending && (
+        <p className="notice" role="alert">
+          The retained request belongs to an earlier inventory, goal or selected
+          photo. Its original identity is preserved. New proposals and replay
+          are blocked; restore the original saved context or ask the operator to
+          reconcile this request.
+        </p>
+      )}
       <div className="muse-actions">
         <button
           type="button"
@@ -568,6 +688,15 @@ export default function MuseConstructionPanel({
             ? "Check original proposal request"
             : "Ask MetaMuse for shapes and steps"}
         </button>
+        {(result || constructionRequestCanRestart(error?.code)) && pending && (
+          <button
+            type="button"
+            disabled={busy || unavailable}
+            onClick={() => void startAnother()}
+          >
+            Start another proposal
+          </button>
+        )}
       </div>
       <MuseRequestStatus
         busy={busy}
@@ -581,8 +710,9 @@ export default function MuseConstructionPanel({
       />
       {pending && !busy && (
         <p className="help">
-          This retains the original request identity. No automatic retry or new
-          proposal is dispatched.
+          The original request identity is retained in this browser across
+          navigation and reload. Checking it requires fresh consent. No request
+          is sent automatically.
         </p>
       )}
       {result && (
