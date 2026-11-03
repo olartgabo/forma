@@ -630,3 +630,134 @@ def test_damage_report_is_owner_scoped(setup):
     assert post_damage(client, version, body, OTHER).status_code == 404
     assert post_damage(client, version, body, {}).status_code == 401
     assert progress(client, version).json()["events"] == []
+
+
+@pytest.mark.parametrize("preview_setup", ["offcut"], indirect=True)
+@pytest.mark.parametrize("recover_before_cut", [False, True])
+def test_material_reports_follow_cut_order_without_restoring_consumed_parent(
+    setup, recover_before_cut
+):
+    from forma_compiler import CutProcess
+    from test_adapt import report_material
+
+    client, version, directory = setup
+    operation = version.plan.operations[0]
+    sid = operation.args.stock_id
+    parent = operation.args.source_region_id
+    offcut = operation.effects.created_offcuts[0]
+    current = progress(client, version).json()
+
+    def material(kind, region_id, key):
+        return report_material(
+            client,
+            version.plan,
+            current,
+            key,
+            kind=kind,
+            stock_id=sid,
+            region_id=region_id,
+            operation_id=operation.id,
+        )
+
+    if recover_before_cut:
+        for kind in ("waste", "salvage"):
+            response = material(kind, parent, f"parent-{kind}")
+            assert response.status_code == 200, response.text
+            current = response.json()["progress"]
+            if kind == "waste":
+                blocked = post(client, version, update(version, current))
+                assert blocked.status_code == 409, blocked.text
+                assert progress(client, version).json() == current
+    current = complete(client, version, 0)
+    assert current["expected_remaining_stock"][0]["usable_regions"] == [
+        offcut.model_dump(mode="json")
+    ]
+    # Loss and recovery after a cut must operate on its output, never its parent.
+    for kind in ("waste", "salvage"):
+        response = material(kind, offcut.id, f"offcut-{kind}")
+        assert response.status_code == 200, response.text
+        current = response.json()["progress"]
+        assert current["expected_remaining_stock"][0]["usable_regions"] == (
+            [] if kind == "waste" else [offcut.model_dump(mode="json")]
+        )
+    for kind in ("waste", "salvage"):
+        response = material(kind, parent, f"reuse-parent-{kind}")
+        assert response.status_code == 409, response.text
+        assert progress(client, version).json() == current
+
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        process = connection.execute(
+            "SELECT process FROM plans WHERE version_id=?", (version.version_id,)
+        ).fetchone()[0]
+    source = m.ReplannerInput(
+        base_plan=version.plan,
+        events=tuple(m.PhysicalEvent.model_validate(e) for e in current["events"]),
+        evidence=tuple(m.Evidence.model_validate(e) for e in current["evidence"]),
+        material_transactions=tuple(
+            m.MaterialTransaction.model_validate(t)
+            for t in current["material_transactions"]
+        ),
+        remaining_stock=tuple(
+            m.Stock.model_validate(s) for s in current["expected_remaining_stock"]
+        ),
+        patch=m.RepairPatch(
+            id="reuse-parent-patch",
+            base_version_id=version.version_id,
+            kind="replace_part",
+            target_id="stand-brace",
+            replacement_stock_id=sid,
+            replacement_profile_id=None,
+            width_mm=None,
+            height_mm=None,
+            angle_deg=None,
+            rationale="SYNTHETIC consumed-parent reuse attempt",
+        ),
+    )
+    result = simulate_patch(
+        source, process=CutProcess.model_validate_json(process), allow_synthetic=True
+    )
+    assert result.status == "blocked"
+    assert "stock_exhausted" in {b.code for b in result.blockers}
+    assert not any(
+        "Remaining regions conflict" in b.message
+        or "Loss must identify" in b.message
+        or "Salvage requires" in b.message
+        for b in result.blockers
+    ), result.blockers
+
+
+def test_project_deletion_purges_material_report_retry_snapshot(setup):
+    from test_adapt import report_material
+
+    client, version, directory = setup
+    current = progress(client, version).json()
+    operation = version.plan.operations[0]
+    response = report_material(
+        client,
+        version.plan,
+        current,
+        "delete-material-report",
+        kind="waste",
+        stock_id=operation.args.stock_id,
+        region_id=operation.args.source_region_id,
+        operation_id=operation.id,
+    )
+    assert response.status_code == 200, response.text
+    scope = version.project_id + ":materials"
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM requests WHERE scope=?", (scope,)
+        ).fetchone() == (1,)
+    deleted = client.delete(
+        f"/api/projects/{version.project_id}",
+        headers={**AUTH, "Idempotency-Key": "delete-material-project"},
+    )
+    assert deleted.status_code == 200, deleted.text
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM requests WHERE scope=?", (scope,)
+        ).fetchone() == (0,)
+        for table in ("progress_material", "progress_events", "progress_evidence"):
+            assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (
+                0,
+            )
