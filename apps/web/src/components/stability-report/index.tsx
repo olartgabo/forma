@@ -5,6 +5,7 @@ import type { StabilityOverlay } from "../../lib/generated/contracts";
 import { requestAnalysis, type AnalysisResponse } from "./client";
 import GeometryPreview from "./geometry-preview";
 import MeasurementCapture from "./measurement-capture";
+import ReportHistory from "./report-history";
 
 const label = (value: string) => value.replaceAll("_", " ");
 const number = (value: number) => Number(value.toPrecision(5)).toString();
@@ -233,6 +234,12 @@ export default function StabilityReportPanel({
           setError(null);
           onMeasurementsSaved?.();
         }}
+      />
+      <ReportHistory
+        key={`history:${identity}`}
+        token={token}
+        expected={{ projectId, planVersionId, inventoryRevisionId }}
+        disabled={disabled || busy || measurementActive}
       />
       {visible && (
         <div aria-live="polite">

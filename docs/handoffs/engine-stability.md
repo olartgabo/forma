@@ -175,6 +175,49 @@ Immutable numerical report storage/retrieval and Muse tools belong to #147; this
 packet persists the measurement history, not an additional report cache. No live
 provider call is necessary for these software checks.
 
+## Saved reports and MetaMuse tools (#147)
+
+`POST /stability/reports` runs the engine on the owner's authorized snapshot
+(the same expected plan, inventory and history checks as `/analyses`) and
+stores an immutable `SavedStabilityReport` in the `stability_reports` table.
+The record holds the normalized `StabilityInput`, policy, report, engine and
+numpy/shapely/GEOS versions, and the evidence IDs the input cites. Its ID is
+`stability-report-` plus the engine cache hash. That hash already covers the
+complete input, cases, policy and dependency versions, so an identical
+calculation returns the first record (`cached: true`). Request keys replay
+exactly. A response with no report saves nothing. `/analyses` stays read-only.
+
+`GET /stability/reports` (newest first, at most 50) and
+`GET /stability/reports/{id}` return records across plan versions. Each carries
+freshness: `plan_changed`, `inventory_changed`, `history_changed` (any new event,
+including a measurement edit) or `evidence_invalidated`. Stale reports stay
+readable. Records contain no evidence descriptions, media or provider text.
+
+`GET /stability/report-comparison?first=&second=` compares two of the owner's
+reports check by check. Different policies, load cases or engine/dependency
+versions make every row `not_comparable`. A row with a non-decisive status is
+`unknown`. Tip rows compare signed margins within the policy length tolerance.
+There is no overall ranking.
+
+`POST /stability/muse-explanations` needs `provider_context_consented`. In
+`analyze_current` mode the server evaluates first and refuses dispatch when no
+report exists. MetaMuse then calls `analyze_stability`: it may only choose the
+authorized plan version and case IDs, and the tool reruns the engine on the
+pre-authorized snapshot. In `explain_report` mode MetaMuse calls
+`explain_stability_inputs` for the one saved report the owner selected. Tool
+arguments are strict and forbid extra fields, so a model cannot supply
+measurements or confirmations. The explanation must cite the tool's report and
+cases. The route uses the existing pending/unknown-outcome receipts. A history
+change during dispatch stores a terminal stale receipt and saves nothing. The
+analyzed report is stored with `source: "muse_tool"` only after the identity is
+rechecked. Provider-reported usage is returned.
+
+Reproduce the browser check with
+`uv run --locked python apps/web/tests/stability-history-fixture.py <output.json>`
+and `node apps/web/tests/stability-history.browser.mjs <playwright-index.mjs>
+http://127.0.0.1:3024 <output.json>`. It uses a scripted offline transport, not a
+provider.
+
 ## Direct engine feedback
 
 The user-requested [pure engine lab](stability-engine-lab.md) runs at loopback with
@@ -200,10 +243,12 @@ camera and exploded display offsets never change mechanical inputs.
    shared producer; reject unsupported states until their geometry is validated.
 2. Validate the measured flow on actual observations; extend justified uncertainty
    handling and supported contacts without treating point estimates as bounds.
-3. Complete immutable report storage/retrieval and measured mechanical cases;
-   keep missing physical inputs explicit rather than choosing fixture values.
-4. Add bounded Muse tools, shared viewer overlays and actual physical observations
-   in S3/S4. Existing live-call windows and STOP controls remain unchanged.
+3. Immutable report storage, history and bounded Muse tools are implemented
+   (#147, below). Shared viewer overlays and actual physical observations remain
+   S3/S4 work. Existing live-call windows and STOP controls remain unchanged.
+4. A live MetaMuse acceptance run of the stability tools is outstanding. It
+   needs the existing finite provider controls; offline transport tests are not
+   a live pass.
 
 These are work retained in this lane, not an implementation assignment to Gabo.
 

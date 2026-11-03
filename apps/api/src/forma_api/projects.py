@@ -148,6 +148,7 @@ class ProjectStore:
                 "progress_events",
                 "progress_material",
                 "stability_measurements",
+                "stability_reports",
             ):
                 connection.execute(
                     f"CREATE TABLE IF NOT EXISTS {table} "
@@ -413,7 +414,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 ),
             )
             connection.execute(
-                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?, ?, ?, ?)",
+                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     owner,
                     project_id + ":progress",
@@ -422,6 +423,8 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                     project_id + ":adapt-simulate",
                     project_id + ":adapt-commit",
                     project_id + ":stability-measurements",
+                    project_id + ":stability-reports",
+                    project_id + ":stability-muse",
                 ),
             )
             connection.execute(
@@ -448,6 +451,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     from forma_api.routes.repair_search import repair_search_router
     from forma_api.routes.repairs import repairs_router
     from forma_api.routes.stability import stability_router
+    from forma_api.routes.stability_muse import stability_muse_router
 
     router.include_router(media_router(store, authenticate))
     router.include_router(construction_router(store, authenticate))
@@ -461,6 +465,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     router.include_router(diagnosis_router(store, authenticate))
     router.include_router(repairs_router(store, authenticate))
     router.include_router(stability_router(store, authenticate))
+    router.include_router(stability_muse_router(store, authenticate))
     router.include_router(fabrication_router(store, authenticate))
     router.include_router(repair_search_router(store, authenticate))
     return router

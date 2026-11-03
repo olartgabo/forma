@@ -199,10 +199,10 @@ def save_measurements(connection, store, owner, snapshot, body):
     return response
 
 
-def measured_report(snapshot, geometry):
-    """Return None for missing/stale records; never infer numbers from free text."""
-    from forma_stability import evaluate_stability
+def measured_analysis(snapshot, geometry):
+    """Return (input, policy, warnings), or None for missing/stale records.
 
+    Never infer numbers from free text."""
     record = snapshot.measurements
     if record is None:
         return None
@@ -367,12 +367,9 @@ def measured_report(snapshot, geometry):
         required_check_types=("support", "tip"),
         required_case_ids=("portrait", "landscape"),
     )
-    report = evaluate_stability(analysis, policy)
     warnings = (
         "Scalar predictions use user-reported point measurements, not conservative uncertainty bounds. Instrument resolution is recorded but not propagated.",
         "Rigid assembly, stationary device and conventional standard gravity are assumptions. Phone retention, sliding and strength are not verified.",
         f"Actual support rectangle reported by user: {support.method}; resolution {support.resolution_m} m.",
     )
-    return report.model_copy(
-        update={"input_warnings": report.input_warnings + warnings}
-    )
+    return analysis, policy, warnings

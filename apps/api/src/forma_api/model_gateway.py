@@ -322,6 +322,8 @@ class Tool:
             "get_supported_joint_profiles",
             "check_measurements",
             "get_project_snapshot",
+            "analyze_stability",
+            "explain_stability_inputs",
         }:
             raise ValueError("tool is not read-only allowlisted")
 
