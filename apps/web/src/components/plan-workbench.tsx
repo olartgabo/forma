@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   activatePlan,
   ApiError,
@@ -7,6 +7,7 @@ import {
   loadPlan,
 } from "../lib/api";
 import AdaptWorkbench from "./adapt-workbench";
+import FabricationReportPanel from "./fabrication-report/fabrication-report-panel";
 import { operationTitles } from "../lib/operation-titles";
 import type { RepairHandoff } from "../lib/repair-handoff";
 import type { DiagnosisFocus } from "../lib/build-diagnosis";
@@ -83,6 +84,12 @@ export default function PlanWorkbench({
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [progressPending, setProgressPending] = useState(false);
+  const [fabricationKey, setFabricationKey] = useState(0);
+  // Stable: PhysicalProgress reloads whenever this callback's identity changes.
+  const progressChanged = useCallback(() => {
+    setFabricationKey((value) => value + 1);
+    onProgressChange();
+  }, [onProgressChange]);
   const [activationError, setActivationError] = useState("");
   const [activationStale, setActivationStale] = useState(false);
   const [designNotes, setDesignNotes] = useState("");
@@ -706,7 +713,7 @@ export default function PlanWorkbench({
                   photos={photos}
                   disabled={approvalDisabled || pending !== null}
                   onReloadProject={onReload}
-                  onProgressChange={onProgressChange}
+                  onProgressChange={progressChanged}
                   onDiagnoseFailure={onDiagnoseFailure}
                   museAvailability={museAvailability}
                   refreshKey={diagnosisRefreshKey}
@@ -717,6 +724,21 @@ export default function PlanWorkbench({
                 />
               )}
             </article>
+          )}
+          {current && (
+            <FabricationReportPanel
+              token={token}
+              projectId={project.id}
+              plan={version.plan}
+              source={{ kind: "version", versionId: version.version_id }}
+              refreshKey={fabricationKey}
+              onShowOperation={(operationId) => {
+                const index = version.manual.panels.findIndex(
+                  (item) => item.operation_id === operationId,
+                );
+                if (index >= 0) setStep(index);
+              }}
+            />
           )}
           {current && (
             <AdaptWorkbench

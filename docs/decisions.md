@@ -456,7 +456,46 @@ measured split and stays unsupported. Proof labels measurement evidence
 "manually measured", labels Muse evidence as unverified observations and
 hypotheses, and totals only the waste and salvage the builder recorded.
 
-## D038: Attached-base tape undo, November 3, 2026
+## D036: Fabrication reports model the next step from declared rules, November 3, 2026
+
+Issue #150 adds a read-only fabrication report for the active manual and each
+saved repair preview. It replays the plan lineage's recorded reports, derives
+joint attach/detach from confirmed operation effects, reruns the existing
+compiler and reads the existing expected-stock ledger. Declared rules
+(`fabrication-rules-v1`) add what the compiler does not check: the family's
+recordable operation types, conservative access (a part held by an attached
+joint cannot be marked, slotted or folded until an explicit detach) and tool
+classes per operation. Unknown joint access and unknown connector lengths block.
+Tool gaps are listed as required confirmations instead of blockers, because
+saved tools are locked while a plan is active and a blocker would leave the
+builder no way forward. The report is modeled, not observed: it never completes
+a step, authorizes cutting or changes stock. See the
+[fabrication handoff](handoffs/issue-150-fabrication-report.md).
+
+## D037: Reconcile fabrication readiness with explicit report-only confirmations, November 3, 2026
+
+The user chose PR #154 as the baseline and asked to retain useful parts of both
+implementations. Keep its lineage/boundary replay, GET routes, next-step manual
+navigation, transition IDs and deployment packaging. D036's tool-gap behavior is
+superseded: unavailable tools and unconfirmed connector balances block readiness.
+
+An authenticated read-only assessment can add actual available tool names and
+fresh measured connector lengths after explicit confirmation, bound to expected
+active version, inventory revision and history cursor. They apply only to that
+report. Different measured balances require material-loss records or separate
+reconciliation; they never silently modify inventory, ledger, evidence or work.
+Clear/refresh and project/version/history changes discard these confirmations.
+Repair previews keep their saved simulation measurements and are re-simulated
+against authoritative inputs before reporting.
+
+The combined engine hashes all typed inputs, including profile evidence and
+validation mode, and validates remaining-stock provenance and confirmed physical
+history. Independent preparation precedes attachments; explicit supported
+join/detach/preparation/reattach sequences remain available. Declared access and
+tool availability establish neither observed usability nor physical suitability.
+No provider call or physical pass follows from these software checks.
+
+## D039: Attached-base tape undo, November 3, 2026
 
 Issue #151 carries forward the attached-base replacement left out of D021. Once
 the fold and all three joins are complete, replacing `stand-base` stages front

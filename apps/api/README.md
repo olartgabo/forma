@@ -1,5 +1,13 @@
 # API and orchestration
 
+Issue #150's fabrication GET routes return the current active or stored-preview
+report. POST `/api/projects/{id}/versions/{version}/fabrication/assess` adds fresh,
+explicitly confirmed tool names and connector measurements for one report only,
+against expected inventory/history. Missing tools and unconfirmed balances block
+readiness. Nothing records physical work or changes stock. The report input hash
+binds the full typed context; stale/foreign inputs are rejected. See the
+[combined contract and checks](../../docs/handoffs/issue-150-combined.md).
+
 Product/persistence owner: @olartgabo. Gateway/orchestrator owner: @ResniDev.
 Each reviews the other's API contract changes. Status: health plus local private
 project/inventory persistence; provider services are available offline.

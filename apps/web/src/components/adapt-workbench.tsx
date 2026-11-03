@@ -34,6 +34,7 @@ import {
   createInitialRepairWorkbenchState,
   repairWorkbenchReducer,
 } from "../lib/repair-workbench-state";
+import FabricationReportPanel from "./fabrication-report/fabrication-report-panel";
 import Diagram from "./manual-diagram";
 import MuseRepairPanel from "./muse-repair-panel";
 import type { MuseAvailability } from "../lib/muse-provider";
@@ -114,12 +115,16 @@ function StepList({
 }
 
 function Preview({
+  token,
+  projectId,
   preview,
   base,
   selected,
   onSelect,
   disabled,
 }: {
+  token: string;
+  projectId: string;
   preview: AdaptPreview;
   base: PlanVersion;
   selected: boolean;
@@ -285,6 +290,18 @@ function Preview({
             ),
           )}
         </details>
+      )}
+      {preview.version && (
+        <FabricationReportPanel
+          token={token}
+          projectId={projectId}
+          plan={preview.version.plan}
+          source={{
+            kind: "preview",
+            previewId: preview.preview_id,
+            versionId: preview.version.version_id,
+          }}
+        />
       )}
       {preview.version && (
         <label className="checkbox-label">
@@ -981,6 +998,8 @@ export default function AdaptWorkbench({
               {previews.previews.map((preview) => (
                 <Preview
                   key={preview.preview_id}
+                  token={token}
+                  projectId={projectId}
                   preview={preview}
                   base={version}
                   selected={preview.preview_id === choice}

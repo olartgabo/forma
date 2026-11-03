@@ -15,6 +15,7 @@ COPY packages/domain/src packages/domain/src
 COPY packages/compiler/src packages/compiler/src
 COPY packages/renderer/src packages/renderer/src
 COPY packages/replanner/src packages/replanner/src
+COPY packages/fabrication/src packages/fabrication/src
 COPY packages/eval/src packages/eval/src
 RUN uv sync --locked --no-dev --no-editable
 
