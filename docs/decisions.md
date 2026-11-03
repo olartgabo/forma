@@ -494,3 +494,18 @@ history. Independent preparation precedes attachments; explicit supported
 join/detach/preparation/reattach sequences remain available. Declared access and
 tool availability establish neither observed usability nor physical suitability.
 No provider call or physical pass follows from these software checks.
+
+## D039: Attached-base tape undo, November 3, 2026
+
+Issue #151 carries forward the attached-base replacement left out of D021. Once
+the fold and all three joins are complete, replacing `stand-base` stages front
+and rear `peel_tape` detaches, a replacement cut and inspection, and new
+front/rear joints in the original part order; the apex hinge stays attached and
+preserved. Peeled tape is lost and never refunded; only the two reattachments
+consume tape. The first peel waits on the apex attachment so the new functional
+test's required apex joint is an ancestor. The tape-undo helper, the family
+validator and the renderer now resolve the replaced role (brace or base) from
+the staged joints; brace plans and manuals are unchanged. Support replacement
+would undo a completed fold and stays blocked, as do a second repair of a
+replacement and other repeated-repair depth. Synthetic regression evidence does
+not establish a bench pass. See the [handoff](handoffs/issue-151-attached-base.md).

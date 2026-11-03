@@ -60,6 +60,18 @@ _HISTORICAL_OP_IDS = (
     "stand-joint-apex-attach",
 )
 _FINAL_OP_IDS = ("stand-inspect-fit", "stand-functional-test")
+# Retired part -> (role name, (peeled joint, untouched partner) in peel order).
+# The joint not listed keeps holding the other two parts.
+_TAPE_ROLES = {
+    "stand-brace": (
+        "brace",
+        (("stand-joint-rear", "stand-base"), ("stand-joint-apex", "stand-support")),
+    ),
+    "stand-base": (
+        "base",
+        (("stand-joint-front", "stand-support"), ("stand-joint-rear", "stand-brace")),
+    ),
+}
 _TAPE_UNDO_FULL_TYPES = _CORE_TYPES + (
     "detach",
     "detach",
@@ -121,7 +133,7 @@ def resolve_tape_stage(operations):
 
 
 def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
-    """Validate the brace-only peel/reattach graph; legacy plans never enter."""
+    """Validate the brace or base peel/reattach graph; legacy plans never enter."""
     blockers: list[m.Blocker] = []
     seen = set()
 
@@ -138,6 +150,8 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 f"Historical stand part {original_id} is missing from plan parts.",
                 (original_id,),
             )
+    if blockers:
+        return tuple(blockers)
     original_joints = {
         "stand-joint-front": ("stand-support", "stand-base"),
         "stand-joint-rear": ("stand-base", "stand-brace"),
@@ -151,44 +165,54 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 (joint_id,),
             )
     extra = [j for jid, j in joints.items() if jid not in original_joints]
-    new_rear = next(
-        (j for j in extra if len(j.part_ids) == 2 and j.part_ids[0] == "stand-base"),
-        None,
-    )
-    new_apex = next(
-        (j for j in extra if len(j.part_ids) == 2 and j.part_ids[0] == "stand-support"),
-        None,
-    )
-    if len(extra) != 2 or new_rear is None or new_apex is None:
+    # The retired part is the base or brace no new joint still names.
+    present = {p for j in extra for p in j.part_ids if p in _ORIGINALS}
+    retired_ids = [p for p in _TAPE_ROLES if p not in present]
+    retired_id = retired_ids[0] if len(retired_ids) == 1 else None
+    role, touching = _TAPE_ROLES.get(retired_id, ("base or brace", ()))
+    new_joints = []
+    for joint_id, _partner in touching:
+        pair = original_joints[joint_id]
+        slot = pair.index(retired_id)
+        new_joints.extend(
+            j
+            for j in extra
+            if len(j.part_ids) == 2
+            and all(j.part_ids[i] == pair[i] for i in range(2) if i != slot)
+        )
+    if len(extra) != 2 or retired_id is None or len(new_joints) != 2:
         add(
             "unsupported",
-            "Tape-undo continuation requires exactly two new rear/apex joints.",
+            "Tape-undo continuation requires exactly two new joints replacing "
+            "one base or brace.",
             tuple(j.id for j in extra),
         )
         return tuple(blockers)
-    if (
-        new_rear.part_ids[1] != new_apex.part_ids[1]
-        or new_rear.part_ids[1] not in parts
-    ):
+    replacement_ids = {
+        j.part_ids[original_joints[joint_id].index(retired_id)]
+        for j, (joint_id, _partner) in zip(new_joints, touching, strict=True)
+    }
+    replacement_id = next(iter(replacement_ids))
+    if len(replacement_ids) != 1 or replacement_id not in parts:
         add(
             "unsupported",
-            "New rear and apex joints must attach the same replacement brace.",
-            (new_rear.id, new_apex.id),
+            f"New joints must attach the same replacement {role}.",
+            tuple(j.id for j in new_joints),
         )
         return tuple(blockers)
-    active_brace_id = new_rear.part_ids[1]
-    if active_brace_id in _ORIGINALS:
+    if replacement_id in _ORIGINALS:
         add(
             "unsupported",
-            "Tape-undo continuation requires a replacement brace part.",
-            (active_brace_id,),
+            f"Tape-undo continuation requires a replacement {role} part.",
+            (replacement_id,),
         )
         return tuple(blockers)
-    support_part = parts["stand-support"]
-    base_part = parts["stand-base"]
-    brace_part = parts[active_brace_id]
-    retired = parts["stand-brace"]
-    active_ordered = ("stand-support", "stand-base", active_brace_id)
+    active_ordered = tuple(
+        replacement_id if pid == retired_id else pid for pid in _ORIGINALS
+    )
+    support_part, base_part, brace_part = (parts[pid] for pid in active_ordered)
+    retired = parts[retired_id]
+    replacement_part = parts[replacement_id]
 
     # Geometry of the active triangle, mirroring the legacy checks.
     if len(support_part.features) != 1 or support_part.features[0].kind != "fold":
@@ -226,14 +250,14 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 f"Active {role} part must have no features.",
                 (role_part.id,),
             )
-    if brace_part.geometry.width != retired.geometry.width or (
-        brace_part.geometry.height != retired.geometry.height
+    if replacement_part.geometry.width != retired.geometry.width or (
+        replacement_part.geometry.height != retired.geometry.height
     ):
         add(
             "geometry_invalid",
-            "Active replacement brace part must have the same width "
+            f"Active replacement {role} part must have the same width "
             "and height as its retired original.",
-            (active_brace_id, retired.id),
+            (replacement_id, retired.id),
         )
     if any(
         p.geometry.width != support_part.geometry.width for p in (base_part, brace_part)
@@ -335,10 +359,7 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
             )
     tape_stock_ids = {operations[i].args.stock_id for i in (3, 4, 5)}
     peels = operations[stage.peel : stage.peel + 2]
-    for op, joint_id, partner in (
-        (peels[0], "stand-joint-rear", "stand-base"),
-        (peels[1], "stand-joint-apex", "stand-support"),
-    ):
+    for op, (joint_id, partner) in zip(peels, touching, strict=True):
         checks = " ".join(op.preconditions.human_checks).lower()
         if (
             op.args.joint_id != joint_id
@@ -375,27 +396,25 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
         operations[stage.cut],
         operations[stage.cut + 1],
     )
-    if tuple(replacement_cut.args.child_part_ids) != (active_brace_id,):
+    if tuple(replacement_cut.args.child_part_ids) != (replacement_id,):
         add(
             "invalid_reference",
-            "Replacement cut must produce only the replacement brace.",
-            (replacement_cut.id, active_brace_id),
+            f"Replacement cut must produce only the replacement {role}.",
+            (replacement_cut.id, replacement_id),
         )
-    if active_brace_id not in replacement_inspect.args.target_ids or not any(
+    if replacement_id not in replacement_inspect.args.target_ids or not any(
         c.after_operation_id == replacement_inspect.id
         and c.id == replacement_inspect.args.checkpoint_id
         for c in plan.checkpoints
     ):
         add(
             "invalid_reference",
-            "Replacement inspection must target the replacement brace "
+            f"Replacement inspection must target the replacement {role} "
             "with a matching checkpoint.",
             (replacement_inspect.id,),
         )
-    for op, joint in (
-        (operations[stage.reattach], new_rear),
-        (operations[stage.reattach + 1], new_apex),
-    ):
+    reattach_ops = operations[stage.reattach : stage.reattach + 2]
+    for op, joint in zip(reattach_ops, new_joints, strict=True):
         if (
             op.args.joint_id != joint.id
             or op.part_ids != joint.part_ids
@@ -405,7 +424,7 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
             add(
                 "invalid_reference",
                 f"Reattachment operation {op.id} must attach {joint.id} "
-                "to the replacement brace using the original tape stock.",
+                f"to the replacement {role} using the original tape stock.",
                 (op.id, joint.id),
             )
     inspect_fit, test_op = operations[stage.fit], operations[stage.test]
@@ -453,14 +472,16 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
             "Fit inspection must target the active stand parts.",
             (inspect_fit.id,),
         )
-    if tuple(test_op.preconditions.required_joint_ids) != (
-        "stand-joint-front",
-        new_rear.id,
-        new_apex.id,
+    replaced_joints = {
+        joint_id: joint.id
+        for (joint_id, _partner), joint in zip(touching, new_joints, strict=True)
+    }
+    if tuple(test_op.preconditions.required_joint_ids) != tuple(
+        replaced_joints.get(jid, jid) for jid in _JOINT_IDS
     ):
         add(
             "invalid_reference",
-            "Functional test must require the front and new rear/apex joints.",
+            "Functional test must require the untouched joint and both new joints.",
             (test_op.id,),
         )
     for op in (inspect_cuts, *historical_finals, inspect_fit, test_op):
@@ -488,12 +509,12 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
                 (checked_test.id,),
             )
     # Parts are produced exactly by the historical or replacement cut, and
-    # no staged work after the peels may reference the retired brace.
-    if set(parts) != {*_ORIGINALS, active_brace_id}:
+    # no staged work after the peels may reference the retired part.
+    if set(parts) != {*_ORIGINALS, replacement_id}:
         add(
             "invalid_reference",
-            "Tape-undo plan parts must be the originals plus one replacement brace.",
-            tuple(sorted(set(parts) ^ {*_ORIGINALS, active_brace_id})),
+            f"Tape-undo plan parts must be the originals plus one replacement {role}.",
+            tuple(sorted(set(parts) ^ {*_ORIGINALS, replacement_id})),
         )
     for op in operations[stage.cut :]:
         refs: set[str] = set(op.part_ids)
@@ -501,12 +522,12 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
         refs.update(getattr(op.args, "target_ids", ()) or ())
         if getattr(op.args, "part_id", None):
             refs.add(op.args.part_id)
-        if "stand-brace" in refs:
+        if retired_id in refs:
             add(
                 "invalid_reference",
-                f"Operation {op.id} references retired part stand-brace; "
+                f"Operation {op.id} references retired part {retired_id}; "
                 "active replacement parts must be used.",
-                (op.id, "stand-brace"),
+                (op.id, retired_id),
             )
     return tuple(blockers)
 

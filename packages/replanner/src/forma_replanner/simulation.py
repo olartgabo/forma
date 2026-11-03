@@ -9,7 +9,7 @@ from pydantic import ValidationError, model_validator
 
 from forma_domain.models import Blocker, BuildPlan, Record, ReplannerInput
 
-from .tape_undo import build_tape_undo_candidate
+from .tape_undo import TAPE_ROLES, build_tape_undo_candidate
 
 
 class RepairCost(Record):
@@ -967,7 +967,7 @@ def simulate_patch(
     # stripped or rewritten to make the renamed candidate replayable.
     if (
         patch.kind == "replace_part"
-        and patch.target_id == "stand-brace"
+        and patch.target_id in TAPE_ROLES
         and base.compiler_version == "triangular-tape-stand-v1"
     ):
         renamed_future = tuple(
@@ -977,9 +977,7 @@ def simulate_patch(
         )
         required_tape = {
             "stand-cut-panels",
-            "stand-fold-lip",
-            "stand-joint-rear-attach",
-            "stand-joint-apex-attach",
+            *TAPE_ROLES[patch.target_id].required_completed,
         }
         if renamed_future and required_tape <= completed:
             checkpoint_ops = {c.id: c.after_operation_id for c in base.checkpoints}
@@ -1350,7 +1348,7 @@ def simulate_patch(
     # not advertised as usable preservation. Peeled tape joins are lost work,
     # not preserved, even though their historical operations stay in the plan.
     # In a full-build tape recovery the original final checks were completed
-    # against the retired brace: they stay in history but are not preserved
+    # against the retired part: they stay in history but are not preserved
     # useful work, and must not be advertised as such.
     stale_finals = (
         {"stand-inspect-fit", "stand-functional-test"} & completed

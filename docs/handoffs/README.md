@@ -36,6 +36,9 @@ The [fabrication report](issue-150-fabrication-report.md) handoff covers the
 read-only next-step report, its declared access/tool rules and its manual and
 repair-preview panels for #150.
 
+The [attached-base recovery](issue-151-attached-base.md) handoff extends the #44
+tape undo to the attached base for #151.
+
 No handoff establishes a real provider result or physical pass through fixture
 checks. User-confirmed measurements, observed build/recovery outcomes and
 authenticated end-to-end integration remain separate acceptance evidence.
