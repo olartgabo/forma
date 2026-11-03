@@ -28,7 +28,7 @@ and the browser check are SYNTHETIC; no physical repair was attempted.
     `package.json`, `projects.py` (router mount), `generate.py`
     (`API_RECORDS`), regenerated `api-contracts.ts`, `api.ts`
     (`searchRepairs`), `adapt-workbench.tsx`, `globals.css`,
-    `docs/contracts.md`, `docs/decisions.md` (D037).
+    `docs/contracts.md`, `docs/decisions.md` (D042).
   - Adapter edits in `adapt.py`: the preview render-and-store loop moved into
     `save_previews`, used by both simulate and search; `_Base`, `_remaining`
     and `_require_base` became public `RepairBase`, `confirmed_remaining`

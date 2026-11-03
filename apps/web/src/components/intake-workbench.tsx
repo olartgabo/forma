@@ -24,6 +24,7 @@ import {
 } from "../lib/muse-provider";
 import FormaWordmark from "./forma-wordmark";
 import MuseIntakePanel from "./muse-intake-panel";
+import MuseConstructionPanel from "./muse-construction-panel";
 import MuseDiagnosisPanel from "./muse-diagnosis-panel";
 import { MuseLanguageControl } from "./muse-language-provider";
 import MuseProviderBanner from "./muse-provider-banner";
@@ -1277,6 +1278,14 @@ function ProjectWorkbench({
             </section>
           </div>
           <MuseIntakePanel
+            token={token}
+            project={project}
+            photos={photos}
+            inventoryStale={stale || dirty}
+            disabled={locked}
+            museAvailability={museAvailability}
+          />
+          <MuseConstructionPanel
             token={token}
             project={project}
             photos={photos}

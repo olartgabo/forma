@@ -1,5 +1,20 @@
 # API and orchestration
 
+POST `/api/projects/{id}/construction/propose` asks MetaMuse for named geometry
+using saved materials, the goal and an optionally consented private photo. The
+engine generates steps and checks fabrication; it never activates the proposal.
+The route uses durable request receipts and blocks new keys after uncertain
+provider outcomes. See [the connected construction handoff](../../docs/handoffs/muse-construction.md).
+
+POST `/api/projects/{id}/construction/generate` accepts a typed target, piece
+annotations and explicit joint material bindings against an expected inventory
+revision. It loads saved stock and trusted design context on the server, runs
+construction and Gabo's fabrication checks, and returns a read-only proposal.
+It rejects stale/foreign inputs and active builds requiring history-aware repair.
+Client-authored inventory, process evidence and profiles are not accepted. This
+does not activate plans, record work or call MetaMuse. See the
+[material construction handoff](../../docs/handoffs/material-construction.md).
+
 Issue #150's fabrication GET routes return the current active or stored-preview
 report. POST `/api/projects/{id}/versions/{version}/fabrication/assess` adds fresh,
 explicitly confirmed tool names and connector measurements for one report only,

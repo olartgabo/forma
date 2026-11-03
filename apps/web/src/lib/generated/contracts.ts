@@ -15,11 +15,65 @@ export type AdaptProposal = {
   readonly "rationale": string;
 };
 
+export type AnalysisIdentity = {
+  readonly "project_id": string;
+  readonly "plan_version_id": string;
+  readonly "inventory_revision": string;
+  readonly "history_cursor": (string | null);
+  readonly "operation_state_id": string;
+  readonly "canonical_geometry_hash": string;
+  readonly "evidence_hash": string;
+  readonly "profile_hash": string;
+};
+
+export type AnalysisPolicy = {
+  readonly "policy_id": string;
+  readonly "version": string;
+  readonly "length_tolerance_m": number;
+  readonly "force_tolerance_n": number;
+  readonly "moment_tolerance_n_m": number;
+  readonly "relative_tolerance": number;
+  readonly "required_margin_m": number;
+  readonly "uncertainty_method": "analytic_interval" | "bounded_subdivision";
+  readonly "evaluation_budget": number;
+  readonly "required_check_types": ReadonlyArray<"support" | "tip" | "slide" | "joint" | "deformation">;
+  readonly "required_case_ids": ReadonlyArray<string>;
+};
+
 export type AppendPhysicalEvent = {
   readonly "project_id": string;
   readonly "expected_version_id": string;
   readonly "idempotency_key": string;
   readonly "event": PhysicalEvent;
+};
+
+export type AssemblyFacet = {
+  readonly "facet_id": string;
+  readonly "vertices_local": ReadonlyArray<Point3>;
+};
+
+export type AssemblyJoint = {
+  readonly "joint_id": string;
+  readonly "first": FacetEdge;
+  readonly "second": FacetEdge;
+};
+
+export type AssemblyPart = {
+  readonly "part_id": string;
+  readonly "facets": ReadonlyArray<AssemblyFacet>;
+  readonly "seams"?: ReadonlyArray<AssemblySeam>;
+};
+
+export type AssemblySeam = {
+  readonly "first": FacetEdge;
+  readonly "second": FacetEdge;
+};
+
+export type AssemblyStage = {
+  readonly "stage_id": string;
+  readonly "label": string;
+  readonly "present_part_ids": ReadonlyArray<string>;
+  readonly "active_joint_ids": ReadonlyArray<string>;
 };
 
 export type AttachBrace = {
@@ -42,10 +96,30 @@ export type AttachBraceArgs = {
   readonly "underlying_joint_ids": ReadonlyArray<string>;
 };
 
+export type BeamDeflection = {
+  readonly "member_id": string;
+  readonly "support_model": "cantilever_end_load" | "simply_supported_center_load";
+  readonly "force_n": QuantityEstimate;
+  readonly "length_m": QuantityEstimate;
+  readonly "elastic_modulus_pa": QuantityEstimate;
+  readonly "second_moment_m4": QuantityEstimate;
+  readonly "allowable_deflection_m": QuantityEstimate;
+  readonly "linear_elastic_small_deflection_applicable": boolean;
+};
+
 export type Blocker = {
   readonly "code": "invalid_reference" | "missing_measurement" | "stock_exhausted" | "geometry_invalid" | "unsupported_profile" | "invalid_order" | "irreversible_conflict" | "needs_confirmation" | "stale_version" | "unsupported" | "no_feasible_repair";
   readonly "message": string;
   readonly "target_ids"?: ReadonlyArray<string>;
+};
+
+export type BodyMass = {
+  readonly "body_id": string;
+  readonly "body_kind"?: "stand_part" | "device";
+  readonly "source_part_ids"?: ReadonlyArray<string>;
+  readonly "mass": QuantityEstimate;
+  readonly "center_of_mass": CenterOfMass;
+  readonly "state"?: "present" | "future";
 };
 
 export type BuildPlan = {
@@ -63,6 +137,53 @@ export type BuildPlan = {
   readonly "constraints": Constraints;
   readonly "compiler_version": string;
   readonly "created_at": string;
+};
+
+export type CanonicalFacet = {
+  readonly "facet_id": string;
+  readonly "part_id": string;
+  readonly "feature_id"?: (string | null);
+  readonly "vertices": ReadonlyArray<Point3>;
+  readonly "centroid": Point3;
+  readonly "area_fraction": number;
+};
+
+export type CanonicalGeometryPreview = {
+  readonly "project_id": string;
+  readonly "plan_version_id": string;
+  readonly "producer_version": string;
+  readonly "geometry_hash": string;
+  readonly "history_cursor": (string | null);
+  readonly "stage": "planned_preview" | "reported_assembled";
+  readonly "state_basis"?: "nominal";
+  readonly "coordinate_frame"?: "x_across_y_rearward_z_up_m";
+  readonly "active_part_ids": ReadonlyArray<string>;
+  readonly "nominal_joint_ids": ReadonlyArray<string>;
+  readonly "attached_joint_ids": ReadonlyArray<string>;
+  readonly "completed_operation_ids": ReadonlyArray<string>;
+  readonly "facets": ReadonlyArray<CanonicalFacet>;
+  readonly "part_centroids": ReadonlyArray<PartCentroid>;
+  readonly "ground_part_id": string;
+  readonly "ground_polygon": ReadonlyArray<Point3>;
+  readonly "assumption_ids": ReadonlyArray<string>;
+  readonly "assumptions": ReadonlyArray<string>;
+};
+
+export type CenterOfMass = {
+  readonly "x": QuantityEstimate;
+  readonly "y": QuantityEstimate;
+  readonly "z": QuantityEstimate;
+};
+
+export type CheckResult = {
+  readonly "case_id": string;
+  readonly "check_type": "support" | "tip" | "slide" | "joint" | "deformation";
+  readonly "status": "modeled_pass" | "modeled_fail" | "indeterminate" | "needs_measurement" | "unsupported" | "not_applicable";
+  readonly "computation": "complete" | "invalid_input" | "numerical_failure" | "budget_exhausted" | "not_run";
+  readonly "explanation": string;
+  readonly "unresolved_predicates"?: ReadonlyArray<string>;
+  readonly "quantities"?: ReadonlyArray<QuantityEstimate>;
+  readonly "evidence_ids"?: ReadonlyArray<string>;
 };
 
 export type Checkpoint = {
@@ -115,6 +236,68 @@ export type Constraints = {
   readonly "max_footprint_height_mm": Measurement;
   readonly "allowed_profile_ids"?: ReadonlyArray<string>;
   readonly "allow_purchases"?: boolean;
+};
+
+export type ConstructionCutProcess = {
+  readonly "kerf_min_mm"?: (number | null);
+  readonly "edge_margin_min_mm"?: (number | null);
+  readonly "evidence"?: ReadonlyArray<Evidence>;
+};
+
+export type ConstructionJointMaterial = {
+  readonly "joint_id": string;
+  readonly "profile_id": string;
+  readonly "stock_id": string;
+  readonly "length_mm": number;
+  readonly "confirmed_accessible"?: (boolean | null);
+};
+
+export type ConstructionOperationBinding = {
+  readonly "action": "place" | "join" | "inspect";
+  readonly "subject_id": string;
+  readonly "operation_id": string;
+};
+
+export type ConstructionPlan = {
+  readonly "generator_version": string;
+  readonly "target_hash": string;
+  readonly "request": ConstructionRequest;
+  readonly "piece_catalog": ReadonlyArray<PieceReference>;
+  readonly "steps": ReadonlyArray<ConstructionStep>;
+  readonly "limitations": ReadonlyArray<string>;
+};
+
+export type ConstructionRequest = {
+  readonly "target": GenericAssemblyRequest;
+  readonly "piece_annotations"?: ReadonlyArray<PieceAnnotation>;
+  readonly "operation_bindings"?: ReadonlyArray<ConstructionOperationBinding>;
+};
+
+export type ConstructionResources = {
+  readonly "project_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "active_version_id"?: (string | null);
+  readonly "stocks"?: ReadonlyArray<Stock>;
+  readonly "declared_tools"?: (ReadonlyArray<string> | null);
+  readonly "safe_tools_confirmed"?: boolean;
+  readonly "cut_process"?: (ConstructionCutProcess | null);
+  readonly "joint_profiles"?: ReadonlyArray<JointProfile>;
+  readonly "profile_evidence"?: ReadonlyArray<Evidence>;
+  readonly "joints"?: ReadonlyArray<ConstructionJointMaterial>;
+};
+
+export type ConstructionStep = {
+  readonly "step_id": string;
+  readonly "index": number;
+  readonly "action": "place" | "join" | "inspect";
+  readonly "part_ids": ReadonlyArray<string>;
+  readonly "joint_id": (string | null);
+  readonly "depends_on_step_ids": ReadonlyArray<string>;
+  readonly "instruction": string;
+  readonly "operation_ids": ReadonlyArray<string>;
+  readonly "analysis": GenericAssemblyResult;
+  readonly "requires_external_support": boolean;
+  readonly "unresolved_predicates": ReadonlyArray<string>;
 };
 
 export type ConsumableJointArgs = {
@@ -293,6 +476,11 @@ export type FabricationSnapshot = {
   readonly "compiler_version": string;
 };
 
+export type FacetEdge = {
+  readonly "facet_id": string;
+  readonly "edge_index": number;
+};
+
 export type Feature = {
   readonly "id": string;
   readonly "kind": "tab" | "slot" | "fold" | "mark";
@@ -349,6 +537,43 @@ export type FunctionalTestArgs = {
   readonly "pass_criteria": ReadonlyArray<string>;
 };
 
+export type GenericAssembly = {
+  readonly "project_id": string;
+  readonly "plan_version_id": string;
+  readonly "parts": ReadonlyArray<AssemblyPart>;
+  readonly "joints"?: ReadonlyArray<AssemblyJoint>;
+  readonly "stages": ReadonlyArray<AssemblyStage>;
+};
+
+export type GenericAssemblyRequest = {
+  readonly "assembly": GenericAssembly;
+  readonly "stage_id": string;
+  readonly "snapshot": StageSnapshot;
+  readonly "policy": AnalysisPolicy;
+  readonly "uniform_mass_part_ids"?: ReadonlyArray<string>;
+  readonly "full_face_contact_facet_ids"?: ReadonlyArray<string>;
+};
+
+export type GenericAssemblyResult = {
+  readonly "producer_version": string;
+  readonly "stage_id": string;
+  readonly "stage_label": string;
+  readonly "snapshot_hash": string;
+  readonly "request": GenericAssemblyRequest;
+  readonly "snapshot": StageSnapshot;
+  readonly "present_part_ids": ReadonlyArray<string>;
+  readonly "future_part_ids": ReadonlyArray<string>;
+  readonly "active_joint_ids": ReadonlyArray<string>;
+  readonly "facets": ReadonlyArray<PolygonalFacet>;
+  readonly "component_part_ids": ReadonlyArray<ReadonlyArray<string>>;
+  readonly "inputs": ReadonlyArray<StabilityInput>;
+  readonly "policies": ReadonlyArray<AnalysisPolicy>;
+  readonly "reports": ReadonlyArray<StabilityReport>;
+  readonly "world_overlays": ReadonlyArray<StabilityOverlay>;
+  readonly "blockers": ReadonlyArray<string>;
+  readonly "physical_evidence_ids"?: ReadonlyArray<string>;
+};
+
 export type InsertTab = {
   readonly "id": string;
   readonly "part_ids"?: ReadonlyArray<string>;
@@ -401,6 +626,14 @@ export type Joint = {
   readonly "confirmed_accessible"?: (boolean | null);
 };
 
+export type JointDemand = {
+  readonly "joint_id": string;
+  readonly "demand_n": QuantityEstimate;
+  readonly "allowable_n": QuantityEstimate;
+  readonly "capacity_basis": string;
+  readonly "scalar_mode_applicable": boolean;
+};
+
 export type JointProfile = {
   readonly "id": string;
   readonly "strategy": "tab_slot" | "fold_brace" | "tape" | "tie";
@@ -411,6 +644,17 @@ export type JointProfile = {
   readonly "tolerated_error_mm"?: (number | null);
   readonly "test_evidence_ids"?: ReadonlyArray<string>;
   readonly "limitations"?: ReadonlyArray<string>;
+};
+
+export type LoadCase = {
+  readonly "case_id": string;
+  readonly "orientation": string;
+  readonly "body_ids": ReadonlyArray<string>;
+  readonly "contact_ids": ReadonlyArray<string>;
+  readonly "gravity_m_s2": QuantityEstimate;
+  readonly "sliding"?: (SlidingDemand | null);
+  readonly "joint_demands"?: ReadonlyArray<JointDemand>;
+  readonly "deformation"?: (BeamDeflection | null);
 };
 
 export type Mark = {
@@ -469,12 +713,45 @@ export type MeasureArgs = {
   readonly "method": "ruler" | "scale" | "protractor" | "known_reference";
 };
 
+export type MeasuredBody = {
+  readonly "mass_kg": number;
+  readonly "center_of_mass_m": Point3;
+  readonly "mass_resolution_kg": number;
+  readonly "position_resolution_m": number;
+  readonly "method": string;
+};
+
+export type MeasuredDeviceCase = {
+  readonly "orientation": "portrait" | "landscape";
+  readonly "device": MeasuredBody;
+  readonly "pose_description": string;
+};
+
+export type MeasuredSupportRectangle = {
+  readonly "x_min_m": number;
+  readonly "x_max_m": number;
+  readonly "y_min_m": number;
+  readonly "y_max_m": number;
+  readonly "resolution_m": number;
+  readonly "method": string;
+};
+
 export type Measurement = {
   readonly "value": (number | null);
   readonly "unit": "mm" | "g" | "deg";
   readonly "source": "user_ruler" | "known_reference" | "calculated" | "unknown";
   readonly "confirmed": boolean;
   readonly "evidence_ids"?: ReadonlyArray<string>;
+};
+
+export type MechanicalSnapshot = {
+  readonly "bodies": ReadonlyArray<BodyMass>;
+  readonly "contacts": ReadonlyArray<SupportContact>;
+  readonly "rigid_assembly": boolean;
+  readonly "horizontal_support": boolean;
+  readonly "gravity_only": boolean;
+  readonly "state_basis": "nominal" | "observed";
+  readonly "assumption_ids"?: ReadonlyArray<string>;
 };
 
 export type Mutation = {
@@ -528,6 +805,11 @@ export type Part = {
   readonly "condition": "usable" | "damaged" | "uncertain";
 };
 
+export type PartCentroid = {
+  readonly "part_id": string;
+  readonly "centroid": Point3;
+};
+
 export type PhysicalEvent = {
   readonly "id": string;
   readonly "project_id": string;
@@ -542,12 +824,57 @@ export type PhysicalEvent = {
   readonly "test_result"?: ("passed" | "failed" | "not_attempted" | null);
 };
 
+export type PieceAnnotation = {
+  readonly "part_id": string;
+  readonly "display_name": string;
+  readonly "role"?: (string | null);
+  readonly "proposed_classification"?: (string | null);
+  readonly "source": "user" | "model";
+};
+
+export type PieceReference = {
+  readonly "part_id": string;
+  readonly "reference": string;
+  readonly "display_name": string;
+  readonly "geometry_class": "triangle" | "rectangle" | "convex_polygon" | "concave_polygon" | "multi_facet";
+  readonly "role"?: (string | null);
+  readonly "annotation"?: (PieceAnnotation | null);
+};
+
+export type Point3 = {
+  readonly "x": number;
+  readonly "y": number;
+  readonly "z": number;
+};
+
+export type PolygonalFacet = {
+  readonly "facet_id": string;
+  readonly "part_id": string;
+  readonly "vertices": ReadonlyArray<Point3>;
+  readonly "centroid": Point3;
+  readonly "area_fraction": number;
+};
+
 export type Preconditions = {
   readonly "confirmed_measurement_ids"?: ReadonlyArray<string>;
   readonly "accessible_part_ids"?: ReadonlyArray<string>;
   readonly "required_joint_ids"?: ReadonlyArray<string>;
   readonly "safe_tools_confirmed"?: boolean;
   readonly "human_checks"?: ReadonlyArray<string>;
+};
+
+export type QuantityEstimate = {
+  readonly "kind": "scalar" | "interval" | "unknown";
+  readonly "unit": "1" | "m" | "m2" | "m3" | "m4" | "kg" | "s" | "rad" | "N" | "N_m" | "Pa" | "kg_m3" | "m_s2";
+  readonly "value"?: (number | null);
+  readonly "lower"?: (number | null);
+  readonly "upper"?: (number | null);
+  readonly "provenance": "measured" | "specified" | "derived" | "assumed" | "unknown";
+  readonly "confirmed": boolean;
+  readonly "evidence_ids"?: ReadonlyArray<string>;
+  readonly "dependency_ids"?: ReadonlyArray<string>;
+  readonly "correlation_group_ids"?: ReadonlyArray<string>;
+  readonly "uncertainty_notes"?: ReadonlyArray<string>;
 };
 
 export type Rect = {
@@ -590,6 +917,133 @@ export type ReplannerInput = {
   readonly "patch": RepairPatch;
 };
 
+export type RigidTransform = {
+  readonly "rotation": readonly [readonly [number, number, number], readonly [number, number, number], readonly [number, number, number]];
+  readonly "translation_m": Point3;
+};
+
+export type SlidingDemand = {
+  readonly "contact_id": string;
+  readonly "normal_force_n": QuantityEstimate;
+  readonly "tangential_force_n": QuantityEstimate;
+  readonly "friction_coefficient": QuantityEstimate;
+  readonly "planar_coulomb_applicable": boolean;
+};
+
+export type StabilityInput = {
+  readonly "identity": AnalysisIdentity;
+  readonly "mechanical_snapshot": MechanicalSnapshot;
+  readonly "cases": ReadonlyArray<LoadCase>;
+  readonly "geometry_version": string;
+  readonly "profile_version": string;
+};
+
+export type StabilityMeasurementRecord = {
+  readonly "id": string;
+  readonly "project_id": string;
+  readonly "plan_version_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "based_on_last_event_id": (string | null);
+  readonly "event_id": string;
+  readonly "evidence_id": string;
+  readonly "geometry_basis_hash": string;
+  readonly "recorded_at": string;
+  readonly "source_part_ids": ReadonlyArray<string>;
+  readonly "measurements": StabilityMeasurements;
+};
+
+export type StabilityMeasurements = {
+  readonly "stand": MeasuredBody;
+  readonly "cases": ReadonlyArray<MeasuredDeviceCase>;
+  readonly "support": MeasuredSupportRectangle;
+  readonly "required_margin_m": number;
+  readonly "stand_includes_all_parts_and_connectors": true;
+  readonly "actual_contacts_confirmed": true;
+  readonly "rigid_assembly_assumed": true;
+  readonly "horizontal_surface_confirmed": true;
+  readonly "stationary_device_assumed": true;
+  readonly "gravity_only_assumed": true;
+};
+
+export type StabilityOverlay = {
+  readonly "case_id": string;
+  readonly "orientation": string;
+  readonly "center_of_mass": Point3;
+  readonly "support_polygon": ReadonlyArray<Point3>;
+  readonly "critical_edge": ReadonlyArray<Point3>;
+  readonly "signed_margin_m": number;
+  readonly "restoring_moment_n_m": number;
+};
+
+export type StabilityReport = {
+  readonly "identity": AnalysisIdentity;
+  readonly "report_version": string;
+  readonly "engine_version": string;
+  readonly "geometry_version": string;
+  readonly "profile_version": string;
+  readonly "cache_hash": string;
+  readonly "policy": AnalysisPolicy;
+  readonly "status": "modeled_pass" | "modeled_fail" | "indeterminate" | "needs_measurement" | "unsupported" | "not_applicable";
+  readonly "coverage": "complete" | "partial" | "unsupported";
+  readonly "results"?: ReadonlyArray<CheckResult>;
+  readonly "unresolved_predicates"?: ReadonlyArray<string>;
+  readonly "physical_evidence_ids"?: ReadonlyArray<string>;
+  readonly "overlays"?: ReadonlyArray<StabilityOverlay>;
+  readonly "assumption_ids"?: ReadonlyArray<string>;
+  readonly "state_basis"?: ("nominal" | "observed" | null);
+  readonly "input_warnings"?: ReadonlyArray<string>;
+};
+
+export type StageAnalysisResult = {
+  readonly "producer_version": string;
+  readonly "snapshot_hash": string;
+  readonly "snapshot": StageSnapshot;
+  readonly "present_part_ids": ReadonlyArray<string>;
+  readonly "future_part_ids": ReadonlyArray<string>;
+  readonly "active_joint_ids": ReadonlyArray<string>;
+  readonly "facets": ReadonlyArray<CanonicalFacet>;
+  readonly "component_part_ids": ReadonlyArray<ReadonlyArray<string>>;
+  readonly "inputs": ReadonlyArray<StabilityInput>;
+  readonly "policies": ReadonlyArray<AnalysisPolicy>;
+  readonly "reports": ReadonlyArray<StabilityReport>;
+  readonly "blockers": ReadonlyArray<string>;
+  readonly "physical_evidence_ids"?: ReadonlyArray<string>;
+};
+
+export type StageContact = {
+  readonly "contact_id": string;
+  readonly "polygon_world": ReadonlyArray<Point3>;
+};
+
+export type StageFacetPose = {
+  readonly "facet_id": string;
+  readonly "transform": RigidTransform;
+};
+
+export type StagePart = {
+  readonly "part_id": string;
+  readonly "mass_kg": (number | null);
+  readonly "center_of_mass_world": (Point3 | null);
+  readonly "facet_poses": ReadonlyArray<StageFacetPose>;
+  readonly "contacts": ReadonlyArray<StageContact>;
+  readonly "rigid_body_assumed": boolean;
+};
+
+export type StageSnapshot = {
+  readonly "project_id": string;
+  readonly "plan_version_id": string;
+  readonly "inventory_revision": string;
+  readonly "history_cursor": (string | null);
+  readonly "completed_operation_ids": ReadonlyArray<string>;
+  readonly "basis": "hypothetical" | "observed";
+  readonly "support_frame": RigidTransform;
+  readonly "gravity_world_m_s2": Point3;
+  readonly "parts": ReadonlyArray<StagePart>;
+  readonly "rigid_joint_ids": ReadonlyArray<string>;
+  readonly "assumption_notes": ReadonlyArray<string>;
+  readonly "component_loads"?: ReadonlyArray<LoadCase>;
+};
+
 export type Stock = {
   readonly "id": string;
   readonly "kind": "sheet" | "strip" | "tape" | "cord";
@@ -602,6 +1056,14 @@ export type Stock = {
   readonly "usable_regions"?: ReadonlyArray<Region>;
   readonly "image_ids"?: ReadonlyArray<string>;
   readonly "allowed_rotations_deg"?: ReadonlyArray<0 | 90>;
+};
+
+export type SupportContact = {
+  readonly "contact_id": string;
+  readonly "body_id": string;
+  readonly "polygon_world": ReadonlyArray<Point3>;
+  readonly "active": boolean;
+  readonly "assumption_ids"?: ReadonlyArray<string>;
 };
 
 export type TapeJoint = {

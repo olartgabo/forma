@@ -1,0 +1,368 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, sans-serif;
+  color: #172b36;
+  background: #f3f5f3;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 1100px;
+  margin: auto;
+  padding: 28px 20px 64px;
+}
+h1 {
+  font-size: clamp(2rem, 5vw, 3.6rem);
+  line-height: 1.07;
+  max-width: 750px;
+}
+h2 {
+  font-size: 1.25rem;
+  margin-top: 28px;
+}
+p,
+li {
+  line-height: 1.6;
+}
+.eyebrow {
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+}
+.notice {
+  padding: 16px;
+  border-left: 4px solid #af7316;
+  background: #fff5df;
+}
+.columns {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+fieldset {
+  min-width: 0;
+  margin: 12px 0;
+  padding: 16px;
+  border: 1px solid #b8c8c4;
+  border-radius: 8px;
+}
+legend {
+  font-weight: 600;
+}
+label {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+}
+input[type="number"],
+textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 5px;
+  padding: 10px;
+  border: 1px solid #78948c;
+  border-radius: 4px;
+  font: inherit;
+  background: white;
+  color: #172b36;
+}
+input:focus,
+textarea:focus,
+button:focus {
+  outline: 3px solid #d4a339;
+  outline-offset: 3px;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+button {
+  padding: 12px 16px;
+  min-height: 44px;
+  margin: 4px 4px 4px 0;
+  border: 1px solid #45675e;
+  border-radius: 6px;
+  background: white;
+  color: #172b36;
+  font: inherit;
+  cursor: pointer;
+}
+button.primary {
+  background: #164d40;
+  color: white;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+#error {
+  color: #9a2323;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#status {
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+#diagram svg {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  background: white;
+  border: 1px solid #c7d2cf;
+}
+#stand-view svg {
+  width: 100%;
+  max-width: 600px;
+  height: auto;
+  background: white;
+  border: 1px solid #c7d2cf;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+#stand-view.dragging svg {
+  cursor: grabbing;
+}
+#stand-view:focus-visible {
+  outline: 3px solid #d4a339;
+  outline-offset: 3px;
+}
+.camera-zoom {
+  max-width: 600px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.camera-zoom input {
+  flex: 1;
+  min-width: 0;
+}
+#stand-view li,
+#stand-operations li,
+#stand-geometry-caption,
+#stand-error {
+  overflow-wrap: anywhere;
+}
+#stand-error {
+  color: #9a2323;
+  white-space: pre-wrap;
+}
+#stand-stage {
+  width: 100%;
+  max-width: 600px;
+  padding: 12px;
+  font: inherit;
+}
+#stand-status {
+  font-size: 1.15rem;
+  font-weight: 650;
+}
+pre,
+textarea {
+  overflow: auto;
+}
+pre {
+  background: #e7eeeb;
+  padding: 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+details {
+  margin: 20px 0;
+  padding: 14px;
+  border: 1px solid #b8c8c4;
+  border-radius: 8px;
+}
+summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+@media (max-width: 720px) {
+  .columns {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  main {
+    padding-inline: 16px;
+  }
+}
+
+/* Primary assembly workbench; physical geometry comes only from the server. */
+main {
+  max-width: 1360px;
+}
+.workspace-heading,
+.model-heading,
+.model-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.workspace-heading h2,
+.workspace-heading h3,
+.model-heading h3 {
+  margin: 4px 0;
+}
+.workspace-intro {
+  max-width: 850px;
+  color: #53665f;
+}
+.assembly-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(290px, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.model-card,
+.editor-card {
+  min-width: 0;
+  background: #fff;
+  border: 1px solid #dce4df;
+  border-radius: 20px;
+  padding: 24px;
+}
+.model-card {
+  position: static;
+  align-self: start;
+}
+.stage-chips {
+  display: flex;
+  gap: 8px;
+  overflow: auto;
+  padding: 12px 0 20px;
+}
+.stage-chips button {
+  white-space: nowrap;
+  border-radius: 24px;
+  border-color: #d5dfd9;
+}
+.stage-chips button[aria-current="step"] {
+  background: #164d40;
+  color: white;
+}
+#assembly-view {
+  border-radius: 14px;
+  overflow: hidden;
+  min-height: 300px;
+  background: radial-gradient(ellipse at center, #f9faf8, #eef2ed);
+}
+#assembly-view svg {
+  width: 100%;
+  display: block;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+#assembly-view.dragging svg {
+  cursor: grabbing;
+}
+#assembly-view:focus-visible {
+  outline: 3px solid #d4a339;
+}
+.model-tools {
+  margin-top: 12px;
+  font-size: 0.8rem;
+  color: #617169;
+}
+.muted {
+  color: #617169;
+  font-size: 0.85rem;
+}
+#assembly-status {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+#assembly-error {
+  color: #9a2323;
+  overflow-wrap: anywhere;
+}
+#assembly-results p {
+  font-size: 0.9rem;
+}
+.editor-card input[type="text"],
+.editor-card select {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px;
+  margin-top: 5px;
+  border: 1px solid #bccbc2;
+  border-radius: 6px;
+  background: white;
+  color: inherit;
+  font: inherit;
+}
+.editor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.editor-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.editor-card details {
+  padding: 10px;
+}
+.editor-card h4 {
+  margin: 20px 0 8px;
+}
+#assembly-evaluate {
+  width: 100%;
+  margin-top: 14px;
+}
+#assembly-panel-editor label {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 800px) {
+  .assembly-layout {
+    grid-template-columns: 1fr;
+  }
+  .model-card {
+    position: static;
+  }
+  .model-card,
+  .editor-card {
+    padding: 16px;
+  }
+  .model-heading,
+  .workspace-heading {
+    flex-wrap: wrap;
+  }
+  .model-tools {
+    align-items: flex-start;
+  }
+}
+
+/* Keep the stage and model visible before the long editor controls. */
+header h1 {
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  margin: 12px 0;
+}
+header .notice {
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  margin: 14px 0 20px;
+}
+header > p:not(.eyebrow):not(.notice) {
+  margin: 6px 0;
+}
+.workspace-intro {
+  margin: 10px 0;
+  font-size: 0.9rem;
+}
+#assembly-workspace > .workspace-heading {
+  margin-top: 8px;
+}
+@media (max-width: 800px) {
+  main {
+    padding-top: 16px;
+  }
+  .model-tools {
+    flex-wrap: wrap;
+  }
+}

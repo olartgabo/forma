@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>FORMA · pure engine lab</title>
+    <link rel="stylesheet" href="/lab.css" />
+    <script src="/lab.js" defer></script>
+    <script src="/lab-plan.js" defer></script>
+    <script src="/lab-assembly.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">FORMA / engine workbench</p>
+        <h1>Build it. Turn it. Test it.</h1>
+        <p class="notice">
+          <strong>Plan and check before building.</strong> Material entries are
+          supplied by you, not independently verified. This workbench records no
+          physical work and sends nothing to a provider.
+        </p>
+      </header>
+      <section id="assembly-workspace" aria-labelledby="assembly-title">
+        <div class="workspace-heading">
+          <div>
+            <p class="eyebrow">Assembly sandbox</p>
+            <h2 id="assembly-title">
+              Choose a shape. Get the construction steps.
+            </h2>
+          </div>
+          <button id="assembly-new" type="button">New assembly</button>
+        </div>
+        <p class="workspace-intro">
+          Define the finished target once. The engine generates a construction
+          sequence and checks its declared stages. Nothing is marked physically
+          completed.
+        </p>
+        <div
+          id="assembly-stages"
+          class="stage-chips"
+          aria-label="Construction stages"
+        ></div>
+        <div class="assembly-layout">
+          <section class="model-card" aria-label="Assembly model">
+            <div class="model-heading">
+              <div>
+                <span class="eyebrow" id="assembly-step-count"></span>
+                <h3 id="assembly-step-title"></h3>
+              </div>
+              <div>
+                <button
+                  id="assembly-prev"
+                  type="button"
+                  aria-label="Previous stage"
+                >
+                  Previous</button
+                ><button
+                  id="assembly-next"
+                  type="button"
+                  aria-label="Next stage"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+            <div
+              id="assembly-view"
+              tabindex="0"
+              role="group"
+              aria-label="Rotate assembly model"
+              aria-describedby="assembly-camera-help"
+            >
+              <p>Add a panel and evaluate to see the model.</p>
+            </div>
+            <div class="model-tools">
+              <span id="assembly-camera-help"
+                >Drag to turn · pinch to zoom · arrow keys to rotate</span
+              ><button id="assembly-reset-camera" type="button">
+                Reset view
+              </button>
+            </div>
+            <label class="camera-zoom"
+              >Zoom<input
+                type="range"
+                id="assembly-zoom"
+                min="0.4"
+                max="3"
+                step="0.01"
+                value="1"
+            /></label>
+            <p id="assembly-camera-state" class="muted"></p>
+            <p id="assembly-status" role="status">
+              Start with a panel or a clearly labeled hypothetical example.
+            </p>
+            <div id="assembly-results"></div>
+            <div id="construction-instruction"></div>
+            <div id="construction-fabrication"></div>
+            <p id="assembly-error" role="alert"></p>
+          </section>
+          <section class="editor-card" aria-label="Assembly controls">
+            <h3>Finished target</h3>
+            <p class="muted" id="construction-physics-note">
+              Target dimensions describe the design. Actual mass and joint
+              strength remain unknown. Support and rigidity assumptions are not
+              physical observations.
+            </p>
+            <label
+              >Shape<select id="construction-shape">
+                <option value="box">Open box</option>
+                <option value="ramp">Ramp</option>
+                <option value="triangle">Flat triangle panel</option>
+                <option value="concave">Flat concave panel</option>
+                <option value="polygon">Flat polygon panel</option>
+                <option value="enclosure">
+                  Polygon enclosure — walls only
+                </option>
+                <option value="screen">Zigzag screen</option>
+              </select></label
+            >
+            <div class="editor-grid">
+              <label
+                >Width (mm)<input
+                  id="construction-width"
+                  type="number"
+                  min="1"
+                  value="200" /></label
+              ><label
+                >Depth (mm)<input
+                  id="construction-depth"
+                  type="number"
+                  min="1"
+                  value="160" /></label
+              ><label
+                >Height (mm)<input
+                  id="construction-height"
+                  type="number"
+                  min="1"
+                  value="100"
+              /></label>
+            </div>
+            <label id="construction-sides-label" hidden
+              >Sides / panels<input
+                id="construction-sides"
+                type="number"
+                min="3"
+                max="12"
+                step="1"
+                value="6"
+            /></label>
+            <p class="muted" id="construction-height-note">
+              Height applies to box and ramp targets. Triangle and concave
+              targets are flat panels.
+            </p>
+            <details id="construction-materials" open>
+              <summary>My materials</summary>
+              <p class="muted">
+                Add each available piece separately. Leave unknown measurements
+                blank. Saved material and process records can also be imported
+                below.
+              </p>
+              <div class="editor-grid two">
+                <label
+                  >Project reference<input
+                    id="materials-project"
+                    type="text"
+                    value="local-materials"
+                /></label>
+                <label
+                  >Inventory reference<input
+                    id="materials-revision"
+                    type="text"
+                    value="local-inventory"
+                /></label>
+              </div>
+              <p class="muted">
+                These local references do not connect to or update a saved
+                project.
+              </p>
+              <div id="materials-stocks"></div>
+              <button id="materials-add-sheet" type="button">+ Sheet</button>
+              <button id="materials-add-tape" type="button">+ Tape</button>
+              <fieldset>
+                <legend>Tools I have</legend>
+                <label class="check"
+                  ><input id="materials-tool-cutting" type="checkbox" />Scissors
+                  / cutting tool</label
+                >
+                <label class="check"
+                  ><input
+                    id="materials-tool-ruler"
+                    type="checkbox"
+                  />Ruler</label
+                >
+                <label class="check"
+                  ><input
+                    id="materials-tool-marker"
+                    type="checkbox"
+                  />Marker</label
+                >
+                <label class="check"
+                  ><input id="materials-safe-tools" type="checkbox" />I have
+                  checked that these tools are suitable for this work</label
+                >
+              </fieldset>
+              <div class="editor-grid two">
+                <label
+                  >Measured cut width / kerf (mm)<input
+                    id="materials-kerf"
+                    type="number"
+                    min="0"
+                    step="any"
+                /></label>
+                <label
+                  >Required edge margin (mm)<input
+                    id="materials-margin"
+                    type="number"
+                    min="0"
+                    step="any"
+                /></label>
+              </div>
+              <p class="muted">
+                Numbers alone do not establish a reviewed cutting process or
+                joint strength. Import the corresponding process and tested
+                joint records to assess fabrication.
+              </p>
+              <div id="materials-joints"></div>
+              <details>
+                <summary>Import reviewed material and process records</summary>
+                <label
+                  >Material context JSON<textarea
+                    id="materials-json"
+                    rows="6"
+                    spellcheck="false"
+                  ></textarea>
+                </label>
+                <button id="materials-import" type="button">
+                  Load material context
+                </button>
+                <p id="materials-import-status" role="status"></p>
+              </details>
+            </details>
+            <label class="check"
+              ><input id="construction-invented-stock" type="checkbox" />Use
+              invented stock and process assumptions to demonstrate fabrication
+              checks</label
+            >
+            <p class="muted" id="construction-synthetic-note" hidden>
+              Invented resources: 1000 × 1000 mm stock, 2 mm thick; 5000 mm
+              tape; 2 mm kerf, 4 mm margin, 80 mm tape per joint. These are
+              demonstration assumptions, not approval to build.
+            </p>
+            <button id="construction-generate" type="button" class="primary">
+              Generate construction steps
+            </button>
+            <p id="construction-status" role="status">
+              Choose the target dimensions, then generate.
+            </p>
+            <details id="construction-pieces">
+              <summary>Piece names and references</summary>
+              <p class="muted">
+                The same reference identifies a piece in every step and diagram.
+                Names can be supplied by you or proposed by MetaMuse; a name
+                does not verify a material or measurement. Rename here, then
+                regenerate.
+              </p>
+              <div id="construction-piece-catalog">
+                Generate a target to list its pieces.
+              </div>
+            </details>
+            <details id="construction-custom">
+              <summary>Custom target and manual stage editor</summary>
+              <p>
+                Define your own panels and final poses. Generate from the
+                currently selected design stage; the engine supplies the
+                sequence.
+              </p>
+              <button id="construction-generate-custom" type="button">
+                Generate from this custom target
+              </button>
+              <h3>Custom target</h3>
+              <label
+                >Current stage name<input
+                  id="assembly-stage-name"
+                  type="text"
+                  maxlength="100"
+              /></label>
+              <button id="assembly-add-stage" type="button">Add stage</button>
+              <hr />
+              <div class="workspace-heading">
+                <h3>Panels</h3>
+                <button id="assembly-add-panel" type="button">
+                  + Add panel
+                </button>
+              </div>
+              <label>Panel<select id="assembly-panel"></select></label>
+              <div id="assembly-panel-editor"></div>
+              <details>
+                <summary>Connect panel edges</summary>
+                <p>
+                  Declare rigid joints explicitly. A future panel cannot support
+                  an earlier stage. The engine checks whether the declared edges
+                  coincide.
+                </p>
+                <div id="assembly-joints"></div>
+                <button id="assembly-add-joint" type="button">Add joint</button>
+              </details>
+              <label
+                >Required edge clearance (mm)<input
+                  id="assembly-margin"
+                  type="number"
+                  step="any"
+                  value="0"
+              /></label>
+              <button id="assembly-evaluate" class="primary" type="button">
+                Evaluate this stage
+              </button>
+              <p class="muted">
+                Edits need a new evaluation. Camera movement never changes
+                physics.
+              </p>
+            </details>
+          </section>
+        </div>
+        <details>
+          <summary>Examples, import and exact results</summary>
+          <p>
+            Examples contain invented geometry and loads. You can edit every
+            panel and stage.
+          </p>
+          <div id="assembly-examples" class="presets"></div>
+          <label
+            >Assembly editor JSON<textarea
+              id="assembly-json"
+              rows="8"
+              spellcheck="false"
+            ></textarea></label
+          ><button id="assembly-import" type="button">
+            Load manual editor draft</button
+          ><button id="assembly-export" type="button">
+            Download experiment
+          </button>
+          <pre id="assembly-report">No calculation yet.</pre>
+        </details>
+      </section>
+      <details id="legacy-lab">
+        <summary>
+          Advanced diagnostics: compiled stand and analytical engine cases
+        </summary>
+        <section aria-labelledby="stand-title">
+          <h2 id="stand-title">
+            Compiled stand — canonical geometry and construction trace
+          </h2>
+          <p>
+            The sample is a stand emitted by the actual compiler, not an
+            arbitrary rectangle. This diagnostic view projects the same physical
+            coordinates used by the canonical producer. It is not the product
+            assembly viewer.
+          </p>
+          <p>
+            Compiled-stand frame: origin at the front base hinge, x across the
+            width, y rearward along the base, z upward. Device COM coordinates
+            use this frame. The separate rectangle unit cases below use their
+            own centered frame.
+          </p>
+          <button type="button" id="load-stand">Reload compiled sample</button>
+          <details>
+            <summary>Import a compiled plan</summary>
+            <label
+              >BuildPlan JSON, or an API response containing
+              version.plan<textarea
+                id="stand-plan-json"
+                rows="10"
+                spellcheck="false"
+              ></textarea>
+            </label>
+            <button type="button" id="import-stand">
+              Inspect imported plan
+            </button>
+          </details>
+          <label
+            >Hypothetical completed operation prefix<select
+              id="stand-stage"
+              aria-label="Hypothetical construction stage"
+            ></select
+          ></label>
+          <p id="stand-stage-label"></p>
+          <p id="stand-error" role="alert"></p>
+          <div class="presets" aria-label="Diagnostic camera projections">
+            <button type="button" data-stand-view="iso">Isometric 3D</button>
+            <button type="button" data-stand-view="front">
+              Front projection
+            </button>
+            <button type="button" data-stand-view="side">
+              Side projection
+            </button>
+            <button type="button" id="stand-reset-camera">Reset camera</button>
+          </div>
+          <p id="stand-camera-help">
+            Drag to rotate through 360°. On touch screens, drag with one finger
+            and pinch with two to zoom. With the model focused, use arrow keys
+            to rotate, +/− to zoom and Home to reset. Camera controls never
+            recalculate physics.
+          </p>
+          <label class="camera-zoom"
+            >Camera zoom
+            <input
+              id="stand-zoom"
+              type="range"
+              min="0.4"
+              max="3"
+              step="0.01"
+              value="1"
+          /></label>
+          <p id="stand-camera-state"></p>
+          <div
+            id="stand-view"
+            tabindex="0"
+            role="group"
+            aria-label="Interactive 3D diagnostic model"
+            aria-describedby="stand-camera-help stand-camera-state"
+          ></div>
+          <p id="stand-geometry-caption"></p>
+          <ol id="stand-operations"></ol>
+          <section aria-labelledby="stage-experiment-title">
+            <h3 id="stage-experiment-title">
+              Intermediate construction physics
+            </h3>
+            <p>
+              Supply explicit part poses, table contacts and masses. Each
+              disconnected component gets its own report. Selecting an operation
+              alone does not invent a physical pose. Functional tests are never
+              simulated as passed.
+            </p>
+            <button type="button" id="stand-stage-example">
+              Load hypothetical separated flat parts (step 1)
+            </button>
+            <label
+              >Explicit stage snapshot JSON (SI units, hypothetical
+              only)<textarea
+                id="stand-snapshot"
+                rows="8"
+                spellcheck="false"
+                placeholder="Load the example to inspect and change its explicit poses, masses and contacts."
+              ></textarea>
+            </label>
+            <button type="button" id="run-stage-snapshot">
+              Evaluate explicit stage snapshot
+            </button>
+          </section>
+          <form id="stand-loads">
+            <h3>Hypothetical loads on this compiled stand</h3>
+            <p>
+              One mass per original source part, including its allocated
+              connector share. Support and folded lip stay one mass
+              contribution. The COM comes from the canonical uniform-sheet
+              centroid only when you explicitly assume that distribution. Device
+              pose is supplied separately.
+            </p>
+            <button type="button" id="stand-example">
+              Load invented load example
+            </button>
+            <div class="columns">
+              <fieldset id="stand-part-masses">
+                <legend>Source part masses (g)</legend>
+              </fieldset>
+              <fieldset>
+                <legend>Device world pose</legend>
+                <label
+                  >Mass (g)<input name="device_mass_g" type="number" step="any"
+                /></label>
+                <label
+                  >COM x (mm)<input name="device_x_mm" type="number" step="any"
+                /></label>
+                <label
+                  >COM y (mm)<input name="device_y_mm" type="number" step="any"
+                /></label>
+                <label
+                  >COM z (mm)<input name="device_z_mm" type="number" step="any"
+                /></label>
+              </fieldset>
+              <fieldset>
+                <legend>Criterion</legend>
+                <label
+                  >Required clearance (mm)<input
+                    name="required_margin_mm"
+                    type="number"
+                    step="any"
+                    required
+                /></label>
+                <label
+                  >Numerical tolerance (mm)<input
+                    name="tolerance_mm"
+                    type="number"
+                    step="any"
+                    required
+                /></label>
+                <label
+                  >Gravity (m/s²)<input
+                    name="gravity_m_s2"
+                    type="number"
+                    step="any"
+                    required
+                /></label>
+              </fieldset>
+            </div>
+            <fieldset>
+              <legend>
+                Hypothetical assumptions — not physical confirmations
+              </legend>
+              <label class="check"
+                ><input name="uniform_mass_assumed" type="checkbox" /> Assume
+                uniform source sheets and allocated connector mass at their
+                canonical centroids</label
+              >
+              <label class="check"
+                ><input name="connector_shares_included" type="checkbox" /> All
+                connector mass is included once across the source-part
+                masses</label
+              >
+              <label class="check"
+                ><input name="full_base_contact_assumed" type="checkbox" />
+                Assume the entire nominal base face contacts a horizontal
+                table</label
+              >
+              <label class="check"
+                ><input
+                  name="rigid_device_attachment_assumed"
+                  type="checkbox"
+                />
+                Assume a rigid assembly and fixed device pose under gravity
+                only</label
+              >
+            </fieldset>
+            <h3>Supplied-demand checks</h3>
+            <p>
+              These scalar experiments compare explicitly supplied forces and
+              material properties. They do not derive joint forces or predict
+              how the whole stand bends. All example numbers are invented
+              assumptions.
+            </p>
+            <div class="presets">
+              <button type="button" data-check-example="sliding">
+                Hypothetical sliding example</button
+              ><button type="button" data-check-example="joint">
+                Hypothetical joint example</button
+              ><button type="button" data-check-example="beam">
+                Hypothetical beam example</button
+              ><button type="button" id="clear-checks">
+                Clear supplied checks
+              </button>
+            </div>
+            <label
+              >Supplied-demand JSON (SI units; editable)<textarea
+                id="stand-checks"
+                rows="8"
+                spellcheck="false"
+              ></textarea>
+            </label>
+            <button class="primary" id="run-stand" type="submit">
+              Evaluate selected stand stage
+            </button>
+          </form>
+          <p id="stand-status" aria-live="polite">
+            Loading the compiled sample…
+          </p>
+          <div id="stand-result"></div>
+          <p>
+            Passing a declared scalar criterion is not a physical success claim.
+            Phone retention, impact, unmodeled load paths and real material
+            behavior remain unverified. Missing supplied checks cannot establish
+            sliding, joint or deformation performance.
+          </p>
+          <details>
+            <summary>
+              Exact plan, canonical geometry, stage and engine result
+            </summary>
+            <pre id="stand-full-result">No inspection yet.</pre>
+          </details>
+          <label
+            >Feedback on the compiled stand experiment<textarea
+              id="stand-notes"
+              rows="3"
+              placeholder="Which step or load did you change? What did you expect? What was wrong or unclear?"
+            ></textarea>
+          </label>
+          <button type="button" id="stand-download" disabled>
+            Download stand experiment and feedback
+          </button>
+        </section>
+        <hr />
+        <section aria-labelledby="preset-title">
+          <h2 id="preset-title">
+            Analytical unit cases — isolated rectangle, not the compiled stand
+          </h2>
+          <div class="presets">
+            <button type="button" data-preset="centered">Centered</button>
+            <button type="button" data-preset="edge">Exactly on edge</button>
+            <button type="button" data-preset="outside">Outside support</button>
+            <button type="button" data-preset="unknown">Unknown mass</button>
+          </div>
+          <p id="expectation">Loading synthetic examples…</p>
+        </section>
+        <form id="scenario">
+          <h2>2. Change the assumptions and inputs</h2>
+          <p>
+            The rectangular support is centered at x=0, y=0, z=0. x runs across
+            its width; y runs along its depth; z points up. Blank mass or COM
+            means unknown. Negative x/y are valid.
+          </p>
+          <div class="columns">
+            <fieldset>
+              <legend>Support and criterion</legend>
+              <label
+                >Width (mm)<input
+                  name="width_mm"
+                  type="number"
+                  step="any"
+                  required
+              /></label>
+              <label
+                >Depth (mm)<input
+                  name="depth_mm"
+                  type="number"
+                  step="any"
+                  required
+              /></label>
+              <label
+                >Required clearance (mm)<input
+                  name="required_margin_mm"
+                  type="number"
+                  step="any"
+                  required
+              /></label>
+              <label
+                >Numerical tolerance (mm)<input
+                  name="tolerance_mm"
+                  type="number"
+                  step="any"
+                  required
+              /></label>
+              <label
+                >Gravity (m/s²)<input
+                  name="gravity_m_s2"
+                  type="number"
+                  step="any"
+                  required
+              /></label>
+            </fieldset>
+            <fieldset>
+              <legend>Whole stand, including connectors</legend>
+              <label
+                >Mass (g)<input name="stand_mass_g" type="number" step="any"
+              /></label>
+              <label
+                >Center of mass x (mm)<input
+                  name="stand_x_mm"
+                  type="number"
+                  step="any"
+              /></label>
+              <label
+                >Center of mass y (mm)<input
+                  name="stand_y_mm"
+                  type="number"
+                  step="any"
+              /></label>
+              <label
+                >Center of mass z (mm)<input
+                  name="stand_z_mm"
+                  type="number"
+                  step="any"
+              /></label>
+            </fieldset>
+            <fieldset>
+              <legend>Device, fixed in this world pose</legend>
+              <label
+                >Mass (g)<input name="device_mass_g" type="number" step="any"
+              /></label>
+              <label
+                >Center of mass x (mm)<input
+                  name="device_x_mm"
+                  type="number"
+                  step="any"
+              /></label>
+              <label
+                >Center of mass y (mm)<input
+                  name="device_y_mm"
+                  type="number"
+                  step="any"
+              /></label>
+              <label
+                >Center of mass z (mm)<input
+                  name="device_z_mm"
+                  type="number"
+                  step="any"
+              /></label>
+            </fieldset>
+          </div>
+          <fieldset>
+            <legend>
+              Applicability assumptions — uncheck to test unsupported behavior
+            </legend>
+            <label class="check"
+              ><input name="rigid_assembly" type="checkbox" /> Stand and device
+              behave as one rigid assembly</label
+            >
+            <label class="check"
+              ><input name="horizontal_support" type="checkbox" /> Support is
+              horizontal</label
+            >
+            <label class="check"
+              ><input name="gravity_only" type="checkbox" /> Gravity is the only
+              applied load</label
+            >
+          </fieldset>
+          <button type="submit" class="primary" id="run">Run the engine</button>
+        </form>
+        <p id="error" role="alert"></p>
+        <section aria-live="polite" aria-labelledby="result-title">
+          <h2 id="result-title">3. Inspect the result</h2>
+          <p id="status">No calculation yet.</p>
+          <div id="results"></div>
+          <div id="diagram"></div>
+          <p>
+            <strong>Not checked:</strong> phone slipping, table friction, tape
+            strength, cardboard bending, impact or real-world safety. Passing
+            here means only the declared static support/tipping criterion passed
+            under the listed hypothetical assumptions.
+          </p>
+        </section>
+        <details>
+          <summary>Exact engine input and policy — advanced editing</summary>
+          <p>
+            The form converts grams to kilograms and millimetres to metres on
+            the server. This editor exposes the actual typed engine packet,
+            including cases, unknowns, intervals and policies. It is independent
+            of the form after editing. Even a manually entered “measured”
+            provenance is unauthenticated in this lab.
+          </p>
+          <label
+            >Input and policy JSON<textarea
+              id="packet"
+              rows="18"
+              spellcheck="false"
+            ></textarea>
+          </label>
+          <button type="button" id="run-json">Run edited JSON</button>
+        </details>
+        <details>
+          <summary>Full engine report</summary>
+          <pre id="report">No report yet.</pre>
+        </details>
+        <section>
+          <h2>4. Tell us what is good, bad or misleading</h2>
+          <label
+            >Your notes: what you changed, expected, and actually saw<textarea
+              id="notes"
+              rows="4"
+              placeholder="Example: I doubled both masses. Margin stayed the same, but the moment should double."
+            ></textarea>
+          </label>
+          <button type="button" id="download" disabled>
+            Download inputs, result and feedback
+          </button>
+          <p>
+            A download contains the last calculated inputs/result plus these
+            notes. Unsaved form or JSON edits are not represented as calculated
+            results.
+          </p>
+          <ul>
+            <li>
+              Move the combined COM across an edge: signed clearance should
+              cross zero.
+            </li>
+            <li>
+              Exactly on the edge with zero required clearance: indeterminate,
+              not pass.
+            </li>
+            <li>
+              Double both masses: same COM and clearance, double restoring
+              moment.
+            </li>
+            <li>
+              Increase required clearance past the calculated clearance: the
+              criterion should fail.
+            </li>
+            <li>
+              Change only COM height: horizontal gravity-only tipping clearance
+              stays unchanged. This model does not include pushes or dynamic
+              tipping.
+            </li>
+            <li>
+              Clear a mass/COM field: no pass. Uncheck applicability:
+              unsupported.
+            </li>
+          </ul>
+        </section>
+      </details>
+    </main>
+  </body>
+</html>

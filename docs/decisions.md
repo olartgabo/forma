@@ -456,7 +456,97 @@ measured split and stays unsupported. Proof labels measurement evidence
 "manually measured", labels Muse evidence as unverified observations and
 hypotheses, and totals only the waste and salvage the builder recorded.
 
-## D036: Fabrication reports model the next step from declared rules, November 3, 2026
+## D036: Begin evidence-aware stability contracts, November 3, 2026
+
+The user authorized the implementation specification in #142. Begin with the
+engine-owned quantity, identity, policy and report contracts, generated from
+Pydantic for browser consumers. Modeled outcomes and physical observations stay
+separate; missing required checks cannot become an overall modeled pass.
+This is the initial S0 slice, not a completed mechanics engine or connected
+feature. The shared assembled-geometry producer belongs to #144, and operation
+state semantics belong to #141. Their handoff remains a dependency before the
+mechanical adapter consumes actual plans. Do not reconstruct a second geometry
+authority from cutting rectangles. See [the stability handoff](handoffs/engine-stability.md).
+
+## D037: Connect conditional tipping reports without inventing poses, November 3, 2026
+
+#142 now computes scalar, gravity-only tipping from externally resolved physical
+geometry, with explicit provenance, uncertainty blockers and separate strength
+and sliding limitations. NumPy and Shapely are pinned dependencies; installed
+distribution notices are retained. The active manual can request a scoped
+read-only analysis and display its report and SVG overlay. Only server-resolved
+physical inputs are accepted; current inventory, active plan and full history
+cursor gate the computation. Requests create no physical observations or approval.
+
+The #144 canonical geometry producer is not implemented in this lane. Its owner
+must agree the published frame/stage handoff and supply the shared producer.
+Until then, production shows missing geometry, while explicitly labeled analytic
+software tests exercise the calculation and connected rendering. This does not
+complete S1 same-plan acceptance, S2 persistent reports or a physical demo.
+
+## D038: Complete stability dependencies in this lane, November 3, 2026
+
+The user explicitly superseded the ownership wait in D036/D037: do not leave
+work for Gabo if that prevents completing the engine. This lane now implements
+the shared canonical geometry and connected stability dependencies, with a
+documented interface reusable by the viewer and fabrication engines. The prior
+handoff proposal remains historical; another engineer's agreement is no longer
+a prerequisite for implementation. One canonical producer must serve consumers.
+
+Supported nominal geometry describes the planned assembly, not observed contact
+or completed construction. Unknown mass, device placement, material properties
+and physical observations remain unknown. Native independent review and passing
+checks still precede publication; provider STOPs and finite live-test controls
+remain unchanged. No physical success follows from this authorization.
+
+## D039: Measured stability and a separate engine lab, November 3, 2026
+
+Issue #17 now sequences ResniDev's #146–#149 separately from Gabo's #150–#152.
+The user requested continuing #146 and a direct way to assess the calculation
+engine. This work builds on PR #145 without merging that draft implicitly.
+
+The bounded measured model weighs the assembled stand including its connectors
+as one body covering all canonical source parts. It captures measured world COM,
+two explicit device orientation cases, actual rectangular support contacts and
+a chosen physical reserve. Typed immutable batches retain methods, instrument
+resolutions, observations, applicability assumptions and evidence references.
+They require reported assembly, owner scope, exact inventory/history and explicit
+confirmation. Corrections append records and invalidate previous calculations;
+measurement events do not complete construction or pass physical tests.
+
+The current numerical model evaluates point estimates. Instrument resolution is
+recorded and shown, but is not a conservative uncertainty bound or propagated
+error guarantee. Standard gravity and rigidity/stationary-load assumptions are
+explicit; sliding, retention, joint strength and deformation stay unverified.
+
+The loopback engine lab calls the same pure evaluator with hypothetical inputs.
+It has no project database, account, provider or evidence writes. Its examples
+test mathematics, and cannot be promoted to user measurements. Downloadable
+input/report JSON makes feedback reproducible independently of the app UI.
+
+User feedback correctly identified that a support rectangle does not demonstrate
+stage-aware 3D mechanics. The lab therefore inspects the actual compiled stand
+through the existing canonical producer, retaining the rectangle as an analytical
+unit case. Unsupported intermediate poses remain explicit rather than borrowing
+the final assembly's support. Issue #153 owns the next physical-stage extension;
+Gabo's fabrication, repair search and product viewer scopes remain separate.
+
+## D040: Explicit physical stages and bounded material checks, November 3, 2026
+
+The user requested 360-degree diagnostic rotation and implementation of
+intermediate physics, sliding, joint strength and deformation. The engine now
+accepts explicit stage transforms, source masses/COM and body contacts, partitions
+active load-bearing components and evaluates each separately. The direct lab's
+camera does not change physical coordinates or calculation identity.
+
+Additional checks use explicit Coulomb contact demands, named scalar joint
+allowables and named Euler-Bernoulli beam conditions. They do not infer friction,
+cardboard stiffness, joint capacity or internal load paths from appearance. Unknown
+properties remain unresolved. The stage API authenticates current reported work
+but accepts hypothetical physical inputs only; observed stage capture remains
+future work. See [stage mechanics](handoffs/stability-stage-mechanics.md).
+
+## D041: Fabrication reports model the next step from declared rules, November 3, 2026
 
 Issue #150 adds a read-only fabrication report for the active manual and each
 saved repair preview. It replays the plan lineage's recorded reports, derives
@@ -472,7 +562,7 @@ builder no way forward. The report is modeled, not observed: it never completes
 a step, authorizes cutting or changes stock. See the
 [fabrication handoff](handoffs/issue-150-fabrication-report.md).
 
-## D038: Repair search enumerates existing operators and reuses approval, November 3, 2026
+## D042: Repair search enumerates existing operators and reuses approval, November 3, 2026
 
 Issue #151 adds `POST /projects/{id}/repairs/search`. It generates repairs only
 from operators the simulator already supports: replacement from remaining usable
@@ -487,11 +577,41 @@ top three are stored as ordinary previews, so approval is the existing atomic
 the search) is reported separately from `infeasible` (everything was checked).
 See the [repair search handoff](handoffs/issue-151-repair-search.md).
 
-## D037: Reconcile fabrication readiness with explicit report-only confirmations, November 3, 2026
+## D043: Attached-base tape undo, November 3, 2026
+
+Issue #151 carries forward the attached-base replacement left out of D021. Once
+the fold and all three joins are complete, replacing `stand-base` stages front
+and rear `peel_tape` detaches, a replacement cut and inspection, and new
+front/rear joints in the original part order; the apex hinge stays attached and
+preserved. Peeled tape is lost and never refunded; only the two reattachments
+consume tape. The first peel waits on the apex attachment so the new functional
+test's required apex joint is an ancestor. The tape-undo helper, the family
+validator and the renderer now resolve the replaced role (brace or base) from
+the staged joints; brace plans and manuals are unchanged. Support replacement
+would undo a completed fold and stays blocked, as do a second repair of a
+replacement and other repeated-repair depth. Synthetic regression evidence does
+not establish a bench pass. See the [handoff](handoffs/issue-151-attached-base.md).
+
+## D044: Combined latest work and user-authored assembly diagnostics, November 3, 2026
+
+The user requested Gabo's latest published work and a friendlier engine that can
+evaluate many shapes step by step. The integration branch combines fabrication,
+repair search and attached-base recovery with the stability work without merging
+unfinished remote PRs. Necessary shared-file resolutions preserve both lanes.
+
+The primary diagnostic now authors polygonal panels and explicit per-stage poses,
+contacts and edge joints. A generic producer validates geometry and source seams;
+it shares the component solver with the original stand adapter. Examples are data,
+not geometry-dispatch branches. Future parts cannot contribute support or mass.
+The editor does not extend the production fabrication compiler's supported family,
+infer physical properties or create observed work. See the
+[generic assembly handoff](handoffs/generic-assembly-diagnostic.md).
+
+## D045: Reconcile fabrication readiness with explicit report-only confirmations, November 3, 2026
 
 The user chose PR #154 as the baseline and asked to retain useful parts of both
 implementations. Keep its lineage/boundary replay, GET routes, next-step manual
-navigation, transition IDs and deployment packaging. D036's tool-gap behavior is
+navigation, transition IDs and deployment packaging. D041's tool-gap behavior is
 superseded: unavailable tools and unconfirmed connector balances block readiness.
 
 An authenticated read-only assessment can add actual available tool names and
@@ -510,22 +630,68 @@ join/detach/preparation/reattach sequences remain available. Declared access and
 tool availability establish neither observed usability nor physical suitability.
 No provider call or physical pass follows from these software checks.
 
-## D039: Attached-base tape undo, November 3, 2026
+## D046: Generate construction proposals and retain fabrication authority, November 3, 2026
 
-Issue #151 carries forward the attached-base replacement left out of D021. Once
-the fold and all three joins are complete, replacing `stand-base` stages front
-and rear `peel_tape` detaches, a replacement cut and inspection, and new
-front/rear joints in the original part order; the apex hinge stays attached and
-preserved. Peeled tape is lost and never refunded; only the two reattachments
-consume tape. The first peel waits on the apex attachment so the new functional
-test's required apex joint is an ancestor. The tape-undo helper, the family
-validator and the renderer now resolve the replaced role (brace or base) from
-the staged joints; brace plans and manuals are unchanged. Support replacement
-would undo a completed fold and stays blocked, as do a second repair of a
-replacement and other repeated-repair depth. Synthetic regression evidence does
-not establish a bench pass. See the [handoff](handoffs/issue-151-attached-base.md).
+The user requests automatic steps from a finished target rather than manually
+authored intermediate states. The generator expands the target part/joint graph
+and evaluates each proposed placement and connection with the shared physical
+engine. It neither invents temporary support nor reuses final load demands for
+different intermediate assemblies.
 
-## D040. Blueprint workbench, November 3, 2026
+A dedicated opt-in synthetic bridge proposes rectangular cut, inspection and tape
+operations, then calls Gabo's existing compiler/fabrication report. Fixed resources
+and profile/process fixtures are explicit. Nonrectangular cutting, inadequate
+stock and unsupported process conditions remain blocked. This integrates the
+latest fabrication safeguards without creating a competing scheduler or recording
+completion. Production observed stock/process capture and physical approval remain
+separate. See [generated construction](handoffs/generated-construction.md).
+
+## D047: Material-bound construction and shared piece references, November 3, 2026
+
+The user requests real-material construction proposals, more shapes and a common
+piece vocabulary for MetaMuse, plans and diagrams. A supplied-material adapter
+allocates only declared stock regions and calls the existing fabrication engine.
+The authenticated read-only consumer resolves saved inventory and trusted process
+context, rejects stale revisions and directs active builds to the history-aware
+repair flow. Local lab imports remain explicitly unverified. Synthetic resources
+cannot be combined with actual-material input.
+
+Named pieces keep immutable mechanical IDs and derived stable references.
+Geometry classification is calculated; user/model role and naming suggestions
+are retained separately without becoming physical evidence. Parametric polygon,
+enclosure and screen targets share the generic constructor, while unsupported
+polygon cutting remains blocked. These interfaces support model proposals; they
+do not replace AI reasoning, infer photo measurements or record completion.
+See [material construction](handoffs/material-construction.md).
+
+## D048: Connect MetaMuse to checked construction proposals, November 3, 2026
+
+The user requests photo/materials and goal intake that lets MetaMuse propose
+shapes, piece names and construction ideas using engine checks. A separate
+consented project route accepts notes and an optional saved photo, resolves
+inventory and reviewed context on the server, and sends a bounded typed proposal
+request through the existing gateway. Model geometry becomes a hypothetical
+finished target; the engine generates intermediate steps and calls Gabo's
+fabrication checks. Model output cannot confirm physical facts or activate work.
+
+At most two candidates are evaluated. One optional correction may use engine
+feedback while retaining the original rejection. Unsupported manufacturing and
+missing evidence stay blocked. Durable request receipts prevent changed-key
+retries from bypassing in-progress/unknown outcomes. The isolated proposal panel
+renders engine facets, names and reports without replacing the existing manual
+or repair viewer. Live acceptance remains a separate bounded, authorized test.
+See [MetaMuse construction](handoffs/muse-construction.md).
+
+## D049: Expose material gaps and named construction stages, November 3, 2026
+
+The real-material proposal flow shows missing or unconfirmed saved measurements
+before generation, named stage selection, piece presence and unresolved stage
+checks. These are projections of existing typed records, not a second readiness
+validator. MetaMuse proposes geometry and names; deterministic engine rejection
+and Gabo's fabrication report retain authority. No photo-derived value becomes a
+measurement, and inspecting a stage neither approves a plan nor records work.
+
+## D050: Blueprint workbench, November 3, 2026
 
 The project workbench uses a blueprint grid and a section rail. Saved manuals
 index drawings by operation and show planned parts with their source stock and
@@ -538,3 +704,11 @@ The opening animation plays once per document load. Reduced-motion visitors
 see a static wordmark until the workbench hydrates.
 The manual uses the current compiled views. A rotatable assembly view remains
 subject to the physical P0 gate.
+
+## D051: Give MetaMuse localized canonical geometry feedback, November 3, 2026
+
+Rejected construction proposals expose bounded piece or connection references
+and allowlisted canonical geometry diagnostics to the existing single correction
+request. Diagnostic probes reuse the geometry producer; they cannot accept a
+candidate or invent measurements. Raw exception payloads, notes and labels are
+excluded. The two-candidate limit and fabrication authority remain unchanged.

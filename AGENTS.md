@@ -7,6 +7,85 @@ precedence. Record deliberate product changes in [docs/decisions.md](docs/decisi
 
 ## Ownership and coordination
 
+### November 3, 2026: connected MetaMuse construction proposals
+
+The user requests a photo/materials-and-goal flow where MetaMuse proposes named
+geometry and the engine generates checked construction stages. Reuse private
+saved inventory/photos, explicit provider consent, bounded model requests and
+Gabo's fabrication engine. Model-authored dimensions are design proposals, not
+photo measurements; model labels and roles are not physical observations.
+Preserve the existing product manual/repair flows and never activate a generic
+proposal or record work automatically. The expired external verification window
+still blocks agent live probes until explicitly renewed; offline integration
+checks do not renew it or establish a live provider pass.
+
+### November 3, 2026: material-bound proposals and piece references
+
+The user requests construction proposals using actual inventory, broader shapes,
+and consistent classified/named pieces across steps and diagrams. MetaMuse may
+propose geometry, names and roles; the engine validates identities, constraints
+and proposed operations. It does not replace model reasoning or establish visual
+or physical observations. Reuse Gabo's fabrication authority and trusted saved
+inventory/context. Local imported material records are explicitly unverified;
+missing process/profile evidence cannot be replaced with lab fixtures. Fresh
+construction proposals must not bypass history-aware repair of an active build.
+
+### November 3, 2026: automatic construction proposals
+
+The user requests automatic construction-step generation for different target
+shapes and compatibility with Gabo's fabrication engine. Generate proposed
+placement/connection states from the finished target graph; do not require manual
+stage authoring or implement another fabrication readiness authority. Real
+BuildPlan operation proposals must pass the existing compiler/fabrication report.
+Unsupported manufacturing shapes and missing real material/process evidence stay
+explicit. Synthetic lab stock is opt-in and cannot become approved physical work.
+
+### November 3, 2026: combined latest work and generic engine diagnostic
+
+The user requests integrating Gabo's latest published work and a friendlier,
+step-based diagnostic supporting user-authored shapes, not only the stand preset.
+The integration branch combines #154/#156/#158 with #157, preserving each lane's
+modules and review gates. This authorizes necessary shared-file merge resolution;
+it does not authorize merging unfinished remote PRs or claiming physical success.
+Declarative panel geometry and explicit physical stages belong to the engine.
+They are not a second fabrication scheduler or proof that arbitrary designs can
+be manufactured. Keep example data editable and hypothetical.
+
+### November 3, 2026: explicit engine expansion
+
+The user requests 360-degree rotation in the direct engine diagnostic, supported
+intermediate-stage physics, sliding, joint strength and deformation checks.
+This authorizes this bounded engine expansion despite the older offline-only
+pause. Diagnostic camera controls remain separate from physical transforms.
+Gabo retains fabrication rules, repair search and the product viewer; do not
+edit the active #154 fabrication implementation. Unknown physical properties
+remain unknown, and simplified constitutive checks must name their applicability.
+
+### November 3, 2026: current sequenced workstreams
+
+Issue #17 is the current assignment index. ResniDev owns #146 → #153 → #147 → #148 →
+#149 (measured stability, physical stage mechanics, reports/tools, synthesis, active measurement). Gabo owns
+#150 → #151, then #152 (fabrication, repair search, viewer). The old #139–#144
+issues are superseded historical specifications. PR #145 is the existing shared
+geometry/mechanics baseline, not completion of #146. Each owner delivers a full
+connected feature; shared registration/migration/mount edits remain serialized.
+The user explicitly requested a pure-engine test interface alongside #146;
+its labeled hypothetical examples must never become saved physical evidence.
+Issue #153 extends physical poses and stage mechanics, not Gabo's executable
+operation scheduler or interactive product viewer. The compiled-plan diagnostic
+exposes current unsupported stages; it does not complete that extension.
+
+### November 3, 2026: engine completion takes priority
+
+The user explicitly directed that #142 must not remain incomplete because work
+was left for Gabo. Implement the canonical geometry and integration dependencies
+needed to complete the stability engine in this lane, documenting their shared
+interfaces for reuse by #141/#144. This supersedes the earlier requirement to
+wait for that owner's producer or agreement. Check for active overlapping work
+and keep one canonical implementation, rather than parallel geometry authorities.
+Existing review, exact-head checks, physical-evidence gates and provider controls
+still apply. This is implementation authorization, not a physical-test claim.
+
 - @ResniDev owns domain, compiler, replanner, renderer, model gateway and prompts.
 - @olartgabo owns web, project/persistence API, physical validation, proof and evaluation.
 - Shared API files require a contract handoff before either lane changes them.

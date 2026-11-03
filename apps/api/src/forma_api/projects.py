@@ -144,7 +144,11 @@ class ProjectStore:
                 "inventory_revision_id TEXT NOT NULL, body TEXT NOT NULL, "
                 "process TEXT NOT NULL, parameters TEXT NOT NULL)"
             )
-            for table in ("progress_events", "progress_material"):
+            for table in (
+                "progress_events",
+                "progress_material",
+                "stability_measurements",
+            ):
                 connection.execute(
                     f"CREATE TABLE IF NOT EXISTS {table} "
                     "(id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
@@ -399,16 +403,17 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 (owner, project_id + ":media:%"),
             )
             connection.execute(
-                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?)",
+                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?, ?)",
                 (
                     owner,
                     project_id + ":plan-preview",
                     project_id + ":plan-activation",
                     project_id + ":design-generation",
+                    project_id + ":construction-proposal",
                 ),
             )
             connection.execute(
-                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?, ?, ?)",
+                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?, ?, ?, ?)",
                 (
                     owner,
                     project_id + ":progress",
@@ -416,6 +421,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                     project_id + ":materials",
                     project_id + ":adapt-simulate",
                     project_id + ":adapt-commit",
+                    project_id + ":stability-measurements",
                 ),
             )
             connection.execute(
@@ -429,6 +435,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
             return result
 
     from forma_api.adapt import adapt_router
+    from forma_api.construction_runtime import construction_router
     from forma_api.media import media_router
     from forma_api.plans import plan_router
     from forma_api.progress import progress_router
@@ -437,10 +444,14 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     from forma_api.routes.diagnosis import diagnosis_router
     from forma_api.routes.fabrication import fabrication_router
     from forma_api.routes.intake import intake_router
+    from forma_api.routes.muse_construction import muse_construction_router
     from forma_api.routes.repair_search import repair_search_router
     from forma_api.routes.repairs import repairs_router
+    from forma_api.routes.stability import stability_router
 
     router.include_router(media_router(store, authenticate))
+    router.include_router(construction_router(store, authenticate))
+    router.include_router(muse_construction_router(store, authenticate))
     router.include_router(intake_router(store, authenticate))
     router.include_router(plan_router(store, authenticate))
     router.include_router(progress_router(store, authenticate))
@@ -449,6 +460,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     router.include_router(designs_router(store, authenticate))
     router.include_router(diagnosis_router(store, authenticate))
     router.include_router(repairs_router(store, authenticate))
+    router.include_router(stability_router(store, authenticate))
     router.include_router(fabrication_router(store, authenticate))
     router.include_router(repair_search_router(store, authenticate))
     return router

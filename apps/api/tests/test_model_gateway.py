@@ -69,6 +69,22 @@ def final(content='{"questions":["Measure thickness"]}', reason="stop"):
     return {"choices": [{"finish_reason": reason, "message": {"content": content}}]}
 
 
+def test_bounded_completion_budget_for_geometry_proposals():
+    fake = Fake(final())
+    MetaGateway(fake).propose("Propose panels", Proposal, max_completion_tokens=8192)
+    assert fake.calls[0][1]["max_completion_tokens"] == 8192
+
+
+@pytest.mark.parametrize("limit", [0, -1, 8193, True, 2048.0, "8192"])
+def test_invalid_completion_budget_never_dispatches(limit):
+    fake = Fake()
+    with pytest.raises(ValueError, match="completion token"):
+        MetaGateway(fake).propose(
+            "Propose panels", Proposal, max_completion_tokens=limit
+        )
+    assert not fake.calls
+
+
 def call(name="check_measurements", arguments='{"measured":false}'):
     return {
         "choices": [
@@ -98,6 +114,7 @@ def test_image_structured_proposal_and_safe_trace():
     )
     assert output.questions == ["Measure thickness"]
     request = fake.calls[0][1]
+    assert request["max_completion_tokens"] == 2048
     assert (
         request["response_format"]["json_schema"]["schema"]
         == Proposal.model_json_schema()

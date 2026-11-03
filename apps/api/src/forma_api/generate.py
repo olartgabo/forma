@@ -15,6 +15,10 @@ from forma_api.adapt import (
     ConnectorMeasurement,
     PanelDiff,
 )
+from forma_api.construction_runtime import (
+    ConstructionGenerateRequest,
+    ConstructionGenerateResult,
+)
 from forma_api.design_runtime import (
     DesignCandidateResult,
     DesignDiagnostics,
@@ -39,6 +43,11 @@ from forma_api.intake_runtime import (
     IntakeResult,
 )
 from forma_api.media import Media, MediaDeleteResult, MediaList, MediaResult
+from forma_api.muse_construction import (
+    MuseConstructionCandidateResult,
+    MuseConstructionRequest,
+    MuseConstructionResult,
+)
 from forma_api.plans import (
     ActivationResult,
     CompilePreview,
@@ -80,7 +89,19 @@ from forma_api.repair_runtime import (
 )
 from forma_api.repair_search_runtime import RepairSearchRequest, RepairSearchResult
 from forma_api.routes.health import ProviderStatusResponse
-from forma_domain import models
+from forma_api.stability_measurements import (
+    StabilityMeasurementRequest,
+    StabilityMeasurementResponse,
+)
+from forma_api.stability_runtime import (
+    StabilityAnalysisRequest,
+    StabilityAnalysisResponse,
+    StabilityContext,
+)
+from forma_api.stability_stages import StageAnalysisRequest, StageAnalysisResponse
+from forma_domain import (
+    models,
+)
 from forma_domain.fabrication_contracts import (
     FabricationReport,
     FabricationSnapshot,
@@ -97,7 +118,19 @@ from forma_domain.repair_search_contracts import (
 )
 
 API_RECORDS = (
+    MuseConstructionRequest,
+    MuseConstructionResult,
+    MuseConstructionCandidateResult,
+    ConstructionGenerateRequest,
+    ConstructionGenerateResult,
     FabricationAssessment,
+    StageAnalysisRequest,
+    StageAnalysisResponse,
+    StabilityMeasurementRequest,
+    StabilityMeasurementResponse,
+    StabilityAnalysisRequest,
+    StabilityAnalysisResponse,
+    StabilityContext,
     ActivationResult,
     AdaptCommitRequest,
     AdaptCommitResult,

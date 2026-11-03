@@ -2,7 +2,7 @@
 
 The user subsequently chose this PR as the baseline for combining both
 implementations. [The combined handoff](issue-150-combined.md) records current
-contracts, checks and publication status; D037 supersedes the tool-gap exception
+contracts, checks and publication status; D045 supersedes the tool-gap exception
 below. Historical pass counts in this document belong to `3ee9812`.
 
 Status: implemented on `issue/150-fabrication-report` as two commits: the
@@ -34,7 +34,7 @@ SYNTHETIC; no physical step was attempted and no physical result is claimed.
     `apps/web/src/lib/generated/api-contracts.ts` (regenerated),
     `apps/web/src/lib/api.ts` (two loaders), `plan-workbench.tsx` and
     `adapt-workbench.tsx` (panel mounts), `globals.css`, `docs/contracts.md`,
-    `docs/decisions.md` (D036).
+    `docs/decisions.md` (D041).
   - Narrow adapter in `adapt.py`: `_ancestors` is now public `plan_ancestors`;
     preview loading and carried-work derivation moved into `read_preview` and
     `carried_operation_ids` so commit and the preview report share one
@@ -71,7 +71,7 @@ SYNTHETIC; no physical step was attempted and no physical result is claimed.
     loop: an inline progress callback re-triggered `PhysicalProgress` loading.
 - Live model/physical evidence: not attempted. No provider call was made.
 - Pending decisions and blockers: tool gaps are required confirmations, not
-  blockers, because saved tools are locked while a plan is active (D036).
+  blockers, because saved tools are locked while a plan is active (D041).
   Independent Sol/Terra review, publication and required remote checks remain.
 - Next concrete action and receiving owner: @olartgabo publishes the contract
   and feature PR after review; #151 consumes `FabricationReport` read-only.

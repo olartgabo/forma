@@ -28,7 +28,7 @@ histories are SYNTHETIC; no physical recovery was attempted.
   - Tests: `packages/renderer/tests/test_attached_base_replacement.py`,
     `apps/api/tests/test_attached_base_recovery.py`; the old "attached base
     blocks" case in `test_stand_continuation.py` is now support-only.
-  - Docs: README, architecture, replanner/renderer READMEs, D038.
+  - Docs: README, architecture, replanner/renderer READMEs, D043.
 - Implemented behavior: after the fold and all three joins, `replace_part` on
   `stand-base` peels front then rear (the first peel also waits on the apex
   attachment so the new test's required apex joint is an ancestor), cuts and

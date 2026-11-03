@@ -7,7 +7,18 @@ from pathlib import Path
 from pydantic import TypeAdapter
 from pydantic.json_schema import models_json_schema
 
-from . import fabrication_contracts, models
+from . import (
+    assembly_geometry_contracts,
+    construction_plan,
+    construction_resources,
+    fabrication_contracts,
+    generic_assembly,
+    models,
+    piece_references,
+    stability_contracts,
+    stability_measurements,
+    stage_mechanics,
+)
 from .fixtures import synthetic_inventory_a
 
 
@@ -23,6 +34,12 @@ def typescript(schema):
             return "(" + " | ".join(typescript(x) for x in schema[union]) + ")"
     kind = schema.get("type")
     if kind == "array":
+        if "prefixItems" in schema:
+            return (
+                "readonly ["
+                + ", ".join(typescript(item) for item in schema["prefixItems"])
+                + "]"
+            )
         return "ReadonlyArray<" + typescript(schema["items"]) + ">"
     if kind == "object":
         required = schema.get("required", [])
@@ -49,7 +66,18 @@ def typescript(schema):
 def domain_records():
     return {
         v.__name__: v
-        for module in (models, fabrication_contracts)
+        for module in (
+            models,
+            fabrication_contracts,
+            assembly_geometry_contracts,
+            generic_assembly,
+            construction_plan,
+            construction_resources,
+            piece_references,
+            stability_contracts,
+            stability_measurements,
+            stage_mechanics,
+        )
         for v in vars(module).values()
         if isinstance(v, type)
         and issubclass(v, models.Record)

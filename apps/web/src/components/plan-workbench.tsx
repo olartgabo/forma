@@ -24,6 +24,7 @@ import type { MuseAvailability } from "../lib/muse-provider";
 import MuseRequestStatus from "./muse-request-status";
 import { useMuseLanguage } from "./muse-language-provider";
 import PhysicalProgress from "./physical-progress";
+import StabilityReportPanel from "./stability-report";
 import type {
   DesignGenerateRequest,
   DesignGenerateResult,
@@ -73,6 +74,17 @@ export default function PlanWorkbench({
   const shownActive = useRef<string | null | undefined>(undefined);
   const [version, setVersion] = useState<PlanVersion | null>(null);
   const [step, setStep] = useState(0);
+  const [stabilityRefresh, setStabilityRefresh] = useState(0);
+  const [measurementRefresh, setMeasurementRefresh] = useState(0);
+  const [measurementPending, setMeasurementPending] = useState(false);
+  const handleMeasurementsSaved = useCallback(() => {
+    setMeasurementRefresh((value) => value + 1);
+  }, []);
+  const handleProgressChange = useCallback(() => {
+    setStabilityRefresh((value) => value + 1);
+    setFabricationKey((value) => value + 1);
+    onProgressChange();
+  }, [onProgressChange]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
   const [planError, setPlanError] = useState("");
@@ -85,11 +97,6 @@ export default function PlanWorkbench({
   const [saving, setSaving] = useState(false);
   const [progressPending, setProgressPending] = useState(false);
   const [fabricationKey, setFabricationKey] = useState(0);
-  // Stable: PhysicalProgress reloads whenever this callback's identity changes.
-  const progressChanged = useCallback(() => {
-    setFabricationKey((value) => value + 1);
-    onProgressChange();
-  }, [onProgressChange]);
   const [activationError, setActivationError] = useState("");
   const [activationStale, setActivationStale] = useState(false);
   const [designNotes, setDesignNotes] = useState("");
@@ -725,12 +732,14 @@ export default function PlanWorkbench({
                   version={version}
                   operationId={panel.operation_id}
                   photos={photos}
-                  disabled={approvalDisabled || pending !== null}
+                  disabled={
+                    approvalDisabled || pending !== null || measurementPending
+                  }
                   onReloadProject={onReload}
-                  onProgressChange={progressChanged}
+                  onProgressChange={handleProgressChange}
                   onDiagnoseFailure={onDiagnoseFailure}
                   museAvailability={museAvailability}
-                  refreshKey={diagnosisRefreshKey}
+                  refreshKey={(diagnosisRefreshKey ?? 0) + measurementRefresh}
                   onLockChange={(locked) => {
                     setProgressPending(locked);
                     onLockChange(locked);
@@ -738,6 +747,19 @@ export default function PlanWorkbench({
                 />
               )}
             </article>
+          )}
+          {current && version && (
+            <StabilityReportPanel
+              key={`${project.id}:${version.version_id}`}
+              token={token}
+              projectId={project.id}
+              planVersionId={version.version_id}
+              inventoryRevisionId={project.revision_id}
+              refreshKey={stabilityRefresh + (diagnosisRefreshKey ?? 0)}
+              onMeasurementsSaved={handleMeasurementsSaved}
+              onMeasurementLockChange={setMeasurementPending}
+              disabled={approvalDisabled || pending !== null || progressPending}
+            />
           )}
           {current && (
             <FabricationReportPanel
@@ -759,7 +781,12 @@ export default function PlanWorkbench({
               token={token}
               projectId={project.id}
               version={version}
-              disabled={approvalDisabled || pending !== null || progressPending}
+              disabled={
+                approvalDisabled ||
+                pending !== null ||
+                progressPending ||
+                measurementPending
+              }
               onApproved={onReload}
               onLockChange={onLockChange}
               handoff={repairHandoff?.handoff ?? null}
