@@ -605,7 +605,8 @@ def test_stand_repair_requires_family_manual_geometry_validation():
     assert result.status == "feasible"
 
 
-def test_known_scoped_damage_can_be_replaced_without_rewriting_history():
+@pytest.mark.parametrize("extra_damage", [False, True])
+def test_known_scoped_damage_can_be_replaced_without_rewriting_history(extra_damage):
     data = joint_data()
     data["events"].append(event("cut_brace"))
     data["remaining_stock"][0]["usable_regions"] = []
@@ -627,8 +628,14 @@ def test_known_scoped_damage_can_be_replaced_without_rewriting_history():
             part_ids=["brace"],
         )
     ]
+    evidence_ids = ["damage_photo"]
+    if extra_damage:
+        other = deepcopy(data["evidence"][0])
+        other.update(id="other_damage_photo", part_ids=["base"])
+        data["evidence"].append(other)
+        evidence_ids.append(other["id"])
     data["events"].append(
-        event(None, id="damage", kind="damage", evidence_ids=["damage_photo"])
+        event(None, id="damage", kind="damage", evidence_ids=evidence_ids)
     )
     data["patch"].update(
         id="replace_damage",
@@ -639,9 +646,17 @@ def test_known_scoped_damage_can_be_replaced_without_rewriting_history():
     )
     before = deepcopy(data)
     result = run(data)
-    assert result.status == "feasible", result.blockers
-    assert result.lost_part_ids == ("brace",)
-    assert result.invalidated_evidence_ids == ("damage_photo",)
+    if extra_damage:
+        assert result.status == "blocked"
+        assert any(
+            b.code == "needs_confirmation" and "damage" in b.target_ids
+            for b in result.blockers
+        )
+        assert result.plan is None
+    else:
+        assert result.status == "feasible", result.blockers
+        assert result.lost_part_ids == ("brace",)
+        assert result.invalidated_evidence_ids == ("damage_photo",)
     assert data == before
 
 
