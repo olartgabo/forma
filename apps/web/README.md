@@ -112,7 +112,8 @@ UI state (not a persisted physical event or server replay). It checks diagrams,
 instructions, tools, parts, checkpoints, bill of materials, bounded width, reachable
 Next, zero writes, disabled save/diagnosis and prerequisite blocking. A third
 scenario per width submits a damage report to an intercepted route and checks the
-exact request, the paused build and the removed save control.
+exact request, the paused build and the removed save control. A fourth records a
+measured tape loss and checks the exact material request.
 
 Export the fixture to a path outside tracked source. It runs the existing
 `apps/api/tests/test_plans.py` inputs through the offline compiler/renderer, using this

@@ -78,7 +78,9 @@ function progress(failed) {
   };
 }
 
-async function scenario(width, failed, damage = false) {
+async function scenario(width, failed, extra = null) {
+  const damage = extra === "damage";
+  const material = extra === "material";
   const context = await browser.newContext({
     viewport: { width, height: 844 },
     serviceWorkers: "block",
@@ -89,6 +91,7 @@ async function scenario(width, failed, damage = false) {
   const unexpected = [];
   const writes = [];
   const damageReports = [];
+  const materialReports = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const replay = new Map([
     ["/api/provider/status", { configured: false }],
@@ -126,6 +129,17 @@ async function scenario(width, failed, damage = false) {
         await route.fulfill({ json: { progress: damaged(), replayed: false } });
         return;
       }
+      if (
+        material &&
+        request.method() === "POST" &&
+        url.pathname === `${base}/materials`
+      ) {
+        materialReports.push(request.postDataJSON());
+        await route.fulfill({
+          json: { progress: progress(false), replayed: false },
+        });
+        return;
+      }
       if (request.method() !== "GET") {
         writes.push(`${request.method()} ${url.pathname}`);
         await route.fulfill({
@@ -158,6 +172,59 @@ async function scenario(width, failed, damage = false) {
         exact: false,
       })
       .waitFor();
+    if (material) {
+      const record = manual.locator(".material-report");
+      await record.locator("summary").click();
+      const saveMaterial = record.getByRole("button", {
+        name: "Save material record",
+      });
+      await record
+        .getByLabel("Material", { exact: true })
+        .selectOption("synthetic-tape-stock");
+      assert(
+        await record.getByLabel("Recovered after discarding").isDisabled(),
+        "connectors cannot be recovered",
+      );
+      await record.getByLabel("Measured length lost (mm)").fill("20");
+      await record
+        .getByLabel("How did you measure or identify it?")
+        .fill("SYNTHETIC ruler reading; UI test only");
+      assert(await saveMaterial.isDisabled(), "material needs confirmation");
+      await record
+        .getByLabel("I handled or measured this material myself.")
+        .check();
+      await saveMaterial.click();
+      await manual
+        .getByText("Material record saved. Expected stock now reflects it.")
+        .waitFor();
+      assert.equal(materialReports.length, 1);
+      assert.deepEqual(
+        { ...materialReports[0], idempotency_key: "checked" },
+        {
+          expected_version_id: version.version_id,
+          expected_last_event_id: null,
+          idempotency_key: "checked",
+          operation_id: panels[0].operation_id,
+          kind: "waste",
+          stock_id: "synthetic-tape-stock",
+          region_id: null,
+          length_mm: 20,
+          observation: "SYNTHETIC ruler reading; UI test only",
+          user_confirmed: true,
+          photo_ids: [],
+        },
+      );
+      const box = await page.evaluate(() => ({
+        doc: document.documentElement.scrollWidth,
+        viewport: innerWidth,
+      }));
+      assert(box.doc <= box.viewport + 1, JSON.stringify(box));
+      assert.deepEqual(writes, [], "only the material record is written");
+      assert.deepEqual(errors, [], "the connected components must not crash");
+      assert.deepEqual(unexpected, [], "every request is explicitly replayed");
+      console.log(`PASS ${width}px synthetic material record is sent exactly`);
+      return;
+    }
     if (damage) {
       const report = manual.locator(".damage-report");
       await report.locator("summary").click();
@@ -335,7 +402,8 @@ async function scenario(width, failed, damage = false) {
 try {
   for (const width of [390, 320]) {
     for (const failed of [false, true]) await scenario(width, failed);
-    await scenario(width, false, true);
+    await scenario(width, false, "damage");
+    await scenario(width, false, "material");
   }
 } finally {
   await browser.close();

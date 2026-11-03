@@ -243,6 +243,20 @@ export type MaterialDelta = {
   readonly "unit": "mm" | "mm2";
 };
 
+export type MaterialReport = {
+  readonly "expected_version_id": string;
+  readonly "expected_last_event_id": (string | null);
+  readonly "idempotency_key": string;
+  readonly "operation_id": string;
+  readonly "kind": "waste" | "salvage";
+  readonly "stock_id": string;
+  readonly "region_id"?: (string | null);
+  readonly "length_mm"?: (number | null);
+  readonly "observation": string;
+  readonly "user_confirmed": true;
+  readonly "photo_ids"?: ReadonlyArray<string>;
+};
+
 export type Media = {
   readonly "id": string;
   readonly "project_id": string;

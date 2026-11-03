@@ -4,6 +4,7 @@ import {
   loadProgress,
   recordProgress,
   reportDamage,
+  reportMaterial,
 } from "../lib/api";
 import {
   createDiagnosisFocus,
@@ -14,6 +15,7 @@ import {
 } from "../lib/build-diagnosis";
 import type {
   DamageReport,
+  MaterialReport,
   Media,
   PlanVersion,
   ProgressSnapshot,
@@ -24,9 +26,12 @@ import {
   type MuseAvailability,
 } from "../lib/muse-provider";
 
+import { recoverableRegionIds } from "../lib/material-recovery";
+
 type Submission =
   | { kind: "progress"; body: ProgressUpdate }
-  | { kind: "damage"; body: DamageReport };
+  | { kind: "damage"; body: DamageReport }
+  | { kind: "material"; body: MaterialReport };
 
 function message(error: unknown) {
   return error instanceof ApiError
@@ -78,6 +83,14 @@ export default function PhysicalProgress({
   const [damageNote, setDamageNote] = useState("");
   const [damagePhotoIds, setDamagePhotoIds] = useState<readonly string[]>([]);
   const [damageConfirmed, setDamageConfirmed] = useState(false);
+  const [materialKind, setMaterialKind] = useState<"waste" | "salvage">(
+    "waste",
+  );
+  const [materialStockId, setMaterialStockId] = useState("");
+  const [materialRegionId, setMaterialRegionId] = useState("");
+  const [materialLength, setMaterialLength] = useState("");
+  const [materialNote, setMaterialNote] = useState("");
+  const [materialConfirmed, setMaterialConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
   const controller = useRef(new AbortController());
   const operation = version.plan.operations.find(
@@ -150,6 +163,31 @@ export default function PhysicalProgress({
         version.version_id,
       )
     : null;
+  const materialStock = version.plan.stocks.find(
+    (stock) => stock.id === materialStockId,
+  );
+  const connectorStock =
+    materialStock?.kind === "tape" || materialStock?.kind === "cord";
+  // Waste names a region usable now; salvage names one wasted in this version.
+  const materialRegionIds =
+    materialKind === "waste"
+      ? (progress?.expected_remaining_stock
+          .find((stock) => stock.id === materialStockId)
+          ?.usable_regions?.map((region) => region.id) ?? [])
+      : recoverableRegionIds(
+          progress?.material_transactions ?? [],
+          materialStockId,
+        );
+  const materialLengthValue = Number(materialLength);
+  const materialReady =
+    materialConfirmed &&
+    materialNote.trim() !== "" &&
+    materialStock !== undefined &&
+    (connectorStock
+      ? materialKind === "waste" &&
+        Number.isFinite(materialLengthValue) &&
+        materialLengthValue > 0
+      : materialRegionIds.includes(materialRegionId));
   const savedDiagnoses = currentProgress
     ? latestDiagnosisEvidence(
         currentProgress,
@@ -205,6 +243,7 @@ export default function PhysicalProgress({
     setPhotoIds([]);
     setNotice("");
     resetDamage();
+    resetMaterial();
   }, [operationId, attempt]);
 
   function resetDamage() {
@@ -212,6 +251,15 @@ export default function PhysicalProgress({
     setDamageNote("");
     setDamagePhotoIds([]);
     setDamageConfirmed(false);
+  }
+
+  function resetMaterial() {
+    setMaterialKind("waste");
+    setMaterialStockId("");
+    setMaterialRegionId("");
+    setMaterialLength("");
+    setMaterialNote("");
+    setMaterialConfirmed(false);
   }
 
   async function save(request: Submission) {
@@ -227,7 +275,9 @@ export default function PhysicalProgress({
       const response =
         request.kind === "damage"
           ? await reportDamage(token, projectId, request.body, signal)
-          : await recordProgress(token, projectId, request.body, signal);
+          : request.kind === "material"
+            ? await reportMaterial(token, projectId, request.body, signal)
+            : await recordProgress(token, projectId, request.body, signal);
       if (signal.aborted) return;
       reportKnown = true;
       setPending(null);
@@ -237,6 +287,7 @@ export default function PhysicalProgress({
       setObservation("");
       setPhotoIds([]);
       resetDamage();
+      resetMaterial();
       const latest = response.replayed
         ? await loadProgress(token, projectId, version.version_id, signal)
         : response.progress;
@@ -247,9 +298,11 @@ export default function PhysicalProgress({
       setNotice(
         request.kind === "damage"
           ? "Damage saved. Stop and review a repair before continuing."
-          : latest.status === "needs_review"
-            ? "Failed check saved. Stop and review the build before continuing."
-            : "Your physical report was saved.",
+          : request.kind === "material"
+            ? "Material record saved. Expected stock now reflects it."
+            : latest.status === "needs_review"
+              ? "Failed check saved. Stop and review the build before continuing."
+              : "Your physical report was saved.",
       );
     } catch (failure) {
       if (signal.aborted) return;
@@ -303,6 +356,27 @@ export default function PhysicalProgress({
         user_confirmed: true,
         checks_confirmed: true,
         photo_ids: [...photoIds],
+      },
+    });
+  }
+
+  function submitMaterial(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canReportDamage || locked || !materialReady || !materialStock) return;
+    void save({
+      kind: "material",
+      body: {
+        expected_version_id: version.version_id,
+        expected_last_event_id: progress?.last_event_id ?? null,
+        idempotency_key: crypto.randomUUID(),
+        operation_id: operationId,
+        kind: materialKind,
+        stock_id: materialStock.id,
+        region_id: connectorStock ? null : materialRegionId,
+        length_mm: connectorStock ? materialLengthValue : null,
+        observation: materialNote.trim(),
+        user_confirmed: true,
+        photo_ids: [],
       },
     });
   }
@@ -671,6 +745,134 @@ export default function PhysicalProgress({
                 }
               >
                 Save damage report
+              </button>
+            </fieldset>
+          </form>
+        </details>
+      )}
+      {canReportDamage && (
+        <details className="material-report">
+          <summary>Record discarded or recovered material</summary>
+          <form onSubmit={submitMaterial}>
+            <fieldset disabled={locked}>
+              <p className="help">
+                Record a whole offcut you threw away, tape you measured as lost
+                at a tape joint, or an offcut you recovered after discarding it.
+                Expected stock changes; no work is marked done.
+              </p>
+              <label htmlFor="material-stock">Material</label>
+              <select
+                id="material-stock"
+                value={materialStockId}
+                onChange={(event) => {
+                  setMaterialStockId(event.target.value);
+                  setMaterialRegionId("");
+                  setMaterialLength("");
+                }}
+              >
+                <option value="">Choose material</option>
+                {version.plan.stocks.map((stock) => (
+                  <option key={stock.id} value={stock.id}>
+                    {stock.id} ({stock.kind})
+                  </option>
+                ))}
+              </select>
+              <fieldset>
+                <legend>What happened to it?</legend>
+                <label className="checkbox-label">
+                  <input
+                    type="radio"
+                    name="material-kind"
+                    checked={materialKind === "waste"}
+                    onChange={() => {
+                      setMaterialKind("waste");
+                      setMaterialRegionId("");
+                    }}
+                  />
+                  Discarded or lost
+                </label>
+                <label className="checkbox-label">
+                  <input
+                    type="radio"
+                    name="material-kind"
+                    checked={materialKind === "salvage"}
+                    disabled={connectorStock}
+                    onChange={() => {
+                      setMaterialKind("salvage");
+                      setMaterialRegionId("");
+                    }}
+                  />
+                  Recovered after discarding
+                </label>
+              </fieldset>
+              {materialStock && connectorStock && (
+                <>
+                  <label htmlFor="material-length">
+                    Measured length lost (mm)
+                  </label>
+                  <input
+                    id="material-length"
+                    type="number"
+                    min="0"
+                    step="any"
+                    inputMode="decimal"
+                    value={materialLength}
+                    onChange={(event) => setMaterialLength(event.target.value)}
+                  />
+                </>
+              )}
+              {materialStock && !connectorStock && (
+                <>
+                  <label htmlFor="material-region">Region</label>
+                  <select
+                    id="material-region"
+                    value={materialRegionId}
+                    onChange={(event) =>
+                      setMaterialRegionId(event.target.value)
+                    }
+                  >
+                    <option value="">
+                      {materialRegionIds.length === 0
+                        ? materialKind === "waste"
+                          ? "No usable region of this material"
+                          : "No discarded region to recover"
+                        : "Choose a region"}
+                    </option>
+                    {materialRegionIds.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+              <label htmlFor="material-observation">
+                How did you measure or identify it?
+              </label>
+              <textarea
+                id="material-observation"
+                rows={2}
+                maxLength={2000}
+                required
+                value={materialNote}
+                onChange={(event) => setMaterialNote(event.target.value)}
+              />
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={materialConfirmed}
+                  onChange={(event) =>
+                    setMaterialConfirmed(event.target.checked)
+                  }
+                />
+                I handled or measured this material myself.
+              </label>
+              <button
+                type="submit"
+                className="secondary"
+                disabled={!materialReady}
+              >
+                Save material record
               </button>
             </fieldset>
           </form>

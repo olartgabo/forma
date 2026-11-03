@@ -451,6 +451,159 @@ def test_reported_damage_blocks_repairs_that_keep_the_damaged_part(setup):
     }
 
 
+def report_material(client, plan, current, key, **fields):
+    return client.post(
+        f"/api/projects/{plan.project_id}/materials",
+        headers=AUTH,
+        json=dict(
+            expected_version_id=plan.version_id,
+            expected_last_event_id=current["last_event_id"],
+            idempotency_key=key,
+            observation=SYNTHETIC,
+            user_confirmed=True,
+            photo_ids=[],
+        )
+        | fields,
+    )
+
+
+def stock(snapshot, stock_id):
+    return next(s for s in snapshot["expected_remaining_stock"] if s["id"] == stock_id)
+
+
+def test_wasted_spare_cannot_supply_a_repair_until_salvaged(setup):
+    client, version, _ = setup
+    plan = version.plan
+    current = joined(client, version)
+    spare = dict(operation_id="stand-cut-panels", stock_id="synthetic-spare")
+    response = report_material(
+        client,
+        plan,
+        current,
+        "waste-spare",
+        kind="waste",
+        region_id="synthetic-spare-region",
+        **spare,
+    )
+    assert response.status_code == 200, response.text
+    wasted = response.json()["progress"]
+    assert stock(wasted, "synthetic-spare")["usable_regions"] == []
+    assert wasted["status"] == current["status"]
+    assert wasted["completed_operation_ids"] == current["completed_operation_ids"]
+    receipt = wasted["material_transactions"][-1]
+    assert (receipt["kind"], receipt["unit"], receipt["source_region_id"]) == (
+        "waste",
+        "mm2",
+        "synthetic-spare-region",
+    )
+    assert (wasted["events"][-1]["kind"], wasted["evidence"][-1]["kind"]) == (
+        "measurement",
+        "measurement",
+    )
+    blocked = simulate(client, plan, wasted, [patch(plan)], key="simulate-wasted")
+    assert blocked.status_code == 200, blocked.text
+    assert blocked.json()["previews"][0]["simulation"]["blockers"] == [
+        {
+            "code": "stock_exhausted",
+            "message": "No actual remaining region fits the replacement brace and measured margins.",
+            "target_ids": ["synthetic-spare"],
+        }
+    ]
+
+    response = report_material(
+        client,
+        plan,
+        wasted,
+        "salvage-spare",
+        kind="salvage",
+        region_id="synthetic-spare-region",
+        **spare,
+    )
+    assert response.status_code == 200, response.text
+    salvaged = response.json()["progress"]
+    assert stock(salvaged, "synthetic-spare") == stock(current, "synthetic-spare")
+    feasible = simulate(client, plan, salvaged, [patch(plan)], key="simulate-salvaged")
+    assert feasible.status_code == 200, feasible.text
+    assert feasible.json()["previews"][0]["simulation"]["status"] == "feasible"
+
+
+def test_measured_tape_loss_must_match_the_measured_remainder(setup):
+    client, version, _ = setup
+    plan = version.plan
+    current = joined(client, version)
+    before = stock(current, "synthetic-tape-stock")["remaining_length_mm"]["value"]
+    response = report_material(
+        client,
+        plan,
+        current,
+        "waste-tape",
+        kind="waste",
+        stock_id="synthetic-tape-stock",
+        operation_id="stand-joint-rear-attach",
+        length_mm=20,
+    )
+    assert response.status_code == 200, response.text
+    lost = response.json()["progress"]
+    after = stock(lost, "synthetic-tape-stock")["remaining_length_mm"]
+    assert after["value"] == before - 20 and after["source"] == "calculated"
+    stale = simulate(
+        client, plan, lost, [patch(plan)], key="simulate-old-tape", tape=before
+    )
+    stale_sim = stale.json()["previews"][0]["simulation"]
+    assert stale_sim["status"] == "blocked"
+    assert "Remaining connector length conflicts with confirmed consumption." in {
+        b["message"] for b in stale_sim["blockers"]
+    }
+    fresh = simulate(
+        client, plan, lost, [patch(plan)], key="simulate-new-tape", tape=before - 20
+    )
+    assert fresh.json()["previews"][0]["simulation"]["status"] == "feasible"
+
+
+@pytest.mark.parametrize(
+    "fields,status",
+    [
+        (dict(stock_id="synthetic-tape-stock", length_mm=20), 422),
+        (
+            dict(
+                stock_id="synthetic-tape-stock",
+                operation_id="stand-joint-rear-attach",
+                length_mm=10_000,
+            ),
+            409,
+        ),
+        (dict(stock_id="synthetic-spare", region_id="no-such-region"), 409),
+        (
+            dict(
+                stock_id="synthetic-spare",
+                region_id="synthetic-spare-region",
+                kind="salvage",
+            ),
+            409,
+        ),
+        (
+            dict(
+                stock_id="synthetic-spare",
+                region_id="synthetic-spare-region",
+                length_mm=5,
+            ),
+            422,
+        ),
+        (dict(stock_id="synthetic-spare"), 422),
+        (dict(stock_id="no-such-stock", region_id="synthetic-spare-region"), 422),
+        (dict(stock_id="synthetic-spare", length_mm=5), 422),
+    ],
+)
+def test_invalid_material_report_leaves_history_unchanged(setup, fields, status):
+    client, version, _ = setup
+    plan = version.plan
+    current = joined(client, version)
+    body = dict(kind="waste", operation_id="stand-cut-panels") | fields
+    response = report_material(client, plan, current, "invalid-material", **body)
+    assert response.status_code == status, response.text
+    assert progress(client, plan.project_id, plan.version_id) == current
+
+
 def test_two_part_damage_cannot_be_cleared_by_one_replacement(setup):
     client, version, directory = setup
     plan = version.plan

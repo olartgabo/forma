@@ -23,6 +23,7 @@ import type {
   IntakeRequest,
   IntakeResult,
   InventoryUpdate,
+  MaterialReport,
   MediaList,
   MediaResult,
   Project,
@@ -711,6 +712,25 @@ export function reportDamage(
   return request(
     token,
     `${projectPath(id)}/damage`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    json<ProgressResult>,
+    signal,
+  );
+}
+
+export function reportMaterial(
+  token: string,
+  id: string,
+  body: MaterialReport,
+  signal?: AbortSignal,
+): Promise<ProgressResult> {
+  return request(
+    token,
+    `${projectPath(id)}/materials`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

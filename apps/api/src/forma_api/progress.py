@@ -20,6 +20,7 @@ from forma_domain.models import (
     Measurement,
     PhysicalEvent,
     Record,
+    Region,
     Stock,
 )
 
@@ -84,6 +85,45 @@ class DamageReport(Record):
         return self
 
 
+class MaterialReport(Record):
+    """Material the builder discarded, lost or recovered at a step.
+
+    Sheet waste names a whole current region; connector waste is a measured
+    length lost on a tape joint; salvage returns a region wasted earlier in
+    this version. These are the only losses the replanner can reconcile."""
+
+    expected_version_id: ID
+    expected_last_event_id: ID | None
+    idempotency_key: Key
+    operation_id: ID
+    kind: Literal["waste", "salvage"]
+    stock_id: ID
+    region_id: ID | None = None
+    length_mm: Annotated[float, Field(gt=0)] | None = None
+    observation: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)
+    ]
+    user_confirmed: Literal[True]
+    photo_ids: tuple[ID, ...] = Field(default=(), max_length=8)
+
+    @model_validator(mode="before")
+    @classmethod
+    def explicit_confirmation(cls, value):
+        if isinstance(value, dict) and value.get("user_confirmed") is not True:
+            raise ValueError("Explicit confirmation is required")
+        return value
+
+    @model_validator(mode="after")
+    def one_quantity(self):
+        if (self.region_id is None) == (self.length_mm is None):
+            raise ValueError("Give either a region or a measured length")
+        if self.kind == "salvage" and self.region_id is None:
+            raise ValueError("Salvage returns a previously wasted region")
+        if len(set(self.photo_ids)) != len(self.photo_ids):
+            raise ValueError("Duplicate photo IDs")
+        return self
+
+
 class ProgressSnapshot(Record):
     project_id: ID
     version_id: ID
@@ -104,7 +144,11 @@ class ProgressResult(Record):
     replayed: bool = False
 
 
-def expected_stock(plan: BuildPlan, completed: set[str]) -> tuple[Stock, ...]:
+def expected_stock(
+    plan: BuildPlan,
+    completed: set[str],
+    transactions: tuple[MaterialTransaction, ...] = (),
+) -> tuple[Stock, ...]:
     regions = {stock.id: list(stock.usable_regions) for stock in plan.stocks}
     # Account in reported decimal lengths without rounding away consumed stock.
     lengths = {
@@ -114,11 +158,16 @@ def expected_stock(plan: BuildPlan, completed: set[str]) -> tuple[Stock, ...]:
         for stock in plan.stocks
     }
     used_connectors = set()
-    for operation in plan.operations:
-        if operation.id not in completed:
-            continue
+    operations = {op.id: op for op in plan.operations if op.id in completed}
+    consumed = {item.operation_id for item in transactions if item.kind == "consume"}
+
+    def apply_operation(operation):
         if operation.type == "cut_rect":
             sid = operation.args.stock_id
+            if not any(r.id == operation.args.source_region_id for r in regions[sid]):
+                raise ProjectError(
+                    409, "blocked", "The cut source region is unavailable"
+                )
             regions[sid] = [
                 region
                 for region in regions[sid]
@@ -131,6 +180,25 @@ def expected_stock(plan: BuildPlan, completed: set[str]) -> tuple[Stock, ...]:
                 raise ProjectError(409, "blocked", "Confirmed use exceeds known stock")
             lengths[sid] -= amount
             used_connectors.add(sid)
+
+    # Carried completions have no receipts in this version and precede its reports.
+    for operation in operations.values():
+        if operation.id not in consumed:
+            apply_operation(operation)
+    for item in transactions:
+        sid = item.source_stock_id
+        if item.kind == "consume":
+            apply_operation(operations[item.operation_id])
+        elif item.kind == "waste" and item.unit == "mm":
+            amount = Decimal(str(item.quantity))
+            if lengths[sid] is None or lengths[sid] < amount:
+                raise ProjectError(409, "blocked", "Recorded loss exceeds known stock")
+            lengths[sid] -= amount
+            used_connectors.add(sid)
+        elif item.kind == "waste":
+            regions[sid] = [r for r in regions[sid] if r.id != item.source_region_id]
+        elif item.kind == "salvage":
+            regions[sid] = regions[sid] + [item.output_region]
     return tuple(
         Stock(
             **{
@@ -217,7 +285,7 @@ def snapshot(connection, plan: BuildPlan) -> ProgressSnapshot:
         ),
         failed_operation_ids=tuple(op.id for op in plan.operations if op.id in failed),
         damaged_part_ids=tuple(part.id for part in plan.parts if part.id in damaged),
-        expected_remaining_stock=expected_stock(plan, completed),
+        expected_remaining_stock=expected_stock(plan, completed, transactions),
         status=status,
     )
 
@@ -319,6 +387,21 @@ def _append(connection, project_id, version_id, evidence, events, transactions=(
             "INSERT INTO progress_material VALUES (?, ?, ?, ?)",
             (item.id, project_id, version_id, item.model_dump_json()),
         )
+
+
+def _known_region(plan: BuildPlan, stock_id: str, region_id: str) -> Region | None:
+    """A region of this stock as originally recorded or created by a planned cut."""
+    for stock in plan.stocks:
+        if stock.id == stock_id:
+            for region in stock.usable_regions:
+                if region.id == region_id:
+                    return region
+    for operation in plan.operations:
+        if operation.type == "cut_rect" and operation.args.stock_id == stock_id:
+            for region in operation.effects.created_offcuts:
+                if region.id == region_id:
+                    return region
+    return None
 
 
 def progress_router(store: ProjectStore, authenticate) -> APIRouter:
@@ -619,6 +702,176 @@ def progress_router(store: ProjectStore, authenticate) -> APIRouter:
                 verification_state="user_confirmed",
             )
             _append(connection, project_id, plan.version_id, evidence, [event])
+            result = ProgressResult(progress=snapshot(connection, plan)).model_dump(
+                mode="json"
+            )
+            store.remember(
+                connection, owner, scope, body.idempotency_key, digest, result
+            )
+            return result
+
+    @router.post("/{project_id}/materials", response_model=ProgressResult)
+    def report_material(
+        project_id: ID, body: MaterialReport, owner: Owner, response: Response
+    ):
+        """Record measured or discarded material. It changes expected stock and
+        never completes work or changes build status."""
+        response.headers["Cache-Control"] = "no-store"
+        with store.transaction() as connection:
+            project = store.read(connection, owner, project_id)
+            scope = project_id + ":materials"
+            digest, replay = store.replay(
+                connection,
+                owner,
+                scope,
+                body.idempotency_key,
+                body.model_dump(mode="json"),
+            )
+            if replay is not None:
+                return replay
+            if project.active_version_id != body.expected_version_id:
+                raise ProjectError(
+                    409, "stale_version", "The active plan changed; reload it"
+                )
+            plan = plans.read(connection, project_id, body.expected_version_id).plan
+            current = snapshot(connection, plan)
+            if current.last_event_id != body.expected_last_event_id:
+                raise ProjectError(
+                    409, "stale_version", "Physical history changed; reload it"
+                )
+            operation = next(
+                (op for op in plan.operations if op.id == body.operation_id), None
+            )
+            original = next((st for st in plan.stocks if st.id == body.stock_id), None)
+            if operation is None or original is None:
+                raise ProjectError(
+                    422, "validation_error", "Unknown operation or stock"
+                )
+            remaining = next(
+                st for st in current.expected_remaining_stock if st.id == original.id
+            )
+            transaction_fields = dict(
+                project_id=project_id,
+                version_id=plan.version_id,
+                operation_id=operation.id,
+                source_stock_id=original.id,
+            )
+            if original.kind in ("tape", "cord"):
+                if body.length_mm is None or body.kind != "waste":
+                    raise ProjectError(
+                        422,
+                        "validation_error",
+                        "Connector loss is a measured length of waste",
+                    )
+                if (
+                    operation.type not in ("tape_joint", "tie_joint")
+                    or operation.args.stock_id != original.id
+                ):
+                    raise ProjectError(
+                        422,
+                        "validation_error",
+                        "Record connector loss on a joint that uses this connector",
+                    )
+                if not original.remaining_length_mm.confirmed:
+                    raise ProjectError(
+                        409,
+                        "blocked",
+                        "Confirm the original connector length before recording loss",
+                    )
+                left = remaining.remaining_length_mm.value
+                if left is None or body.length_mm > left:
+                    raise ProjectError(
+                        409, "blocked", "Recorded loss exceeds known stock"
+                    )
+                quantity = dict(quantity=body.length_mm, unit="mm")
+                summary = f"{body.length_mm} mm of {original.id} lost"
+            else:
+                if body.region_id is None:
+                    raise ProjectError(422, "validation_error", "Name the sheet region")
+                if body.kind == "waste":
+                    region = next(
+                        (r for r in remaining.usable_regions if r.id == body.region_id),
+                        None,
+                    )
+                    if region is None:
+                        raise ProjectError(
+                            409, "blocked", "That region is not currently usable"
+                        )
+                    quantity = dict(source_region_id=region.id)
+                else:
+                    wasted = set()
+                    for item in current.material_transactions:
+                        if item.source_stock_id != original.id:
+                            continue
+                        if item.kind == "waste" and item.unit == "mm2":
+                            wasted.add(item.source_region_id)
+                        elif item.kind == "salvage":
+                            wasted.discard(item.output_region.id)
+                        elif item.kind == "consume":
+                            wasted.discard(item.source_region_id)
+                    region = _known_region(plan, original.id, body.region_id)
+                    if body.region_id not in wasted or region is None:
+                        raise ProjectError(
+                            409,
+                            "blocked",
+                            "Only a region wasted in this version can be salvaged",
+                        )
+                    quantity = dict(output_region=region)
+                area = region.geometry.width * region.geometry.height
+                quantity |= dict(quantity=area, unit="mm2")
+                summary = f"{original.id} region {region.id} ({area:g} mm2) " + (
+                    "discarded" if body.kind == "waste" else "recovered"
+                )
+            _require_photos(connection, project_id, body.photo_ids)
+            recorded_at = _next_recorded_at(current)
+            shared = dict(
+                project_id=project_id,
+                version_id=plan.version_id,
+                provenance="user",
+                operation_ids=(operation.id,),
+                recorded_at=recorded_at,
+                description=f"{summary}. {body.observation}"[:2000],
+                verification_state="user_confirmed",
+            )
+            evidence = [
+                Evidence(id="evidence-" + uuid4().hex, kind="measurement", **shared)
+            ] + [
+                Evidence(
+                    id="evidence-" + uuid4().hex,
+                    kind="photo",
+                    asset_id=photo_id,
+                    **shared,
+                )
+                for photo_id in body.photo_ids
+            ]
+            event = PhysicalEvent(
+                id="event-" + uuid4().hex,
+                project_id=project_id,
+                version_id=plan.version_id,
+                operation_id=operation.id,
+                kind="measurement",
+                evidence_ids=tuple(item.id for item in evidence),
+                recorded_at=recorded_at,
+                actor="user",
+                observation=shared["description"],
+                verification_state="user_confirmed",
+            )
+            transaction = MaterialTransaction(
+                id="material-" + uuid4().hex,
+                kind=body.kind,
+                recorded_at=recorded_at,
+                physical_event_id=event.id,
+                **transaction_fields,
+                **quantity,
+            )
+            _append(
+                connection,
+                project_id,
+                plan.version_id,
+                evidence,
+                [event],
+                [transaction],
+            )
             result = ProgressResult(progress=snapshot(connection, plan)).model_dump(
                 mode="json"
             )
