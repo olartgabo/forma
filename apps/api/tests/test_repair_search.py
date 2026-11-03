@@ -1,5 +1,6 @@
 """Synthetic repair searches over saved history; no physical attempt or pass."""
 
+import json
 import sqlite3
 
 import pytest
@@ -19,7 +20,22 @@ preview_setup = test_progress.preview_setup
 @pytest.fixture
 def setup(repair_setup, monkeypatch):
     monkeypatch.setattr(fabrication_runtime, "ALLOW_SYNTHETIC", True)
+    client, version, directory = repair_setup
+    # Explicit synthetic tool declaration; strict readiness must not invent it.
+    set_tools(directory, version.project_id, ["ruler", "scissors"])
     return repair_setup
+
+
+def set_tools(directory, project_id, tools):
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        row = connection.execute(
+            "SELECT body FROM projects WHERE id=?", (project_id,)
+        ).fetchone()
+        project = json.loads(row[0])
+        project["requirements"]["tools"] = tools
+        connection.execute(
+            "UPDATE projects SET body=? WHERE id=?", (json.dumps(project), project_id)
+        )
 
 
 def search(client, plan, current, key="search-001", headers=AUTH, **fields):
@@ -197,3 +213,16 @@ def test_second_repair_of_a_replacement_stays_unsupported(setup):
     summary = response.json()["summary"]
     assert summary["status"] == "infeasible"
     assert all(o["status"] != "ranked" for o in summary["outcomes"])
+
+
+def test_missing_declared_cutting_tool_blocks_repair_search(setup):
+    client, version, directory = setup
+    set_tools(directory, version.project_id, ["ruler"])
+    damaged = report_damage(client, version.plan, joined(client, version))
+    result = search(client, version.plan, damaged).json()
+    assert result["summary"]["status"] == "infeasible"
+    assert result["previews"]["previews"] == []
+    replacement = next(
+        o for o in result["summary"]["outcomes"] if o["patch"]["kind"] == "replace_part"
+    )
+    assert any("cutting tool" in b["message"] for b in replacement["blockers"])

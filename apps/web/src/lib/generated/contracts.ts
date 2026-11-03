@@ -252,6 +252,47 @@ export type EvidenceInvalidation = {
   readonly "recorded_at": string;
 };
 
+export type FabricationInput = {
+  readonly "project_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "lineage": ReadonlyArray<VersionHistory>;
+  readonly "remaining_stock": ReadonlyArray<Stock>;
+  readonly "declared_tools": (ReadonlyArray<string> | null);
+  readonly "context_blockers"?: ReadonlyArray<Blocker>;
+  readonly "profile_evidence"?: ReadonlyArray<Evidence>;
+};
+
+export type FabricationReport = {
+  readonly "snapshot": FabricationSnapshot;
+  readonly "status": "ready" | "blocked" | "complete" | "history_conflict";
+  readonly "current_state_id": string;
+  readonly "required_connector_measurement_ids"?: ReadonlyArray<string>;
+  readonly "attached_joint_ids": ReadonlyArray<string>;
+  readonly "damaged_part_ids": ReadonlyArray<string>;
+  readonly "failed_operation_ids": ReadonlyArray<string>;
+  readonly "next_operation_id": (string | null);
+  readonly "operations": ReadonlyArray<OperationReadiness>;
+  readonly "supported_order": ReadonlyArray<OrderStep>;
+  readonly "order_status": "complete" | "blocked" | "cycle";
+  readonly "order_blockers": ReadonlyArray<Blocker>;
+  readonly "blockers": ReadonlyArray<Blocker>;
+  readonly "access_basis": "declared_rules";
+  readonly "observed_usability": "not_assessed";
+};
+
+export type FabricationSnapshot = {
+  readonly "project_id": string;
+  readonly "version_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "last_event_id": (string | null);
+  readonly "inputs_sha256": string;
+  readonly "plan_sha256": string;
+  readonly "history_sha256": string;
+  readonly "process_sha256": string;
+  readonly "rules_version": "fabrication-rules-v1";
+  readonly "compiler_version": string;
+};
+
 export type Feature = {
   readonly "id": string;
   readonly "kind": "tab" | "slot" | "fold" | "mark";
@@ -460,6 +501,24 @@ export type OperationBase = {
   readonly "effects": Effects;
 };
 
+export type OperationReadiness = {
+  readonly "operation_id": string;
+  readonly "operation_type": "measure" | "mark" | "cut_rect" | "cut_slot" | "fold" | "insert_tab" | "tape_joint" | "tie_joint" | "attach_brace" | "detach" | "inspect" | "functional_test";
+  readonly "status": "completed" | "ready" | "waiting" | "blocked";
+  readonly "completed_in_version_id": (string | null);
+  readonly "waiting_on_operation_ids": ReadonlyArray<string>;
+  readonly "blockers": ReadonlyArray<Blocker>;
+  readonly "tools": ReadonlyArray<ToolCheck>;
+  readonly "required_confirmations": ReadonlyArray<string>;
+  readonly "next_state_id": (string | null);
+};
+
+export type OrderStep = {
+  readonly "operation_id": string;
+  readonly "state_id": string;
+  readonly "reordered": boolean;
+};
+
 export type Part = {
   readonly "id": string;
   readonly "source_stock_id": string;
@@ -571,6 +630,20 @@ export type TieJoint = {
   readonly "type": "tie_joint";
   readonly "args": ConsumableJointArgs;
   readonly "reversible": "reversible" | "lossy";
+};
+
+export type ToolCheck = {
+  readonly "tool": "cutting_tool" | "ruler" | "marker" | "scale" | "protractor";
+  readonly "status": "declared" | "not_declared" | "unknown";
+  readonly "declared_name": (string | null);
+};
+
+export type VersionHistory = {
+  readonly "plan": BuildPlan;
+  readonly "events"?: ReadonlyArray<PhysicalEvent>;
+  readonly "evidence"?: ReadonlyArray<Evidence>;
+  readonly "carried_operation_ids"?: ReadonlyArray<string>;
+  readonly "base_last_event_id"?: (string | null);
 };
 
 export type Operation = (Measure | Mark | CutRect | CutSlot | Fold | InsertTab | TapeJoint | TieJoint | AttachBrace | Detach | Inspect | FunctionalTest);

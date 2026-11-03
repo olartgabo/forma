@@ -13,6 +13,7 @@ import type {
   DiagnosisRequest,
   DiagnosisResult,
   FabricationReport,
+  FabricationAssessment,
   PlanActivation,
   PlanList,
   PlanVersion,
@@ -826,6 +827,7 @@ function checkedFabricationReport(
   value: unknown,
   projectId: string,
   versionId: string,
+  assessment?: FabricationAssessment,
 ): FabricationReport {
   const invalid = () =>
     new ApiError(
@@ -838,6 +840,12 @@ function checkedFabricationReport(
     !isRecord(value.snapshot) ||
     value.snapshot.project_id !== projectId ||
     value.snapshot.version_id !== versionId ||
+    typeof value.snapshot.inputs_sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.snapshot.inputs_sha256) ||
+    (assessment !== undefined &&
+      (value.snapshot.inventory_revision_id !==
+        assessment.expected_inventory_revision_id ||
+        value.snapshot.last_event_id !== assessment.expected_last_event_id)) ||
     !FABRICATION_STATUSES.includes(value.status as string) ||
     !Array.isArray(value.operations) ||
     !Array.isArray(value.supported_order) ||
@@ -855,23 +863,47 @@ async function fabricationRequest(
   versionId: string,
   conflict: string,
   signal?: AbortSignal,
+  assessment?: FabricationAssessment,
 ): Promise<FabricationReport> {
   try {
     return await request(
       token,
       path,
-      { method: "GET" },
+      assessment === undefined
+        ? { method: "GET" }
+        : {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(assessment),
+          },
       async (response) =>
         checkedFabricationReport(
           await json<unknown>(response),
           projectId,
           versionId,
+          assessment,
         ),
       signal,
     );
   } catch (error) {
+    if (
+      assessment !== undefined &&
+      error instanceof ApiError &&
+      error.status === 422
+    )
+      throw new ApiError(
+        422,
+        error.code,
+        "These report confirmations could not be accepted. Check tool names and measured lengths; record material loss or reconcile a different balance before continuing.",
+      );
     if (error instanceof ApiError && error.status === 409)
-      throw new ApiError(409, error.code, conflict);
+      throw new ApiError(
+        409,
+        error.code,
+        error.code === "blocked"
+          ? "This saved build cannot be assessed under the supported report limits. Review its history and required inputs."
+          : conflict,
+      );
     if (error instanceof ApiError && error.status === 404)
       throw new ApiError(
         404,
@@ -912,6 +944,24 @@ export function loadPreviewFabricationReport(
     versionId,
     "Physical history changed after this repair preview. Simulate the repair again to see its next step.",
     signal,
+  );
+}
+
+export function assessFabricationReport(
+  token: string,
+  id: string,
+  versionId: string,
+  body: FabricationAssessment,
+  signal?: AbortSignal,
+): Promise<FabricationReport> {
+  return fabricationRequest(
+    token,
+    `${projectPath(id)}/versions/${encodeURIComponent(versionId)}/fabrication/assess`,
+    id,
+    versionId,
+    "The active plan, inventory or recorded history changed. Reload the manual and confirm fresh inputs for the current next step.",
+    signal,
+    body,
   );
 }
 

@@ -17,6 +17,7 @@ from forma_domain.fabrication_contracts import (
 )
 from forma_domain.models import Blocker, BuildPlan, Stock
 
+from .materials import projection_blockers
 from .replay import (
     ExecutionState,
     apply_operation,
@@ -89,23 +90,44 @@ class _Scheduler:
         self.joints = {j.id: j for j in plan.joints}
         self.supported = FAMILY_OPERATION_TYPES.get(plan.family, frozenset())
 
-    def producers(self, joint_id: str, pending: set[str]) -> list[str]:
+    def producers(self, joint_id: str, pending: set[str], consumer: str) -> list[str]:
         return [
             op_id
             for op_id in pending
             if joint_id in self.operations[op_id].effects.attached_joint_ids
+            and consumer not in self.ancestors(op_id)
         ]
 
     def held_by(self, part_id: str, state: ExecutionState) -> list[str]:
         return sorted(j for j in state.attached if part_id in self.joints[j].part_ids)
 
-    def pending_preparation(self, part_ids, pending: set[str]) -> list[str]:
+    def ancestors(self, op_id: str) -> set[str]:
+        found, todo = set(), list(self.operations[op_id].depends_on)
+        while todo:
+            dep = todo.pop()
+            if dep not in found:
+                found.add(dep)
+                todo.extend(self.operations[dep].depends_on)
+        return found
+
+    def explicit_release(self, join, prep) -> bool:
+        """Preparation after a join is valid only through an explicit detach."""
+        ancestors = self.ancestors(prep)
+        return any(
+            self.operations[dep].type == "detach"
+            and self.operations[dep].args.joint_id == join.args.joint_id
+            and join.id in self.ancestors(dep)
+            for dep in ancestors
+        )
+
+    def pending_preparation(self, part_ids, pending: set[str], join) -> list[str]:
         return sorted(
             (
                 op_id
                 for op_id in pending
                 if self.operations[op_id].type in PREPARATION_TYPES
                 and self.operations[op_id].args.part_id in part_ids
+                and not self.explicit_release(join, op_id)
             ),
             key=self.index.get,
         )
@@ -147,7 +169,7 @@ class _Scheduler:
         for joint_id in operation.preconditions.required_joint_ids:
             if joint_id in state.attached:
                 continue
-            producers = self.producers(joint_id, pending - {op_id})
+            producers = self.producers(joint_id, pending - {op_id}, op_id)
             if producers:
                 check.waiting_on.extend(producers)
             else:
@@ -176,7 +198,9 @@ class _Scheduler:
                     op_id,
                     joint.id,
                 )
-            for prep in self.pending_preparation(joint.part_ids, pending - {op_id}):
+            for prep in self.pending_preparation(
+                joint.part_ids, pending - {op_id}, operation
+            ):
                 block(
                     "invalid_order",
                     f"Do {prep} first. Joining now would cover "
@@ -185,7 +209,7 @@ class _Scheduler:
                     prep,
                 )
         if operation.type == "detach" and args.joint_id not in state.attached:
-            producers = self.producers(args.joint_id, pending - {op_id})
+            producers = self.producers(args.joint_id, pending - {op_id}, op_id)
             if producers:
                 check.waiting_on.extend(producers)
             else:
@@ -231,10 +255,16 @@ class _Scheduler:
                     op_id,
                     args.stock_id,
                 )
-            elif length is None:
+            elif length is None or not stock.remaining_length_mm.confirmed:
                 block(
                     "missing_measurement",
-                    f"Measure how much {args.stock_id} is left before this join.",
+                    (
+                        f"Measure how much {args.stock_id} is left before this join."
+                        if length is not None
+                        and stock.remaining_length_mm.source == "calculated"
+                        else f"Confirm starting inventory before plan approval or reconcile "
+                        f"material history for {args.stock_id}; this report cannot establish original stock."
+                    ),
                     op_id,
                     args.stock_id,
                 )
@@ -250,7 +280,24 @@ class _Scheduler:
         return check
 
     def confirmations(self, operation, ledger: Ledger) -> tuple[str, ...]:
-        found = list(operation.preconditions.human_checks)
+        preconditions = operation.preconditions
+        found = list(preconditions.human_checks)
+        found.extend(
+            f"Confirm access to part {pid}."
+            for pid in preconditions.accessible_part_ids
+        )
+        found.extend(
+            f"Confirm required joint {jid} is attached."
+            for jid in preconditions.required_joint_ids
+        )
+        found.extend(
+            f"Confirm measurement {mid}."
+            for mid in preconditions.confirmed_measurement_ids
+        )
+        if preconditions.safe_tools_confirmed:
+            found.append("Confirm safe tools before this operation.")
+        if operation.requires_user_confirmation:
+            found.append("Explicit user action is required to confirm this operation.")
         if operation.reversible == "irreversible":
             found.append(
                 "This step cannot be undone. Confirm every measurement it uses before you start."
@@ -260,10 +307,18 @@ class _Scheduler:
         if operation.type in ("tape_joint", "tie_joint"):
             stock = ledger.stocks.get(operation.args.stock_id)
             if stock is not None and not stock.remaining_length_mm.confirmed:
-                found.append(
-                    f"{stock.id} is calculated, not measured. Check at least "
-                    f"{operation.args.length_mm:g} mm is left."
-                )
+                if (
+                    stock.remaining_length_mm.source == "calculated"
+                    and stock.remaining_length_mm.value is not None
+                ):
+                    found.append(
+                        f"{stock.id} is calculated, not measured. Check at least "
+                        f"{operation.args.length_mm:g} mm is left."
+                    )
+                else:
+                    found.append(
+                        f"Confirm starting inventory before plan approval or reconcile material history for {stock.id}."
+                    )
         return tuple(found)
 
     def edges(self, pending: set[str]) -> dict[str, set[str]]:
@@ -273,14 +328,16 @@ class _Scheduler:
             operation = self.operations[op_id]
             before[op_id].update(d for d in operation.depends_on if d in pending)
             for joint_id in operation.preconditions.required_joint_ids:
-                before[op_id].update(self.producers(joint_id, pending - {op_id}))
+                before[op_id].update(self.producers(joint_id, pending - {op_id}, op_id))
             if operation.type == "detach":
                 before[op_id].update(
-                    self.producers(operation.args.joint_id, pending - {op_id})
+                    self.producers(operation.args.joint_id, pending - {op_id}, op_id)
                 )
             if operation.type in JOIN_TYPES:
                 parts = self.joints[operation.args.joint_id].part_ids
-                before[op_id].update(self.pending_preparation(parts, pending - {op_id}))
+                before[op_id].update(
+                    self.pending_preparation(parts, pending - {op_id}, operation)
+                )
         return before
 
     def order(
@@ -288,6 +345,7 @@ class _Scheduler:
         state: ExecutionState,
         ledger: Ledger,
         plan_sha256: str,
+        declared_tools: tuple[str, ...] | None,
     ) -> tuple[tuple[OrderStep, ...], str, tuple[Blocker, ...]]:
         pending = {op.id for op in self.plan.operations if op.id not in state.completed}
         before = self.edges(pending)
@@ -302,22 +360,40 @@ class _Scheduler:
         steps: list[OrderStep] = []
         latest = -1
         while queue:
-            _, op_id = heapq.heappop(queue)
-            operation = self.operations[op_id]
-            check = self.structural(operation, state, ledger, pending)
-            if check.blockers or check.waiting_on:
-                return (
-                    tuple(steps),
-                    "blocked",
-                    tuple(check.blockers)
+            deferred = []
+            blocked = []
+            while queue:
+                item = heapq.heappop(queue)
+                _, op_id = item
+                operation = self.operations[op_id]
+                check = self.structural(operation, state, ledger, pending)
+                for tool in tool_checks(operation, declared_tools):
+                    if tool.status != "declared":
+                        check.blockers.append(
+                            Blocker(
+                                code="needs_confirmation",
+                                message=f"Declare an available {tool.tool.replace('_', ' ')} before this step.",
+                                target_ids=(operation.id,),
+                            )
+                        )
+                if not check.blockers and not check.waiting_on:
+                    break
+                deferred.append(item)
+                blocked.extend(
+                    check.blockers
                     or (
                         Blocker(
                             code="invalid_order",
                             message=f"{op_id} cannot follow the supported order.",
                             target_ids=(op_id, *check.waiting_on),
                         ),
-                    ),
+                    )
                 )
+            else:
+                return tuple(steps), "blocked", tuple(blocked)
+            # Retry earlier blocked candidates after each simulated transition.
+            for item in deferred:
+                heapq.heappush(queue, item)
             pending.discard(op_id)
             apply_operation(state, operation, self.plan.version_id)
             ledger.spend(operation)
@@ -373,6 +449,13 @@ def fabrication_report(
         version_id=plan.version_id,
         inventory_revision_id=data.inventory_revision_id,
         last_event_id=target.events[-1].id if target.events else None,
+        inputs_sha256=_sha256(
+            {
+                "input": data.model_dump(mode="json"),
+                "process": process.model_dump(mode="json"),
+                "allow_synthetic": allow_synthetic,
+            }
+        ),
         plan_sha256=plan_sha256,
         history_sha256=_sha256(
             {
@@ -403,6 +486,7 @@ def fabrication_report(
     state, conflicts = replay(data.lineage)
     blockers = list(conflicts)
     blockers.extend(data.context_blockers)
+    blockers.extend(projection_blockers(data))
     if plan.family not in FAMILY_OPERATION_TYPES:
         blockers.append(
             Blocker(
@@ -425,7 +509,7 @@ def fabrication_report(
     pending = {op.id for op in plan.operations if op.id not in state.completed}
     current = state_id(plan_sha256, state)
 
-    if conflicts or compiled.status != "accepted":
+    if blockers:
         steps, order_status, order_blockers = (
             (),
             "blocked",
@@ -438,7 +522,7 @@ def fabrication_report(
         )
     else:
         steps, order_status, order_blockers = scheduler.order(
-            state, ledger, plan_sha256
+            state, ledger, plan_sha256, data.declared_tools
         )
 
     operations = []
@@ -461,6 +545,15 @@ def fabrication_report(
         check = scheduler.structural(operation, state, ledger, pending)
         tools = tool_checks(operation, data.declared_tools)
         own = list(check.blockers)
+        for tool in tools:
+            if tool.status != "declared":
+                own.append(
+                    Blocker(
+                        code="needs_confirmation",
+                        message=f"Declare an available {tool.tool.replace('_', ' ')} before this step.",
+                        target_ids=(operation.id,),
+                    )
+                )
         status = "blocked" if own else "waiting" if check.waiting_on else None
         if status is None:
             if blockers:
@@ -498,13 +591,29 @@ def fabrication_report(
     if conflicts:
         status = "history_conflict"
     elif not pending:
-        status = "complete"
+        status = "blocked" if blockers else "complete"
     else:
         status = "ready" if ready else "blocked"
     return FabricationReport(
         snapshot=snapshot,
         status=status,
         current_state_id=current,
+        required_connector_measurement_ids=tuple(
+            sorted(
+                stock.id
+                for stock in data.remaining_stock
+                if stock.kind in {"tape", "cord"}
+                and stock.remaining_length_mm.source == "calculated"
+                and stock.remaining_length_mm.value is not None
+                and not stock.remaining_length_mm.confirmed
+                and any(
+                    op.id in pending
+                    and op.type in {"tape_joint", "tie_joint"}
+                    and op.args.stock_id == stock.id
+                    for op in plan.operations
+                )
+            )
+        ),
         attached_joint_ids=tuple(sorted(state.attached)),
         damaged_part_ids=tuple(sorted(state.damaged)),
         failed_operation_ids=tuple(sorted(state.failed)),

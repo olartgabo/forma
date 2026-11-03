@@ -1,5 +1,9 @@
 # Implementation handoffs
 
+Issue #150's [combined implementation](issue-150-combined.md) retains PR #154
+as the baseline and records its reconciliation with the independently reviewed
+local work, including stricter gates and report-only confirmations.
+
 Create one file per active issue using [TEMPLATE.md](TEMPLATE.md). The handoffs
 below describe implemented interfaces, checks actually run and remaining work.
 Some retain their original branch/review status or historical test counts;

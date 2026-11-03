@@ -472,7 +472,7 @@ builder no way forward. The report is modeled, not observed: it never completes
 a step, authorizes cutting or changes stock. See the
 [fabrication handoff](handoffs/issue-150-fabrication-report.md).
 
-## D037: Repair search enumerates existing operators and reuses approval, November 3, 2026
+## D038: Repair search enumerates existing operators and reuses approval, November 3, 2026
 
 Issue #151 adds `POST /projects/{id}/repairs/search`. It generates repairs only
 from operators the simulator already supports: replacement from remaining usable
@@ -486,3 +486,26 @@ top three are stored as ordinary previews, so approval is the existing atomic
 `adapt/commit`. Search records no physical work. `exhausted` (the limit stopped
 the search) is reported separately from `infeasible` (everything was checked).
 See the [repair search handoff](handoffs/issue-151-repair-search.md).
+
+## D037: Reconcile fabrication readiness with explicit report-only confirmations, November 3, 2026
+
+The user chose PR #154 as the baseline and asked to retain useful parts of both
+implementations. Keep its lineage/boundary replay, GET routes, next-step manual
+navigation, transition IDs and deployment packaging. D036's tool-gap behavior is
+superseded: unavailable tools and unconfirmed connector balances block readiness.
+
+An authenticated read-only assessment can add actual available tool names and
+fresh measured connector lengths after explicit confirmation, bound to expected
+active version, inventory revision and history cursor. They apply only to that
+report. Different measured balances require material-loss records or separate
+reconciliation; they never silently modify inventory, ledger, evidence or work.
+Clear/refresh and project/version/history changes discard these confirmations.
+Repair previews keep their saved simulation measurements and are re-simulated
+against authoritative inputs before reporting.
+
+The combined engine hashes all typed inputs, including profile evidence and
+validation mode, and validates remaining-stock provenance and confirmed physical
+history. Independent preparation precedes attachments; explicit supported
+join/detach/preparation/reattach sequences remain available. Declared access and
+tool availability establish neither observed usability nor physical suitability.
+No provider call or physical pass follows from these software checks.

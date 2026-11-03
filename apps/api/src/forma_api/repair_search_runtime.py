@@ -97,7 +97,7 @@ def search(connection, project: Project, body: RepairSearchRequest) -> dict:
         ),
         limits=limits,
         simulate=lambda patch: base.simulate(patch, remaining),
-        schedule=ProposedReports(connection, project),
+        schedule=ProposedReports(connection, project, remaining),
         prior_plans=(base.version.plan, *base.ancestors),
     )
     shown = [
