@@ -645,6 +645,20 @@ export default function PlanWorkbench({
           )}
           {panel && (
             <article className="manual-step">
+              <nav className="drawing-index" aria-label="Assembly drawings">
+                {version.manual.panels.map((drawing, index) => (
+                  <button
+                    type="button"
+                    key={drawing.operation_id}
+                    aria-current={index === step ? "step" : undefined}
+                    aria-label={`Open drawing for step ${index + 1}`}
+                    disabled={progressPending}
+                    onClick={() => setStep(index)}
+                  >
+                    {String(index + 1).padStart(2, "0")}
+                  </button>
+                ))}
+              </nav>
               <h3 tabIndex={-1}>
                 Step {step + 1} of {version.manual.panels.length} —{" "}
                 {operationTitles[
@@ -771,6 +785,27 @@ export default function PlanWorkbench({
               physical stock.
             </p>
           </details>
+          {version.plan.parts.length > 0 && (
+            <details className="manual-materials">
+              <summary>Planned parts ({version.plan.parts.length})</summary>
+              <ul className="part-files">
+                {version.plan.parts.map((part, index) => (
+                  <li key={part.id}>
+                    <span className="part-file-tab">
+                      Part {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <div className="part-file-body">
+                      <strong>{part.id}</strong>
+                      <span>
+                        {part.geometry.width} × {part.geometry.height} mm
+                      </span>
+                      <span>Stock {part.source_stock_id}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           {canApprove && (
             <div className="plan-approval">
               <label className="checkbox-label">

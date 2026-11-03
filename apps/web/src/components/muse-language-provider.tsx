@@ -27,7 +27,7 @@ export function useMuseLanguage(): MuseLanguageValue {
 export function MuseLanguageControl() {
   const { locale, setLocale, copy } = useMuseLanguage();
   return (
-    <div lang={locale}>
+    <div className="workbench-language" lang={locale}>
       <p className="help">{copy.language.label}</p>
       <div
         className="muse-actions"
@@ -71,7 +71,6 @@ export default function MuseLanguageProvider({
   };
   return (
     <MuseLanguageContext.Provider value={value}>
-      <MuseLanguageControl />
       {children}
     </MuseLanguageContext.Provider>
   );
