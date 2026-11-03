@@ -486,6 +486,17 @@ def test_project_deletion_purges_history_photos_and_retry_snapshots(setup):
         "photo_ids": [photo_id],
     }
     assert post(client, version, body).status_code == 200
+    damaged = post_damage(
+        client,
+        version,
+        damage(version, progress(client, version).json(), photos=(photo_id,)),
+    )
+    assert damaged.status_code == 200, damaged.text
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM requests WHERE scope=?",
+            (version.project_id + ":damage",),
+        ).fetchone() == (1,)
     assert (
         client.delete(
             f"/api/projects/{version.project_id}",
@@ -506,10 +517,15 @@ def test_project_deletion_purges_history_photos_and_retry_snapshots(setup):
             assert (
                 connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
             )
+        assert connection.execute(
+            "SELECT COUNT(*) FROM requests WHERE scope=?",
+            (version.project_id + ":damage",),
+        ).fetchone() == (0,)
         receipts = [
             row[0] for row in connection.execute("SELECT response FROM requests")
         ]
     assert all("SYNTHETIC software action" not in receipt for receipt in receipts)
+    assert all("SYNTHETIC torn brace edge" not in receipt for receipt in receipts)
 
 
 def test_server_ingestion_order_survives_clock_moving_backwards(setup, monkeypatch):

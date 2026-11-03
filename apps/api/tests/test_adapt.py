@@ -381,7 +381,7 @@ def test_failed_fit_check_is_resolved_only_by_an_approved_revision(setup):
     assert {row[0] for row in rows} == invalidated
 
 
-def report_damage(client, plan, current, part_id="stand-brace"):
+def report_damage(client, plan, current, part_id="stand-brace", *, part_ids=None):
     response = client.post(
         f"/api/projects/{plan.project_id}/damage",
         headers=AUTH,
@@ -390,7 +390,7 @@ def report_damage(client, plan, current, part_id="stand-brace"):
             expected_last_event_id=current["last_event_id"],
             idempotency_key="damage-brace",
             operation_id="stand-joint-apex-attach",
-            part_ids=[part_id],
+            part_ids=part_ids if part_ids is not None else [part_id],
             observation=SYNTHETIC,
             user_confirmed=True,
             photo_ids=[],
@@ -602,3 +602,33 @@ def test_invalid_material_report_leaves_history_unchanged(setup, fields, status)
     response = report_material(client, plan, current, "invalid-material", **body)
     assert response.status_code == status, response.text
     assert progress(client, plan.project_id, plan.version_id) == current
+
+
+def test_two_part_damage_cannot_be_cleared_by_one_replacement(setup):
+    client, version, directory = setup
+    plan = version.plan
+    damaged = report_damage(
+        client,
+        plan,
+        joined(client, version),
+        part_ids=["stand-brace", "stand-support"],
+    )
+    response = simulate(client, plan, damaged, [patch(plan)])
+    assert response.status_code == 200, response.text
+    preview = response.json()["previews"][0]
+    assert preview["simulation"]["status"] == "blocked"
+    assert preview["version"] is None and preview["rank"] is None
+    assert any(
+        b["code"] == "needs_confirmation"
+        and damaged["events"][-1]["id"] in b["target_ids"]
+        for b in preview["simulation"]["blockers"]
+    )
+    refused = commit(client, plan, damaged, preview["preview_id"])
+    assert (refused.status_code, refused.json()["code"]) == (409, "blocked")
+    assert active(client, plan.project_id) == plan.version_id
+    assert progress(client, plan.project_id, plan.version_id) == damaged
+    assert set(damaged["damaged_part_ids"]) == {"stand-brace", "stand-support"}
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert connection.execute("SELECT COUNT(*) FROM plan_revisions").fetchone() == (
+            0,
+        )

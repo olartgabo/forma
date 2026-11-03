@@ -263,10 +263,13 @@ def test_stand_base_width_change_is_unsupported():
     )
 
 
-def test_stand_base_shrink_is_unsupported():
+@pytest.mark.parametrize("depth_mm", [130, 60])
+def test_stand_base_shrink_is_unsupported(depth_mm):
+    # 60 mm is below the fixture support's 67.5 mm horizontal reach, so a
+    # resize that would break depth > reach is refused by the shrink rule.
     plan, _parameters, process = build()
     _snapshot_obj, result = _simulate(
-        plan, _patch(plan, "stand-base", 80, 130), process
+        plan, _patch(plan, "stand-base", 80, depth_mm), process
     )
     _assert_single_blocker(
         result,

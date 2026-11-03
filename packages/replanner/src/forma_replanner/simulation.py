@@ -546,7 +546,7 @@ def simulate_patch(
         if event.kind == "damage":
             if not (
                 patch.kind == "replace_part"
-                and patch.target_id in targets
+                and targets == {patch.target_id}
                 and event.actor == "user"
                 and event.verification_state == "user_confirmed"
                 and event.evidence_ids

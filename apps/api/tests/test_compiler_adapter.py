@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -218,7 +219,27 @@ def test_missing_trusted_input_needs_specific_measurement(
         task, state, "propose"
     )
     assert outcome.reviews[0].feedback == feedback
-    assert replayed_feedback(fake) == feedback.model_dump(mode="json")
+    replayed = replayed_feedback(fake)
+    assert replayed == feedback.model_dump(mode="json")
+    # The model is asked for the measurement, never handed a stand-in value.
+    assert not re.search(r"kerf|margin|lip|depth|\d", json.dumps(replayed["blockers"]))
+
+
+@pytest.mark.parametrize("task", ["design", "repair"])
+def test_missing_profile_evidence_blocks_as_unsupported_profile(task):
+    request, state, kwargs = setup_case()
+    kwargs["profile_evidence"] = ()
+    candidate = request.candidate if task == "design" else patch(state)
+    result = adapter.build_validator(**kwargs)(candidate, state)
+    assert result.status == "blocked"
+    assert [(b.code, b.message) for b in result.blockers] == [
+        (
+            "unsupported_profile",
+            "Profile needs user-observed physical evidence; fixtures require opt-in."
+            if task == "design"
+            else "Resolve measured profile evidence before simulating a repair.",
+        )
+    ]
 
 
 @pytest.mark.parametrize(
