@@ -1,3 +1,5 @@
+import { recoverableRegionIds } from "../src/lib/material-recovery.ts";
+
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -3315,4 +3317,31 @@ test("API rewrite allows bounded runtime calls to reach the browser deadline", a
   const { default: config } = await import("../next.config.ts");
   assert.ok(config.experimental.proxyTimeout > 130_000);
   assert.ok(config.experimental.proxyTimeout <= 150_000);
+});
+
+test("material picker restores recovery after a second waste and scopes stock", () => {
+  const waste = {
+    kind: "waste",
+    unit: "mm2",
+    source_stock_id: "sheet-a",
+    source_region_id: "parent",
+    output_region: null,
+  };
+  const salvage = {
+    ...waste,
+    kind: "salvage",
+    source_region_id: null,
+    output_region: { id: "parent" },
+  };
+  const reports = [waste];
+  assert.deepEqual(recoverableRegionIds(reports, "sheet-a"), ["parent"]);
+  reports.push(salvage);
+  assert.deepEqual(recoverableRegionIds(reports, "sheet-a"), []);
+  reports.push(waste);
+  assert.deepEqual(recoverableRegionIds(reports, "sheet-a"), ["parent"]);
+  assert.deepEqual(recoverableRegionIds(reports, "sheet-b"), []);
+  reports.push({ ...salvage, source_stock_id: "sheet-b" });
+  assert.deepEqual(recoverableRegionIds(reports, "sheet-a"), ["parent"]);
+  reports.push(salvage, { ...waste, kind: "consume" });
+  assert.deepEqual(recoverableRegionIds(reports, "sheet-a"), []);
 });

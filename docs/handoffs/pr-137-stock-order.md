@@ -31,3 +31,24 @@ Verification:
 No live provider calls or physical attempts were made. These are software
 regressions and establish no physical pass. Independent review and publication
 remain with the coordinating owner.
+
+
+## Repeated recovery review finding
+
+The independent review found that subtracting all historical salvage IDs from
+all waste IDs rejected a second recovery after waste, salvage and another waste.
+The API and material picker now fold records in order for the selected stock:
+waste makes a region recoverable, salvage clears that state and consumption
+keeps a used parent unavailable. Both original parents and declared offcuts can
+complete two waste/recovery cycles in the API regression. The picker regression
+also checks recovery removal and isolation from another stock's reports.
+
+The follow-up integrates `origin/main` at
+`5c56296489aa602624182310a2d0647a4ba65eb9`. Targeted API verification reported
+`2 passed, 38 deselected in 1.06s`; web tests reported `# pass 107`, `# fail 0`.
+
+`NEXT_TELEMETRY_DISABLED=1 npm run check` on this follow-up exited 0: formatting,
+Ruff, contracts and web types passed; web tests reported `# pass 107`, `# fail 0`;
+pytest reported `1127 passed, 4 skipped in 55.84s` (POSIX-shell prerequisites);
+devloop reported `# pass 18`, `# fail 0`; the build reported
+`Compiled successfully in 296ms`. No live or physical checks were attempted.
