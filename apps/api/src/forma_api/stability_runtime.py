@@ -92,7 +92,29 @@ MISSING_PREREQUISITES = (
 )
 
 
+@dataclass(frozen=True)
+class Evaluation:
+    """A response plus the exact engine input that produced its report."""
+
+    response: StabilityAnalysisResponse
+    analysis: StabilityInput | None = None
+
+
+def _status(report):
+    if report.status == "needs_measurement":
+        return "needs_measurement"
+    if report.status in ("unsupported", "indeterminate"):
+        return "unsupported"
+    return "complete"
+
+
 def analyze(snapshot: StabilitySnapshot, resolver: StabilityResolver | None = None):
+    return evaluate(snapshot, resolver).response
+
+
+def evaluate(
+    snapshot: StabilitySnapshot, resolver: StabilityResolver | None = None
+) -> Evaluation:
     fields = dict(
         project_id=snapshot.project.id,
         plan_version_id=snapshot.version.version_id,
@@ -112,34 +134,43 @@ def analyze(snapshot: StabilitySnapshot, resolver: StabilityResolver | None = No
         try:
             geometry = preview_geometry(snapshot)
         except UnsupportedGeometry as error:
-            return StabilityAnalysisResponse(
-                **fields, status="unsupported", blockers=(str(error),)
+            return Evaluation(
+                StabilityAnalysisResponse(
+                    **fields, status="unsupported", blockers=(str(error),)
+                )
             )
-        from forma_api.stability_measurements import measured_report
+        from forma_api.stability_measurements import measured_analysis
 
-        report = measured_report(snapshot, geometry)
-        if report is not None:
-            status = "complete"
-            if report.status == "needs_measurement":
-                status = "needs_measurement"
-            elif report.status in ("unsupported", "indeterminate"):
-                status = "unsupported"
-            return StabilityAnalysisResponse(
-                **fields,
-                status=status,
-                report=report,
-                blockers=report.unresolved_predicates,
+        measured = measured_analysis(snapshot, geometry)
+        if measured is not None:
+            analysis, policy, warnings = measured
+            report = evaluate_stability(analysis, policy)
+            report = report.model_copy(
+                update={"input_warnings": report.input_warnings + warnings}
             )
-        return StabilityAnalysisResponse(
-            **fields,
-            status="needs_measurement",
-            geometry_preview=geometry,
-            blockers=missing_mechanical_inputs(geometry.active_part_ids),
+            return Evaluation(
+                StabilityAnalysisResponse(
+                    **fields,
+                    status=_status(report),
+                    report=report,
+                    blockers=report.unresolved_predicates,
+                ),
+                analysis,
+            )
+        return Evaluation(
+            StabilityAnalysisResponse(
+                **fields,
+                status="needs_measurement",
+                geometry_preview=geometry,
+                blockers=missing_mechanical_inputs(geometry.active_part_ids),
+            )
         )
     resolved = resolver(snapshot)
     if resolved is None:
-        return StabilityAnalysisResponse(
-            **fields, status="needs_geometry", blockers=MISSING_PREREQUISITES
+        return Evaluation(
+            StabilityAnalysisResponse(
+                **fields, status="needs_geometry", blockers=MISSING_PREREQUISITES
+            )
         )
     analysis, policy = resolved.analysis, resolved.policy
     identity = analysis.identity
@@ -224,11 +255,12 @@ def analyze(snapshot: StabilitySnapshot, resolver: StabilityResolver | None = No
 
         visit(case.model_dump(mode="json"))
     report = evaluate_stability(analysis, policy)
-    status = "complete"
-    if report.status == "needs_measurement":
-        status = "needs_measurement"
-    elif report.status in ("unsupported", "indeterminate"):
-        status = "unsupported"
-    return StabilityAnalysisResponse(
-        **fields, status=status, report=report, blockers=report.unresolved_predicates
+    return Evaluation(
+        StabilityAnalysisResponse(
+            **fields,
+            status=_status(report),
+            report=report,
+            blockers=report.unresolved_predicates,
+        ),
+        analysis,
     )

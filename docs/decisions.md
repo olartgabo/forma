@@ -712,3 +712,15 @@ and allowlisted canonical geometry diagnostics to the existing single correction
 request. Diagnostic probes reuse the geometry producer; they cannot accept a
 candidate or invent measurements. Raw exception payloads, notes and labels are
 excluded. The two-candidate limit and fabrication authority remain unchanged.
+
+## D052: Saved stability reports and read-only MetaMuse stability tools, November 3, 2026
+
+Stability calculations can be saved as immutable reports keyed by the engine
+cache hash. History shows each report as current or stale with named reasons;
+stale reports remain readable. Two reports compare only check by check, and only
+under the same policy, cases and engine versions. MetaMuse gets two allowlisted
+read-only tools, `analyze_stability` and `explain_stability_inputs`. Their
+arguments select server-authorized identities and cases only. A report is
+modeled evidence of nothing physical, and MetaMuse cannot add measurements,
+confirm inputs or approve plans.
+
