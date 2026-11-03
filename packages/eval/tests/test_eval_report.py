@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 from test_adapt import (
     AUTH,
     commit,
@@ -207,3 +208,65 @@ def test_labels_that_contradict_proof_are_flagged():
         facts(passed=True),
     ) == ["attempt: an infeasible case cannot be physically passed"]
     assert conflicts(attempt(method="vision_chat"), None) == []
+
+
+@pytest.mark.parametrize("failure_recorded", [False, True])
+def test_a_passed_disruption_without_recorded_recovery_is_not_a_recovery(
+    failure_recorded,
+):
+    entry = attempt(case="damaged_joint", evidence_level="physically_passed")
+    recorded = facts(passed=True, failure_recorded=failure_recorded)
+    text = summarize([(entry, recorded)])
+    assert (
+        "| Completion (physically passed / physically attempted) | 1/1 (100%) |" in text
+    )
+    assert (
+        "| Recovery after a disruption (passed / disrupted attempts) | 0/1 (0%) |"
+        in text
+    )
+
+
+@pytest.mark.parametrize("method", ["single_prompt", "vision_chat", "fixed_template"])
+def test_baseline_recovery_uses_the_observers_recorded_outcome(method):
+    text = summarize(
+        [
+            (
+                attempt(
+                    method=method,
+                    case="damaged_joint",
+                    evidence_level="physically_passed",
+                ),
+                None,
+            )
+        ]
+    )
+    assert (
+        "| Recovery after a disruption (passed / disrupted attempts) | 1/1 (100%) |"
+        in text
+    )
+
+
+def test_cli_does_not_count_a_passed_initial_build_as_recovered(
+    setup, tmp_path, capsys
+):
+    client, version, _ = setup
+    plan = version.plan
+    for operation in plan.operations:
+        report(client, plan.project_id, plan, operation.id)
+    proof = client.get(f"/api/projects/{plan.project_id}/proof", headers=AUTH).json()
+    (tmp_path / "proof.json").write_text(json.dumps(proof), encoding="utf-8")
+    entry = attempt(
+        case="damaged_joint",
+        evidence_level="physically_passed",
+        proof_export="proof.json",
+    )
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps({"attempts": [entry.model_dump()]}), encoding="utf-8"
+    )
+    assert main([str(manifest)]) == 0
+    output = capsys.readouterr().out
+    assert (
+        "| Recovery after a disruption (passed / disrupted attempts) | 0/1 (0%) |"
+        in output
+    )

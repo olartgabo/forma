@@ -56,6 +56,10 @@ approved revisions, recorded sheet and connector waste, and the time from the
 first recorded failure to the last passing test. Times are server ingestion
 times, not stopwatch measurements.
 
+A passed FORMA build counts as a recovery only when Proof also records a
+failure and an approved revision. A disruption label alone does not establish
+recovery. Baseline recovery uses the observer's disruption and outcome labels.
+
 ## Limits
 
 Latency and model usage, baseline transcripts and consent records stay in the

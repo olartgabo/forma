@@ -160,7 +160,12 @@ def summarize(entries: Sequence[tuple[Attempt, ProofFacts | None]]) -> str:
             for a, f in feasible
             if a.case != "none" or (f is not None and f.failure_recorded)
         ]
-        recovered = [a for a, _ in disrupted if a.evidence_level == "physically_passed"]
+        recovered = [
+            a
+            for a, f in disrupted
+            if a.evidence_level == "physically_passed"
+            and (a.method != "forma" or (f is not None and f.recovered))
+        ]
         infeasible = [a for a, _ in rows if a.case == "infeasible"]
         rejected = [a for a in infeasible if a.rejection]
         recorded = [f for _, f in rows if f is not None]
