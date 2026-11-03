@@ -63,6 +63,15 @@ active version or a saved preview. A version that is no longer active, or a
 preview whose base history changed, returns 409. See the
 [fabrication handoff](handoffs/issue-150-fabrication-report.md).
 
+POST `/api/projects/{id}/versions/{version_id}/fabrication/assess` accepts
+`FabricationAssessment`: expected inventory revision and history cursor, optional
+measured connector lengths with explicit `remaining_confirmed: true`, and
+additional available tool names with explicit `tools_confirmed: true`. The
+version path must still be active. These read-only confirmations change no rows
+and expire with context changes. Lengths must match current expected stock;
+different balances need physical material reconciliation. The existing GET
+routes remain available. See [the combined handoff](handoffs/issue-150-combined.md).
+
 Every mutation validates authenticated project scope, runtime input and
 idempotency. `adapt/commit` checks expected active version and returns 409 for
 stale writes. Neither simulation nor provider tools activate a plan.

@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import TypeAdapter
 from pydantic.json_schema import models_json_schema
 
-from . import models
+from . import fabrication_contracts, models
 from .fixtures import synthetic_inventory_a
 
 
@@ -46,17 +46,19 @@ def typescript(schema):
     return primitives[kind]
 
 
+def domain_records():
+    return {
+        v.__name__: v
+        for module in (models, fabrication_contracts)
+        for v in vars(module).values()
+        if isinstance(v, type)
+        and issubclass(v, models.Record)
+        and v is not models.Record
+    }
+
+
 def artifacts():
-    records = sorted(
-        (
-            v
-            for v in vars(models).values()
-            if isinstance(v, type)
-            and issubclass(v, models.Record)
-            and v is not models.Record
-        ),
-        key=lambda cls: cls.__name__,
-    )
+    records = sorted(domain_records().values(), key=lambda cls: cls.__name__)
     _, bundle = models_json_schema([(cls, "validation") for cls in records])
     definitions = bundle["$defs"]
     schema = {

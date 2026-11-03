@@ -1,5 +1,10 @@
 # Issue 150 handoff: next executable fabrication step
 
+The user subsequently chose this PR as the baseline for combining both
+implementations. [The combined handoff](issue-150-combined.md) records current
+contracts, checks and publication status; D037 supersedes the tool-gap exception
+below. Historical pass counts in this document belong to `3ee9812`.
+
 Status: implemented on `issue/150-fabrication-report` as two commits: the
 report contract, then the connected feature. All histories in tests and the browser check are
 SYNTHETIC; no physical step was attempted and no physical result is claimed.

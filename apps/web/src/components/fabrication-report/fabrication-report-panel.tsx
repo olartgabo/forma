@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   ApiError,
   loadFabricationReport,
   loadPreviewFabricationReport,
+  assessFabricationReport,
 } from "../../lib/api";
 import {
   fabricationStatusText,
@@ -15,9 +16,11 @@ import {
 import type {
   FabricationReport,
   OperationReadiness,
+  FabricationAssessment,
 } from "../../lib/generated/api-contracts";
 import type { BuildPlan } from "../../lib/generated/contracts";
 import { operationTitles } from "../../lib/operation-titles";
+import ReportAssessmentForm from "./report-assessment-form";
 
 export type FabricationSource =
   | { kind: "version"; versionId: string }
@@ -62,23 +65,47 @@ export default function FabricationReportPanel({
   refreshKey?: number;
   onShowOperation?: (operationId: string) => void;
 }) {
-  const [report, setReport] = useState<FabricationReport | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState<{
+    key: string;
+    report?: FabricationReport;
+    error?: string;
+  } | null>(null);
+  const [assessment, setAssessment] = useState<{
+    context: string;
+    body: FabricationAssessment;
+  } | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const epoch = useRef(0);
   const { kind, versionId } = source;
   const previewId = source.kind === "preview" ? source.previewId : null;
+  const context = JSON.stringify([
+    token,
+    projectId,
+    versionId,
+    previewId,
+    refreshKey,
+  ]);
+  const body = assessment?.context === context ? assessment.body : null;
+  const requestKey = JSON.stringify([context, attempt, body]);
+  const serialized = body === null ? null : JSON.stringify(body);
 
   useEffect(() => {
-    const requestEpoch = ++epoch.current;
     const controller = new AbortController();
-    setReport(null);
-    setError("");
-    setLoading(true);
     const loaded =
       previewId === null
-        ? loadFabricationReport(token, projectId, versionId, controller.signal)
+        ? serialized === null
+          ? loadFabricationReport(
+              token,
+              projectId,
+              versionId,
+              controller.signal,
+            )
+          : assessFabricationReport(
+              token,
+              projectId,
+              versionId,
+              JSON.parse(serialized),
+              controller.signal,
+            )
         : loadPreviewFabricationReport(
             token,
             projectId,
@@ -88,28 +115,28 @@ export default function FabricationReportPanel({
           );
     void loaded
       .then((result) => {
-        if (controller.signal.aborted || requestEpoch !== epoch.current) return;
-        setReport(result);
+        if (controller.signal.aborted) return;
+        setLoaded({ key: requestKey, report: result });
       })
       .catch((failure: unknown) => {
-        if (!controller.signal.aborted && requestEpoch === epoch.current)
-          setError(errorMessage(failure));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted && requestEpoch === epoch.current)
-          setLoading(false);
+        if (!controller.signal.aborted)
+          setLoaded({ key: requestKey, error: errorMessage(failure) });
       });
     return () => {
-      epoch.current += 1;
       controller.abort();
     };
-  }, [token, projectId, versionId, previewId, refreshKey, attempt]);
+  }, [token, projectId, versionId, previewId, serialized, requestKey]);
+
+  const current = loaded?.key === requestKey ? loaded : null;
+  const report = current?.report;
+  const error = current?.error;
+  const loading = current === null;
 
   const groups = report ? readinessGroups(report) : null;
   const next = groups?.next ?? null;
   const heading =
     kind === "preview" ? "If approved, next step" : "Next step check";
-  const headingId = `fabrication-${previewId ?? versionId}`;
+  const headingId = useId();
 
   return (
     <section
@@ -139,6 +166,18 @@ export default function FabricationReportPanel({
           </div>
         )}
       </div>
+      {body !== null && (
+        <p className="help">
+          Using your confirmed inputs for this report only.{" "}
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setAssessment(null)}
+          >
+            Clear report confirmations
+          </button>
+        </p>
+      )}
       {report && groups && (
         <>
           <p>
@@ -224,6 +263,24 @@ export default function FabricationReportPanel({
           </p>
         </>
       )}
+      {report && kind === "version" && body === null && (
+        <ReportAssessmentForm
+          key={report.snapshot.inputs_sha256}
+          report={report}
+          onAssess={(body) => setAssessment({ context, body })}
+        />
+      )}
+      <button
+        type="button"
+        className="secondary"
+        disabled={loading}
+        onClick={() => {
+          setAssessment(null);
+          setAttempt((value) => value + 1);
+        }}
+      >
+        Refresh step check
+      </button>
     </section>
   );
 }

@@ -62,11 +62,14 @@ class FabricationInput(Record):
     remaining_stock: tuple[Stock, ...]
     declared_tools: tuple[Text, ...] | None
     context_blockers: tuple[Blocker, ...] = ()
+    profile_evidence: tuple[Evidence, ...] = ()
 
     @model_validator(mode="after")
     def scope(self):
         if any(v.plan.project_id != self.project_id for v in self.lineage):
             raise ValueError("lineage belongs to another project")
+        if any(e.project_id != self.project_id for e in self.profile_evidence):
+            raise ValueError("profile evidence belongs to another project")
         return self
 
 
@@ -113,6 +116,7 @@ class FabricationSnapshot(Record):
     version_id: ID
     inventory_revision_id: ID
     last_event_id: ID | None
+    inputs_sha256: Sha256
     plan_sha256: Sha256
     history_sha256: Sha256
     process_sha256: Sha256
@@ -124,6 +128,7 @@ class FabricationReport(Record):
     snapshot: FabricationSnapshot
     status: Literal["ready", "blocked", "complete", "history_conflict"]
     current_state_id: ID
+    required_connector_measurement_ids: tuple[ID, ...] = ()
     attached_joint_ids: tuple[ID, ...]
     damaged_part_ids: tuple[ID, ...]
     failed_operation_ids: tuple[ID, ...]

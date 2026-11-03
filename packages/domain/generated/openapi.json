@@ -1617,6 +1617,290 @@
         "title": "EvidenceInvalidation",
         "type": "object"
       },
+      "FabricationInput": {
+        "additionalProperties": false,
+        "description": "Lineage from the root version to the version being scheduled (last).",
+        "properties": {
+          "context_blockers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Blocker"
+            },
+            "title": "Context Blockers",
+            "type": "array"
+          },
+          "declared_tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 2000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared Tools"
+          },
+          "inventory_revision_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Inventory Revision Id",
+            "type": "string"
+          },
+          "lineage": {
+            "items": {
+              "$ref": "#/components/schemas/VersionHistory"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Lineage",
+            "type": "array"
+          },
+          "profile_evidence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "title": "Profile Evidence",
+            "type": "array"
+          },
+          "project_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "remaining_stock": {
+            "items": {
+              "$ref": "#/components/schemas/Stock"
+            },
+            "title": "Remaining Stock",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "inventory_revision_id",
+          "lineage",
+          "remaining_stock",
+          "declared_tools"
+        ],
+        "title": "FabricationInput",
+        "type": "object"
+      },
+      "FabricationReport": {
+        "additionalProperties": false,
+        "properties": {
+          "access_basis": {
+            "const": "declared_rules",
+            "title": "Access Basis",
+            "type": "string"
+          },
+          "attached_joint_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "title": "Attached Joint Ids",
+            "type": "array"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/Blocker"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "current_state_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Current State Id",
+            "type": "string"
+          },
+          "damaged_part_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "title": "Damaged Part Ids",
+            "type": "array"
+          },
+          "failed_operation_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "title": "Failed Operation Ids",
+            "type": "array"
+          },
+          "next_operation_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Operation Id"
+          },
+          "observed_usability": {
+            "const": "not_assessed",
+            "title": "Observed Usability",
+            "type": "string"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/OperationReadiness"
+            },
+            "title": "Operations",
+            "type": "array"
+          },
+          "order_blockers": {
+            "items": {
+              "$ref": "#/components/schemas/Blocker"
+            },
+            "title": "Order Blockers",
+            "type": "array"
+          },
+          "order_status": {
+            "enum": [
+              "complete",
+              "blocked",
+              "cycle"
+            ],
+            "title": "Order Status",
+            "type": "string"
+          },
+          "required_connector_measurement_ids": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "title": "Required Connector Measurement Ids",
+            "type": "array"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/FabricationSnapshot"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "blocked",
+              "complete",
+              "history_conflict"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "supported_order": {
+            "items": {
+              "$ref": "#/components/schemas/OrderStep"
+            },
+            "title": "Supported Order",
+            "type": "array"
+          }
+        },
+        "required": [
+          "snapshot",
+          "status",
+          "current_state_id",
+          "attached_joint_ids",
+          "damaged_part_ids",
+          "failed_operation_ids",
+          "next_operation_id",
+          "operations",
+          "supported_order",
+          "order_status",
+          "order_blockers",
+          "blockers",
+          "access_basis",
+          "observed_usability"
+        ],
+        "title": "FabricationReport",
+        "type": "object"
+      },
+      "FabricationSnapshot": {
+        "additionalProperties": false,
+        "description": "Exact inputs a report was computed from.",
+        "properties": {
+          "compiler_version": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Compiler Version",
+            "type": "string"
+          },
+          "history_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "History Sha256",
+            "type": "string"
+          },
+          "inputs_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Inputs Sha256",
+            "type": "string"
+          },
+          "inventory_revision_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Inventory Revision Id",
+            "type": "string"
+          },
+          "last_event_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Event Id"
+          },
+          "plan_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Plan Sha256",
+            "type": "string"
+          },
+          "process_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Process Sha256",
+            "type": "string"
+          },
+          "project_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "rules_version": {
+            "const": "fabrication-rules-v1",
+            "title": "Rules Version",
+            "type": "string"
+          },
+          "version_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "version_id",
+          "inventory_revision_id",
+          "last_event_id",
+          "inputs_sha256",
+          "plan_sha256",
+          "history_sha256",
+          "process_sha256",
+          "rules_version",
+          "compiler_version"
+        ],
+        "title": "FabricationSnapshot",
+        "type": "object"
+      },
       "Feature": {
         "additionalProperties": false,
         "properties": {
@@ -2828,6 +3112,138 @@
         "title": "OperationBase",
         "type": "object"
       },
+      "OperationReadiness": {
+        "additionalProperties": false,
+        "properties": {
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/Blocker"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "completed_in_version_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed In Version Id"
+          },
+          "next_state_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next State Id"
+          },
+          "operation_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "operation_type": {
+            "enum": [
+              "measure",
+              "mark",
+              "cut_rect",
+              "cut_slot",
+              "fold",
+              "insert_tab",
+              "tape_joint",
+              "tie_joint",
+              "attach_brace",
+              "detach",
+              "inspect",
+              "functional_test"
+            ],
+            "title": "Operation Type",
+            "type": "string"
+          },
+          "required_confirmations": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Required Confirmations",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "completed",
+              "ready",
+              "waiting",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/ToolCheck"
+            },
+            "title": "Tools",
+            "type": "array"
+          },
+          "waiting_on_operation_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "title": "Waiting On Operation Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "operation_id",
+          "operation_type",
+          "status",
+          "completed_in_version_id",
+          "waiting_on_operation_ids",
+          "blockers",
+          "tools",
+          "required_confirmations",
+          "next_state_id"
+        ],
+        "title": "OperationReadiness",
+        "type": "object"
+      },
+      "OrderStep": {
+        "additionalProperties": false,
+        "properties": {
+          "operation_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "reordered": {
+            "title": "Reordered",
+            "type": "boolean"
+          },
+          "state_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "State Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "state_id",
+          "reordered"
+        ],
+        "title": "OrderStep",
+        "type": "object"
+      },
       "Part": {
         "additionalProperties": false,
         "properties": {
@@ -3544,6 +3960,103 @@
           "reversible"
         ],
         "title": "TieJoint",
+        "type": "object"
+      },
+      "ToolCheck": {
+        "additionalProperties": false,
+        "properties": {
+          "declared_name": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared Name"
+          },
+          "status": {
+            "enum": [
+              "declared",
+              "not_declared",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tool": {
+            "enum": [
+              "cutting_tool",
+              "ruler",
+              "marker",
+              "scale",
+              "protractor"
+            ],
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "status",
+          "declared_name"
+        ],
+        "title": "ToolCheck",
+        "type": "object"
+      },
+      "VersionHistory": {
+        "additionalProperties": false,
+        "description": "One plan version and the physical reports recorded against it.\n\n``carried_operation_ids`` and ``base_last_event_id`` are the approved\nrevision boundary; a root version has neither.",
+        "properties": {
+          "base_last_event_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base Last Event Id"
+          },
+          "carried_operation_ids": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "title": "Carried Operation Ids",
+            "type": "array"
+          },
+          "events": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PhysicalEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "evidence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/BuildPlan"
+          }
+        },
+        "required": [
+          "plan"
+        ],
+        "title": "VersionHistory",
         "type": "object"
       }
     }

@@ -231,7 +231,7 @@ def _records(connection, table, model, project_id, versions):
     )
 
 
-def _remaining(base: _Base, body: AdaptSimulateRequest) -> tuple[Stock, ...]:
+def _remaining(base: _Base, body, *, require_all: bool = True) -> tuple[Stock, ...]:
     measured = {
         item.stock_id: item.remaining_length_mm for item in body.connector_measurements
     }
@@ -243,6 +243,9 @@ def _remaining(base: _Base, body: AdaptSimulateRequest) -> tuple[Stock, ...]:
         spent = stock.kind in ("tape", "cord") and length.source == "calculated"
         if spent and not length.confirmed:
             if stock.id not in measured:
+                if not require_all:
+                    stocks.append(stock)
+                    continue
                 raise ProjectError(
                     422,
                     "validation_error",

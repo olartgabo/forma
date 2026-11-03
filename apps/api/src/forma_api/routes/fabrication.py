@@ -26,6 +26,24 @@ def fabrication_router(store: ProjectStore, authenticate) -> APIRouter:
             project = store.read(connection, owner, project_id)
             return fabrication_runtime.active_report(connection, project, version_id)
 
+    @router.post(
+        "/{project_id}/versions/{version_id}/fabrication/assess",
+        response_model=FabricationReport,
+    )
+    def assess_version(
+        project_id: ID,
+        version_id: ID,
+        body: fabrication_runtime.FabricationAssessment,
+        owner: Owner,
+        response: Response,
+    ):
+        response.headers["Cache-Control"] = "no-store"
+        with store.transaction() as connection:
+            project = store.read(connection, owner, project_id)
+            return fabrication_runtime.assess_active(
+                connection, project, version_id, body
+            )
+
     @router.get(
         "/{project_id}/adapt/previews/{preview_id}/fabrication",
         response_model=FabricationReport,

@@ -68,6 +68,7 @@ def replay(
     definitions = {}
     previous: VersionHistory | None = None
     last_recorded_at = None
+    seen_events = set()
 
     def conflict(code: str, message: str, *ids: str) -> None:
         conflicts.append(Blocker(code=code, message=message, target_ids=ids))
@@ -130,7 +131,32 @@ def replay(
             state.failed = set()
 
         evidence = {item.id: item for item in history.evidence}
+        if len(evidence) != len(history.evidence):
+            conflict(
+                "invalid_reference", "Evidence IDs must be distinct.", plan.version_id
+            )
+        for item in history.evidence:
+            if (
+                item.project_id != plan.project_id
+                or item.version_id != plan.version_id
+                or not (
+                    set(item.part_ids) <= {p.id for p in plan.parts}
+                    and set(item.operation_ids) <= operations.keys()
+                    and set(item.checkpoint_ids) <= {c.id for c in plan.checkpoints}
+                )
+            ):
+                conflict(
+                    "invalid_reference",
+                    "Historical evidence references foreign objects.",
+                    item.id,
+                )
         for event in history.events:
+            if event.id in seen_events:
+                conflict(
+                    "invalid_order", "Physical event IDs must be distinct.", event.id
+                )
+                continue
+            seen_events.add(event.id)
             if (
                 event.project_id != plan.project_id
                 or event.version_id != plan.version_id
@@ -148,6 +174,47 @@ def replay(
                     event.id,
                 )
             last_recorded_at = event.recorded_at
+            if event.operation_id is not None and event.operation_id not in operations:
+                conflict(
+                    "invalid_reference",
+                    "Physical report references an unknown operation.",
+                    event.id,
+                )
+                continue
+            linked = [evidence.get(eid) for eid in event.evidence_ids]
+            if any(
+                item is None
+                or item.project_id != plan.project_id
+                or item.version_id != plan.version_id
+                or item.recorded_at > event.recorded_at
+                or (
+                    event.operation_id is not None
+                    and event.operation_id not in item.operation_ids
+                )
+                for item in linked
+            ):
+                conflict(
+                    "invalid_reference",
+                    "Linked evidence must match the report scope and step.",
+                    event.id,
+                )
+                continue
+            if event.kind in {"operation_confirmed", "damage"} and (
+                event.actor != "user"
+                or event.verification_state != "user_confirmed"
+                or (event.kind == "damage" and not linked)
+                or any(
+                    item.provenance != "user"
+                    or item.verification_state != "user_confirmed"
+                    for item in linked
+                )
+            ):
+                conflict(
+                    "needs_confirmation",
+                    "Physical work requires explicit user confirmation and scoped evidence.",
+                    event.id,
+                )
+                continue
             if event.kind == "damage":
                 parts = {
                     part_id

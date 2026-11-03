@@ -67,10 +67,7 @@ def required_tools(operation) -> tuple[ToolClass, ...]:
 
 
 def tool_confirmations(checks: tuple[ToolCheck, ...]) -> tuple[str, ...]:
-    """Tool gaps are assumptions the builder confirms at the step.
-
-    Saved tools are fixed while a plan is active, so a gap cannot be a blocker
-    the builder has no way to clear."""
+    """Name tool gaps that require an actual scoped availability declaration."""
     found = []
     for check in checks:
         name = check.tool.replace("_", " ")
