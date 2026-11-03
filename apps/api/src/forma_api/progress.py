@@ -158,11 +158,16 @@ def expected_stock(
         for stock in plan.stocks
     }
     used_connectors = set()
-    for operation in plan.operations:
-        if operation.id not in completed:
-            continue
+    operations = {op.id: op for op in plan.operations if op.id in completed}
+    consumed = {item.operation_id for item in transactions if item.kind == "consume"}
+
+    def apply_operation(operation):
         if operation.type == "cut_rect":
             sid = operation.args.stock_id
+            if not any(r.id == operation.args.source_region_id for r in regions[sid]):
+                raise ProjectError(
+                    409, "blocked", "The cut source region is unavailable"
+                )
             regions[sid] = [
                 region
                 for region in regions[sid]
@@ -175,10 +180,16 @@ def expected_stock(
                 raise ProjectError(409, "blocked", "Confirmed use exceeds known stock")
             lengths[sid] -= amount
             used_connectors.add(sid)
-    # Recorded losses and salvage, in ingestion order, as the replanner applies them.
+
+    # Carried completions have no receipts in this version and precede its reports.
+    for operation in operations.values():
+        if operation.id not in consumed:
+            apply_operation(operation)
     for item in transactions:
         sid = item.source_stock_id
-        if item.kind == "waste" and item.unit == "mm":
+        if item.kind == "consume":
+            apply_operation(operations[item.operation_id])
+        elif item.kind == "waste" and item.unit == "mm":
             amount = Decimal(str(item.quantity))
             if lengths[sid] is None or lengths[sid] < amount:
                 raise ProjectError(409, "blocked", "Recorded loss exceeds known stock")
