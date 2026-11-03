@@ -10,7 +10,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    // Dark-mode extensions can add attributes to the document before hydration.
+    <html lang="en" suppressHydrationWarning>
       <body>
         <MuseLanguageProvider>{children}</MuseLanguageProvider>
       </body>

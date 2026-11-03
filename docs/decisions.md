@@ -690,3 +690,25 @@ checks. These are projections of existing typed records, not a second readiness
 validator. MetaMuse proposes geometry and names; deterministic engine rejection
 and Gabo's fabrication report retain authority. No photo-derived value becomes a
 measurement, and inspecting a stage neither approves a plan nor records work.
+
+## D050: Blueprint workbench, November 3, 2026
+
+The project workbench uses a blueprint grid and a section rail. Saved manuals
+index drawings by operation and show planned parts with their source stock and
+dimensions. Blueprint colors are a browser presentation of the compiled SVG.
+Builders can switch to the original colors and download the original SVG.
+The entry screen uses a full-width drafting surface with a labeled stand
+illustration and a separate credential strip. The illustration has no
+project dimensions or build instructions.
+The opening animation plays once per document load. Reduced-motion visitors
+see a static wordmark until the workbench hydrates.
+The manual uses the current compiled views. A rotatable assembly view remains
+subject to the physical P0 gate.
+
+## D051: Give MetaMuse localized canonical geometry feedback, November 3, 2026
+
+Rejected construction proposals expose bounded piece or connection references
+and allowlisted canonical geometry diagnostics to the existing single correction
+request. Diagnostic probes reuse the geometry producer; they cannot accept a
+candidate or invent measurements. Raw exception payloads, notes and labels are
+excluded. The two-candidate limit and fabrication authority remain unchanged.

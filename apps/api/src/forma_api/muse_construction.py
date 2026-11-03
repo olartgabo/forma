@@ -10,6 +10,7 @@ from typing import Annotated, Literal
 
 from forma_stability.construction import bind_operations, generate_construction
 from forma_stability.construction_fabrication import build_fabrication
+from forma_stability.generic_assembly import evaluate_assembly, polygon_geometry
 from pydantic import Field, StrictBool, StringConstraints
 
 from forma_api.design_context import ResolvedDesignContext
@@ -223,6 +224,80 @@ def _target(proposal, project):
     )
 
 
+# Only these literal canonical diagnostics may leave the geometry boundary.
+# Never stringify arbitrary exceptions: ValidationError includes input values.
+_POLYGON_ERRORS = frozenset(
+    (
+        "Polygon edges must have positive resolved length",
+        "Polygon vertices must be unique without a repeated closing vertex",
+        "Polygon must have nonzero area",
+        "Panel facets must be planar",
+        "Panel polygon must be simple and have resolved positive area",
+    )
+)
+_JOINT_ERRORS = frozenset(
+    (
+        "Unknown facet edge reference",
+        "Facet edge index exceeds polygon vertex count",
+        "Inter-part joints require different source parts; use a source seam within a part",
+        "Active joint edge poses must coincide",
+    )
+)
+_IDENTITY_ERRORS = frozenset(
+    ("Duplicate assembly part ID", "Duplicate assembly joint ID")
+)
+
+
+def _geometry_feedback(proposal, project, error):
+    """Localize a rejection with canonical checks, never a second validator.
+
+    Diagnostic probes cannot accept a candidate. They run only after rejection,
+    at most once per piece/connection, returning at most eight short messages.
+    IDs are schema-restricted; names, notes and exception inputs are excluded.
+    """
+    messages = []
+    part_ids = {p.id for p in proposal.pieces}
+    for joint in proposal.connections:
+        for side in ("first", "second"):
+            part_id = getattr(joint, side + "_part_id")
+            if part_id not in part_ids:
+                messages.append(
+                    f"Connection {joint.id}: {side}_part_id {part_id} does not reference a proposed piece."
+                )
+    # The adapter uses metres; reuse that conversion for canonical polygon checks.
+    for piece in proposal.pieces:
+        try:
+            polygon_geometry(
+                tuple(
+                    v.model_copy(update=dict(x=v.x / 1000, y=v.y / 1000, z=v.z / 1000))
+                    for v in piece.vertices_mm
+                )
+            )
+        except ValueError as exc:
+            if type(exc) is ValueError and str(exc) in _POLYGON_ERRORS:
+                messages.append(f"Piece {piece.id}: {exc}.")
+    if not messages and type(error) is ValueError and str(error) in _JOINT_ERRORS:
+        for joint in proposal.connections:
+            try:
+                evaluate_assembly(
+                    _target(
+                        proposal.model_copy(update={"connections": (joint,)}), project
+                    )
+                )
+            except (ValueError, KeyError) as exc:
+                if type(exc) is ValueError and str(exc) in _JOINT_ERRORS:
+                    messages.append(
+                        f"Connection {joint.id} ({joint.first_part_id} edge {joint.first_edge}, "
+                        f"{joint.second_part_id} edge {joint.second_edge}): {exc}. "
+                        "Edges are zero-indexed consecutive vertices in the common world frame."
+                    )
+    if not messages and type(error) is ValueError and str(error) in _IDENTITY_ERRORS:
+        messages.append(str(error) + ". Use unique IDs.")
+    return messages[:8] or [
+        "Invalid target geometry or part/edge references. Use unique piece/joint IDs, valid planar polygons and coincident declared joint edges."
+    ]
+
+
 def _evaluate(proposal, project, resolved):
     """Return the checked proposal and whether a geometry correction is useful."""
     construction = plan = report = None
@@ -259,10 +334,8 @@ def _evaluate(proposal, project, resolved):
                     ),
                 )
             )
-        except (ValueError, KeyError):
-            blockers.append(
-                "Invalid target geometry or part/edge references. Use unique piece/joint IDs, valid planar polygons and coincident declared joint edges."
-            )
+        except (ValueError, KeyError) as exc:
+            blockers.extend(_geometry_feedback(proposal, project, exc))
             repairable = True
         if construction:
             blockers.extend(b.message for b in resolved.blockers)

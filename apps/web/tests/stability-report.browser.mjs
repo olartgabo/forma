@@ -83,6 +83,20 @@ try {
         return route.abort();
       }
       if (!url.pathname.startsWith("/api/")) return route.continue();
+      // The integrated manual also reads fabrication readiness. This stability
+      // replay has no fabrication fixture; explicitly exercise its unavailable
+      // fallback while continuing to reject every unapproved write.
+      if (
+        request.method() === "GET" &&
+        url.pathname === `${base}/versions/${version.version_id}/fabrication`
+      )
+        return route.fulfill({
+          status: 503,
+          json: {
+            code: "unavailable",
+            message: "Offline fabrication fixture unavailable",
+          },
+        });
       if (
         url.pathname === `${base}/stability/context` &&
         request.method() === "GET"
@@ -418,6 +432,12 @@ try {
     await page
       .getByRole("button", { name: "Open workbench", exact: true })
       .click();
+    await page
+      .getByText(
+        `Physical report history (${fixture.changed_measured_progress.events.length})`,
+        { exact: true },
+      )
+      .waitFor();
     await capture
       .getByRole("button", {
         name: "Retry the same measurement save",
@@ -429,6 +449,21 @@ try {
       2,
       "remount does not automatically retry",
     );
+    // The progress refresh can remount capture once more while recovery runs.
+    // Wait for that disabled loading control to leave before checking the
+    // recovered state; inspecting two different React commits is not a bypass.
+    await capture
+      .getByRole("button", {
+        name: "Record stability measurements",
+        exact: true,
+      })
+      .waitFor({ state: "hidden" });
+    await capture
+      .getByRole("button", {
+        name: "Retry the same measurement save",
+        exact: true,
+      })
+      .waitFor();
     assert.equal(
       await capture
         .getByRole("button", {

@@ -22,9 +22,11 @@ import {
   museAvailability as resolveMuseAvailability,
   type MuseProviderStatus,
 } from "../lib/muse-provider";
+import FormaWordmark from "./forma-wordmark";
 import MuseIntakePanel from "./muse-intake-panel";
 import MuseConstructionPanel from "./muse-construction-panel";
 import MuseDiagnosisPanel from "./muse-diagnosis-panel";
+import { MuseLanguageControl } from "./muse-language-provider";
 import MuseProviderBanner from "./muse-provider-banner";
 import type {
   BuildRequirements,
@@ -176,14 +178,14 @@ export default function IntakeWorkbench() {
     setSession((value) => value + 1);
   }
   return (
-    <main className="workbench">
+    <main className={token ? "workbench" : "workbench workbench-entry"}>
       <header className="masthead">
         <a href="/" className="wordmark" aria-label="FORMA home">
-          FORMA
-          <span className="wordmark-dot" aria-hidden="true" />
+          <FormaWordmark />
         </a>
-        <span>Materials into possibilities</span>
+        <span>Build workbench</span>
       </header>
+      {token && <MuseLanguageControl />}
       {token ? (
         <ProjectWorkbench
           key={session}
@@ -193,41 +195,88 @@ export default function IntakeWorkbench() {
       ) : (
         <div className="welcome-layout">
           <section className="welcome" aria-labelledby="welcome-title">
-            <h1 id="welcome-title">Start with what you have.</h1>
-            <p className="lead">
-              A small stand starts with a clear goal and the materials on your
-              desk. Photograph them, measure what you can, and keep the rest
-              open.
-            </p>
-            <ol className="journey">
-              <li>
-                <strong>Describe the need</strong>
-                <span>English or Spanish, in your own words.</span>
-              </li>
-              <li>
-                <strong>Gather your materials</strong>
-                <span>One record for each sheet, strip or connector.</span>
-              </li>
-              <li>
-                <strong>Check the measurements</strong>
-                <span>Blank values stay unknown.</span>
-              </li>
-            </ol>
-            <p className="scope-note">
-              For small, low-risk tabletop fixtures made from reused sheet
-              materials. Physical fit and stability need hands-on checks.
-            </p>
+            <div className="welcome-copy">
+              <p className="sheet-label">FORMA / Build desk</p>
+              <h1 id="welcome-title">Start with what you have.</h1>
+              <p className="lead">
+                Photograph your materials, confirm the measurements, and turn
+                them into a plan for a small tabletop fixture.
+              </p>
+              <p className="scope-note">
+                Check physical fit and stability by hand.
+              </p>
+            </div>
+            <figure className="welcome-drawing">
+              <svg viewBox="0 0 540 395" aria-hidden="true">
+                <g fill="none" stroke="currentColor">
+                  <path
+                    d="M20 65h500M20 320h500M92 22v345M454 22v345M26 61v8m20-8v8m20-8v8m20-8v8m374 0v-8m20 0v8m20 0v-8"
+                    opacity=".35"
+                  />
+                  <path
+                    d="M55 300l255 80 189-103M122 265l190 60 136-74M226 113l163-70m-68 172 151-82"
+                    strokeDasharray="5 7"
+                    opacity=".65"
+                  />
+                </g>
+                <g stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+                  <path d="M113 255l193 63 135-75-191-57z" fill="#246bc9" />
+                  <path
+                    d="M113 255v8l193 64 135-76v-8l-135 75z"
+                    fill="#124a9e"
+                  />
+                  <path d="M260 120l127-64 54 187-130 73z" fill="#1856ad" />
+                  <path d="M151 249l121-67 99-135-126 64z" fill="#4384da" />
+                  <path d="M151 249l20 7 124-68-23-6z" fill="#80adea" />
+                  <path d="M171 256l124-68v10l-124 69z" fill="#124a9e" />
+                </g>
+                <g
+                  fill="none"
+                  stroke="currentColor"
+                  strokeDasharray="5 6"
+                  opacity=".8"
+                >
+                  <path d="M189 216l124-67m-92 23 124-66M387 56l-16-9M306 318v9" />
+                </g>
+                <g fill="none" stroke="currentColor">
+                  <path d="M248 156 210 102H43m340 59 39-44h86M222 292l-35 46H52" />
+                  <path d="M23 82V72h10m475 0h10v10M23 306v10h10m475 0h10v-10" />
+                </g>
+                <g fill="currentColor">
+                  <circle cx="248" cy="156" r="3" />
+                  <circle cx="383" cy="161" r="3" />
+                  <circle cx="222" cy="292" r="3" />
+                </g>
+                <g fill="currentColor" fontFamily="monospace" fontSize="17">
+                  <text x="43" y="94">
+                    01 / Support
+                  </text>
+                  <text x="508" y="109" textAnchor="end">
+                    02 / Brace
+                  </text>
+                  <text x="52" y="360">
+                    03 / Base
+                  </text>
+                </g>
+              </svg>
+              <figcaption className="sheet-label">
+                Fig. 01 <span>Stand study · illustration</span>
+              </figcaption>
+            </figure>
           </section>
           <section className="access-panel" aria-labelledby="access-title">
-            <h2 id="access-title">Open your workbench</h2>
-            <p>
-              This development preview uses a configured owner credential.
-              Hosted sign-in is still being built.
-            </p>
+            <div>
+              <h2 id="access-title">Open your workbench</h2>
+              <p className="help" id="owner-credential-help">
+                Use your project owner credential. Never enter a model-provider
+                API key.
+              </p>
+            </div>
             <form onSubmit={connect}>
               <label htmlFor="owner-credential">Owner credential</label>
               <input
                 id="owner-credential"
+                aria-describedby="owner-credential-help"
                 type="password"
                 autoComplete="off"
                 required
@@ -242,13 +291,10 @@ export default function IntakeWorkbench() {
                 Open workbench
               </button>
             </form>
-            <p className="help">
-              The credential stays in this tab’s memory. Re-enter it after a
-              refresh. Never enter a model-provider API key here.
-            </p>
           </section>
         </div>
       )}
+      {!token && <MuseLanguageControl />}
     </main>
   );
 }
@@ -749,6 +795,13 @@ function ProjectWorkbench({
         </div>
       ) : (
         <>
+          <nav className="project-rail" aria-label="Project sections">
+            <a href="#project-title">01 Project</a>
+            <a href="#photos-title">02 Inventory</a>
+            <a href="#plans-title">03 Plan &amp; manual</a>
+            <a href="#muse-diagnosis-panel">04 Diagnosis</a>
+            <a href="#project-proof">05 Proof</a>
+          </nav>
           <section className="project-heading" aria-labelledby="project-title">
             <div>
               <p className="project-id">

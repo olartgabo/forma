@@ -1,12 +1,16 @@
-﻿:root {
+:root {
   color-scheme: light;
   font-family: "Segoe UI", "Helvetica Neue", sans-serif;
-  color: #182825;
-  background: #f8faf9;
-  --green: #244c40;
-  --muted: #4a5c56;
-  --mint: #e9f0ec;
-  --line: #c1cdc7;
+  color: #12244a;
+  background: #edf4ff;
+  --green: #154da9;
+  --muted: #415479;
+  --mint: #e1edff;
+  --line: #adbfda;
+  --blueprint: #165bbd;
+  --grid:
+    linear-gradient(#ffffff1f 1px, transparent 1px) 0 0 / 24px 24px,
+    linear-gradient(90deg, #ffffff1f 1px, transparent 1px) 0 0 / 24px 24px;
 }
 * {
   box-sizing: border-box;
@@ -42,7 +46,7 @@ button.primary {
   color: white;
 }
 button.primary:not(:disabled):hover {
-  background: #183a30;
+  background: #123b83;
 }
 button.quiet {
   padding: 0.4rem 0;
@@ -153,108 +157,168 @@ p {
   margin-bottom: 1.1rem;
 }
 .workbench {
-  width: min(100% - 3rem, 78rem);
+  width: calc(100% - clamp(2rem, 5vw, 5rem));
   margin: 0 auto;
   padding-bottom: 3rem;
+}
+.workbench.workbench-entry {
+  --entry-inset: clamp(1.4rem, 4vw, 4rem);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100svh;
+  padding: 0;
+  background: var(--grid), var(--blueprint);
 }
 .masthead {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1.6rem 0;
-  border-bottom: 2px solid var(--green);
+  margin-top: 1rem;
+  padding: 1.2rem clamp(1rem, 4vw, 2.5rem);
+  border: 1px solid #ffffff80;
+  border-radius: 12px 12px 0 0;
+  background: var(--grid), var(--blueprint);
 }
 .masthead > span {
-  color: var(--muted);
+  color: white;
   font-size: 0.95rem;
+  font-family: ui-monospace, monospace;
+  text-transform: uppercase;
+}
+.workbench-entry .masthead {
+  margin: 0;
+  padding-inline: var(--entry-inset);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .wordmark {
-  display: inline-flex;
-  align-items: baseline;
-  color: var(--green);
-  font-size: 1.8rem;
-  font-weight: 850;
-  letter-spacing: -0.08em;
-  text-decoration: none;
+  display: block;
+  width: clamp(7rem, 15vw, 11rem);
+  color: white;
 }
-.wordmark-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-left: 5px;
-  background: var(--green);
+.wordmark svg {
+  display: block;
+  width: 100%;
+}
+.workbench-language {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  padding: 0.6rem 1rem;
+  background: white;
+  border: 1px solid var(--line);
+  border-top: 0;
+}
+.workbench-language .muse-actions,
+.workbench-language .help {
+  margin: 0;
+}
+.masthead :focus-visible,
+.project-rail :focus-visible,
+.drawing-sheet :focus-visible {
+  outline-color: white;
 }
 .welcome-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  gap: clamp(2rem, 7vw, 7rem);
-  align-items: start;
-  padding: 4.5rem 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
 }
 .welcome {
-  max-width: 42rem;
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(1rem, 4vw, 4rem);
+  color: white;
+  padding: var(--entry-inset);
+}
+.welcome h1 {
+  max-width: 9ch;
+  font-size: clamp(3rem, 7vw, 8rem);
+  line-height: 0.95;
+  letter-spacing: -0.07em;
+}
+.sheet-label {
+  font:
+    650 0.78rem/1.5 ui-monospace,
+    monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.welcome-drawing {
+  margin: 0;
+  min-width: 0;
+}
+.welcome-drawing svg {
+  display: block;
+  width: 100%;
+  max-height: 48svh;
+}
+.welcome-drawing figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  border-top: 1px solid #ffffff80;
+  padding-top: 0.6rem;
+}
+.welcome-drawing figcaption span {
+  color: inherit;
 }
 .lead {
   font-size: 1.2rem;
   color: var(--muted);
   max-width: 42rem;
 }
-.journey {
-  list-style: none;
-  counter-reset: journey;
-  padding: 0;
-  margin: 2.5rem 0;
-}
-.journey li {
-  counter-increment: journey;
-  display: grid;
-  grid-template-columns: 2.1rem minmax(0, 1fr);
-  column-gap: 0.8rem;
-  padding: 0.9rem 0;
-}
-.journey li::before {
-  content: counter(journey);
-  grid-row: span 2;
-  width: 2rem;
-  height: 2rem;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--green);
-  border-radius: 50%;
-  font-weight: 700;
-}
-.journey strong {
-  font-size: 1.075rem;
-}
-.journey li > span {
-  line-height: 1.6;
-  color: var(--muted);
+.welcome .lead {
+  color: #f0f6ff;
+  max-width: 32ch;
 }
 .scope-note {
-  border-left: 3px solid var(--green);
-  padding-left: 1rem;
-  color: var(--muted);
+  font-size: 0.88rem;
+  margin-bottom: 0;
+  color: #f0f6ff;
 }
 .access-panel {
-  padding: 2rem;
-  background: var(--mint);
-  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 0.75rem 2rem;
+  padding: 0.9rem var(--entry-inset);
+  background: white;
+}
+.workbench-entry .workbench-language {
+  padding-inline: var(--entry-inset);
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.access-panel h2,
+.access-panel .help {
+  margin: 0;
 }
 .access-panel form {
-  margin-top: 1.75rem;
+  display: grid;
+  grid-template-columns: minmax(10rem, 22rem) auto;
+  align-items: end;
+  gap: 0.3rem 0.6rem;
 }
-.access-panel .primary {
-  width: 100%;
+.access-panel label {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.access-panel button {
+  margin: 0;
 }
 .help {
   color: var(--muted);
   font-size: 0.85rem;
   line-height: 1.5;
   margin: 0.5rem 0 0.8rem;
-}
-.access-panel > .help {
-  margin-top: 1.25rem;
 }
 .session-bar {
   display: flex;
@@ -615,7 +679,6 @@ figcaption span {
   display: block;
   width: 100%;
   height: auto;
-  margin: 1rem 0;
 }
 .manual-diagram-frame {
   max-width: 100%;
@@ -624,6 +687,140 @@ figcaption span {
 .manual-diagram-frame.enlarged .manual-diagram {
   width: max(100%, 70rem);
   max-width: none;
+}
+.project-rail {
+  position: sticky;
+  top: 1rem;
+  float: left;
+  width: 10rem;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.55rem;
+  background: var(--grid), #124a9e;
+  border-radius: 6px;
+}
+.project-rail ~ * {
+  margin-left: 12rem;
+}
+.project-rail a {
+  color: white;
+  padding: 0.75rem 0.5rem;
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+.project-rail a:hover {
+  background: #ffffff25;
+}
+.drawing-index {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.drawing-index button {
+  min-width: 44px;
+  padding-inline: 0.5rem;
+  border-radius: 8px 8px 0 0;
+  font-family: ui-monospace, monospace;
+}
+.drawing-index button[aria-current="step"] {
+  color: white;
+  background: var(--green);
+}
+.drawing-sheet {
+  margin: 1rem 0;
+  color: white;
+  border: 1px solid #225fae;
+  background: var(--grid), var(--blueprint);
+}
+.drawing-sheet-title,
+.drawing-sheet-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #ffffff80;
+}
+.drawing-sheet-title {
+  justify-content: space-between;
+  font-family: ui-monospace, monospace;
+  text-transform: uppercase;
+}
+.drawing-sheet-ticks {
+  height: 8px;
+  border-bottom: 1px solid #ffffff66;
+  background:
+    repeating-linear-gradient(90deg, #ffffffad 0 1px, transparent 1px 48px),
+    repeating-linear-gradient(90deg, #ffffff55 0 1px, transparent 1px 12px)
+      bottom / 100% 50% no-repeat;
+}
+.drawing-sheet-tools a,
+.drawing-sheet-tools button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.35rem 0.5rem;
+  color: white;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+.drawing-sheet-tools button[aria-pressed="true"] {
+  border-color: #ffffffad;
+}
+.drawing-sheet-tools a:hover,
+.drawing-sheet-tools button:not(:disabled):hover {
+  background: #ffffff20;
+}
+.manual-diagram-frame.blueprint {
+  isolation: isolate;
+  background: var(--grid), var(--blueprint);
+}
+.manual-diagram-frame.blueprint .manual-diagram {
+  filter: grayscale(1) invert(1);
+  mix-blend-mode: screen;
+}
+.part-files {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.65rem;
+  padding: 0;
+  list-style: none;
+}
+.part-files li {
+  min-width: 0;
+  color: white;
+  overflow-wrap: anywhere;
+}
+.part-file-tab {
+  display: inline-block;
+  padding: 0.4rem 1.6rem 0.4rem 0.75rem;
+  background: #124a9e;
+  clip-path: polygon(0 0, calc(100% - 0.75rem) 0, 100% 100%, 0 100%);
+  font:
+    650 0.78rem/1.4 ui-monospace,
+    monospace;
+  text-transform: uppercase;
+}
+.part-file-tab::before {
+  content: "";
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.5rem;
+  border-radius: 50%;
+  background: #ffd36a;
+}
+.part-file-body {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem 0.75rem;
+  background: var(--grid), #124a9e;
+  border-top: 1px solid #ffffff80;
 }
 .manual-navigation {
   display: flex;
@@ -742,7 +939,16 @@ figcaption span {
   max-width: 80ch;
 }
 @media (max-width: 900px) {
-  .welcome-layout,
+  .project-rail {
+    position: static;
+    float: none;
+    width: auto;
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .project-rail ~ * {
+    margin-left: 0;
+  }
   .start-layout {
     gap: 2rem;
     grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
@@ -761,27 +967,33 @@ figcaption span {
 }
 @media (max-width: 650px) {
   .workbench {
-    width: min(100% - 2rem, 78rem);
+    width: calc(100% - 1.5rem);
   }
   .masthead {
-    padding: 1.2rem 0;
+    padding: 0.8rem 1rem;
   }
   .masthead > span {
     font-size: 0.8rem;
     max-width: 10rem;
     text-align: right;
   }
-  .welcome-layout,
   .start-layout,
   .inventory-layout {
     grid-template-columns: minmax(0, 1fr);
     gap: 2rem;
   }
-  .welcome-layout {
-    padding: 2.5rem 0;
+  .welcome {
+    grid-template-columns: minmax(0, 1fr);
   }
-  .access-panel {
-    padding: 1.4rem;
+  .welcome h1 {
+    max-width: 12ch;
+  }
+  .welcome-drawing svg {
+    max-height: 28svh;
+  }
+  .access-panel form {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
   }
   .reopen-panel {
     border-left: 0;
@@ -821,6 +1033,10 @@ figcaption span {
   .muse-actions .primary,
   .muse-actions .secondary {
     width: 100%;
+  }
+  .workbench-language .secondary {
+    width: auto;
+    padding-inline: 0.6rem;
   }
   .muse-result {
     padding: 1rem;

@@ -1,5 +1,11 @@
-﻿import IntakeWorkbench from "../components/intake-workbench";
+﻿import FormaLoader from "../components/forma-loader";
+import IntakeWorkbench from "../components/intake-workbench";
 
 export default function Home() {
-  return <IntakeWorkbench />;
+  return (
+    <>
+      <FormaLoader />
+      <IntakeWorkbench />
+    </>
+  );
 }

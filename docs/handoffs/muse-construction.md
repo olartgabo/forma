@@ -36,6 +36,13 @@ one shared four-round/time budget; missing physical evidence does not trigger
 repeated model calls. Geometry responses use an explicit 8,192-token output cap;
 other gateway consumers retain their 2,048-token default.
 
+Geometry rejection now identifies a failing piece or declared connection where
+the canonical checks can localize it, including nonplanar panels, out-of-range
+edges and edges that do not coincide. At most eight allowlisted diagnostics are
+returned; raw exception values and private context are not included. This gives
+the existing bounded correction an actionable constraint instead of asking the
+model to guess which part of its geometry was rejected.
+
 ## Privacy, retry and history
 
 Photos use the existing private normalized upload store, JPEG/PNG and 5 MB

@@ -330,6 +330,36 @@ async function scenario(width, failed, extra = null) {
       observations.push({ step: i + 1, id: panel.operation_id, box });
       const save = manual.getByRole("button", { name: "Save physical report" });
       if (i === 0) {
+        const drawings = manual.getByRole("navigation", {
+          name: "Assembly drawings",
+        });
+        const first = drawings.getByRole("button", {
+          name: "Open drawing for step 1",
+          exact: true,
+        });
+        const second = drawings.getByRole("button", {
+          name: "Open drawing for step 2",
+          exact: true,
+        });
+        assert.equal(await first.getAttribute("aria-current"), "step");
+        await second.press("Enter");
+        assert.equal(await second.getAttribute("aria-current"), "step");
+        await first.press("Enter");
+        assert.equal(await first.getAttribute("aria-current"), "step");
+        const colors = manual.getByRole("button", { name: "Blueprint colors" });
+        assert.equal(await colors.getAttribute("aria-pressed"), "true");
+        await colors.click();
+        assert.equal(await colors.getAttribute("aria-pressed"), "false");
+        assert.equal(
+          await image.evaluate((el) => getComputedStyle(el).filter),
+          "none",
+        );
+        await colors.click();
+        const download = manual.getByRole("link", { name: "Download SVG" });
+        assert.equal(
+          await download.evaluate(async (el) => (await fetch(el.href)).text()),
+          panel.svg,
+        );
         await manual.getByRole("button", { name: "Enlarge diagram" }).click();
         const region = manual.getByRole("region", {
           name: "Full-size diagram; scroll to inspect dimensions",
@@ -389,11 +419,29 @@ async function scenario(width, failed, extra = null) {
         await next.click();
       }
     }
-    const materials = page.locator(".manual-materials");
-    await materials.locator("summary").click();
-    const materialsText = await materials.innerText();
+    await page
+      .getByText("Materials and planned quantities", { exact: true })
+      .click();
+    const materialsText = await page
+      .locator(".manual-materials[open]")
+      .innerText();
     for (const item of version.manual.bill_of_materials)
       assert(materialsText.includes(item.description), item.description);
+    await page
+      .getByText(`Planned parts (${version.plan.parts.length})`, {
+        exact: true,
+      })
+      .click();
+    const parts = page.locator(".part-files > li");
+    assert.equal(await parts.count(), version.plan.parts.length);
+    for (const [index, part] of version.plan.parts.entries()) {
+      const card = await parts.nth(index).innerText();
+      assert(card.includes(part.id));
+      assert(
+        card.includes(`${part.geometry.width} × ${part.geometry.height} mm`),
+      );
+      assert(card.includes(part.source_stock_id));
+    }
     assert.deepEqual(writes, [], "browsing the manual writes nothing");
     assert.deepEqual(errors, [], "the connected components must not crash");
     assert.deepEqual(unexpected, [], "every request is explicitly replayed");

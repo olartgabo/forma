@@ -221,9 +221,86 @@ def test_geometry_feedback_corrects_once_and_preserves_original_failure(inputs):
         "untrusted_context"
     ]["engine_feedback"]
     assert feedback["remaining_candidates"] == 1
-    assert "Invalid target geometry" in feedback["engine_blockers"][0]
+    assert feedback["engine_blockers"] == ["Piece floor: Panel facets must be planar."]
     assert result.diagnostics.model_rounds == 2
     assert result.diagnostics.usage.model_calls == 2
+
+
+@pytest.mark.parametrize(
+    ("change", "diagnostic"),
+    [
+        ({"first_edge": 0}, "Active joint edge poses must coincide"),
+        ({"second_edge": 7}, "Facet edge index exceeds polygon vertex count"),
+        (
+            {"first_part_id": "missing"},
+            "first_part_id missing does not reference a proposed piece",
+        ),
+    ],
+)
+def test_correction_identifies_rejected_connection(inputs, change, diagnostic):
+    broken = candidate(joined=True)
+    broken["connections"][0].update(change)
+    result, transport = run(
+        inputs, response(broken), response(candidate("option-b", joined=True))
+    )
+    feedback = json.loads(transport.calls[1][1]["messages"][1]["content"][0]["text"])[
+        "untrusted_context"
+    ]["engine_feedback"]
+    assert len(transport.calls) == len(result.candidates) == 2
+    assert result.candidates[0].construction is None
+    assert result.candidates[1].construction is not None
+    assert result.candidates[1].status == "blocked"  # Joint access remains unknown.
+    assert any(
+        "Connection hinge" in message and diagnostic in message
+        for message in feedback["engine_blockers"]
+    )
+
+
+@pytest.mark.parametrize("error_kind", ["value", "key", "validation"])
+def test_geometry_feedback_never_serializes_exception_inputs(
+    inputs, monkeypatch, error_kind
+):
+    from pydantic import ValidationError
+
+    from forma_api import muse_construction
+
+    private = "private-context-and-provider-secret"
+    errors = {"value": ValueError(private), "key": KeyError(private)}
+    errors["validation"] = ValidationError.from_exception_data(
+        "PrivateInput", [{"type": "int_parsing", "loc": ("secret",), "input": private}]
+    )
+
+    def reject(_request):
+        raise errors[error_kind]
+
+    monkeypatch.setattr(muse_construction, "generate_construction", reject)
+    result, transport = run(
+        inputs, response(candidate()), response(candidate("option-b"))
+    )
+    feedback = json.loads(transport.calls[1][1]["messages"][1]["content"][0]["text"])[
+        "untrusted_context"
+    ]["engine_feedback"]
+    assert private not in json.dumps(feedback)
+    assert private not in result.model_dump_json()
+    assert len(transport.calls) == 2
+    assert all(c.construction is None for c in result.candidates)
+
+
+def test_joint_feedback_is_bounded_and_excludes_valid_connections(inputs):
+    broken = candidate(joined=True)
+    valid = broken["connections"][0]
+    broken["connections"].extend(
+        valid | {"id": f"bad-{index}", "first_edge": 0} for index in range(11)
+    )
+    result, transport = run(
+        inputs, response(broken), response(questions=["Revise edges"])
+    )
+    blockers = result.candidates[0].blockers
+    assert len(transport.calls) == 2
+    assert len(blockers) == 8
+    assert all("Connection bad-" in message for message in blockers)
+    assert all("Connection hinge" not in message for message in blockers)
+    assert all(len(message) < 512 for message in blockers)
 
 
 def test_two_bad_candidates_cannot_start_more_model_rounds(inputs):
