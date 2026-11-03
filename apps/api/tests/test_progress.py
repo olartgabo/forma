@@ -486,6 +486,17 @@ def test_project_deletion_purges_history_photos_and_retry_snapshots(setup):
         "photo_ids": [photo_id],
     }
     assert post(client, version, body).status_code == 200
+    damaged = post_damage(
+        client,
+        version,
+        damage(version, progress(client, version).json(), photos=(photo_id,)),
+    )
+    assert damaged.status_code == 200, damaged.text
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM requests WHERE scope=?",
+            (version.project_id + ":damage",),
+        ).fetchone() == (1,)
     assert (
         client.delete(
             f"/api/projects/{version.project_id}",
@@ -506,10 +517,15 @@ def test_project_deletion_purges_history_photos_and_retry_snapshots(setup):
             assert (
                 connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
             )
+        assert connection.execute(
+            "SELECT COUNT(*) FROM requests WHERE scope=?",
+            (version.project_id + ":damage",),
+        ).fetchone() == (0,)
         receipts = [
             row[0] for row in connection.execute("SELECT response FROM requests")
         ]
     assert all("SYNTHETIC software action" not in receipt for receipt in receipts)
+    assert all("SYNTHETIC torn brace edge" not in receipt for receipt in receipts)
 
 
 def test_server_ingestion_order_survives_clock_moving_backwards(setup, monkeypatch):
@@ -527,3 +543,221 @@ def test_server_ingestion_order_survives_clock_moving_backwards(setup, monkeypat
     second = complete(client, version, 1)
     assert second["events"][-1]["recorded_at"] > first["events"][-1]["recorded_at"]
     assert second["evidence"][-1]["recorded_at"] <= second["events"][-1]["recorded_at"]
+
+
+def damage(version, current, parts=("stand-brace",), key="damage-001", photos=()):
+    return dict(
+        expected_version_id=version.version_id,
+        expected_last_event_id=current["last_event_id"],
+        idempotency_key=key,
+        operation_id=version.plan.operations[3].id,
+        part_ids=list(parts),
+        observation="SYNTHETIC torn brace edge while taping; no actual damage",
+        user_confirmed=True,
+        photo_ids=list(photos),
+    )
+
+
+def post_damage(client, version, body, headers=AUTH):
+    return client.post(
+        f"/api/projects/{version.project_id}/damage", headers=headers, json=body
+    )
+
+
+def test_damage_report_pauses_build_without_completing_or_consuming(setup):
+    client, version, _ = setup
+    for index in range(3):
+        before = complete(client, version, index)
+    image = photo(client, version)
+    body = damage(version, before, photos=(image,))
+    response = post_damage(client, version, body)
+    assert response.status_code == 200, response.text
+    damaged = response.json()["progress"]
+    operation = version.plan.operations[3].id
+    assert damaged["status"] == "needs_review"
+    assert damaged["failed_operation_ids"] == [operation]
+    assert damaged["damaged_part_ids"] == ["stand-brace"]
+    assert damaged["completed_operation_ids"] == before["completed_operation_ids"]
+    assert damaged["material_transactions"] == before["material_transactions"]
+    assert damaged["expected_remaining_stock"] == before["expected_remaining_stock"]
+    event = damaged["events"][-1]
+    assert (event["kind"], event["actor"], event["operation_id"]) == (
+        "damage",
+        "user",
+        operation,
+    )
+    assert event["verification_state"] == "user_confirmed"
+    new_evidence = damaged["evidence"][len(before["evidence"]) :]
+    assert [(e["kind"], e["provenance"], e["asset_id"]) for e in new_evidence] == [
+        ("user_report", "user", None),
+        ("photo", "user", image),
+    ]
+    assert {tuple(e["part_ids"]) for e in new_evidence} == {("stand-brace",)}
+    assert {e["verification_state"] for e in new_evidence} == {"user_confirmed"}
+    assert event["evidence_ids"] == [e["id"] for e in new_evidence]
+    # Confirmations stay paused until an approved revision.
+    assert post(client, version, update(version, damaged, 3)).status_code == 409
+    # An identical retry replays; history is unchanged.
+    replay = post_damage(client, version, body)
+    assert replay.status_code == 200 and replay.json()["replayed"] is True
+    assert progress(client, version).json() == damaged
+
+
+@pytest.mark.parametrize(
+    "change,status",
+    [
+        ({"part_ids": ["no-such-part"]}, 422),
+        ({"operation_id": "no-such-operation"}, 422),
+        ({"photo_ids": ["media-from-elsewhere"]}, 422),
+        ({"expected_last_event_id": "event-stale"}, 409),
+        ({"expected_version_id": "version-stale"}, 409),
+        ({"user_confirmed": False}, 422),
+        ({"part_ids": []}, 422),
+        ({"part_ids": ["stand-brace", "stand-brace"]}, 422),
+    ],
+)
+def test_invalid_damage_report_leaves_history_unchanged(setup, change, status):
+    client, version, _ = setup
+    before = progress(client, version).json()
+    body = damage(version, before) | change
+    assert post_damage(client, version, body).status_code == status
+    assert progress(client, version).json() == before
+
+
+def test_damage_report_is_owner_scoped(setup):
+    client, version, _ = setup
+    body = damage(version, progress(client, version).json())
+    assert post_damage(client, version, body, OTHER).status_code == 404
+    assert post_damage(client, version, body, {}).status_code == 401
+    assert progress(client, version).json()["events"] == []
+
+
+@pytest.mark.parametrize("preview_setup", ["offcut"], indirect=True)
+@pytest.mark.parametrize("recover_before_cut", [False, True])
+def test_material_reports_follow_cut_order_without_restoring_consumed_parent(
+    setup, recover_before_cut
+):
+    from forma_compiler import CutProcess
+    from test_adapt import report_material
+
+    client, version, directory = setup
+    operation = version.plan.operations[0]
+    sid = operation.args.stock_id
+    parent = operation.args.source_region_id
+    offcut = operation.effects.created_offcuts[0]
+    current = progress(client, version).json()
+
+    def material(kind, region_id, key):
+        return report_material(
+            client,
+            version.plan,
+            current,
+            key,
+            kind=kind,
+            stock_id=sid,
+            region_id=region_id,
+            operation_id=operation.id,
+        )
+
+    if recover_before_cut:
+        for kind in ("waste", "salvage"):
+            response = material(kind, parent, f"parent-{kind}")
+            assert response.status_code == 200, response.text
+            current = response.json()["progress"]
+            if kind == "waste":
+                blocked = post(client, version, update(version, current))
+                assert blocked.status_code == 409, blocked.text
+                assert progress(client, version).json() == current
+    current = complete(client, version, 0)
+    assert current["expected_remaining_stock"][0]["usable_regions"] == [
+        offcut.model_dump(mode="json")
+    ]
+    # Loss and recovery after a cut must operate on its output, never its parent.
+    for kind in ("waste", "salvage"):
+        response = material(kind, offcut.id, f"offcut-{kind}")
+        assert response.status_code == 200, response.text
+        current = response.json()["progress"]
+        assert current["expected_remaining_stock"][0]["usable_regions"] == (
+            [] if kind == "waste" else [offcut.model_dump(mode="json")]
+        )
+    for kind in ("waste", "salvage"):
+        response = material(kind, parent, f"reuse-parent-{kind}")
+        assert response.status_code == 409, response.text
+        assert progress(client, version).json() == current
+
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        process = connection.execute(
+            "SELECT process FROM plans WHERE version_id=?", (version.version_id,)
+        ).fetchone()[0]
+    source = m.ReplannerInput(
+        base_plan=version.plan,
+        events=tuple(m.PhysicalEvent.model_validate(e) for e in current["events"]),
+        evidence=tuple(m.Evidence.model_validate(e) for e in current["evidence"]),
+        material_transactions=tuple(
+            m.MaterialTransaction.model_validate(t)
+            for t in current["material_transactions"]
+        ),
+        remaining_stock=tuple(
+            m.Stock.model_validate(s) for s in current["expected_remaining_stock"]
+        ),
+        patch=m.RepairPatch(
+            id="reuse-parent-patch",
+            base_version_id=version.version_id,
+            kind="replace_part",
+            target_id="stand-brace",
+            replacement_stock_id=sid,
+            replacement_profile_id=None,
+            width_mm=None,
+            height_mm=None,
+            angle_deg=None,
+            rationale="SYNTHETIC consumed-parent reuse attempt",
+        ),
+    )
+    result = simulate_patch(
+        source, process=CutProcess.model_validate_json(process), allow_synthetic=True
+    )
+    assert result.status == "blocked"
+    assert "stock_exhausted" in {b.code for b in result.blockers}
+    assert not any(
+        "Remaining regions conflict" in b.message
+        or "Loss must identify" in b.message
+        or "Salvage requires" in b.message
+        for b in result.blockers
+    ), result.blockers
+
+
+def test_project_deletion_purges_material_report_retry_snapshot(setup):
+    from test_adapt import report_material
+
+    client, version, directory = setup
+    current = progress(client, version).json()
+    operation = version.plan.operations[0]
+    response = report_material(
+        client,
+        version.plan,
+        current,
+        "delete-material-report",
+        kind="waste",
+        stock_id=operation.args.stock_id,
+        region_id=operation.args.source_region_id,
+        operation_id=operation.id,
+    )
+    assert response.status_code == 200, response.text
+    scope = version.project_id + ":materials"
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM requests WHERE scope=?", (scope,)
+        ).fetchone() == (1,)
+    deleted = client.delete(
+        f"/api/projects/{version.project_id}",
+        headers={**AUTH, "Idempotency-Key": "delete-material-project"},
+    )
+    assert deleted.status_code == 200, deleted.text
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM requests WHERE scope=?", (scope,)
+        ).fetchone() == (0,)
+        for table in ("progress_material", "progress_events", "progress_evidence"):
+            assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (
+                0,
+            )

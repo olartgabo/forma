@@ -75,6 +75,14 @@ _STATE_LABEL = {
     "historical": "Historical plan",
     "preview": "Saved preview",
 }
+# Mirrors evidenceLabel in apps/web/src/lib/proof-report.ts.
+_EVIDENCE_LABEL = {
+    "measurement": "manually measured",
+    "user_report": "user report",
+    "photo": "photo",
+    "physical_test": "physical test",
+    "model_interpretation": "Muse observations and hypotheses (unverified)",
+}
 COVERAGE_LIMITS = (
     "software_consistency_only_no_physical_verification",
     "no_provider_or_media_bytes_checked",
@@ -378,7 +386,9 @@ def coherence_checks(snapshot: ProofSnapshot, document) -> dict[str, bool]:
         )
         try:
             stock_ok &= progress.expected_remaining_stock == expected_stock(
-                plan, set(progress.completed_operation_ids)
+                plan,
+                set(progress.completed_operation_ids),
+                progress.material_transactions,
             )
         except (ProjectError, KeyError, ArithmeticError):
             stock_ok = False
@@ -570,6 +580,14 @@ def text_structure_matches(text: str, snapshot: ProofSnapshot) -> bool:
                 f"Carried from earlier reports: {len(progress.carried_operation_ids)}"
             )
             and take_exact(f"New completion reports in this version: {confirmed_count}")
+            and (
+                take_prefix("Recorded waste: ")
+                if any(
+                    entry.kind in ("waste", "salvage")
+                    for entry in progress.material_transactions
+                )
+                else take_exact("No discarded or recovered material recorded.")
+            )
         ):
             return False
         revision = item.revision
@@ -671,7 +689,8 @@ def text_structure_matches(text: str, snapshot: ProofSnapshot) -> bool:
         if progress.evidence:
             for evidence in progress.evidence:
                 head = (
-                    f"  {evidence.id} | {evidence.kind} | {evidence.provenance}"
+                    f"  {evidence.id} | {_EVIDENCE_LABEL[evidence.kind]}"
+                    f" | {evidence.provenance}"
                     f" | {evidence.verification_state}"
                 )
                 if evidence.kind == "photo":
@@ -693,7 +712,9 @@ def text_structure_matches(text: str, snapshot: ProofSnapshot) -> bool:
                         return False
         elif not take_exact("  No evidence recorded"):
             return False
-        if not take_exact("Material receipts derived from reported operations:"):
+        if not take_exact(
+            "Material receipts from reported operations and material records:"
+        ):
             return False
         if progress.material_transactions:
             for entry in progress.material_transactions:

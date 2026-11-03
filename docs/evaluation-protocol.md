@@ -41,5 +41,9 @@ questions and actual model latency/usage. Judge preservation compatibility
 using compiler output plus human physical inspection. Explain zero-denominator
 cases instead of inventing a rate.
 
+Produce result tables with `uv run --locked python -m forma_eval MANIFEST.json`
+([harness](../packages/eval/README.md)); it fails when a label contradicts the
+recorded Proof export.
+
 No result table may contain illustrative numbers presented as observations.
 Keep current [submission gates](submission.md) unchecked until evidence exists.

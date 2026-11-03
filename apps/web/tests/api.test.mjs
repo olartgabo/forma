@@ -23,6 +23,8 @@ import {
   requestIntakeObservation,
   saveInventory,
   recordProgress,
+  reportDamage,
+  reportMaterial,
   simulateRepairs,
   uploadPhoto,
 } from "../src/lib/api.ts";
@@ -31,7 +33,12 @@ import {
   emptyRequirements,
   requirementsError,
 } from "../src/lib/build-requirements.ts";
-import { proofText, proofUnknowns } from "../src/lib/proof-report.ts";
+import {
+  evidenceLabel,
+  proofText,
+  proofUnknowns,
+  recordedMaterial,
+} from "../src/lib/proof-report.ts";
 import { createDiagnosisPlanLoader } from "../src/lib/diagnosis-plan-loader.ts";
 import {
   combineProviderUsage,
@@ -874,6 +881,32 @@ test("proof requests stay owner scoped and exports preserve failed versus unatte
   assert.doesNotMatch(failed, /Result: not attempted/);
 });
 
+test("proof names evidence kinds and totals recorded waste and salvage", () => {
+  assert.equal(evidenceLabel("measurement"), "manually measured");
+  assert.equal(
+    evidenceLabel("model_interpretation"),
+    "Muse observations and hypotheses (unverified)",
+  );
+  assert.equal(evidenceLabel("user_report"), "user report");
+  const receipt = (kind, quantity, unit) => ({ kind, quantity, unit });
+  assert.equal(
+    recordedMaterial({
+      material_transactions: [
+        receipt("consume", 40000, "mm2"),
+        receipt("waste", 1200, "mm2"),
+        receipt("waste", 20, "mm"),
+        receipt("waste", 15, "mm"),
+        receipt("salvage", 1200, "mm2"),
+      ],
+    }),
+    "Recorded waste: 1200 mm2 of sheet, 35 mm of connector; recovered: 1200 mm2.",
+  );
+  assert.equal(
+    recordedMaterial({ material_transactions: [receipt("consume", 80, "mm")] }),
+    "No discarded or recovered material recorded.",
+  );
+});
+
 test("proof exports preserve version provenance, repair work and invalidated evidence", () => {
   const emptyProgress = {
     status: "building",
@@ -991,7 +1024,8 @@ test("proof exports preserve version provenance, repair work and invalidated evi
   assert.match(text, /New work: new-cut/);
   assert.match(text, /Lost parts: old-brace/);
   assert.match(text, /Checks to repeat: fit-check/);
-  assert.match(text, /user_report \| user \| failed/);
+  assert.match(text, /user report \| user \| failed/);
+  assert.match(text, /No discarded or recovered material recorded\./);
   assert.match(text, /Checkpoints: fit-check/);
   assert.match(text, /Invalidated for version-repair .*Brace geometry changed/);
   assert.match(
@@ -1093,6 +1127,55 @@ test("physical reports bind the active version and history cursor without accept
     `Bearer ${token}`,
   );
   assert.equal(calls[1].options.cache, "no-store");
+});
+
+test("damage reports post to the project damage route without a cache", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json({ progress: {}, replayed: false });
+  });
+  const report = {
+    expected_version_id: "version-a",
+    expected_last_event_id: "event-a",
+    idempotency_key: "damage-a",
+    operation_id: "op-a",
+    part_ids: ["part-a"],
+    observation: "SYNTHETIC torn edge",
+    user_confirmed: true,
+    photo_ids: [],
+  };
+  await reportDamage("synthetic-owner-token", "project-a", report);
+  assert.equal(calls[0].path, "/api/projects/project-a/damage");
+  assert.equal(calls[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].options.body), report);
+  assert.equal(calls[0].options.cache, "no-store");
+});
+
+test("material records post to the project materials route without a cache", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json({ progress: {}, replayed: false });
+  });
+  const record = {
+    expected_version_id: "version-a",
+    expected_last_event_id: null,
+    idempotency_key: "material-a",
+    operation_id: "op-a",
+    kind: "waste",
+    stock_id: "tape-a",
+    region_id: null,
+    length_mm: 20,
+    observation: "SYNTHETIC ruler reading",
+    user_confirmed: true,
+    photo_ids: [],
+  };
+  await reportMaterial("synthetic-owner-token", "project-a", record);
+  assert.equal(calls[0].path, "/api/projects/project-a/materials");
+  assert.equal(calls[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].options.body), record);
+  assert.equal(calls[0].options.cache, "no-store");
 });
 
 test("repair review sends typed candidates and approves only a preview reference", async (t) => {

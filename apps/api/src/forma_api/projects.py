@@ -408,10 +408,12 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 ),
             )
             connection.execute(
-                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?)",
+                "DELETE FROM requests WHERE owner=? AND scope IN (?, ?, ?, ?, ?)",
                 (
                     owner,
                     project_id + ":progress",
+                    project_id + ":damage",
+                    project_id + ":materials",
                     project_id + ":adapt-simulate",
                     project_id + ":adapt-commit",
                 ),

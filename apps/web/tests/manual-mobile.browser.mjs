@@ -35,6 +35,34 @@ const browser = await chromium.launch({
     : {}),
 });
 
+const damagedPart = version.plan.parts[0].id;
+
+// Synthetic server reply to a damage report; not a persisted physical event.
+function damaged() {
+  return {
+    ...progress(false),
+    last_event_id: "synthetic-damage",
+    status: "needs_review",
+    failed_operation_ids: [panels[0].operation_id],
+    damaged_part_ids: [damagedPart],
+    events: [
+      {
+        id: "synthetic-damage",
+        project_id: project.id,
+        version_id: version.version_id,
+        operation_id: panels[0].operation_id,
+        kind: "damage",
+        evidence_ids: [],
+        recorded_at: "2026-11-02T12:00:00Z",
+        actor: "user",
+        observation: "SYNTHETIC torn edge; UI test only",
+        verification_state: "failed",
+        test_result: null,
+      },
+    ],
+  };
+}
+
 function progress(failed) {
   return {
     project_id: project.id,
@@ -50,7 +78,9 @@ function progress(failed) {
   };
 }
 
-async function scenario(width, failed) {
+async function scenario(width, failed, extra = null) {
+  const damage = extra === "damage";
+  const material = extra === "material";
   const context = await browser.newContext({
     viewport: { width, height: 844 },
     serviceWorkers: "block",
@@ -60,6 +90,8 @@ async function scenario(width, failed) {
   const errors = [];
   const unexpected = [];
   const writes = [];
+  const damageReports = [];
+  const materialReports = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const replay = new Map([
     ["/api/provider/status", { configured: false }],
@@ -86,6 +118,26 @@ async function scenario(width, failed) {
           writes.push(`${request.method()} ${url.pathname}`);
           await route.abort("blockedbyclient");
         }
+        return;
+      }
+      if (
+        damage &&
+        request.method() === "POST" &&
+        url.pathname === `${base}/damage`
+      ) {
+        damageReports.push(request.postDataJSON());
+        await route.fulfill({ json: { progress: damaged(), replayed: false } });
+        return;
+      }
+      if (
+        material &&
+        request.method() === "POST" &&
+        url.pathname === `${base}/materials`
+      ) {
+        materialReports.push(request.postDataJSON());
+        await route.fulfill({
+          json: { progress: progress(false), replayed: false },
+        });
         return;
       }
       if (request.method() !== "GET") {
@@ -120,6 +172,121 @@ async function scenario(width, failed) {
         exact: false,
       })
       .waitFor();
+    if (material) {
+      const record = manual.locator(".material-report");
+      await record.locator("summary").click();
+      const saveMaterial = record.getByRole("button", {
+        name: "Save material record",
+      });
+      await record
+        .getByLabel("Material", { exact: true })
+        .selectOption("synthetic-tape-stock");
+      assert(
+        await record.getByLabel("Recovered after discarding").isDisabled(),
+        "connectors cannot be recovered",
+      );
+      await record.getByLabel("Measured length lost (mm)").fill("20");
+      await record
+        .getByLabel("How did you measure or identify it?")
+        .fill("SYNTHETIC ruler reading; UI test only");
+      assert(await saveMaterial.isDisabled(), "material needs confirmation");
+      await record
+        .getByLabel("I handled or measured this material myself.")
+        .check();
+      await saveMaterial.click();
+      await manual
+        .getByText("Material record saved. Expected stock now reflects it.")
+        .waitFor();
+      assert.equal(materialReports.length, 1);
+      assert.deepEqual(
+        { ...materialReports[0], idempotency_key: "checked" },
+        {
+          expected_version_id: version.version_id,
+          expected_last_event_id: null,
+          idempotency_key: "checked",
+          operation_id: panels[0].operation_id,
+          kind: "waste",
+          stock_id: "synthetic-tape-stock",
+          region_id: null,
+          length_mm: 20,
+          observation: "SYNTHETIC ruler reading; UI test only",
+          user_confirmed: true,
+          photo_ids: [],
+        },
+      );
+      const box = await page.evaluate(() => ({
+        doc: document.documentElement.scrollWidth,
+        viewport: innerWidth,
+      }));
+      assert(box.doc <= box.viewport + 1, JSON.stringify(box));
+      assert.deepEqual(writes, [], "only the material record is written");
+      assert.deepEqual(errors, [], "the connected components must not crash");
+      assert.deepEqual(unexpected, [], "every request is explicitly replayed");
+      console.log(`PASS ${width}px synthetic material record is sent exactly`);
+      return;
+    }
+    if (damage) {
+      const report = manual.locator(".damage-report");
+      await report.locator("summary").click();
+      const saveDamage = report.getByRole("button", {
+        name: "Save damage report",
+      });
+      assert(
+        await saveDamage.isDisabled(),
+        "an empty damage report is blocked",
+      );
+      await report.getByLabel(damagedPart, { exact: true }).check();
+      await report
+        .getByLabel("What happened?")
+        .fill("SYNTHETIC torn edge; UI test only");
+      assert(
+        await saveDamage.isDisabled(),
+        "damage needs explicit confirmation",
+      );
+      await report
+        .getByLabel("I saw this damage myself and am reporting it as it is.")
+        .check();
+      await saveDamage.click();
+      await manual
+        .getByText(`Damage reported on ${damagedPart}.`, { exact: false })
+        .waitFor();
+      await manual
+        .getByText("Damage saved. Stop and review a repair before continuing.")
+        .waitFor();
+      assert.equal(
+        await manual
+          .getByRole("button", { name: "Save physical report" })
+          .count(),
+        0,
+        "confirmations pause after damage",
+      );
+      assert.equal(damageReports.length, 1);
+      const sent = damageReports[0];
+      assert.match(sent.idempotency_key, /\S/);
+      assert.deepEqual(
+        { ...sent, idempotency_key: "checked" },
+        {
+          expected_version_id: version.version_id,
+          expected_last_event_id: null,
+          idempotency_key: "checked",
+          operation_id: panels[0].operation_id,
+          part_ids: [damagedPart],
+          observation: "SYNTHETIC torn edge; UI test only",
+          user_confirmed: true,
+          photo_ids: [],
+        },
+      );
+      const box = await page.evaluate(() => ({
+        doc: document.documentElement.scrollWidth,
+        viewport: innerWidth,
+      }));
+      assert(box.doc <= box.viewport + 1, JSON.stringify(box));
+      assert.deepEqual(writes, [], "only the damage report is written");
+      assert.deepEqual(errors, [], "the connected components must not crash");
+      assert.deepEqual(unexpected, [], "every request is explicitly replayed");
+      console.log(`PASS ${width}px synthetic damage report pauses the build`);
+      return;
+    }
     const observations = [];
     for (let i = 0; i < panels.length; i++) {
       const panel = panels[i];
@@ -233,8 +400,11 @@ async function scenario(width, failed) {
 }
 
 try {
-  for (const width of [390, 320])
+  for (const width of [390, 320]) {
     for (const failed of [false, true]) await scenario(width, failed);
+    await scenario(width, false, "damage");
+    await scenario(width, false, "material");
+  }
 } finally {
   await browser.close();
 }

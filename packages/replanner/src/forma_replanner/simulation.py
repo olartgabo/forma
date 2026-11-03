@@ -546,7 +546,7 @@ def simulate_patch(
         if event.kind == "damage":
             if not (
                 patch.kind == "replace_part"
-                and patch.target_id in targets
+                and targets == {patch.target_id}
                 and event.actor == "user"
                 and event.verification_state == "user_confirmed"
                 and event.evidence_ids
@@ -626,9 +626,8 @@ def simulate_patch(
         for s in base.stocks
         if s.kind in ("tape", "cord")
     }
-    for op in base.operations:
-        if op.id not in completed:
-            continue
+
+    def apply_completed_operation(op):
         if op.type == "cut_rect":
             source = regions.pop(op.args.source_region_id, None)
             if source is None:
@@ -656,6 +655,21 @@ def simulate_patch(
                         sid,
                     )
 
+    pending_completions = iter(
+        event
+        for event in snapshot.events
+        if event.kind == "operation_confirmed" and event.operation_id in operations
+    )
+    next_completion = next(pending_completions, None)
+
+    def apply_completions_through(recorded_at):
+        nonlocal next_completion
+        while next_completion is not None and (
+            recorded_at is None or next_completion.recorded_at <= recorded_at
+        ):
+            apply_completed_operation(operations[next_completion.operation_id])
+            next_completion = next(pending_completions, None)
+
     seen_transactions = set()
     seen_connector_losses = set()
     lost = []
@@ -665,6 +679,7 @@ def simulate_patch(
     ):
         fail("invalid_order", "Material transactions must be chronological.")
     for tx in snapshot.material_transactions:
+        apply_completions_through(tx.recorded_at)
         event = events.get(tx.physical_event_id)
         op = operations.get(tx.operation_id)
         if (
@@ -876,6 +891,8 @@ def simulate_patch(
                 regions[out.id] = value
                 retired.pop(out.id)
                 lost = [rid for rid in lost if rid != out.id]
+
+    apply_completions_through(None)
 
     remaining = {s.id: s for s in snapshot.remaining_stock}
     if len(remaining) != len(snapshot.remaining_stock):

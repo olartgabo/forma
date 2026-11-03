@@ -51,7 +51,13 @@ from forma_api.plans import (
     PlanSummary,
     PlanVersion,
 )
-from forma_api.progress import ProgressResult, ProgressSnapshot, ProgressUpdate
+from forma_api.progress import (
+    DamageReport,
+    MaterialReport,
+    ProgressResult,
+    ProgressSnapshot,
+    ProgressUpdate,
+)
 from forma_api.projects import (
     BuildRequirements,
     CreateProject,
@@ -88,6 +94,7 @@ API_RECORDS = (
     BuildRequirements,
     CreateProject,
     CompilePreview,
+    DamageReport,
     DeleteResult,
     DesignCandidateResult,
     DesignDiagnostics,
@@ -111,6 +118,7 @@ API_RECORDS = (
     ManualDocument,
     ManualPanel,
     MaterialDelta,
+    MaterialReport,
     Media,
     MediaDeleteResult,
     MediaList,
