@@ -379,3 +379,73 @@ def test_failed_fit_check_is_resolved_only_by_an_approved_revision(setup):
             "SELECT evidence_id FROM evidence_invalidations"
         ).fetchall()
     assert {row[0] for row in rows} == invalidated
+
+
+def report_damage(client, plan, current, part_id="stand-brace"):
+    response = client.post(
+        f"/api/projects/{plan.project_id}/damage",
+        headers=AUTH,
+        json=dict(
+            expected_version_id=plan.version_id,
+            expected_last_event_id=current["last_event_id"],
+            idempotency_key="damage-brace",
+            operation_id="stand-joint-apex-attach",
+            part_ids=[part_id],
+            observation=SYNTHETIC,
+            user_confirmed=True,
+            photo_ids=[],
+        ),
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["progress"]
+
+
+def test_reported_damage_leads_to_a_replacement_revision(setup):
+    client, version, _ = setup
+    plan = version.plan
+    damaged = report_damage(client, plan, joined(client, version))
+    assert damaged["status"] == "needs_review"
+    assert damaged["damaged_part_ids"] == ["stand-brace"]
+    response = simulate(client, plan, damaged, [patch(plan)])
+    assert response.status_code == 200, response.text
+    preview = response.json()["previews"][0]
+    assert preview["simulation"]["status"] == "feasible", preview["simulation"]
+    assert preview["simulation"]["lost_part_ids"] == ["stand-brace"]
+    approved = commit(client, plan, damaged, preview["preview_id"])
+    assert approved.status_code == 200, approved.text
+    revised = approved.json()["project"]["active_version_id"]
+    assert revised != plan.version_id
+    # The damage stays in the original version's history; the revision starts clean.
+    assert progress(client, plan.project_id, plan.version_id) == damaged
+    fresh = progress(client, plan.project_id, revised)
+    assert fresh["damaged_part_ids"] == [] and fresh["status"] != "needs_review"
+
+
+def test_reported_damage_blocks_repairs_that_keep_the_damaged_part(setup):
+    client, version, _ = setup
+    plan = version.plan
+    damaged = report_damage(client, plan, joined(client, version))
+    resize = patch(
+        plan,
+        "resize-base",
+        kind="resize_part",
+        target_id="stand-base",
+        replacement_stock_id=None,
+        width_mm=80,
+        height_mm=160,
+        rationale="SYNTHETIC base extension that keeps the damaged brace.",
+    )
+    response = simulate(client, plan, damaged, [resize])
+    assert response.status_code == 200, response.text
+    simulation = response.json()["previews"][0]["simulation"]
+    assert simulation["status"] == "blocked"
+    assert {
+        (b["code"], b["message"])
+        for b in simulation["blockers"]
+        if damaged["events"][-1]["id"] in b["target_ids"]
+    } == {
+        (
+            "needs_confirmation",
+            "Damage requires a confirmed scoped replacement or explicit physical repair plan.",
+        )
+    }

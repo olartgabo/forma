@@ -570,13 +570,14 @@ def test_damage_report_pauses_build_without_completing_or_consuming(setup):
         "user",
         operation,
     )
-    assert event["verification_state"] == "failed"
+    assert event["verification_state"] == "user_confirmed"
     new_evidence = damaged["evidence"][len(before["evidence"]) :]
     assert [(e["kind"], e["provenance"], e["asset_id"]) for e in new_evidence] == [
         ("user_report", "user", None),
         ("photo", "user", image),
     ]
     assert {tuple(e["part_ids"]) for e in new_evidence} == {("stand-brace",)}
+    assert {e["verification_state"] for e in new_evidence} == {"user_confirmed"}
     assert event["evidence_ids"] == [e["id"] for e in new_evidence]
     # Confirmations stay paused until an approved revision.
     assert post(client, version, update(version, damaged, 3)).status_code == 409

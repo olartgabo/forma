@@ -168,8 +168,12 @@ def snapshot(connection, plan: BuildPlan) -> ProgressSnapshot:
     completed = carried | {
         event.operation_id for event in events if event.kind == "operation_confirmed"
     }
+    # Reported damage pauses the build like a failed check. The damage itself
+    # is user-confirmed, which the replanner requires before a replacement.
     failed = {
-        event.operation_id for event in events if event.verification_state == "failed"
+        event.operation_id
+        for event in events
+        if event.verification_state == "failed" or event.kind == "damage"
     }
     damage_evidence = {
         evidence_id
@@ -589,7 +593,7 @@ def progress_router(store: ProjectStore, authenticate) -> APIRouter:
                 part_ids=body.part_ids,
                 recorded_at=recorded_at,
                 description=body.observation,
-                verification_state="failed",
+                verification_state="user_confirmed",
             )
             evidence = [
                 Evidence(id="evidence-" + uuid4().hex, kind="user_report", **shared)
@@ -612,7 +616,7 @@ def progress_router(store: ProjectStore, authenticate) -> APIRouter:
                 recorded_at=recorded_at,
                 actor="user",
                 observation=body.observation,
-                verification_state="failed",
+                verification_state="user_confirmed",
             )
             _append(connection, project_id, plan.version_id, evidence, [event])
             result = ProgressResult(progress=snapshot(connection, plan)).model_dump(
