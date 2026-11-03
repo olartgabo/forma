@@ -660,8 +660,8 @@ def test_material_reports_follow_cut_order_without_restoring_consumed_parent(
         )
 
     if recover_before_cut:
-        for kind in ("waste", "salvage"):
-            response = material(kind, parent, f"parent-{kind}")
+        for cycle, kind in enumerate(("waste", "salvage", "waste", "salvage")):
+            response = material(kind, parent, f"parent-{cycle}-{kind}")
             assert response.status_code == 200, response.text
             current = response.json()["progress"]
             if kind == "waste":
@@ -673,8 +673,8 @@ def test_material_reports_follow_cut_order_without_restoring_consumed_parent(
         offcut.model_dump(mode="json")
     ]
     # Loss and recovery after a cut must operate on its output, never its parent.
-    for kind in ("waste", "salvage"):
-        response = material(kind, offcut.id, f"offcut-{kind}")
+    for cycle, kind in enumerate(("waste", "salvage", "waste", "salvage")):
+        response = material(kind, offcut.id, f"offcut-{cycle}-{kind}")
         assert response.status_code == 200, response.text
         current = response.json()["progress"]
         assert current["expected_remaining_stock"][0]["usable_regions"] == (

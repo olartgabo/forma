@@ -59,6 +59,8 @@ times, not stopwatch measurements.
 A passed FORMA build counts as a recovery only when Proof also records a
 failure and an approved revision. A disruption label alone does not establish
 recovery. Baseline recovery uses the observer's disruption and outcome labels.
+Proof-derived preservation, waste and recovery timing include only physical
+attempts. Fixture, compiler and bench records do not contribute to those totals.
 
 ## Limits
 

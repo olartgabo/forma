@@ -26,6 +26,8 @@ import {
   type MuseAvailability,
 } from "../lib/muse-provider";
 
+import { recoverableRegionIds } from "../lib/material-recovery";
+
 type Submission =
   | { kind: "progress"; body: ProgressUpdate }
   | { kind: "damage"; body: DamageReport }
@@ -166,27 +168,15 @@ export default function PhysicalProgress({
   );
   const connectorStock =
     materialStock?.kind === "tape" || materialStock?.kind === "cord";
-  const salvagedRegionIds = new Set(
-    (progress?.material_transactions ?? []).flatMap((item) =>
-      item.kind === "salvage" && item.output_region
-        ? [item.output_region.id]
-        : [],
-    ),
-  );
   // Waste names a region usable now; salvage names one wasted in this version.
   const materialRegionIds =
     materialKind === "waste"
       ? (progress?.expected_remaining_stock
           .find((stock) => stock.id === materialStockId)
           ?.usable_regions?.map((region) => region.id) ?? [])
-      : (progress?.material_transactions ?? []).flatMap((item) =>
-          item.kind === "waste" &&
-          item.unit === "mm2" &&
-          item.source_stock_id === materialStockId &&
-          item.source_region_id &&
-          !salvagedRegionIds.has(item.source_region_id)
-            ? [item.source_region_id]
-            : [],
+      : recoverableRegionIds(
+          progress?.material_transactions ?? [],
+          materialStockId,
         );
   const materialLengthValue = Number(materialLength);
   const materialReady =

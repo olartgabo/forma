@@ -799,15 +799,16 @@ def progress_router(store: ProjectStore, authenticate) -> APIRouter:
                         )
                     quantity = dict(source_region_id=region.id)
                 else:
-                    wasted = {
-                        item.source_region_id
-                        for item in current.material_transactions
-                        if item.kind == "waste" and item.unit == "mm2"
-                    } - {
-                        item.output_region.id
-                        for item in current.material_transactions
-                        if item.kind == "salvage"
-                    }
+                    wasted = set()
+                    for item in current.material_transactions:
+                        if item.source_stock_id != original.id:
+                            continue
+                        if item.kind == "waste" and item.unit == "mm2":
+                            wasted.add(item.source_region_id)
+                        elif item.kind == "salvage":
+                            wasted.discard(item.output_region.id)
+                        elif item.kind == "consume":
+                            wasted.discard(item.source_region_id)
                     region = _known_region(plan, original.id, body.region_id)
                     if body.region_id not in wasted or region is None:
                         raise ProjectError(

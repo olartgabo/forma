@@ -270,3 +270,74 @@ def test_cli_does_not_count_a_passed_initial_build_as_recovered(
         "| Recovery after a disruption (passed / disrupted attempts) | 0/1 (0%) |"
         in output
     )
+
+
+@pytest.mark.parametrize(
+    "level", ["fixture_only", "compiler_validated", "bench_tested"]
+)
+@pytest.mark.parametrize("with_physical", [False, True])
+def test_nonphysical_proof_cannot_change_physical_material_or_recovery_metrics(
+    level, with_physical
+):
+    synthetic = (
+        attempt(id="synthetic", case="damaged_joint", evidence_level=level),
+        facts(
+            passed=True,
+            failure_recorded=True,
+            recovered=True,
+            revisions=1,
+            preserved_operations=600,
+            lost_operations=200,
+            sheet_waste_mm2=1200,
+            connector_waste_mm=20,
+            failure_to_pass_seconds=900,
+        ),
+    )
+    physical = (
+        attempt(case="damaged_joint", evidence_level="physically_passed"),
+        facts(
+            passed=True,
+            failure_recorded=True,
+            recovered=True,
+            revisions=1,
+            preserved_operations=3,
+            lost_operations=1,
+            sheet_waste_mm2=100,
+            connector_waste_mm=5,
+            failure_to_pass_seconds=60,
+        ),
+    )
+    text = summarize([synthetic, physical] if with_physical else [synthetic])
+    rows = text.splitlines()
+    expected = (
+        (
+            "| Preserved work in approved revisions (kept / kept + lost) | 3/4 (75%) |",
+            "| Recorded sheet waste | 100 mm2 |",
+            "| Recorded connector waste | 5 mm |",
+            "| Median failure-to-pass time | 60 s over 1 recoveries |",
+        )
+        if with_physical
+        else (
+            "| Preserved work in approved revisions (kept / kept + lost) | n/a (no approved revision recorded) |",
+            "| Recorded sheet waste | 0 mm2 |",
+            "| Recorded connector waste | 0 mm |",
+            "| Median failure-to-pass time | n/a (no recovery with both times recorded) |",
+        )
+    )
+    for row in expected:
+        assert row in rows
+
+
+def test_time_from_an_unrecovered_failure_is_not_reported_as_recovery_time():
+    text = summarize(
+        [
+            (
+                attempt(case="damaged_joint", evidence_level="physically_passed"),
+                facts(passed=True, failure_recorded=True, failure_to_pass_seconds=900),
+            )
+        ]
+    )
+    assert (
+        "| Median failure-to-pass time | n/a (no recovery with both times recorded) |"
+        in text
+    )
