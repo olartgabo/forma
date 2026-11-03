@@ -72,6 +72,17 @@ export type CreateProject = {
   readonly "idempotency_key": string;
 };
 
+export type DamageReport = {
+  readonly "expected_version_id": string;
+  readonly "expected_last_event_id": (string | null);
+  readonly "idempotency_key": string;
+  readonly "operation_id": string;
+  readonly "part_ids": ReadonlyArray<string>;
+  readonly "observation": string;
+  readonly "user_confirmed": true;
+  readonly "photo_ids"?: ReadonlyArray<string>;
+};
+
 export type DeleteResult = {
   readonly "project_id": string;
   readonly "deleted"?: true;
@@ -325,6 +336,7 @@ export type ProgressSnapshot = {
   readonly "completed_operation_ids": ReadonlyArray<string>;
   readonly "carried_operation_ids"?: ReadonlyArray<string>;
   readonly "failed_operation_ids": ReadonlyArray<string>;
+  readonly "damaged_part_ids"?: ReadonlyArray<string>;
   readonly "expected_remaining_stock": ReadonlyArray<Stock>;
   readonly "status": "not_started" | "building" | "needs_review" | "passed";
 };

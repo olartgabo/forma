@@ -110,7 +110,9 @@ manual and the authenticated readiness response in the actual connected workbenc
 390px and 320px. Each width runs fresh progress and an injected synthetic failed-check
 UI state (not a persisted physical event or server replay). It checks diagrams,
 instructions, tools, parts, checkpoints, bill of materials, bounded width, reachable
-Next, zero writes, disabled save/diagnosis and prerequisite blocking.
+Next, zero writes, disabled save/diagnosis and prerequisite blocking. A third
+scenario per width submits a damage report to an intercepted route and checks the
+exact request, the paused build and the removed save control.
 
 Export the fixture to a path outside tracked source. It runs the existing
 `apps/api/tests/test_plans.py` inputs through the offline compiler/renderer, using this

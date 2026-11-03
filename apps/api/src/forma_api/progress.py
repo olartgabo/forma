@@ -54,6 +54,36 @@ class ProgressUpdate(Record):
         return self
 
 
+class DamageReport(Record):
+    """Damage the builder saw, tied to the step where it happened."""
+
+    expected_version_id: ID
+    expected_last_event_id: ID | None
+    idempotency_key: Key
+    operation_id: ID
+    part_ids: tuple[ID, ...] = Field(min_length=1, max_length=16)
+    observation: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)
+    ]
+    user_confirmed: Literal[True]
+    photo_ids: tuple[ID, ...] = Field(default=(), max_length=8)
+
+    @model_validator(mode="before")
+    @classmethod
+    def explicit_confirmation(cls, value):
+        if isinstance(value, dict) and value.get("user_confirmed") is not True:
+            raise ValueError("Explicit confirmation is required")
+        return value
+
+    @model_validator(mode="after")
+    def distinct_ids(self):
+        if len(set(self.photo_ids)) != len(self.photo_ids):
+            raise ValueError("Duplicate photo IDs")
+        if len(set(self.part_ids)) != len(self.part_ids):
+            raise ValueError("Duplicate part IDs")
+        return self
+
+
 class ProgressSnapshot(Record):
     project_id: ID
     version_id: ID
@@ -64,6 +94,7 @@ class ProgressSnapshot(Record):
     completed_operation_ids: tuple[ID, ...]
     carried_operation_ids: tuple[ID, ...] = ()
     failed_operation_ids: tuple[ID, ...]
+    damaged_part_ids: tuple[ID, ...] = ()
     expected_remaining_stock: tuple[Stock, ...]
     status: Literal["not_started", "building", "needs_review", "passed"]
 
@@ -140,6 +171,18 @@ def snapshot(connection, plan: BuildPlan) -> ProgressSnapshot:
     failed = {
         event.operation_id for event in events if event.verification_state == "failed"
     }
+    damage_evidence = {
+        evidence_id
+        for event in events
+        if event.kind == "damage"
+        for evidence_id in event.evidence_ids
+    }
+    damaged = {
+        part_id
+        for item in evidence
+        if item.id in damage_evidence
+        for part_id in item.part_ids
+    }
     status = "not_started"
     if failed:
         status = "needs_review"
@@ -169,6 +212,7 @@ def snapshot(connection, plan: BuildPlan) -> ProgressSnapshot:
             op.id for op in plan.operations if op.id in carried
         ),
         failed_operation_ids=tuple(op.id for op in plan.operations if op.id in failed),
+        damaged_part_ids=tuple(part.id for part in plan.parts if part.id in damaged),
         expected_remaining_stock=expected_stock(plan, completed),
         status=status,
     )
@@ -233,6 +277,44 @@ def record_diagnosis_evidence(
             evidence.model_dump_json(),
         ),
     )
+
+
+def _require_photos(connection, project_id: str, photo_ids) -> None:
+    for photo_id in photo_ids:
+        if (
+            connection.execute(
+                "SELECT 1 FROM media WHERE project_id=? AND id=?",
+                (project_id, photo_id),
+            ).fetchone()
+            is None
+        ):
+            raise ProjectError(422, "validation_error", "Photo is outside this project")
+
+
+def _next_recorded_at(current: ProgressSnapshot) -> datetime:
+    # Keep server ingestion order even if the clock moves backwards.
+    recorded_at = datetime.now(UTC)
+    if current.events and recorded_at <= current.events[-1].recorded_at:
+        recorded_at = current.events[-1].recorded_at + timedelta(microseconds=1)
+    return recorded_at
+
+
+def _append(connection, project_id, version_id, evidence, events, transactions=()):
+    for item in evidence:
+        connection.execute(
+            "INSERT INTO progress_evidence VALUES (?, ?, ?, ?, ?)",
+            (item.id, project_id, version_id, item.asset_id, item.model_dump_json()),
+        )
+    for item in events:
+        connection.execute(
+            "INSERT INTO progress_events VALUES (?, ?, ?, ?)",
+            (item.id, project_id, version_id, item.model_dump_json()),
+        )
+    for item in transactions:
+        connection.execute(
+            "INSERT INTO progress_material VALUES (?, ?, ?, ?)",
+            (item.id, project_id, version_id, item.model_dump_json()),
+        )
 
 
 def progress_router(store: ProjectStore, authenticate) -> APIRouter:
@@ -313,21 +395,8 @@ def progress_router(store: ProjectStore, authenticate) -> APIRouter:
                     "blocked",
                     "Measurement confirmation needs a supported progress flow",
                 )
-            for photo_id in body.photo_ids:
-                if (
-                    connection.execute(
-                        "SELECT 1 FROM media WHERE project_id=? AND id=?",
-                        (project_id, photo_id),
-                    ).fetchone()
-                    is None
-                ):
-                    raise ProjectError(
-                        422, "validation_error", "Photo is outside this project"
-                    )
-
-            recorded_at = datetime.now(UTC)
-            if current.events and recorded_at <= current.events[-1].recorded_at:
-                recorded_at = current.events[-1].recorded_at + timedelta(microseconds=1)
+            _require_photos(connection, project_id, body.photo_ids)
+            recorded_at = _next_recorded_at(current)
             failed = body.result == "failed"
             state = "failed" if failed else "user_confirmed"
             parts = tuple(
@@ -466,27 +535,86 @@ def progress_router(store: ProjectStore, authenticate) -> APIRouter:
                             **transaction_fields,
                         )
                     )
-            for item in evidence:
-                connection.execute(
-                    "INSERT INTO progress_evidence VALUES (?, ?, ?, ?, ?)",
-                    (
-                        item.id,
-                        project_id,
-                        plan.version_id,
-                        item.asset_id,
-                        item.model_dump_json(),
-                    ),
+            _append(
+                connection, project_id, plan.version_id, evidence, events, transactions
+            )
+            result = ProgressResult(progress=snapshot(connection, plan)).model_dump(
+                mode="json"
+            )
+            store.remember(
+                connection, owner, scope, body.idempotency_key, digest, result
+            )
+            return result
+
+    @router.post("/{project_id}/damage", response_model=ProgressResult)
+    def report_damage(
+        project_id: ID, body: DamageReport, owner: Owner, response: Response
+    ):
+        """Record damage the builder saw. It pauses the build like a failed check
+        until an approved revision; it consumes no stock and completes nothing."""
+        response.headers["Cache-Control"] = "no-store"
+        with store.transaction() as connection:
+            project = store.read(connection, owner, project_id)
+            scope = project_id + ":damage"
+            digest, replay = store.replay(
+                connection,
+                owner,
+                scope,
+                body.idempotency_key,
+                body.model_dump(mode="json"),
+            )
+            if replay is not None:
+                return replay
+            if project.active_version_id != body.expected_version_id:
+                raise ProjectError(
+                    409, "stale_version", "The active plan changed; reload it"
                 )
-            for item in events:
-                connection.execute(
-                    "INSERT INTO progress_events VALUES (?, ?, ?, ?)",
-                    (item.id, project_id, plan.version_id, item.model_dump_json()),
+            plan = plans.read(connection, project_id, body.expected_version_id).plan
+            current = snapshot(connection, plan)
+            if current.last_event_id != body.expected_last_event_id:
+                raise ProjectError(
+                    409, "stale_version", "Physical history changed; reload it"
                 )
-            for item in transactions:
-                connection.execute(
-                    "INSERT INTO progress_material VALUES (?, ?, ?, ?)",
-                    (item.id, project_id, plan.version_id, item.model_dump_json()),
+            if all(op.id != body.operation_id for op in plan.operations):
+                raise ProjectError(422, "validation_error", "Unknown operation")
+            if not set(body.part_ids) <= {part.id for part in plan.parts}:
+                raise ProjectError(422, "validation_error", "Unknown part")
+            _require_photos(connection, project_id, body.photo_ids)
+            recorded_at = _next_recorded_at(current)
+            shared = dict(
+                project_id=project_id,
+                version_id=plan.version_id,
+                provenance="user",
+                operation_ids=(body.operation_id,),
+                part_ids=body.part_ids,
+                recorded_at=recorded_at,
+                description=body.observation,
+                verification_state="failed",
+            )
+            evidence = [
+                Evidence(id="evidence-" + uuid4().hex, kind="user_report", **shared)
+            ] + [
+                Evidence(
+                    id="evidence-" + uuid4().hex,
+                    kind="photo",
+                    asset_id=photo_id,
+                    **shared,
                 )
+                for photo_id in body.photo_ids
+            ]
+            event = PhysicalEvent(
+                id="event-" + uuid4().hex,
+                project_id=project_id,
+                version_id=plan.version_id,
+                operation_id=body.operation_id,
+                kind="damage",
+                evidence_ids=tuple(item.id for item in evidence),
+                recorded_at=recorded_at,
+                actor="user",
+                observation=body.observation,
+                verification_state="failed",
+            )
+            _append(connection, project_id, plan.version_id, evidence, [event])
             result = ProgressResult(progress=snapshot(connection, plan)).model_dump(
                 mode="json"
             )

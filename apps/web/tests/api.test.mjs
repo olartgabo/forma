@@ -23,6 +23,7 @@ import {
   requestIntakeObservation,
   saveInventory,
   recordProgress,
+  reportDamage,
   simulateRepairs,
   uploadPhoto,
 } from "../src/lib/api.ts";
@@ -1093,6 +1094,29 @@ test("physical reports bind the active version and history cursor without accept
     `Bearer ${token}`,
   );
   assert.equal(calls[1].options.cache, "no-store");
+});
+
+test("damage reports post to the project damage route without a cache", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json({ progress: {}, replayed: false });
+  });
+  const report = {
+    expected_version_id: "version-a",
+    expected_last_event_id: "event-a",
+    idempotency_key: "damage-a",
+    operation_id: "op-a",
+    part_ids: ["part-a"],
+    observation: "SYNTHETIC torn edge",
+    user_confirmed: true,
+    photo_ids: [],
+  };
+  await reportDamage("synthetic-owner-token", "project-a", report);
+  assert.equal(calls[0].path, "/api/projects/project-a/damage");
+  assert.equal(calls[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].options.body), report);
+  assert.equal(calls[0].options.cache, "no-store");
 });
 
 test("repair review sends typed candidates and approves only a preview reference", async (t) => {
