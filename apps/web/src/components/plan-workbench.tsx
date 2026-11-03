@@ -416,7 +416,7 @@ export default function PlanWorkbench({
         record physical work.
       </p>
       <div aria-live="polite">
-        {loading && <p>Loading saved plansâ€¦</p>}
+        {loading && <p>Loading saved plans…</p>}
         {listError && (
           <p className="error" role="alert">
             {listError}
@@ -581,7 +581,7 @@ export default function PlanWorkbench({
                     {candidate.candidate_id}:{" "}
                     {candidate.status.replaceAll("_", " ")}
                     {candidate.version
-                      ? ` â€” ${copy.design.savedPreview} ${candidate.version.version_id}`
+                      ? ` — ${copy.design.savedPreview} ${candidate.version.version_id}`
                       : ""}
                     {(candidate.blockers ?? []).length > 0 && (
                       <ul>
@@ -624,7 +624,7 @@ export default function PlanWorkbench({
                   : project.active_version_id
                     ? "Not active"
                     : "Preview"}{" "}
-                Â· {plan.candidate_id} Â· {plan.version_id}
+                · {plan.candidate_id} · {plan.version_id}
               </option>
             ))}
           </select>
@@ -633,7 +633,7 @@ export default function PlanWorkbench({
       {version && (
         <>
           <p className="plan-state">
-            <strong>{current ? "Active plan" : "Plan preview"}</strong> Â·
+            <strong>{current ? "Active plan" : "Plan preview"}</strong> ·
             {current
               ? "User-reported physical progress below"
               : "Physical verification not attempted"}
@@ -653,7 +653,7 @@ export default function PlanWorkbench({
           {panel && (
             <article className="manual-step">
               <h3 tabIndex={-1}>
-                Step {step + 1} of {version.manual.panels.length} â€”{" "}
+                Step {step + 1} of {version.manual.panels.length} —{" "}
                 {operationTitles[
                   version.plan.operations.find(
                     (operation) => operation.id === panel.operation_id,
@@ -789,7 +789,7 @@ export default function PlanWorkbench({
                   {item.quantity === null
                     ? "Unknown"
                     : `${item.quantity} ${item.unit}`}{" "}
-                  Â· {item.stock_id}
+                  · {item.stock_id}
                 </li>
               ))}
             </ul>

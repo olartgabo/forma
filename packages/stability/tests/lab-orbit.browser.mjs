@@ -19,6 +19,7 @@ try {
     });
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(base);
+    await page.locator("#legacy-lab > summary").click();
     await page.waitForFunction(() => document.querySelector("#stand-view svg"));
     const read = async () =>
       JSON.parse(await page.locator("#stand-full-result").textContent());

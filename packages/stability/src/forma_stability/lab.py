@@ -224,6 +224,10 @@ def handler_for(port):
                 "/": ("lab.html", "text/html; charset=utf-8"),
                 "/lab.js": ("lab.js", "text/javascript; charset=utf-8"),
                 "/lab-plan.js": ("lab-plan.js", "text/javascript; charset=utf-8"),
+                "/lab-assembly.js": (
+                    "lab-assembly.js",
+                    "text/javascript; charset=utf-8",
+                ),
                 "/lab.css": ("lab.css", "text/css; charset=utf-8"),
             }.get(self.path)
             if asset is None:
@@ -237,7 +241,12 @@ def handler_for(port):
                 return self.reply(
                     403, {"error": "Cross-origin requests are not accepted"}
                 )
-            if self.path not in ("/evaluate", "/evaluate-input", "/inspect-plan"):
+            if self.path not in (
+                "/evaluate",
+                "/evaluate-input",
+                "/inspect-plan",
+                "/evaluate-assembly",
+            ):
                 return self.reply(404, {"error": "Not found"})
             if (
                 self.headers.get("Content-Type", "").split(";", 1)[0]
@@ -253,7 +262,11 @@ def handler_for(port):
             self.connection.settimeout(5)
             try:
                 data = json.loads(self.rfile.read(size))
-                if self.path == "/inspect-plan":
+                if self.path == "/evaluate-assembly":
+                    from forma_stability.lab_assembly import run_assembly
+
+                    result = run_assembly(data)
+                elif self.path == "/inspect-plan":
                     from forma_stability.lab_plan import inspect_plan
 
                     result = inspect_plan(data)
@@ -277,12 +290,28 @@ def main(argv=None):
         "--input", type=Path, help="Evaluate a JSON file with input and policy"
     )
     mode.add_argument(
+        "--assembly-input",
+        type=Path,
+        help="Replay a generic assembly editor request or downloaded experiment",
+    )
+    mode.add_argument(
         "--plan-input",
         type=Path,
         help="Replay a compiled-plan lab request or downloaded feedback bundle",
     )
     parser.add_argument("--port", type=int, default=3031)
     args = parser.parse_args(argv)
+    if args.assembly_input:
+        from forma_stability.lab_assembly import run_assembly
+
+        try:
+            if args.assembly_input.stat().st_size > MAX_BODY:
+                parser.error("Input exceeds 131072 bytes")
+            payload = json.loads(args.assembly_input.read_text(encoding="utf-8"))
+            print(json.dumps(run_assembly(payload), indent=2, allow_nan=False))
+        except (OSError, ValueError, ValidationError) as error:
+            parser.error(str(error))
+        return
     if args.plan_input:
         from forma_stability.lab_plan import inspect_plan
 

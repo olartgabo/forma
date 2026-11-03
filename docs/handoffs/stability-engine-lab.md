@@ -15,6 +15,10 @@ download an input/report/feedback file to the user's usual download location.
 
 ## Start with the actual compiled stand
 
+The primary view is now the [user-authored assembly editor](generic-assembly-diagnostic.md).
+It supports editable polygon panels and physical states for each stage without
+requiring JSON. The compiled-stand tools below remain in **Advanced diagnostics**.
+
 The primary panel imports a real `BuildPlan` and calls the existing canonical
 geometry producer. Its built-in JSON asset was exported from the actual compiler
 and API software fixture, not drawn by hand. The sample remains synthetic.

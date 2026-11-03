@@ -9,6 +9,7 @@ from pydantic.json_schema import models_json_schema
 
 from . import (
     assembly_geometry_contracts,
+    generic_assembly,
     models,
     stability_contracts,
     stability_measurements,
@@ -66,6 +67,7 @@ def artifacts():
                 models,
                 stability_contracts,
                 assembly_geometry_contracts,
+                generic_assembly,
                 stability_measurements,
                 stage_mechanics,
             )

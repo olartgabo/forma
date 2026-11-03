@@ -350,6 +350,147 @@
         "title": "AppendPhysicalEvent",
         "type": "object"
       },
+      "AssemblyFacet": {
+        "additionalProperties": false,
+        "properties": {
+          "facet_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Facet Id",
+            "type": "string"
+          },
+          "vertices_local": {
+            "items": {
+              "$ref": "#/components/schemas/Point3"
+            },
+            "maxItems": 64,
+            "minItems": 3,
+            "title": "Vertices Local",
+            "type": "array"
+          }
+        },
+        "required": [
+          "facet_id",
+          "vertices_local"
+        ],
+        "title": "AssemblyFacet",
+        "type": "object"
+      },
+      "AssemblyJoint": {
+        "additionalProperties": false,
+        "properties": {
+          "first": {
+            "$ref": "#/components/schemas/FacetEdge"
+          },
+          "joint_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Joint Id",
+            "type": "string"
+          },
+          "second": {
+            "$ref": "#/components/schemas/FacetEdge"
+          }
+        },
+        "required": [
+          "joint_id",
+          "first",
+          "second"
+        ],
+        "title": "AssemblyJoint",
+        "type": "object"
+      },
+      "AssemblyPart": {
+        "additionalProperties": false,
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/AssemblyFacet"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Facets",
+            "type": "array"
+          },
+          "part_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Part Id",
+            "type": "string"
+          },
+          "seams": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AssemblySeam"
+            },
+            "maxItems": 64,
+            "title": "Seams",
+            "type": "array"
+          }
+        },
+        "required": [
+          "part_id",
+          "facets"
+        ],
+        "title": "AssemblyPart",
+        "type": "object"
+      },
+      "AssemblySeam": {
+        "additionalProperties": false,
+        "properties": {
+          "first": {
+            "$ref": "#/components/schemas/FacetEdge"
+          },
+          "second": {
+            "$ref": "#/components/schemas/FacetEdge"
+          }
+        },
+        "required": [
+          "first",
+          "second"
+        ],
+        "title": "AssemblySeam",
+        "type": "object"
+      },
+      "AssemblyStage": {
+        "additionalProperties": false,
+        "properties": {
+          "active_joint_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Active Joint Ids",
+            "type": "array"
+          },
+          "label": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "present_part_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Present Part Ids",
+            "type": "array"
+          },
+          "stage_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Stage Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage_id",
+          "label",
+          "present_part_ids",
+          "active_joint_ids"
+        ],
+        "title": "AssemblyStage",
+        "type": "object"
+      },
       "AttachBrace": {
         "additionalProperties": false,
         "properties": {
@@ -2213,6 +2354,28 @@
         "title": "EvidenceInvalidation",
         "type": "object"
       },
+      "FacetEdge": {
+        "additionalProperties": false,
+        "properties": {
+          "edge_index": {
+            "maximum": 63,
+            "minimum": 0,
+            "title": "Edge Index",
+            "type": "integer"
+          },
+          "facet_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Facet Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "facet_id",
+          "edge_index"
+        ],
+        "title": "FacetEdge",
+        "type": "object"
+      },
       "Feature": {
         "additionalProperties": false,
         "properties": {
@@ -2531,6 +2694,244 @@
           "pass_criteria"
         ],
         "title": "FunctionalTestArgs",
+        "type": "object"
+      },
+      "GenericAssembly": {
+        "additionalProperties": false,
+        "properties": {
+          "joints": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AssemblyJoint"
+            },
+            "maxItems": 32,
+            "title": "Joints",
+            "type": "array"
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/AssemblyPart"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Parts",
+            "type": "array"
+          },
+          "plan_version_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Plan Version Id",
+            "type": "string"
+          },
+          "project_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/AssemblyStage"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Stages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "plan_version_id",
+          "parts",
+          "stages"
+        ],
+        "title": "GenericAssembly",
+        "type": "object"
+      },
+      "GenericAssemblyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "assembly": {
+            "$ref": "#/components/schemas/GenericAssembly"
+          },
+          "full_face_contact_facet_ids": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 128,
+            "title": "Full Face Contact Facet Ids",
+            "type": "array"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/AnalysisPolicy"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/StageSnapshot"
+          },
+          "stage_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Stage Id",
+            "type": "string"
+          },
+          "uniform_mass_part_ids": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Uniform Mass Part Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "assembly",
+          "stage_id",
+          "snapshot",
+          "policy"
+        ],
+        "title": "GenericAssemblyRequest",
+        "type": "object"
+      },
+      "GenericAssemblyResult": {
+        "additionalProperties": false,
+        "properties": {
+          "active_joint_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "title": "Active Joint Ids",
+            "type": "array"
+          },
+          "blockers": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "component_part_ids": {
+            "items": {
+              "items": {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Component Part Ids",
+            "type": "array"
+          },
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/PolygonalFacet"
+            },
+            "title": "Facets",
+            "type": "array"
+          },
+          "future_part_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "title": "Future Part Ids",
+            "type": "array"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/StabilityInput"
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "physical_evidence_ids": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "title": "Physical Evidence Ids",
+            "type": "array"
+          },
+          "policies": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisPolicy"
+            },
+            "title": "Policies",
+            "type": "array"
+          },
+          "present_part_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "title": "Present Part Ids",
+            "type": "array"
+          },
+          "producer_version": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Producer Version",
+            "type": "string"
+          },
+          "reports": {
+            "items": {
+              "$ref": "#/components/schemas/StabilityReport"
+            },
+            "title": "Reports",
+            "type": "array"
+          },
+          "request": {
+            "$ref": "#/components/schemas/GenericAssemblyRequest"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/StageSnapshot"
+          },
+          "snapshot_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Snapshot Hash",
+            "type": "string"
+          },
+          "stage_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Stage Id",
+            "type": "string"
+          },
+          "stage_label": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Stage Label",
+            "type": "string"
+          },
+          "world_overlays": {
+            "items": {
+              "$ref": "#/components/schemas/StabilityOverlay"
+            },
+            "title": "World Overlays",
+            "type": "array"
+          }
+        },
+        "required": [
+          "producer_version",
+          "stage_id",
+          "stage_label",
+          "snapshot_hash",
+          "request",
+          "snapshot",
+          "present_part_ids",
+          "future_part_ids",
+          "active_joint_ids",
+          "facets",
+          "component_part_ids",
+          "inputs",
+          "policies",
+          "reports",
+          "world_overlays",
+          "blockers"
+        ],
+        "title": "GenericAssemblyResult",
         "type": "object"
       },
       "InsertTab": {
@@ -3914,6 +4315,48 @@
           "z"
         ],
         "title": "Point3",
+        "type": "object"
+      },
+      "PolygonalFacet": {
+        "additionalProperties": false,
+        "properties": {
+          "area_fraction": {
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "title": "Area Fraction",
+            "type": "number"
+          },
+          "centroid": {
+            "$ref": "#/components/schemas/Point3"
+          },
+          "facet_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Facet Id",
+            "type": "string"
+          },
+          "part_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Part Id",
+            "type": "string"
+          },
+          "vertices": {
+            "items": {
+              "$ref": "#/components/schemas/Point3"
+            },
+            "maxItems": 64,
+            "minItems": 3,
+            "title": "Vertices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "facet_id",
+          "part_id",
+          "vertices",
+          "centroid",
+          "area_fraction"
+        ],
+        "title": "PolygonalFacet",
         "type": "object"
       },
       "Preconditions": {

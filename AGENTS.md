@@ -7,6 +7,17 @@ precedence. Record deliberate product changes in [docs/decisions.md](docs/decisi
 
 ## Ownership and coordination
 
+### November 3, 2026: combined latest work and generic engine diagnostic
+
+The user requests integrating Gabo's latest published work and a friendlier,
+step-based diagnostic supporting user-authored shapes, not only the stand preset.
+The integration branch combines #154/#156/#158 with #157, preserving each lane's
+modules and review gates. This authorizes necessary shared-file merge resolution;
+it does not authorize merging unfinished remote PRs or claiming physical success.
+Declarative panel geometry and explicit physical stages belong to the engine.
+They are not a second fabrication scheduler or proof that arbitrary designs can
+be manufactured. Keep example data editable and hypothetical.
+
 ### November 3, 2026: explicit engine expansion
 
 The user requests 360-degree rotation in the direct engine diagnostic, supported

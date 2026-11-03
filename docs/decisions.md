@@ -591,3 +591,18 @@ the staged joints; brace plans and manuals are unchanged. Support replacement
 would undo a completed fold and stays blocked, as do a second repair of a
 replacement and other repeated-repair depth. Synthetic regression evidence does
 not establish a bench pass. See the [handoff](handoffs/issue-151-attached-base.md).
+
+## D044: Combined latest work and user-authored assembly diagnostics, November 3, 2026
+
+The user requested Gabo's latest published work and a friendlier engine that can
+evaluate many shapes step by step. The integration branch combines fabrication,
+repair search and attached-base recovery with the stability work without merging
+unfinished remote PRs. Necessary shared-file resolutions preserve both lanes.
+
+The primary diagnostic now authors polygonal panels and explicit per-stage poses,
+contacts and edge joints. A generic producer validates geometry and source seams;
+it shares the component solver with the original stand adapter. Examples are data,
+not geometry-dispatch branches. Future parts cannot contribute support or mass.
+The editor does not extend the production fabrication compiler's supported family,
+infer physical properties or create observed work. See the
+[generic assembly handoff](handoffs/generic-assembly-diagnostic.md).

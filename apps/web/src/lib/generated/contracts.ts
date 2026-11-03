@@ -47,6 +47,35 @@ export type AppendPhysicalEvent = {
   readonly "event": PhysicalEvent;
 };
 
+export type AssemblyFacet = {
+  readonly "facet_id": string;
+  readonly "vertices_local": ReadonlyArray<Point3>;
+};
+
+export type AssemblyJoint = {
+  readonly "joint_id": string;
+  readonly "first": FacetEdge;
+  readonly "second": FacetEdge;
+};
+
+export type AssemblyPart = {
+  readonly "part_id": string;
+  readonly "facets": ReadonlyArray<AssemblyFacet>;
+  readonly "seams"?: ReadonlyArray<AssemblySeam>;
+};
+
+export type AssemblySeam = {
+  readonly "first": FacetEdge;
+  readonly "second": FacetEdge;
+};
+
+export type AssemblyStage = {
+  readonly "stage_id": string;
+  readonly "label": string;
+  readonly "present_part_ids": ReadonlyArray<string>;
+  readonly "active_joint_ids": ReadonlyArray<string>;
+};
+
 export type AttachBrace = {
   readonly "id": string;
   readonly "part_ids"?: ReadonlyArray<string>;
@@ -344,6 +373,11 @@ export type EvidenceInvalidation = {
   readonly "recorded_at": string;
 };
 
+export type FacetEdge = {
+  readonly "facet_id": string;
+  readonly "edge_index": number;
+};
+
 export type Feature = {
   readonly "id": string;
   readonly "kind": "tab" | "slot" | "fold" | "mark";
@@ -398,6 +432,43 @@ export type FunctionalTestArgs = {
   readonly "duration_seconds": number;
   readonly "surface": string;
   readonly "pass_criteria": ReadonlyArray<string>;
+};
+
+export type GenericAssembly = {
+  readonly "project_id": string;
+  readonly "plan_version_id": string;
+  readonly "parts": ReadonlyArray<AssemblyPart>;
+  readonly "joints"?: ReadonlyArray<AssemblyJoint>;
+  readonly "stages": ReadonlyArray<AssemblyStage>;
+};
+
+export type GenericAssemblyRequest = {
+  readonly "assembly": GenericAssembly;
+  readonly "stage_id": string;
+  readonly "snapshot": StageSnapshot;
+  readonly "policy": AnalysisPolicy;
+  readonly "uniform_mass_part_ids"?: ReadonlyArray<string>;
+  readonly "full_face_contact_facet_ids"?: ReadonlyArray<string>;
+};
+
+export type GenericAssemblyResult = {
+  readonly "producer_version": string;
+  readonly "stage_id": string;
+  readonly "stage_label": string;
+  readonly "snapshot_hash": string;
+  readonly "request": GenericAssemblyRequest;
+  readonly "snapshot": StageSnapshot;
+  readonly "present_part_ids": ReadonlyArray<string>;
+  readonly "future_part_ids": ReadonlyArray<string>;
+  readonly "active_joint_ids": ReadonlyArray<string>;
+  readonly "facets": ReadonlyArray<PolygonalFacet>;
+  readonly "component_part_ids": ReadonlyArray<ReadonlyArray<string>>;
+  readonly "inputs": ReadonlyArray<StabilityInput>;
+  readonly "policies": ReadonlyArray<AnalysisPolicy>;
+  readonly "reports": ReadonlyArray<StabilityReport>;
+  readonly "world_overlays": ReadonlyArray<StabilityOverlay>;
+  readonly "blockers": ReadonlyArray<string>;
+  readonly "physical_evidence_ids"?: ReadonlyArray<string>;
 };
 
 export type InsertTab = {
@@ -636,6 +707,14 @@ export type Point3 = {
   readonly "x": number;
   readonly "y": number;
   readonly "z": number;
+};
+
+export type PolygonalFacet = {
+  readonly "facet_id": string;
+  readonly "part_id": string;
+  readonly "vertices": ReadonlyArray<Point3>;
+  readonly "centroid": Point3;
+  readonly "area_fraction": number;
 };
 
 export type Preconditions = {

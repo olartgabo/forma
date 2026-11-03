@@ -65,6 +65,12 @@ binary and transitive-license verification remains a separate integration gate.
 
 ## Direct engine lab
 
+The primary [assembly editor](../../docs/handoffs/generic-assembly-diagnostic.md)
+authors polygonal panels, edge joints and explicit physical stages. The generic
+`evaluate_assembly` producer validates these declarations without stand-specific
+IDs and shares the component solver with the existing stand adapter. This is
+hypothetical mechanics, not general fabrication approval or observed evidence.
+
 Run `uv run --locked python -m forma_stability --lab --port 3031` and open the
 printed loopback URL. This user-requested diagnostic interface invokes the real
 pure evaluator with explicitly hypothetical inputs. It stores no project evidence

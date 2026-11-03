@@ -17,6 +17,7 @@ COPY packages/renderer/src packages/renderer/src
 COPY packages/replanner/src packages/replanner/src
 COPY packages/fabrication/src packages/fabrication/src
 COPY packages/repair_search/src packages/repair_search/src
+COPY packages/stability/src packages/stability/src
 COPY packages/eval/src packages/eval/src
 RUN uv sync --locked --no-dev --no-editable
 
