@@ -1,5 +1,27 @@
 # Web product
 
+The active Manual and repair preview retain PR #154's next-step report and
+manual-step navigation. Missing tools and unconfirmed connector remainders block
+readiness. Active reports accept explicitly confirmed tool names and fresh
+measurements for that report only; clear/refresh and context changes discard them.
+Different measured stock requires material reconciliation. Stale, unavailable
+and foreign responses clear earlier readiness; the manual/reporting fallback
+remains available. A report neither authorizes cutting nor records physical work.
+
+The combined browser regression replays actual synthetic compiler/API outputs,
+with no provider or physical result. Start a local web server and run:
+
+```sh
+.venv/bin/python apps/web/tests/fabrication-fixture.py /tmp/forma-fabrication-combined.json
+CHROME_PATH=/opt/google/chrome/chrome node apps/web/tests/fabrication.browser.mjs /absolute/path/to/playwright/index.mjs http://127.0.0.1:3007 /tmp/forma-fabrication-combined.json
+```
+
+It checks 390px/320px layouts, keyboard refresh, confirmations/withdrawal,
+stale/foreign/unavailable responses, delayed project-switch cleanup, manual-step
+navigation and the repair-preview report, with zero physical writes. This check
+is separate from `npm run check`. See the
+[combined handoff](../../docs/handoffs/issue-150-combined.md).
+
 Owner: @olartgabo. Reviewer: @ResniDev. Status: intake, saved manuals and physical reports.
 Issues: #1, #7, #11, #12 and #14.
 

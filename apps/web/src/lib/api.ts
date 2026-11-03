@@ -12,6 +12,8 @@ import type {
   DesignReadiness,
   DiagnosisRequest,
   DiagnosisResult,
+  FabricationReport,
+  FabricationAssessment,
   PlanActivation,
   PlanList,
   PlanVersion,
@@ -776,6 +778,155 @@ export function approveRepair(
     },
     json<AdaptCommitResult>,
     signal,
+  );
+}
+
+const FABRICATION_STATUSES = [
+  "ready",
+  "blocked",
+  "complete",
+  "history_conflict",
+];
+
+function checkedFabricationReport(
+  value: unknown,
+  projectId: string,
+  versionId: string,
+  assessment?: FabricationAssessment,
+): FabricationReport {
+  const invalid = () =>
+    new ApiError(
+      200,
+      "invalid_response",
+      "FORMA returned a step report for a different project or plan version. Reload the manual and try again.",
+    );
+  if (
+    !isRecord(value) ||
+    !isRecord(value.snapshot) ||
+    value.snapshot.project_id !== projectId ||
+    value.snapshot.version_id !== versionId ||
+    typeof value.snapshot.inputs_sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.snapshot.inputs_sha256) ||
+    (assessment !== undefined &&
+      (value.snapshot.inventory_revision_id !==
+        assessment.expected_inventory_revision_id ||
+        value.snapshot.last_event_id !== assessment.expected_last_event_id)) ||
+    !FABRICATION_STATUSES.includes(value.status as string) ||
+    !Array.isArray(value.operations) ||
+    !Array.isArray(value.supported_order) ||
+    !Array.isArray(value.blockers) ||
+    value.observed_usability !== "not_assessed"
+  )
+    throw invalid();
+  return value as unknown as FabricationReport;
+}
+
+async function fabricationRequest(
+  token: string,
+  path: string,
+  projectId: string,
+  versionId: string,
+  conflict: string,
+  signal?: AbortSignal,
+  assessment?: FabricationAssessment,
+): Promise<FabricationReport> {
+  try {
+    return await request(
+      token,
+      path,
+      assessment === undefined
+        ? { method: "GET" }
+        : {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(assessment),
+          },
+      async (response) =>
+        checkedFabricationReport(
+          await json<unknown>(response),
+          projectId,
+          versionId,
+          assessment,
+        ),
+      signal,
+    );
+  } catch (error) {
+    if (
+      assessment !== undefined &&
+      error instanceof ApiError &&
+      error.status === 422
+    )
+      throw new ApiError(
+        422,
+        error.code,
+        "These report confirmations could not be accepted. Check tool names and measured lengths; record material loss or reconcile a different balance before continuing.",
+      );
+    if (error instanceof ApiError && error.status === 409)
+      throw new ApiError(
+        409,
+        error.code,
+        error.code === "blocked"
+          ? "This saved build cannot be assessed under the supported report limits. Review its history and required inputs."
+          : conflict,
+      );
+    if (error instanceof ApiError && error.status === 404)
+      throw new ApiError(
+        404,
+        error.code,
+        "This plan or repair preview is unavailable. Reload the project.",
+      );
+    throw error;
+  }
+}
+
+export function loadFabricationReport(
+  token: string,
+  id: string,
+  versionId: string,
+  signal?: AbortSignal,
+): Promise<FabricationReport> {
+  return fabricationRequest(
+    token,
+    `${projectPath(id)}/versions/${encodeURIComponent(versionId)}/fabrication`,
+    id,
+    versionId,
+    "The active plan or its recorded history changed. Reload the manual to see the current next step.",
+    signal,
+  );
+}
+
+export function loadPreviewFabricationReport(
+  token: string,
+  id: string,
+  previewId: string,
+  versionId: string,
+  signal?: AbortSignal,
+): Promise<FabricationReport> {
+  return fabricationRequest(
+    token,
+    `${projectPath(id)}/adapt/previews/${encodeURIComponent(previewId)}/fabrication`,
+    id,
+    versionId,
+    "Physical history changed after this repair preview. Simulate the repair again to see its next step.",
+    signal,
+  );
+}
+
+export function assessFabricationReport(
+  token: string,
+  id: string,
+  versionId: string,
+  body: FabricationAssessment,
+  signal?: AbortSignal,
+): Promise<FabricationReport> {
+  return fabricationRequest(
+    token,
+    `${projectPath(id)}/versions/${encodeURIComponent(versionId)}/fabrication/assess`,
+    id,
+    versionId,
+    "The active plan, inventory or recorded history changed. Reload the manual and confirm fresh inputs for the current next step.",
+    signal,
+    body,
   );
 }
 

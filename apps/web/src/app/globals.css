@@ -637,6 +637,23 @@ figcaption span {
 .plan-approval {
   margin-top: 1.5rem;
 }
+.fabrication-report {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: white;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--green);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.fabrication-report summary {
+  cursor: pointer;
+  padding: 0.5rem 0;
+  font-weight: 650;
+}
+.fabrication-next {
+  margin: 0.75rem 0;
+}
 .physical-progress {
   margin-top: 2rem;
   padding-top: 1.5rem;

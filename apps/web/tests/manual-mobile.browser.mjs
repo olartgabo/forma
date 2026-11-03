@@ -121,6 +121,15 @@ async function scenario(width, failed, extra = null) {
         return;
       }
       if (
+        url.pathname.endsWith("/fabrication") ||
+        url.pathname.endsWith("/fabrication/assess")
+      ) {
+        // The dedicated fabrication browser runner covers these read-only
+        // routes. Keep manual/report fallback usable during unavailability.
+        await route.fulfill({ status: 503, json: { code: "unavailable" } });
+        return;
+      }
+      if (
         damage &&
         request.method() === "POST" &&
         url.pathname === `${base}/damage`

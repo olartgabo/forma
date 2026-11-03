@@ -211,7 +211,13 @@ async function scenario({
           },
         ],
       };
-    else if (path.endsWith("/adapt/simulate")) {
+    else if (
+      path.endsWith("/fabrication") ||
+      path.endsWith("/fabrication/assess")
+    ) {
+      await route.fulfill({ status: 503, json: { code: "unavailable" } });
+      return;
+    } else if (path.endsWith("/adapt/simulate")) {
       const input = request.postDataJSON();
       simulations.push(input);
       if (repairCase === "retry") {

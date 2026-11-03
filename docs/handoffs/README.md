@@ -1,5 +1,9 @@
 # Implementation handoffs
 
+Issue #150's [combined implementation](issue-150-combined.md) retains PR #154
+as the baseline and records its reconciliation with the independently reviewed
+local work, including stricter gates and report-only confirmations.
+
 Create one file per active issue using [TEMPLATE.md](TEMPLATE.md). The handoffs
 below describe implemented interfaces, checks actually run and remaining work.
 Some retain their original branch/review status or historical test counts;
@@ -27,6 +31,10 @@ remaining blockers clear so an agent can resume without repeating experiments.
 | #12   | [Repair revision](issue-12-adapt-revision.md)                                                                                 | Simulation, explicit atomic approval, carried completions and Adapt UI implemented; Muse repair proposals now feed the review; second revisions and physical recovery remain unsupported or unverified respectively |
 | #14   | [Proof summary](issue-14-proof-summary.md)                                                                                    | Versioned snapshots, revision records, evidence invalidations, carried work and photo-excluded text/JSON exports implemented; physical outcomes and measured waste/salvage remain pending                           |
 | #16   | [Current-flow documentation](issue-16-current-flow-docs.md)                                                                   | Setup, architecture and development status reconciled with merged connected flow; AWS deployment verified ([deploy](../deploy.md)); submission acceptance remains pending                                           |
+
+The [fabrication report](issue-150-fabrication-report.md) handoff covers the
+read-only next-step report, its declared access/tool rules and its manual and
+repair-preview panels for #150.
 
 No handoff establishes a real provider result or physical pass through fixture
 checks. User-confirmed measurements, observed build/recovery outcomes and
