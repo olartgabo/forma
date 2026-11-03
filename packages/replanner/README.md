@@ -135,7 +135,7 @@ Before packaging integration, add `packages/replanner/src`,
 `packages/compiler/src` and `packages/domain/src` to `PYTHONPATH`.
 
 
-## Attached-brace tape continuation
+## Attached-brace and attached-base tape continuation
 
 For the original canonical tape stand after six, seven or eight operations,
 `replace_part` can replace the attached brace from a confirmed
@@ -156,8 +156,16 @@ salvage or physical passes are created. The synthetic positive case has known we
 not measured user evidence.
 
 The family validator and renderer must accept the staged graph. Exact original
-fold invariants still apply. Base/support replacements, target folds and
-irreversible joins remain blocked. Completed fit/function operations and their
+fold invariants still apply. Support replacement, target folds and
+irreversible joins remain blocked.
+
+The attached base uses the same staging (#151): once the fold and all three
+joins are complete, `replace_part` on `stand-base` peels the front and rear
+joints in that order, keeps the apex hinge, cuts and inspects a replacement
+base, and reattaches it with new front/rear joints that keep the original part
+order. The first peel also depends on the apex attachment so the new functional
+test's required apex joint is an ancestor. Peel checks name the support (front)
+and brace (rear) as partners; peeled tape is lost, never refunded. Completed fit/function operations and their
 checkpoints remain unchanged; new final checks receive new IDs and remain
 incomplete. The resulting layouts have 14, 15 or 16 operations, respectively.
 Replaying one or both confirmed peels retains original completion history and

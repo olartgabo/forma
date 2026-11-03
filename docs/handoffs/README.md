@@ -39,6 +39,9 @@ repair-preview panels for #150.
 The [repair search](issue-151-repair-search.md) handoff covers bounded repair
 candidate generation, ranking and the Adapt search flow for #151.
 
+The [attached-base recovery](issue-151-attached-base.md) handoff extends the #44
+tape undo to the attached base for #151.
+
 No handoff establishes a real provider result or physical pass through fixture
 checks. User-confirmed measurements, observed build/recovery outcomes and
 authenticated end-to-end integration remain separate acceptance evidence.

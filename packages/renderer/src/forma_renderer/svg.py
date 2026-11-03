@@ -461,20 +461,26 @@ def render_manual(
         base_id,
         joints_by_id["stand-joint-rear"].part_ids[1],
     )
-    new_rear = next(
+    new_joints = [
+        j
+        for jid, j in joints_by_id.items()
+        if jid not in {"stand-joint-front", "stand-joint-rear", "stand-joint-apex"}
+    ]
+    # A new rear joint names the replacement: (base, new brace) after a brace
+    # tape undo, (new base, brace) after a base tape undo.
+    brace_id = historical_ids[2]
+    new_brace = next(
+        (j.part_ids[1] for j in new_joints if j.part_ids[0] == base_id), None
+    )
+    new_base = next(
         (
-            j
-            for jid, j in joints_by_id.items()
-            if jid not in {"stand-joint-front", "stand-joint-rear", "stand-joint-apex"}
-            and j.part_ids[0] == base_id
+            j.part_ids[0]
+            for j in new_joints
+            if j.part_ids[1] == brace_id and j.part_ids[0] not in historical_ids
         ),
         None,
     )
-    active_ids = (
-        (support_id, base_id, new_rear.part_ids[1])
-        if new_rear is not None
-        else historical_ids
-    )
+    active_ids = (support_id, new_base or base_id, new_brace or brace_id)
     core_child_ids = ("stand-support", "stand-base", "stand-brace")
     stage = resolve_tape_stage(plan.operations)
     continuation_indexes: set[int] = set()
