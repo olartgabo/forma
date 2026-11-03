@@ -138,7 +138,11 @@ function Preview({
   let comparisons: PanelComparison[] | null = [];
   if (diff) {
     try {
-      comparisons = panelComparisons(diff);
+      comparisons = panelComparisons(
+        diff,
+        base.manual.panels.length,
+        panels.length,
+      );
     } catch {
       // Shown to the user below; the listed changes stay reviewable.
       comparisons = null;
