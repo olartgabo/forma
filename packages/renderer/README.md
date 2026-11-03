@@ -92,7 +92,7 @@ real profile experiments and a physical build are still required before calling
 any parameterization tested or buildable.
 
 
-## Brace tape-undo manual
+## Brace and base tape-undo manual
 
 The canonical attached-brace continuation retains the original graph as history
 and validates a separate explicit peel/replacement/reattachment sequence. Exact
@@ -104,4 +104,7 @@ checks. Historical final checks draw the
 original brace; active final checks draw the replacement and require the new
 rear/apex joints. Attached-joint state changes at each peel/reattach stage instead
 of drawing all history with final geometry. Legacy SVG goldens remain unchanged.
+The attached-base continuation uses the same layouts with front/rear peels: the
+renderer reads the replaced part from the new rear joint, so reattachment and
+final panels draw the replacement base and the bill marks the original retired.
 This is a bounded offline manual, not evidence of physical recoverability.

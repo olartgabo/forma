@@ -28,6 +28,9 @@ remaining blockers clear so an agent can resume without repeating experiments.
 | #14   | [Proof summary](issue-14-proof-summary.md)                                                                                    | Versioned snapshots, revision records, evidence invalidations, carried work and photo-excluded text/JSON exports implemented; physical outcomes and measured waste/salvage remain pending                           |
 | #16   | [Current-flow documentation](issue-16-current-flow-docs.md)                                                                   | Setup, architecture and development status reconciled with merged connected flow; AWS deployment verified ([deploy](../deploy.md)); submission acceptance remains pending                                           |
 
+The [attached-base recovery](issue-151-attached-base.md) handoff extends the #44
+tape undo to the attached base for #151.
+
 No handoff establishes a real provider result or physical pass through fixture
 checks. User-confirmed measurements, observed build/recovery outcomes and
 authenticated end-to-end integration remain separate acceptance evidence.

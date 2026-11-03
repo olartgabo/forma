@@ -16,7 +16,7 @@ Consented Muse intake, design generation and read-only diagnosis are connected;
 Muse repair proposals feed validated revision previews with explicit approval;
 versioned Proof shows carried work, historical evidence and required rechecks.
 Stand repair supports bounded panel replacement, base resize and attached-brace
-tape undo. A hosted instance runs on AWS with per-owner bearer tokens
+or attached-base tape undo. A hosted instance runs on AWS with per-owner bearer tokens
 ([hosted deployment](docs/deploy.md)); hosted sign-in, a hosted Muse key and
 physical results remain pending.
 The original [formspec.md](formspec.md) is preserved as the product source of truth.
