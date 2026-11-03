@@ -15,6 +15,7 @@ COPY packages/domain/src packages/domain/src
 COPY packages/compiler/src packages/compiler/src
 COPY packages/renderer/src packages/renderer/src
 COPY packages/replanner/src packages/replanner/src
+COPY packages/eval/src packages/eval/src
 RUN uv sync --locked --no-dev --no-editable
 
 RUN useradd --system --uid 10001 forma && mkdir /data && chown forma /data

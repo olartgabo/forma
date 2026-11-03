@@ -61,8 +61,9 @@ Next work follows the physical P0 path:
    IDs remain separate from active plan version IDs.
 4. @olartgabo evaluates inventory B, held-out cases and comparable baselines
    under #15, then verifies persistent hosting, fresh-session access, recording
-   and participant-portal requirements under #16. The evaluation harness remains
-   unimplemented; the protocol and build-log template define required evidence.
+   and participant-portal requirements under #16. The evaluation harness
+   (`python -m forma_eval`) reports these counts from the attempt manifest and
+   Proof exports; the protocol and build-log template define required evidence.
 
 Provider and persistence ownership share `apps/api`; keep edits disjoint and
 record contract handoffs before dependent changes. Use the
