@@ -4,8 +4,11 @@ Status: November 2, 2026. The local workbench connects private intake, consented
 Muse proposals, compiled manual approval, physical reports, repair review and
 atomic revision approval, and versioned Proof/export. Install, dev and offline
 check commands are in the [root README](../README.md); the connected sequence is
-in the [demo runbook](demo-runbook.md). Physical build/recovery evidence, hosted
-acceptance and the evaluation/submission package remain pending.
+in the [demo runbook](demo-runbook.md). The stack is hosted on AWS EC2 with
+verified auth, owner isolation, upload validation, restart persistence and a
+fresh-session browser check ([hosted deployment](deploy.md)). Physical
+build/recovery evidence, hosted Muse configuration and the evaluation/submission
+package remain pending.
 
 ## Named ownership
 
@@ -43,7 +46,7 @@ software observations with synthetic imagery; no physical result follows from th
 | Narrow triangular tape-stand compiler and eight SVG panels                            | #8 exact physical attempt, tested profiles and supported build evidence                                    |
 | Scoped consented Muse intake/design/diagnosis/repair runtimes                         | #4 real-team-photo SAM evidence and account/deployment prerequisites; accepted real-build model output     |
 | Repair simulation, stand continuation and explicit revision approval                  | Generic strategy/angle changes and a second repair on a repaired version remain unsupported                |
-| Owner-scoped SQLite projects, private media and immutable plan/event/evidence history | #6 hosted identity/storage/retention; real remaining-material reconciliation                               |
+| Owner-scoped SQLite projects, private media and immutable plan/event/evidence history | #6 hosted sign-in and provider retention terms; real remaining-material reconciliation                     |
 | Next.js manual approval, physical reports and versioned Proof/export                  | #13 actual build/recovery; #15 measured waste/salvage, timings, baseline comparisons and physical outcomes |
 
 Next work follows the physical P0 path:
