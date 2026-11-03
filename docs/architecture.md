@@ -112,7 +112,7 @@ explicit approval. See the [repair handoff](handoffs/issue-12-adapt-revision.md)
 
 A second repair on a repaired version remains unsupported. Generic joint-strategy
 and stand-angle changes also remain blocked. The supported attached-brace
-continuation adds explicit tape peels and fresh checks; it does not erase the
+and attached-base continuations add explicit tape peels and fresh checks; it does not erase the
 original completed operations or their material use.
 
 ## Physical and model limits
@@ -150,7 +150,8 @@ without an API key. See [contracts.md](contracts.md) and
   continuation exists. Joint-strategy/stand-angle changes require family
   regeneration and currently block; known stand plans require an injected
   family continuation validator. The runtime supplies the stand validator,
-  including bounded replacement, base resize and attached-brace tape undo.
+  including bounded replacement, base resize and attached-brace or
+  attached-base tape undo.
   No simulation commits state. See the
   [replanner interface](../packages/replanner/README.md).
 - The server-only Meta gateway validates structured outputs and allowlisted

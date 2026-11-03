@@ -1010,22 +1010,17 @@ def test_attached_brace_tape_undo_insufficient_tape_blocks():
     assert any(b.code == "stock_exhausted" for b in result.blockers)
 
 
-@pytest.mark.parametrize(
-    ("target", "blocked_operations"),
-    [
-        ("stand-base", ("stand-joint-front-attach", "stand-joint-rear-attach")),
-        (
-            "stand-support",
-            (
-                "stand-fold-lip",
-                "stand-joint-front-attach",
-                "stand-joint-apex-attach",
-            ),
-        ),
-    ],
-)
-def test_attached_non_brace_targets_block(target, blocked_operations):
-    _base, _snapshot, result, _process = _attached_brace_replacement(target_id=target)
+def test_attached_support_replacement_blocks():
+    # Replacing the support would undo its completed lip fold. The attached
+    # base has its own tape-undo path, tested in test_attached_base_replacement.py.
+    blocked_operations = (
+        "stand-fold-lip",
+        "stand-joint-front-attach",
+        "stand-joint-apex-attach",
+    )
+    _base, _snapshot, result, _process = _attached_brace_replacement(
+        target_id="stand-support"
+    )
     assert result.status == "blocked"
     assert result.plan is None
     # The support's completed lip fold blocks as unsupported alongside its joins.
