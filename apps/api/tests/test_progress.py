@@ -724,3 +724,40 @@ def test_material_reports_follow_cut_order_without_restoring_consumed_parent(
         or "Salvage requires" in b.message
         for b in result.blockers
     ), result.blockers
+
+
+def test_project_deletion_purges_material_report_retry_snapshot(setup):
+    from test_adapt import report_material
+
+    client, version, directory = setup
+    current = progress(client, version).json()
+    operation = version.plan.operations[0]
+    response = report_material(
+        client,
+        version.plan,
+        current,
+        "delete-material-report",
+        kind="waste",
+        stock_id=operation.args.stock_id,
+        region_id=operation.args.source_region_id,
+        operation_id=operation.id,
+    )
+    assert response.status_code == 200, response.text
+    scope = version.project_id + ":materials"
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM requests WHERE scope=?", (scope,)
+        ).fetchone() == (1,)
+    deleted = client.delete(
+        f"/api/projects/{version.project_id}",
+        headers={**AUTH, "Idempotency-Key": "delete-material-project"},
+    )
+    assert deleted.status_code == 200, deleted.text
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM requests WHERE scope=?", (scope,)
+        ).fetchone() == (0,)
+        for table in ("progress_material", "progress_events", "progress_evidence"):
+            assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (
+                0,
+            )
