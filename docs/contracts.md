@@ -63,6 +63,13 @@ active version or a saved preview. A version that is no longer active, or a
 preview whose base history changed, returns 409. See the
 [fabrication handoff](handoffs/issue-150-fabrication-report.md).
 
+POST `/api/projects/{id}/repairs/search` runs the bounded repair search
+(contracts in `forma_domain.repair_search_contracts`) against the active version
+and returns a `RepairSearchSummary` plus the ranked candidates as ordinary
+`AdaptPreviewSet` previews, approved through `adapt/commit`. It requires an
+idempotency key, the expected version and history cursor, and confirmed
+remaining stock. See the [repair search handoff](handoffs/issue-151-repair-search.md).
+
 Every mutation validates authenticated project scope, runtime input and
 idempotency. `adapt/commit` checks expected active version and returns 409 for
 stale writes. Neither simulation nor provider tools activate a plan.

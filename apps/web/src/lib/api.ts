@@ -32,6 +32,8 @@ import type {
   ProviderStatusResponse,
   RepairProposeRequest,
   RepairProposeResult,
+  RepairSearchRequest,
+  RepairSearchResult,
   SavedProjectList,
 } from "./generated/api-contracts";
 
@@ -759,6 +761,39 @@ export function simulateRepairs(
     json<AdaptPreviewSet>,
     signal,
   );
+}
+
+export async function searchRepairs(
+  token: string,
+  id: string,
+  body: RepairSearchRequest,
+  signal?: AbortSignal,
+): Promise<RepairSearchResult> {
+  try {
+    return await request(
+      token,
+      `${projectPath(id)}/repairs/search`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      json<RepairSearchResult>,
+      signal,
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409)
+      throw new ApiError(
+        409,
+        error.code,
+        error.code === "stale_version"
+          ? "The plan or its recorded history changed. Reload recorded work and search again."
+          : error.code === "idempotency_conflict"
+            ? "This retry differs from the original search. Search again."
+            : "There is nothing to search for yet. Report damage or a failed check, or choose a part in the repair form.",
+      );
+    throw error;
+  }
 }
 
 export function approveRepair(

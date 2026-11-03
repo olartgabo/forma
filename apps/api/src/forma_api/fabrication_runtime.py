@@ -7,6 +7,7 @@ from forma_compiler import CutProcess
 from forma_fabrication import fabrication_report
 from forma_renderer import StandParameters
 from forma_renderer.template import profile_evidence_valid
+from forma_replanner import SimulationResult
 
 from forma_api.adapt import carried_operation_ids, plan_ancestors, read_preview
 from forma_api.plans import PlanVersion, read_revision
@@ -105,32 +106,54 @@ def active_report(connection, project: Project, version_id: str) -> FabricationR
     )
 
 
+def _proposed(project, lineage, progress, process, parameters, simulation):
+    carried = carried_operation_ids(simulation)
+    proposed = VersionHistory(
+        plan=simulation.plan,
+        carried_operation_ids=carried,
+        base_last_event_id=progress.last_event_id,
+    )
+    # The same ledger the version will start from once approved.
+    remaining = expected_stock(simulation.plan, set(carried))
+    return _report(
+        project, lineage + (proposed,), remaining, process, parameters, simulation.plan
+    )
+
+
+class ProposedReports:
+    """Reports for several simulations of one active version, loading its
+    lineage once."""
+
+    def __init__(self, connection, project: Project):
+        self.project = project
+        base, self.process, self.parameters = _saved(
+            connection, project.id, project.active_version_id
+        )
+        self.lineage, self.progress = _lineage(connection, base.plan)
+
+    def __call__(self, simulation: SimulationResult) -> FabricationReport:
+        return _proposed(
+            self.project,
+            self.lineage,
+            self.progress,
+            self.process,
+            self.parameters,
+            simulation,
+        )
+
+
 def preview_report(connection, project: Project, preview_id: str) -> FabricationReport:
     """Schedule a saved repair preview as if approved, without approving it."""
     if project.active_version_id is None:
         raise ProjectError(409, "stale_version", "The active plan changed; reload it")
     stored = read_preview(connection, project.id, project.active_version_id, preview_id)
-    base, process, parameters = _saved(
-        connection, project.id, project.active_version_id
-    )
-    lineage, progress = _lineage(connection, base.plan)
-    if stored.base_last_event_id != progress.last_event_id:
+    reports = ProposedReports(connection, project)
+    if stored.base_last_event_id != reports.progress.last_event_id:
         raise ProjectError(
             409, "stale_version", "Physical history changed; simulate again"
         )
-    version = stored.preview.version
-    if version is None:
+    if stored.preview.version is None:
         raise ProjectError(
             409, "blocked", "This repair candidate has no plan to schedule"
         )
-    carried = carried_operation_ids(stored.preview.simulation)
-    proposed = VersionHistory(
-        plan=version.plan,
-        carried_operation_ids=carried,
-        base_last_event_id=stored.base_last_event_id,
-    )
-    # The same ledger the version will start from once approved.
-    remaining = expected_stock(version.plan, set(carried))
-    return _report(
-        project, lineage + (proposed,), remaining, process, parameters, version.plan
-    )
+    return reports(stored.preview.simulation)

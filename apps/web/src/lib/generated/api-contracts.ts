@@ -56,6 +56,14 @@ export type BuildRequirements = {
   readonly "constraints": Constraints;
 };
 
+export type CandidateOutcome = {
+  readonly "patch": RepairPatch;
+  readonly "status": "ranked" | "infeasible" | "cycle" | "duplicate" | "not_evaluated";
+  readonly "rank": (number | null);
+  readonly "preview_id": (string | null);
+  readonly "blockers": ReadonlyArray<Blocker>;
+};
+
 export type CompilePreview = {
   readonly "expected_revision_id": string;
   readonly "idempotency_key": string;
@@ -514,6 +522,47 @@ export type RepairProposeResult = {
   readonly "candidates": ReadonlyArray<RepairPatch>;
   readonly "questions": ReadonlyArray<string>;
   readonly "diagnostics": RepairProposeDiagnostics;
+};
+
+export type RepairSearchLimits = {
+  readonly "max_evaluated": number;
+  readonly "max_results": number;
+};
+
+export type RepairSearchRequest = {
+  readonly "expected_version_id": string;
+  readonly "expected_last_event_id": (string | null);
+  readonly "idempotency_key": string;
+  readonly "target_ids"?: ReadonlyArray<string>;
+  readonly "resize_measurements"?: ReadonlyArray<ResizeMeasurement>;
+  readonly "connector_measurements"?: ReadonlyArray<ConnectorMeasurement>;
+  readonly "remaining_confirmed": true;
+  readonly "max_evaluated"?: number;
+};
+
+export type RepairSearchResult = {
+  readonly "summary": RepairSearchSummary;
+  readonly "previews": AdaptPreviewSet;
+  readonly "replayed"?: boolean;
+};
+
+export type RepairSearchSummary = {
+  readonly "search_version": "repair-search-v1";
+  readonly "status": "found" | "infeasible" | "exhausted";
+  readonly "target_ids": ReadonlyArray<string>;
+  readonly "generated_count": number;
+  readonly "evaluated_count": number;
+  readonly "limits": RepairSearchLimits;
+  readonly "outcomes": ReadonlyArray<CandidateOutcome>;
+  readonly "unknown_cost_terms": ReadonlyArray<"time" | "purchase_price" | "strength">;
+  readonly "stability_coverage": "unverified";
+};
+
+export type ResizeMeasurement = {
+  readonly "part_id": string;
+  readonly "width_mm": number;
+  readonly "height_mm": number;
+  readonly "user_confirmed": true;
 };
 
 export type SavedProjectList = {
