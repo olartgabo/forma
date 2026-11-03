@@ -12,7 +12,8 @@ Source: formspec.md sections 14-17. Track work in #16 and #17.
 
 ## Package
 
-- [ ] Deployed app tested from a fresh session; no browser-exposed keys.
+- [x] Deployed app tested from a fresh session; no browser-exposed keys
+      ([hosted verification](deploy.md#verification-november-2-2026)).
 - [ ] 2.5-3 minute video showing physical construction, failure and recovery.
 - [ ] Source with actual install/run/check commands and fixtures.
 - [ ] Sanitized model compatibility, measured joint profiles and evaluation docs.
