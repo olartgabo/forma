@@ -17,6 +17,11 @@ import {
 } from "../lib/muse-construction-client";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
 import MuseRequestStatus from "./muse-request-status";
+import {
+  constructionStepTitle,
+  constructionPiecePresence,
+  materialMeasurementChecklist,
+} from "../lib/muse-construction-guidance";
 
 function ConstructionPreview({ plan }: { plan: ConstructionPlan }) {
   const [index, setIndex] = useState(0);
@@ -74,6 +79,44 @@ function ConstructionPreview({ plan }: { plan: ConstructionPlan }) {
         >
           Next step
         </button>
+      </div>
+      <label>
+        Choose a proposed step
+        <select
+          style={{ width: "100%", minWidth: 0, maxWidth: "100%" }}
+          value={index}
+          onChange={(e) => setIndex(Number(e.target.value))}
+        >
+          {plan.steps.map((s, i) => (
+            <option key={s.step_id} value={i}>
+              {i + 1}. {constructionStepTitle(plan, s)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div aria-live="polite">
+        <h4>{constructionStepTitle(plan, step)}</h4>
+        <p>{step.instruction}</p>
+        {step.requires_external_support && (
+          <p className="notice">
+            Self-support is not established at this step. Temporary support has
+            not been modeled.
+          </p>
+        )}
+        {step.unresolved_predicates.length > 0 && (
+          <div
+            className="notice"
+            role="note"
+            aria-label="Unresolved checks for this step"
+          >
+            <strong>Unresolved checks for this step</strong>
+            <ul>
+              {step.unresolved_predicates.map((v, i) => (
+                <li key={i}>{v}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
       <svg
         viewBox="0 0 400 380"
@@ -184,26 +227,13 @@ function ConstructionPreview({ plan }: { plan: ConstructionPlan }) {
             {p.display_name} · {p.reference} ·{" "}
             {p.geometry_class.replaceAll("_", " ")}
             {p.role ? ` · proposed role: ${p.role}` : ""}
+            <strong>
+              {" "}
+              · {constructionPiecePresence(plan, step, p.part_id)}
+            </strong>
           </li>
         ))}
       </ol>
-      <p>{step.instruction}</p>
-      {step.requires_external_support && (
-        <p className="notice">
-          Self-support is not established at this step. Temporary support has
-          not been modeled.
-        </p>
-      )}
-      {step.unresolved_predicates.length > 0 && (
-        <details>
-          <summary>Unresolved engine checks</summary>
-          <ul>
-            {step.unresolved_predicates.map((v, i) => (
-              <li key={i}>{v}</li>
-            ))}
-          </ul>
-        </details>
-      )}
       <p className="help">
         Proposed state only. Navigation does not complete any operation.
       </p>
@@ -399,6 +429,52 @@ export default function MuseConstructionPanel({
       <p>
         <strong>Saved goal:</strong> {project.goal}
       </p>
+      <div aria-label="Saved material measurements" role="group">
+        <h3>Saved material measurements</h3>
+        <p className="help">
+          Review each physical item in the inventory above. Enter missing
+          measurements, confirm values you have checked, then save the
+          inventory. These are saved records; photos and proposed geometry do
+          not fill in measurements.
+        </p>
+        {!project.inventory_confirmed && (
+          <p className="notice">The saved inventory has not been confirmed.</p>
+        )}
+        {(project.stocks ?? []).length === 0 && (
+          <p className="notice">
+            No saved materials yet. Add your physical materials in the inventory
+            above and save them.
+          </p>
+        )}
+        <ul>
+          {(project.stocks ?? []).map((stock, stockIndex) => (
+            <li key={stock.id} style={{ overflowWrap: "anywhere" }}>
+              <strong>
+                Material {stockIndex + 1} · {stock.id}
+              </strong>{" "}
+              · {stock.material} {stock.kind} · saved condition:{" "}
+              {stock.condition}
+              <ul>
+                {materialMeasurementChecklist(stock).map((m) => (
+                  <li key={m.field}>
+                    {m.label}:{" "}
+                    {m.value === null
+                      ? "missing — measure this item"
+                      : `${m.value} ${m.unit} — ${m.status} (source: ${m.source.replaceAll("_", " ")})`}
+                    {m.status === "unconfirmed"
+                      ? "; check and confirm in inventory"
+                      : ""}
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+        <p className="help">
+          Confirmation alone does not establish fabrication readiness. The
+          engine also checks material allocation, process and joint evidence.
+        </p>
+      </div>
       <label htmlFor="construction-notes">What should the design do?</label>
       <textarea
         id="construction-notes"

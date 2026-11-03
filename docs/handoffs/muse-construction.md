@@ -52,6 +52,36 @@ is written by this flow.
 
 ## Interface and verification
 
+### Trying actual materials
+
+Create a fresh project with the object you want to make. Upload your own material
+photos in the workbench, add one stock record per available item, enter the
+measurements you actually have, and save the inventory. Leave unknown values
+blank. The construction panel lists missing and unconfirmed sheet dimensions
+or connector lengths by stock name; edit and save those values in the existing
+inventory form. This checklist describes saved inputs, not fabrication approval.
+
+Under **Invent with my materials**, select the saved photo, describe the desired
+function and consent to that request. A photo helps MetaMuse propose identities
+and geometry; it cannot confirm thickness, scale, mass or joint strength.
+The result offers named step navigation and marks each piece as the current
+focus, already present or used later. Per-step unresolved checks stay visible.
+Rotating or browsing the proposal records no work.
+
+The engine checks declared edge coincidence, geometry, references and material
+allocation and generates states from the proposed connection graph. It does not
+yet solve collision-free assembly motions or establish the strength of an
+untested connection. Manufacturing currently supports rectangular source panels
+and supported tape operations; other polygons remain diagnostic proposals.
+Missing reviewed cutting/process profiles remain server-context blockers even
+after inventory dimensions are filled in. The existing fabrication and repair
+flows remain the authority for executable operations and active builds.
+
+Local runtime verification windows and provider usage limits are separate from
+photo storage. An expired window may still allow uploading and measuring stock,
+but must not dispatch a model request or renew itself. Actual user materials
+must not be seeded from the earlier synthetic software acceptance project.
+
 The isolated proposal preview displays actual engine facets, named references,
 step navigation, camera-only rotation, engine blockers, questions and reported
 provider usage. It is not a replacement for Gabo's executable product manual.

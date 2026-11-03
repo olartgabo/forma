@@ -681,3 +681,12 @@ retries from bypassing in-progress/unknown outcomes. The isolated proposal panel
 renders engine facets, names and reports without replacing the existing manual
 or repair viewer. Live acceptance remains a separate bounded, authorized test.
 See [MetaMuse construction](handoffs/muse-construction.md).
+
+## D049: Expose material gaps and named construction stages, November 3, 2026
+
+The real-material proposal flow shows missing or unconfirmed saved measurements
+before generation, named stage selection, piece presence and unresolved stage
+checks. These are projections of existing typed records, not a second readiness
+validator. MetaMuse proposes geometry and names; deterministic engine rejection
+and Gabo's fabrication report retain authority. No photo-derived value becomes a
+measurement, and inspecting a stage neither approves a plan nor records work.

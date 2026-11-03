@@ -99,6 +99,12 @@ try {
       name: "Invent with my materials",
     });
     await panel.waitFor();
+    const measurements = panel.getByRole("group", {
+      name: "Saved material measurements",
+    });
+    assert.match(await measurements.innerText(), /sheet-one/);
+    assert.match(await measurements.innerText(), /Thickness: missing/);
+    assert.match(await measurements.innerText(), /then save the inventory/);
     const ask = panel.getByRole("button", {
       name: "Ask MetaMuse for shapes and steps",
     });
@@ -121,7 +127,24 @@ try {
     assert.equal(await consent.isChecked(), false);
     assert.equal(await photoConsent.isChecked(), false);
     assert.match(await panel.innerText(), /Measure the sheet thickness/);
+    const construction = fixture.result.candidates[0].construction;
+    assert.match(await panel.innerText(), /Used in a later step/);
+    for (const predicate of construction.steps[0].unresolved_predicates) {
+      const notes = panel.getByRole("note", {
+        name: "Unresolved checks for this step",
+      });
+      assert.equal(await notes.isVisible(), true);
+      assert.ok((await notes.innerText()).includes(predicate));
+    }
     await panel.getByRole("button", { name: "Next step" }).click();
+    const stepSelect = panel.getByLabel("Choose a proposed step");
+    assert.equal(await stepSelect.inputValue(), "1");
+    await stepSelect.selectOption(String(construction.steps.length - 1));
+    assert.equal(
+      await panel.getByRole("button", { name: "Next step" }).isDisabled(),
+      true,
+    );
+    await stepSelect.selectOption("1");
     await panel.getByLabel("Construction view angle").fill("180");
     assert.equal(
       requests.length,
