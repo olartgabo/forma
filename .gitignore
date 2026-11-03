@@ -35,3 +35,6 @@ Thumbs.db
 
 # Dev loop state, ledger and worktree
 .devloop/
+
+# Hosted design-context manifest written by deploy/host-up.sh
+deploy/config/

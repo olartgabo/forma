@@ -23,11 +23,20 @@ and media directory are local to that container.
 
 ## Parameters
 
-| Name                   | Type         | Contents                                                             |
-| ---------------------- | ------------ | -------------------------------------------------------------------- |
-| `/forma/host`          | String       | Public hostname Caddy serves                                         |
-| `/forma/api-tokens`    | SecureString | JSON map of owner to bearer token (`olartgabo`, `resnidev`, `judge`) |
-| `/forma/model-api-key` | SecureString | Optional Muse provider key; absent means Muse actions disabled       |
+| Name                    | Type                   | Contents                                                               |
+| ----------------------- | ---------------------- | ---------------------------------------------------------------------- |
+| `/forma/host`           | String                 | Public hostname Caddy serves                                           |
+| `/forma/api-tokens`     | SecureString           | JSON map of owner to bearer token (`olartgabo`, `resnidev`, `judge`)   |
+| `/forma/model-api-key`  | SecureString           | Optional Muse provider key; absent means Muse actions disabled         |
+| `/forma/design-context` | String (Advanced tier) | Optional design-context manifest JSON; absent blocks design generation |
+
+`host-up.sh` writes the design-context manifest to `deploy/config/design-context.json`
+on the host and mounts it read-only at `/config` in the API container. The
+manifest must contain only measured process and profile values (D015) and match
+each project's current inventory revision; see the
+[demo runbook](demo-runbook.md). Advanced-tier parameters hold up to 8 KB. For a
+larger manifest, place the file on the host through Session Manager and set
+`FORMA_DESIGN_CONTEXT_PATH` by hand.
 
 Read your connection token without printing the others:
 
@@ -68,9 +77,12 @@ Caddy serves `https://localhost` with its internal certificate authority.
 
 ## Limits
 
-- One host and one volume. There are no automated backups; take an EBS snapshot
-  before risky changes. The root volume has `DeleteOnTermination=false`, so
-  terminating the instance keeps the data volume until it is deleted explicitly.
+- One host and one volume. Data Lifecycle Manager policy
+  `policy-085f42670d282bb74` (role `forma-dlm`) snapshots volumes tagged
+  `project=forma` daily at 06:00 UTC and keeps seven. Restoring means creating
+  a volume from a snapshot and attaching it; that path has not been rehearsed.
+  The root volume has `DeleteOnTermination=false`, so terminating the instance
+  keeps the data volume until it is deleted explicitly.
 - Tokens are static bearer credentials per owner. There is no registration,
   rotation or per-session expiry.
 - Deleting a project removes its local rows and files. Provider-side retention
@@ -101,3 +113,15 @@ Muse was deployed without `/forma/model-api-key`, so provider actions are
 disabled. Not yet checked: the browser workflow from a fresh session on a phone,
 a live Muse request through the 140-second proxy path, and a full
 build/repair/test flow on the hosted app.
+
+### Browser walkthrough from a fresh session
+
+A Playwright browser at 390x844 used a temporary `verify` owner token, which was
+removed from `/forma/api-tokens` afterwards; the API then returned 401 for it.
+Sign-in, project creation, a synthetic 800x600 JPEG upload with preview, one
+material record (width only, other dimensions left unknown) linked to the photo,
+and saving materials all worked. After a full page reload and re-entering the
+credential, the goal, photo, recorded width and inventory revision were
+restored. The browser console showed no errors or warnings. The Muse banner
+reported that Muse is not configured, and the input checklist listed the missing
+joint profiles and design context. The test project was deleted.

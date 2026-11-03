@@ -23,10 +23,23 @@ optional() {
 host=$(required /forma/host)
 tokens=$(required /forma/api-tokens)
 model_key=$(optional /forma/model-api-key)
+design_context=$(optional /forma/design-context)
+
+# The manifest holds measured process and profile data, not secrets; the API
+# container's non-root user must be able to read it through the bind mount.
+mkdir -p config
+if [ -n "$design_context" ]; then
+  printf '%s\n' "$design_context" >config/design-context.json
+  chmod 644 config/design-context.json
+  context_path=/config/design-context.json
+else
+  rm -f config/design-context.json
+  context_path=
+fi
 
 umask 077
-printf "FORMA_HOST=%s\nFORMA_API_TOKENS='%s'\nMODEL_API_KEY='%s'\n" \
-  "$host" "$tokens" "$model_key" >.env
+printf "FORMA_HOST=%s\nFORMA_API_TOKENS='%s'\nMODEL_API_KEY='%s'\nFORMA_DESIGN_CONTEXT_PATH=%s\n" \
+  "$host" "$tokens" "$model_key" "$context_path" >.env
 
 docker compose up -d --build --remove-orphans
 docker image prune -f
