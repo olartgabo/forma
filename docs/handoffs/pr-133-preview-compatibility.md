@@ -28,5 +28,18 @@ Next.js: `Compiled successfully in 1453ms`; static generation completed (4/4).
 The complete local output is retained at `%TEMP%/forma-pr133-check.log`.
 Self-review checked project scope, receipt immutability, saved-hash fidelity,
 stale approval checks and generated-contract boundaries; no remaining finding.
-No live provider calls or physical tests ran. Independent review and authorized
-publication remain the next actions.
+No live provider calls or physical tests ran.
+
+Final integration includes the repaired damage, material recovery and evaluation
+stack through `efef38e6c532d17e1a036fcfb167919cc58558a1`. Both appended
+`test_adapt.py` sections were retained; no source conflict required resolution.
+The integrated tree at merge `2c9bdea` passed `npm run check` with exit 0:
+`1149 passed, 4 skipped in 55.71s`, web `# tests 112`, `# pass 112`, `# fail 0`,
+and guarded devloop `# tests 18`, `# pass 18`, `# fail 0`. The four pytest skips
+require a POSIX shell. Format, Ruff, contract freshness and TypeScript passed;
+Next.js reported `Compiled successfully in 285ms` and generated all four pages.
+Full output is retained at `%TEMP%/forma-pr133-final-check.log`.
+
+The feature and compatibility repair received independent approval before this
+integration. The final integration still needs the same reviewer's focused
+recheck before authorized publication. No live or physical acceptance is inferred.
