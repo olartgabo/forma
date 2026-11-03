@@ -15,6 +15,31 @@ export type AdaptProposal = {
   readonly "rationale": string;
 };
 
+export type AnalysisIdentity = {
+  readonly "project_id": string;
+  readonly "plan_version_id": string;
+  readonly "inventory_revision": string;
+  readonly "history_cursor": (string | null);
+  readonly "operation_state_id": string;
+  readonly "canonical_geometry_hash": string;
+  readonly "evidence_hash": string;
+  readonly "profile_hash": string;
+};
+
+export type AnalysisPolicy = {
+  readonly "policy_id": string;
+  readonly "version": string;
+  readonly "length_tolerance_m": number;
+  readonly "force_tolerance_n": number;
+  readonly "moment_tolerance_n_m": number;
+  readonly "relative_tolerance": number;
+  readonly "required_margin_m": number;
+  readonly "uncertainty_method": "analytic_interval" | "bounded_subdivision";
+  readonly "evaluation_budget": number;
+  readonly "required_check_types": ReadonlyArray<"support" | "tip" | "slide" | "joint" | "deformation">;
+  readonly "required_case_ids": ReadonlyArray<string>;
+};
+
 export type AppendPhysicalEvent = {
   readonly "project_id": string;
   readonly "expected_version_id": string;
@@ -63,6 +88,17 @@ export type BuildPlan = {
   readonly "constraints": Constraints;
   readonly "compiler_version": string;
   readonly "created_at": string;
+};
+
+export type CheckResult = {
+  readonly "case_id": string;
+  readonly "check_type": "support" | "tip" | "slide" | "joint" | "deformation";
+  readonly "status": "modeled_pass" | "modeled_fail" | "indeterminate" | "needs_measurement" | "unsupported" | "not_applicable";
+  readonly "computation": "complete" | "invalid_input" | "numerical_failure" | "budget_exhausted" | "not_run";
+  readonly "explanation": string;
+  readonly "unresolved_predicates"?: ReadonlyArray<string>;
+  readonly "quantities"?: ReadonlyArray<QuantityEstimate>;
+  readonly "evidence_ids"?: ReadonlyArray<string>;
 };
 
 export type Checkpoint = {
@@ -491,6 +527,20 @@ export type Preconditions = {
   readonly "human_checks"?: ReadonlyArray<string>;
 };
 
+export type QuantityEstimate = {
+  readonly "kind": "scalar" | "interval" | "unknown";
+  readonly "unit": "1" | "m" | "m2" | "m3" | "kg" | "s" | "rad" | "N" | "N_m" | "Pa" | "kg_m3" | "m_s2";
+  readonly "value"?: (number | null);
+  readonly "lower"?: (number | null);
+  readonly "upper"?: (number | null);
+  readonly "provenance": "measured" | "specified" | "derived" | "assumed" | "unknown";
+  readonly "confirmed": boolean;
+  readonly "evidence_ids"?: ReadonlyArray<string>;
+  readonly "dependency_ids"?: ReadonlyArray<string>;
+  readonly "correlation_group_ids"?: ReadonlyArray<string>;
+  readonly "uncertainty_notes"?: ReadonlyArray<string>;
+};
+
 export type Rect = {
   readonly "x": number;
   readonly "y": number;
@@ -529,6 +579,21 @@ export type ReplannerInput = {
   readonly "material_transactions": ReadonlyArray<MaterialTransaction>;
   readonly "remaining_stock": ReadonlyArray<Stock>;
   readonly "patch": RepairPatch;
+};
+
+export type StabilityReport = {
+  readonly "identity": AnalysisIdentity;
+  readonly "report_version": string;
+  readonly "engine_version": string;
+  readonly "geometry_version": string;
+  readonly "profile_version": string;
+  readonly "cache_hash": string;
+  readonly "policy": AnalysisPolicy;
+  readonly "status": "modeled_pass" | "modeled_fail" | "indeterminate" | "needs_measurement" | "unsupported" | "not_applicable";
+  readonly "coverage": "complete" | "partial" | "unsupported";
+  readonly "results"?: ReadonlyArray<CheckResult>;
+  readonly "unresolved_predicates"?: ReadonlyArray<string>;
+  readonly "physical_evidence_ids"?: ReadonlyArray<string>;
 };
 
 export type Stock = {

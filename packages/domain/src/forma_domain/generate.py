@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import TypeAdapter
 from pydantic.json_schema import models_json_schema
 
-from . import models
+from . import models, stability_contracts
 from .fixtures import synthetic_inventory_a
 
 
@@ -50,10 +50,12 @@ def artifacts():
     records = sorted(
         (
             v
-            for v in vars(models).values()
+            for module in (models, stability_contracts)
+            for v in vars(module).values()
             if isinstance(v, type)
             and issubclass(v, models.Record)
             and v is not models.Record
+            and v.__module__ == module.__name__
         ),
         key=lambda cls: cls.__name__,
     )

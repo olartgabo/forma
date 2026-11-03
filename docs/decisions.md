@@ -455,3 +455,15 @@ stock a repair simulation checks matches the ledger. Partial sheet waste needs a
 measured split and stays unsupported. Proof labels measurement evidence
 "manually measured", labels Muse evidence as unverified observations and
 hypotheses, and totals only the waste and salvage the builder recorded.
+
+## D036: Begin evidence-aware stability contracts, November 3, 2026
+
+The user authorized the implementation specification in #142. Begin with the
+engine-owned quantity, identity, policy and report contracts, generated from
+Pydantic for browser consumers. Modeled outcomes and physical observations stay
+separate; missing required checks cannot become an overall modeled pass.
+This is the initial S0 slice, not a completed mechanics engine or connected
+feature. The shared assembled-geometry producer belongs to #144, and operation
+state semantics belong to #141. Their handoff remains a dependency before the
+mechanical adapter consumes actual plans. Do not reconstruct a second geometry
+authority from cutting rectangles. See [the stability handoff](handoffs/engine-stability.md).

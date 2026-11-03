@@ -1,0 +1,205 @@
+"""Version-bound modeled stability contracts; these do not establish physical success."""
+
+from typing import Annotated, Literal
+
+from pydantic import Field, model_validator
+
+from .models import ID, Nonnegative, Record, Text
+
+ContentHash = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+FiniteScalar = Annotated[float, Field(strict=True, allow_inf_nan=False)]
+SIUnit = Literal[
+    "1", "m", "m2", "m3", "kg", "s", "rad", "N", "N_m", "Pa", "kg_m3", "m_s2"
+]
+CheckType = Literal["support", "tip", "slide", "joint", "deformation"]
+CheckStatus = Literal[
+    "modeled_pass",
+    "modeled_fail",
+    "indeterminate",
+    "needs_measurement",
+    "unsupported",
+    "not_applicable",
+]
+
+
+class AnalysisIdentity(Record):
+    """Exact immutable analysis inputs; hashes are canonical SHA-256 digests.
+
+    Explicit null history_cursor identifies an empty append-only event history.
+    Omitting the cursor is invalid; callers must bind even the empty state."""
+
+    project_id: ID
+    plan_version_id: ID
+    inventory_revision: ID
+    history_cursor: ID | None
+    operation_state_id: ID
+    canonical_geometry_hash: ContentHash
+    evidence_hash: ContentHash
+    profile_hash: ContentHash
+
+
+class QuantityEstimate(Record):
+    """A scalar, inclusive interval or unknown in an explicit SI unit.
+
+    Dependencies and correlation groups preserve shared uncertainty. Provenance is
+    descriptive, never a calibrated confidence probability or physical test result.
+    """
+
+    kind: Literal["scalar", "interval", "unknown"]
+    unit: SIUnit
+    value: FiniteScalar | None = None
+    lower: FiniteScalar | None = None
+    upper: FiniteScalar | None = None
+    provenance: Literal["measured", "specified", "derived", "assumed", "unknown"]
+    confirmed: bool
+    evidence_ids: tuple[ID, ...] = Field(default=(), max_length=128)
+    dependency_ids: tuple[ID, ...] = Field(default=(), max_length=128)
+    correlation_group_ids: tuple[ID, ...] = Field(default=(), max_length=128)
+    uncertainty_notes: tuple[Text, ...] = Field(default=(), max_length=128)
+
+    @model_validator(mode="after")
+    def shape(self):
+        if self.kind == "scalar":
+            valid = self.value is not None and self.lower is None and self.upper is None
+        elif self.kind == "interval":
+            valid = (
+                self.value is None
+                and self.lower is not None
+                and self.upper is not None
+                and self.lower <= self.upper
+            )
+        else:
+            valid = self.value is None and self.lower is None and self.upper is None
+        if not valid:
+            raise ValueError("quantity must contain exactly its declared value shape")
+        if self.kind == "unknown" and (self.confirmed or self.provenance != "unknown"):
+            raise ValueError(
+                "unknown quantity must remain unconfirmed with unknown provenance"
+            )
+        if self.kind != "unknown" and self.provenance == "unknown":
+            raise ValueError("known quantity requires provenance")
+        if self.confirmed and self.provenance in ("assumed", "derived"):
+            raise ValueError(
+                "assumed or derived quantity cannot claim measurement confirmation"
+            )
+        if self.provenance == "measured" and not self.evidence_ids:
+            raise ValueError("measured quantity requires evidence references")
+        return self
+
+
+class AnalysisPolicy(Record):
+    """Caller supplies tolerances and margin; no invented engineering defaults."""
+
+    policy_id: ID
+    version: Text
+    length_tolerance_m: Nonnegative
+    force_tolerance_n: Nonnegative
+    moment_tolerance_n_m: Nonnegative
+    relative_tolerance: Nonnegative
+    required_margin_m: Nonnegative
+    uncertainty_method: Literal["analytic_interval", "bounded_subdivision"]
+    evaluation_budget: Annotated[int, Field(strict=True, ge=1, le=100000)]
+    required_check_types: tuple[CheckType, ...] = Field(min_length=1, max_length=5)
+    required_case_ids: tuple[ID, ...] = Field(min_length=1, max_length=16)
+
+    @model_validator(mode="after")
+    def unique_requirements(self):
+        for values in (self.required_check_types, self.required_case_ids):
+            if len(values) != len(set(values)):
+                raise ValueError("policy requirements must be unique")
+        return self
+
+
+class CheckResult(Record):
+    case_id: ID
+    check_type: CheckType
+    status: CheckStatus
+    computation: Literal[
+        "complete", "invalid_input", "numerical_failure", "budget_exhausted", "not_run"
+    ]
+    explanation: Text
+    unresolved_predicates: tuple[Text, ...] = Field(default=(), max_length=128)
+    quantities: tuple[QuantityEstimate, ...] = Field(default=(), max_length=128)
+    evidence_ids: tuple[ID, ...] = Field(default=(), max_length=128)
+
+    @model_validator(mode="after")
+    def consistent_status(self):
+        if (
+            self.status in ("modeled_pass", "modeled_fail")
+            and self.computation != "complete"
+        ):
+            raise ValueError("decisive result requires successful computation")
+        if self.status == "modeled_pass" and (
+            self.unresolved_predicates
+            or any(q.kind == "unknown" for q in self.quantities)
+        ):
+            raise ValueError("modeled pass cannot contain unresolved inputs")
+        if (
+            self.computation
+            in ("invalid_input", "numerical_failure", "budget_exhausted")
+            and self.status != "indeterminate"
+        ):
+            raise ValueError("failed computation must remain indeterminate")
+        if self.status == "not_applicable" and self.computation != "not_run":
+            raise ValueError("not-applicable check must not claim computation")
+        return self
+
+
+class StabilityReport(Record):
+    """Modeled result only. Physical evidence references confer no physical pass.
+
+    Required coverage is the policy's case/check Cartesian product. Additional
+    cases may be reported, but cannot hide an unresolved required check.
+    """
+
+    identity: AnalysisIdentity
+    report_version: Text
+    engine_version: Text
+    geometry_version: Text
+    profile_version: Text
+    cache_hash: ContentHash
+    policy: AnalysisPolicy
+    status: CheckStatus
+    coverage: Literal["complete", "partial", "unsupported"]
+    results: tuple[CheckResult, ...] = Field(default=(), max_length=80)
+    unresolved_predicates: tuple[Text, ...] = Field(default=(), max_length=128)
+    physical_evidence_ids: tuple[ID, ...] = Field(default=(), max_length=128)
+
+    @model_validator(mode="after")
+    def aggregate(self):
+        indexed = {(r.case_id, r.check_type): r for r in self.results}
+        if len(indexed) != len(self.results):
+            raise ValueError("duplicate case/check result")
+        required = {
+            (case, check)
+            for case in self.policy.required_case_ids
+            for check in self.policy.required_check_types
+        }
+        if self.coverage == "complete" and not required <= indexed.keys():
+            raise ValueError("complete coverage requires every required case/check")
+        if self.status == "modeled_pass" and (
+            self.coverage != "complete"
+            or self.unresolved_predicates
+            or any(
+                r.status not in ("modeled_pass", "not_applicable") for r in self.results
+            )
+            or any(indexed[key].status != "modeled_pass" for key in required)
+        ):
+            raise ValueError("modeled pass requires all required checks to pass")
+        if (
+            any(
+                indexed[key].status == "modeled_fail"
+                for key in required & indexed.keys()
+            )
+            and self.status != "modeled_fail"
+        ):
+            raise ValueError("required failed check forces aggregate modeled_fail")
+        if len({r.case_id for r in self.results}) > 16:
+            raise ValueError("at most sixteen cases may be reported")
+        if self.status == "modeled_fail" and not any(
+            r.status == "modeled_fail" for r in self.results
+        ):
+            raise ValueError("aggregate fail requires a failed check")
+        if self.status == "not_applicable":
+            raise ValueError("required analysis cannot be wholly not applicable")
+        return self

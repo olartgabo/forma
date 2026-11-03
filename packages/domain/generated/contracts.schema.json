@@ -155,6 +155,168 @@
       "title": "AdaptProposal",
       "type": "object"
     },
+    "AnalysisIdentity": {
+      "additionalProperties": false,
+      "description": "Exact immutable analysis inputs; hashes are canonical SHA-256 digests.\n\nExplicit null history_cursor identifies an empty append-only event history.\nOmitting the cursor is invalid; callers must bind even the empty state.",
+      "properties": {
+        "canonical_geometry_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Canonical Geometry Hash",
+          "type": "string"
+        },
+        "evidence_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Evidence Hash",
+          "type": "string"
+        },
+        "history_cursor": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "History Cursor"
+        },
+        "inventory_revision": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Inventory Revision",
+          "type": "string"
+        },
+        "operation_state_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Operation State Id",
+          "type": "string"
+        },
+        "plan_version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Plan Version Id",
+          "type": "string"
+        },
+        "profile_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Profile Hash",
+          "type": "string"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "plan_version_id",
+        "inventory_revision",
+        "history_cursor",
+        "operation_state_id",
+        "canonical_geometry_hash",
+        "evidence_hash",
+        "profile_hash"
+      ],
+      "title": "AnalysisIdentity",
+      "type": "object"
+    },
+    "AnalysisPolicy": {
+      "additionalProperties": false,
+      "description": "Caller supplies tolerances and margin; no invented engineering defaults.",
+      "properties": {
+        "evaluation_budget": {
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Evaluation Budget",
+          "type": "integer"
+        },
+        "force_tolerance_n": {
+          "minimum": 0,
+          "title": "Force Tolerance N",
+          "type": "number"
+        },
+        "length_tolerance_m": {
+          "minimum": 0,
+          "title": "Length Tolerance M",
+          "type": "number"
+        },
+        "moment_tolerance_n_m": {
+          "minimum": 0,
+          "title": "Moment Tolerance N M",
+          "type": "number"
+        },
+        "policy_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Policy Id",
+          "type": "string"
+        },
+        "relative_tolerance": {
+          "minimum": 0,
+          "title": "Relative Tolerance",
+          "type": "number"
+        },
+        "required_case_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Required Case Ids",
+          "type": "array"
+        },
+        "required_check_types": {
+          "items": {
+            "enum": [
+              "support",
+              "tip",
+              "slide",
+              "joint",
+              "deformation"
+            ],
+            "type": "string"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "title": "Required Check Types",
+          "type": "array"
+        },
+        "required_margin_m": {
+          "minimum": 0,
+          "title": "Required Margin M",
+          "type": "number"
+        },
+        "uncertainty_method": {
+          "enum": [
+            "analytic_interval",
+            "bounded_subdivision"
+          ],
+          "title": "Uncertainty Method",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "policy_id",
+        "version",
+        "length_tolerance_m",
+        "force_tolerance_n",
+        "moment_tolerance_n_m",
+        "relative_tolerance",
+        "required_margin_m",
+        "uncertainty_method",
+        "evaluation_budget",
+        "required_check_types",
+        "required_case_ids"
+      ],
+      "title": "AnalysisPolicy",
+      "type": "object"
+    },
     "AppendPhysicalEvent": {
       "additionalProperties": false,
       "properties": {
@@ -511,6 +673,95 @@
         "created_at"
       ],
       "title": "BuildPlan",
+      "type": "object"
+    },
+    "CheckResult": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "check_type": {
+          "enum": [
+            "support",
+            "tip",
+            "slide",
+            "joint",
+            "deformation"
+          ],
+          "title": "Check Type",
+          "type": "string"
+        },
+        "computation": {
+          "enum": [
+            "complete",
+            "invalid_input",
+            "numerical_failure",
+            "budget_exhausted",
+            "not_run"
+          ],
+          "title": "Computation",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "explanation": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Explanation",
+          "type": "string"
+        },
+        "quantities": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/QuantityEstimate"
+          },
+          "maxItems": 128,
+          "title": "Quantities",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "modeled_pass",
+            "modeled_fail",
+            "indeterminate",
+            "needs_measurement",
+            "unsupported",
+            "not_applicable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "unresolved_predicates": {
+          "default": [],
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Unresolved Predicates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "case_id",
+        "check_type",
+        "status",
+        "computation",
+        "explanation"
+      ],
+      "title": "CheckResult",
       "type": "object"
     },
     "Checkpoint": {
@@ -3038,6 +3289,139 @@
       "title": "Preconditions",
       "type": "object"
     },
+    "QuantityEstimate": {
+      "additionalProperties": false,
+      "description": "A scalar, inclusive interval or unknown in an explicit SI unit.\n\nDependencies and correlation groups preserve shared uncertainty. Provenance is\ndescriptive, never a calibrated confidence probability or physical test result.",
+      "properties": {
+        "confirmed": {
+          "title": "Confirmed",
+          "type": "boolean"
+        },
+        "correlation_group_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Correlation Group Ids",
+          "type": "array"
+        },
+        "dependency_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Dependency Ids",
+          "type": "array"
+        },
+        "evidence_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "kind": {
+          "enum": [
+            "scalar",
+            "interval",
+            "unknown"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "lower": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lower"
+        },
+        "provenance": {
+          "enum": [
+            "measured",
+            "specified",
+            "derived",
+            "assumed",
+            "unknown"
+          ],
+          "title": "Provenance",
+          "type": "string"
+        },
+        "uncertainty_notes": {
+          "default": [],
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Uncertainty Notes",
+          "type": "array"
+        },
+        "unit": {
+          "enum": [
+            "1",
+            "m",
+            "m2",
+            "m3",
+            "kg",
+            "s",
+            "rad",
+            "N",
+            "N_m",
+            "Pa",
+            "kg_m3",
+            "m_s2"
+          ],
+          "title": "Unit",
+          "type": "string"
+        },
+        "upper": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upper"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "kind",
+        "unit",
+        "provenance",
+        "confirmed"
+      ],
+      "title": "QuantityEstimate",
+      "type": "object"
+    },
     "Rect": {
       "additionalProperties": false,
       "properties": {
@@ -3287,6 +3671,111 @@
         "patch"
       ],
       "title": "ReplannerInput",
+      "type": "object"
+    },
+    "StabilityReport": {
+      "additionalProperties": false,
+      "description": "Modeled result only. Physical evidence references confer no physical pass.\n\nRequired coverage is the policy's case/check Cartesian product. Additional\ncases may be reported, but cannot hide an unresolved required check.",
+      "properties": {
+        "cache_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Cache Hash",
+          "type": "string"
+        },
+        "coverage": {
+          "enum": [
+            "complete",
+            "partial",
+            "unsupported"
+          ],
+          "title": "Coverage",
+          "type": "string"
+        },
+        "engine_version": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "geometry_version": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Geometry Version",
+          "type": "string"
+        },
+        "identity": {
+          "$ref": "#/$defs/AnalysisIdentity"
+        },
+        "physical_evidence_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Physical Evidence Ids",
+          "type": "array"
+        },
+        "policy": {
+          "$ref": "#/$defs/AnalysisPolicy"
+        },
+        "profile_version": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Profile Version",
+          "type": "string"
+        },
+        "report_version": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Report Version",
+          "type": "string"
+        },
+        "results": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CheckResult"
+          },
+          "maxItems": 80,
+          "title": "Results",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "modeled_pass",
+            "modeled_fail",
+            "indeterminate",
+            "needs_measurement",
+            "unsupported",
+            "not_applicable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "unresolved_predicates": {
+          "default": [],
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Unresolved Predicates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "identity",
+        "report_version",
+        "engine_version",
+        "geometry_version",
+        "profile_version",
+        "cache_hash",
+        "policy",
+        "status",
+        "coverage"
+      ],
+      "title": "StabilityReport",
       "type": "object"
     },
     "Stock": {
