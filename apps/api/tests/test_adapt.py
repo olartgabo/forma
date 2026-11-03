@@ -1,5 +1,6 @@
 """Synthetic repair previews and approvals; no real physical attempt or pass."""
 
+import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
@@ -383,3 +384,49 @@ def test_failed_fit_check_is_resolved_only_by_an_approved_revision(setup):
             "SELECT evidence_id FROM evidence_invalidations"
         ).fetchall()
     assert {row[0] for row in rows} == invalidated
+
+
+@pytest.mark.parametrize("completed", [1, 6])
+def test_legacy_preview_commit_and_simulate_replay_align_saved_panels(setup, completed):
+    client, version, directory = setup
+    plan = version.plan
+    for operation in plan.operations[:completed]:
+        current = report(client, plan.project_id, plan, operation.id)
+    tape = None if completed == 1 else 260
+    response = simulate(client, plan, current, [patch(plan)], tape=tape)
+    assert response.status_code == 200, response.text
+    original = response.json()
+    preview = original["previews"][0]
+    expected = preview["panel_diff"]
+    assert expected["changed"] != expected["changed_from"]
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        saved = json.loads(
+            connection.execute(
+                "SELECT body FROM adapt_previews WHERE id=?", (preview["preview_id"],)
+            ).fetchone()[0]
+        )
+        del saved["preview"]["panel_diff"]["changed_from"]
+        connection.execute(
+            "UPDATE adapt_previews SET body=? WHERE id=?",
+            (json.dumps(saved), preview["preview_id"]),
+        )
+        receipt = json.loads(
+            connection.execute(
+                "SELECT response FROM requests WHERE scope=? AND key=?",
+                (plan.project_id + ":adapt-simulate", "simulate-001"),
+            ).fetchone()[0]
+        )
+        del receipt["previews"][0]["panel_diff"]["changed_from"]
+        connection.execute(
+            "UPDATE requests SET response=? WHERE scope=? AND key=?",
+            (json.dumps(receipt), plan.project_id + ":adapt-simulate", "simulate-001"),
+        )
+    # Approval reads the legacy preview without requiring another simulation.
+    approved = commit(client, plan, current, preview["preview_id"])
+    assert approved.status_code == 200, approved.text
+    # Replay remains the original result even after activation moved the base.
+    replay = simulate(client, plan, current, [patch(plan)], tape=tape)
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == {**original, "replayed": True}
+    assert replay.json()["previews"][0]["panel_diff"] == expected
+    assert active(client, plan.project_id) == preview["version"]["version_id"]
