@@ -7,6 +7,7 @@ import {
   loadPlan,
 } from "../lib/api";
 import AdaptWorkbench from "./adapt-workbench";
+import FabricationReportPanel from "./fabrication-report/fabrication-report-panel";
 import { operationTitles } from "../lib/operation-titles";
 import type { RepairHandoff } from "../lib/repair-handoff";
 import type { DiagnosisFocus } from "../lib/build-diagnosis";
@@ -81,6 +82,7 @@ export default function PlanWorkbench({
   }, []);
   const handleProgressChange = useCallback(() => {
     setStabilityRefresh((value) => value + 1);
+    setFabricationKey((value) => value + 1);
     onProgressChange();
   }, [onProgressChange]);
   const [loading, setLoading] = useState(true);
@@ -94,6 +96,7 @@ export default function PlanWorkbench({
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [progressPending, setProgressPending] = useState(false);
+  const [fabricationKey, setFabricationKey] = useState(0);
   const [activationError, setActivationError] = useState("");
   const [activationStale, setActivationStale] = useState(false);
   const [designNotes, setDesignNotes] = useState("");
@@ -413,7 +416,7 @@ export default function PlanWorkbench({
         record physical work.
       </p>
       <div aria-live="polite">
-        {loading && <p>Loading saved plans…</p>}
+        {loading && <p>Loading saved plansâ€¦</p>}
         {listError && (
           <p className="error" role="alert">
             {listError}
@@ -578,7 +581,7 @@ export default function PlanWorkbench({
                     {candidate.candidate_id}:{" "}
                     {candidate.status.replaceAll("_", " ")}
                     {candidate.version
-                      ? ` — ${copy.design.savedPreview} ${candidate.version.version_id}`
+                      ? ` â€” ${copy.design.savedPreview} ${candidate.version.version_id}`
                       : ""}
                     {(candidate.blockers ?? []).length > 0 && (
                       <ul>
@@ -621,7 +624,7 @@ export default function PlanWorkbench({
                   : project.active_version_id
                     ? "Not active"
                     : "Preview"}{" "}
-                · {plan.candidate_id} · {plan.version_id}
+                Â· {plan.candidate_id} Â· {plan.version_id}
               </option>
             ))}
           </select>
@@ -630,7 +633,7 @@ export default function PlanWorkbench({
       {version && (
         <>
           <p className="plan-state">
-            <strong>{current ? "Active plan" : "Plan preview"}</strong> ·
+            <strong>{current ? "Active plan" : "Plan preview"}</strong> Â·
             {current
               ? "User-reported physical progress below"
               : "Physical verification not attempted"}
@@ -650,7 +653,7 @@ export default function PlanWorkbench({
           {panel && (
             <article className="manual-step">
               <h3 tabIndex={-1}>
-                Step {step + 1} of {version.manual.panels.length} —{" "}
+                Step {step + 1} of {version.manual.panels.length} â€”{" "}
                 {operationTitles[
                   version.plan.operations.find(
                     (operation) => operation.id === panel.operation_id,
@@ -745,6 +748,21 @@ export default function PlanWorkbench({
             />
           )}
           {current && (
+            <FabricationReportPanel
+              token={token}
+              projectId={project.id}
+              plan={version.plan}
+              source={{ kind: "version", versionId: version.version_id }}
+              refreshKey={fabricationKey}
+              onShowOperation={(operationId) => {
+                const index = version.manual.panels.findIndex(
+                  (item) => item.operation_id === operationId,
+                );
+                if (index >= 0) setStep(index);
+              }}
+            />
+          )}
+          {current && (
             <AdaptWorkbench
               token={token}
               projectId={project.id}
@@ -771,7 +789,7 @@ export default function PlanWorkbench({
                   {item.quantity === null
                     ? "Unknown"
                     : `${item.quantity} ${item.unit}`}{" "}
-                  · {item.stock_id}
+                  Â· {item.stock_id}
                 </li>
               ))}
             </ul>

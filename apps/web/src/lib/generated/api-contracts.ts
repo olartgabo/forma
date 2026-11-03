@@ -56,6 +56,14 @@ export type BuildRequirements = {
   readonly "constraints": Constraints;
 };
 
+export type CandidateOutcome = {
+  readonly "patch": RepairPatch;
+  readonly "status": "ranked" | "infeasible" | "cycle" | "duplicate" | "not_evaluated";
+  readonly "rank": (number | null);
+  readonly "preview_id": (string | null);
+  readonly "blockers": ReadonlyArray<Blocker>;
+};
+
 export type CompilePreview = {
   readonly "expected_revision_id": string;
   readonly "idempotency_key": string;
@@ -166,6 +174,35 @@ export type DiagnosisResult = {
   readonly "current_operation_id"?: (string | null);
   readonly "diagnosis": DiagnosisProposal;
   readonly "diagnostics": DiagnosisDiagnostics;
+};
+
+export type FabricationReport = {
+  readonly "snapshot": FabricationSnapshot;
+  readonly "status": "ready" | "blocked" | "complete" | "history_conflict";
+  readonly "current_state_id": string;
+  readonly "attached_joint_ids": ReadonlyArray<string>;
+  readonly "damaged_part_ids": ReadonlyArray<string>;
+  readonly "failed_operation_ids": ReadonlyArray<string>;
+  readonly "next_operation_id": (string | null);
+  readonly "operations": ReadonlyArray<OperationReadiness>;
+  readonly "supported_order": ReadonlyArray<OrderStep>;
+  readonly "order_status": "complete" | "blocked" | "cycle";
+  readonly "order_blockers": ReadonlyArray<Blocker>;
+  readonly "blockers": ReadonlyArray<Blocker>;
+  readonly "access_basis": "declared_rules";
+  readonly "observed_usability": "not_assessed";
+};
+
+export type FabricationSnapshot = {
+  readonly "project_id": string;
+  readonly "version_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "last_event_id": (string | null);
+  readonly "plan_sha256": string;
+  readonly "history_sha256": string;
+  readonly "process_sha256": string;
+  readonly "rules_version": "fabrication-rules-v1";
+  readonly "compiler_version": string;
 };
 
 export type IntakeDiagnostics = {
@@ -280,6 +317,24 @@ export type MediaList = {
 export type MediaResult = {
   readonly "media": Media;
   readonly "replayed"?: boolean;
+};
+
+export type OperationReadiness = {
+  readonly "operation_id": string;
+  readonly "operation_type": "measure" | "mark" | "cut_rect" | "cut_slot" | "fold" | "insert_tab" | "tape_joint" | "tie_joint" | "attach_brace" | "detach" | "inspect" | "functional_test";
+  readonly "status": "completed" | "ready" | "waiting" | "blocked";
+  readonly "completed_in_version_id": (string | null);
+  readonly "waiting_on_operation_ids": ReadonlyArray<string>;
+  readonly "blockers": ReadonlyArray<Blocker>;
+  readonly "tools": ReadonlyArray<ToolCheck>;
+  readonly "required_confirmations": ReadonlyArray<string>;
+  readonly "next_state_id": (string | null);
+};
+
+export type OrderStep = {
+  readonly "operation_id": string;
+  readonly "state_id": string;
+  readonly "reordered": boolean;
 };
 
 export type PanelDiff = {
@@ -469,6 +524,47 @@ export type RepairProposeResult = {
   readonly "diagnostics": RepairProposeDiagnostics;
 };
 
+export type RepairSearchLimits = {
+  readonly "max_evaluated": number;
+  readonly "max_results": number;
+};
+
+export type RepairSearchRequest = {
+  readonly "expected_version_id": string;
+  readonly "expected_last_event_id": (string | null);
+  readonly "idempotency_key": string;
+  readonly "target_ids"?: ReadonlyArray<string>;
+  readonly "resize_measurements"?: ReadonlyArray<ResizeMeasurement>;
+  readonly "connector_measurements"?: ReadonlyArray<ConnectorMeasurement>;
+  readonly "remaining_confirmed": true;
+  readonly "max_evaluated"?: number;
+};
+
+export type RepairSearchResult = {
+  readonly "summary": RepairSearchSummary;
+  readonly "previews": AdaptPreviewSet;
+  readonly "replayed"?: boolean;
+};
+
+export type RepairSearchSummary = {
+  readonly "search_version": "repair-search-v1";
+  readonly "status": "found" | "infeasible" | "exhausted";
+  readonly "target_ids": ReadonlyArray<string>;
+  readonly "generated_count": number;
+  readonly "evaluated_count": number;
+  readonly "limits": RepairSearchLimits;
+  readonly "outcomes": ReadonlyArray<CandidateOutcome>;
+  readonly "unknown_cost_terms": ReadonlyArray<"time" | "purchase_price" | "strength">;
+  readonly "stability_coverage": "unverified";
+};
+
+export type ResizeMeasurement = {
+  readonly "part_id": string;
+  readonly "width_mm": number;
+  readonly "height_mm": number;
+  readonly "user_confirmed": true;
+};
+
 export type SavedProjectList = {
   readonly "projects": ReadonlyArray<SavedProjectSummary>;
   readonly "next_cursor"?: (string | null);
@@ -569,4 +665,10 @@ export type StageAnalysisResponse = {
   readonly "last_event_id": (string | null);
   readonly "analysis": StageAnalysisResult;
   readonly "hypothetical"?: boolean;
+};
+
+export type ToolCheck = {
+  readonly "tool": "cutting_tool" | "ruler" | "marker" | "scale" | "protractor";
+  readonly "status": "declared" | "not_declared" | "unknown";
+  readonly "declared_name": (string | null);
 };

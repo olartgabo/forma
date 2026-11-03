@@ -126,7 +126,7 @@ class AdaptCommitResult(Record):
     replayed: bool = False
 
 
-class _Base:
+class RepairBase:
     """Trusted saved inputs for simulating repairs of one active version."""
 
     def __init__(self, connection, project_id: str, version_id: str):
@@ -142,7 +142,7 @@ class _Base:
         self.process = CutProcess.model_validate_json(row[1])
         self.parameters = StandParameters.model_validate_json(row[2])
         self.progress = snapshot(connection, self.version.plan)
-        self.ancestors = _ancestors(connection, project_id, self.version.plan)
+        self.ancestors = plan_ancestors(connection, project_id, self.version.plan)
         versions = (self.version.plan.version_id,) + tuple(
             plan.version_id for plan in self.ancestors
         )
@@ -201,7 +201,9 @@ class _Base:
         )
 
 
-def _ancestors(connection, project_id: str, plan: BuildPlan) -> tuple[BuildPlan, ...]:
+def plan_ancestors(
+    connection, project_id: str, plan: BuildPlan
+) -> tuple[BuildPlan, ...]:
     found = []
     parent = plan.parent_version_id
     while parent is not None:
@@ -229,10 +231,10 @@ def _records(connection, table, model, project_id, versions):
     )
 
 
-def _remaining(base: _Base, body: AdaptSimulateRequest) -> tuple[Stock, ...]:
-    measured = {
-        item.stock_id: item.remaining_length_mm for item in body.connector_measurements
-    }
+def confirmed_remaining(
+    base: RepairBase, measurements: tuple[ConnectorMeasurement, ...]
+) -> tuple[Stock, ...]:
+    measured = {item.stock_id: item.remaining_length_mm for item in measurements}
     stocks = []
     for stock in base.progress.expected_remaining_stock:
         length = stock.remaining_length_mm
@@ -266,7 +268,7 @@ def _remaining(base: _Base, body: AdaptSimulateRequest) -> tuple[Stock, ...]:
     return tuple(stocks)
 
 
-def _require_base(project: Project, base: _Base, body) -> None:
+def require_current_base(project: Project, base: RepairBase, body) -> None:
     if project.active_version_id != body.expected_version_id:
         raise ProjectError(409, "stale_version", "The active plan changed; reload it")
     if base.progress.last_event_id != body.expected_last_event_id:
@@ -327,6 +329,96 @@ def _upgrade_preview(connection, project_id: str, base_version_id: str, preview)
     }
 
 
+def read_preview(
+    connection, project_id: str, base_version_id: str, preview_id: str
+) -> StoredPreview:
+    row = connection.execute(
+        "SELECT body FROM adapt_previews WHERE id=? AND project_id=? "
+        "AND base_version_id=?",
+        (preview_id, project_id, base_version_id),
+    ).fetchone()
+    if row is None:
+        raise ProjectError(404, "not_found", "Repair preview not found")
+    saved = json.loads(row[0])
+    saved["preview"] = _upgrade_preview(
+        connection, project_id, base_version_id, saved["preview"]
+    )
+    return StoredPreview.model_validate(saved)
+
+
+def carried_operation_ids(result: SimulationResult) -> tuple[str, ...]:
+    """Work an approved preview keeps as already done in the new version."""
+    incomplete = set(result.incomplete_operation_ids)
+    return tuple(op.id for op in result.plan.operations if op.id not in incomplete)
+
+
+def save_previews(
+    connection,
+    project: Project,
+    base: RepairBase,
+    remaining: tuple[Stock, ...],
+    base_last_event_id: str | None,
+    simulated: list[tuple[RepairPatch, SimulationResult, int | None]],
+) -> tuple[AdaptPreview, ...]:
+    """Render feasible results against the base manual and store every preview
+    so explicit approval can re-simulate it later."""
+    old_manual = base.render(base.version.plan)
+    created_at = datetime.now(UTC)
+    previews = []
+    for patch, result, rank in simulated:
+        preview = AdaptPreview(
+            preview_id="preview-" + uuid4().hex, patch=patch, simulation=result
+        )
+        if result.status == "feasible":
+            manual = base.render(result.plan)
+            if manual.status == "accepted":
+                change = diff_manuals(old_manual, manual)
+                previous = previous_panel_indices(old_manual, manual)
+                preview = preview.model_copy(
+                    update={
+                        "rank": rank,
+                        "version": PlanVersion(
+                            project_id=project.id,
+                            version_id=result.plan.version_id,
+                            inventory_revision_id=project.revision_id,
+                            candidate_id=patch.id,
+                            created_at=created_at,
+                            plan=result.plan,
+                            manual=manual_document(project.id, result.plan, manual),
+                        ),
+                        "panel_diff": PanelDiff(
+                            unchanged=change.unchanged,
+                            changed=change.changed,
+                            changed_from=tuple(
+                                previous[index] for index in change.changed
+                            ),
+                            added=change.added,
+                            removed=change.removed,
+                        ),
+                    }
+                )
+            else:
+                preview = preview.model_copy(
+                    update={"render_blockers": manual.blockers}
+                )
+        previews.append(preview)
+        connection.execute(
+            "INSERT INTO adapt_previews VALUES (?, ?, ?, ?)",
+            (
+                preview.preview_id,
+                project.id,
+                base.version.plan.version_id,
+                StoredPreview(
+                    preview=preview,
+                    base_last_event_id=base_last_event_id,
+                    remaining_stock=remaining,
+                    created_at=created_at,
+                ).model_dump_json(),
+            ),
+        )
+    return tuple(previews)
+
+
 def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
     router = APIRouter()
     Owner = Annotated[str, Depends(authenticate)]
@@ -365,77 +457,29 @@ def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
                 raise ProjectError(
                     409, "stale_version", "The active plan changed; reload it"
                 )
-            base = _Base(connection, project_id, body.expected_version_id)
-            _require_base(project, base, body)
-            remaining = _remaining(base, body)
+            base = RepairBase(connection, project_id, body.expected_version_id)
+            require_current_base(project, base, body)
+            remaining = confirmed_remaining(base, body.connector_measurements)
             results = {
                 patch.id: base.simulate(patch, remaining) for patch in body.candidates
             }
             ranked = rank_feasible(tuple(results.values()))
             ranks = {result.patch_id: index + 1 for index, result in enumerate(ranked)}
-            old_manual = base.render(base.version.plan)
-            created_at = datetime.now(UTC)
-            previews = []
             order = [r.patch_id for r in ranked] + [
                 p.id for p in body.candidates if p.id not in ranks
             ]
             patches = {patch.id: patch for patch in body.candidates}
-            for patch_id in order:
-                result = results[patch_id]
-                preview = AdaptPreview(
-                    preview_id="preview-" + uuid4().hex,
-                    patch=patches[patch_id],
-                    simulation=result,
-                )
-                if result.status == "feasible":
-                    manual = base.render(result.plan)
-                    if manual.status == "accepted":
-                        change = diff_manuals(old_manual, manual)
-                        previous = previous_panel_indices(old_manual, manual)
-                        preview = preview.model_copy(
-                            update={
-                                "rank": ranks[patch_id],
-                                "version": PlanVersion(
-                                    project_id=project_id,
-                                    version_id=result.plan.version_id,
-                                    inventory_revision_id=project.revision_id,
-                                    candidate_id=patch_id,
-                                    created_at=created_at,
-                                    plan=result.plan,
-                                    manual=manual_document(
-                                        project_id, result.plan, manual
-                                    ),
-                                ),
-                                "panel_diff": PanelDiff(
-                                    unchanged=change.unchanged,
-                                    changed=change.changed,
-                                    changed_from=tuple(
-                                        previous[index] for index in change.changed
-                                    ),
-                                    added=change.added,
-                                    removed=change.removed,
-                                ),
-                            }
-                        )
-                    else:
-                        preview = preview.model_copy(
-                            update={"render_blockers": manual.blockers}
-                        )
-                previews.append(preview)
-                connection.execute(
-                    "INSERT INTO adapt_previews VALUES (?, ?, ?, ?)",
-                    (
-                        preview.preview_id,
-                        project_id,
-                        body.expected_version_id,
-                        StoredPreview(
-                            preview=preview,
-                            base_last_event_id=body.expected_last_event_id,
-                            remaining_stock=remaining,
-                            created_at=created_at,
-                        ).model_dump_json(),
-                    ),
-                )
+            previews = save_previews(
+                connection,
+                project,
+                base,
+                remaining,
+                body.expected_last_event_id,
+                [
+                    (patches[patch_id], results[patch_id], ranks.get(patch_id))
+                    for patch_id in order
+                ],
+            )
             result = AdaptPreviewSet(
                 project_id=project_id,
                 base_version_id=body.expected_version_id,
@@ -469,20 +513,11 @@ def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
                 raise ProjectError(
                     409, "stale_version", "The active plan changed; reload it"
                 )
-            row = connection.execute(
-                "SELECT body FROM adapt_previews WHERE id=? AND project_id=? "
-                "AND base_version_id=?",
-                (body.preview_id, project_id, body.expected_version_id),
-            ).fetchone()
-            if row is None:
-                raise ProjectError(404, "not_found", "Repair preview not found")
-            saved = json.loads(row[0])
-            saved["preview"] = _upgrade_preview(
-                connection, project_id, body.expected_version_id, saved["preview"]
+            stored = read_preview(
+                connection, project_id, body.expected_version_id, body.preview_id
             )
-            stored = StoredPreview.model_validate(saved)
-            base = _Base(connection, project_id, body.expected_version_id)
-            _require_base(project, base, body)
+            base = RepairBase(connection, project_id, body.expected_version_id)
+            require_current_base(project, base, body)
             if stored.base_last_event_id != body.expected_last_event_id:
                 raise ProjectError(
                     409, "stale_version", "Physical history changed; simulate again"
@@ -499,10 +534,7 @@ def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
                 raise ProjectError(
                     409, "stale_version", "Repair inputs changed; simulate again"
                 )
-            incomplete = set(result.incomplete_operation_ids)
-            carried = tuple(
-                op.id for op in result.plan.operations if op.id not in incomplete
-            )
+            carried = carried_operation_ids(result)
             if not set(carried) <= set(base.progress.completed_operation_ids):
                 raise ProjectError(
                     409, "blocked", "Repair preview does not match recorded work"

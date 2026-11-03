@@ -77,6 +77,7 @@ from forma_api.repair_runtime import (
     RepairProposeRequest,
     RepairProposeResult,
 )
+from forma_api.repair_search_runtime import RepairSearchRequest, RepairSearchResult
 from forma_api.routes.health import ProviderStatusResponse
 from forma_api.stability_measurements import (
     StabilityMeasurementRequest,
@@ -95,7 +96,20 @@ from forma_domain import (
     stability_measurements,
     stage_mechanics,
 )
+from forma_domain.fabrication_contracts import (
+    FabricationReport,
+    FabricationSnapshot,
+    OperationReadiness,
+    OrderStep,
+    ToolCheck,
+)
 from forma_domain.generate import typescript
+from forma_domain.repair_search_contracts import (
+    CandidateOutcome,
+    RepairSearchLimits,
+    RepairSearchSummary,
+    ResizeMeasurement,
+)
 
 API_RECORDS = (
     StageAnalysisRequest,
@@ -111,9 +125,15 @@ API_RECORDS = (
     AdaptPreview,
     AdaptPreviewSet,
     AdaptSimulateRequest,
+    CandidateOutcome,
     ConnectorMeasurement,
     PanelDiff,
     PlanRevision,
+    RepairSearchLimits,
+    RepairSearchRequest,
+    RepairSearchResult,
+    RepairSearchSummary,
+    ResizeMeasurement,
     BuildRequirements,
     CreateProject,
     CompilePreview,
@@ -129,6 +149,11 @@ API_RECORDS = (
     DiagnosisErrorResponse,
     DiagnosisRequest,
     DiagnosisResult,
+    FabricationReport,
+    FabricationSnapshot,
+    OperationReadiness,
+    OrderStep,
+    ToolCheck,
     ProjectSnapshot,
     SnapshotToolArgs,
     IntakeDiagnostics,
