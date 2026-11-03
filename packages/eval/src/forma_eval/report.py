@@ -168,13 +168,13 @@ def summarize(entries: Sequence[tuple[Attempt, ProofFacts | None]]) -> str:
         ]
         infeasible = [a for a, _ in rows if a.case == "infeasible"]
         rejected = [a for a in infeasible if a.rejection]
-        recorded = [f for _, f in rows if f is not None]
+        recorded = [f for _, f in physical if f is not None]
         preserved = sum(f.preserved_operations for f in recorded)
         lost = sum(f.lost_operations for f in recorded)
         times = [
             f.failure_to_pass_seconds
             for f in recorded
-            if f.failure_to_pass_seconds is not None
+            if f.recovered and f.failure_to_pass_seconds is not None
         ]
         corrections = [
             a.human_corrections for a, _ in rows if a.human_corrections is not None

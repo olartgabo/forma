@@ -11,7 +11,17 @@ revision, successful recorded recovery, and all three baseline methods. The CLI
 regression reads an exported initial-build software history and reports zero
 recoveries despite its disruption label.
 
+Independent review also found nonphysical Proof records contributing to waste,
+preservation and recovery timing. Those metrics now use only physical entries,
+and timing requires a recorded recovery. Regressions cover each nonphysical
+evidence level alone and mixed with a physical attempt, plus unrecovered timing.
+
 Focused check: `uv run --locked pytest packages/eval/tests -q` returned
-`11 passed in 1.81s`. Full repository checks and independent review are required
-after integrating the repaired parent PRs. All test histories are synthetic;
-no physical build, failure or recovery is claimed.
+`18 passed in 1.18s`. After integrating repaired PRs #136 and #137,
+`NEXT_TELEMETRY_DISABLED=1 npm run check` exited 0: `1145 passed, 4 skipped in
+53.35s`, web `# pass 107`, `# fail 0`, devloop `# pass 18`, `# fail 0`, and
+production build `Compiled successfully in 442ms`. The four skips require a
+POSIX shell. Full output: `%TEMP%/forma-pr138-final-check.log`.
+
+Independent finding recheck and authorized publication remain next. All test
+histories are synthetic; no physical build, failure or recovery is claimed.
