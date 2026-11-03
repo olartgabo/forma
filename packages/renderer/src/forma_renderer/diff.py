@@ -48,7 +48,7 @@ def diff_manuals(old: Manual, new: Manual) -> ManualDiff:
 
     Pure and offline: performs no I/O and mutates neither manual.
     """
-    if all(panel.step_key is None for manual in (old, new) for panel in manual.panels):
+    if _positional(old, new):
         old_hashes = tuple(panel.dependency_hash for panel in old.panels)
         new_hashes = tuple(panel.dependency_hash for panel in new.panels)
         shared = min(len(old_hashes), len(new_hashes))
@@ -63,22 +63,8 @@ def diff_manuals(old: Manual, new: Manual) -> ManualDiff:
             removed=removed,
         )
 
-    def keyed(manual: Manual) -> dict[str, tuple[int, str]]:
-        by_key: dict[str, tuple[int, str]] = {}
-        for index, panel in enumerate(manual.panels):
-            key = panel.step_key
-            if not isinstance(key, str) or not key:
-                raise ValueError(
-                    "Keyed manual diff requires every panel of a non-empty "
-                    "manual to have a non-empty step_key."
-                )
-            if key in by_key:
-                raise ValueError(f"Duplicate step_key {key!r} within a single manual.")
-            by_key[key] = (index, panel.dependency_hash)
-        return by_key
-
-    old_by_key = keyed(old)
-    new_by_key = keyed(new)
+    old_by_key = _keyed(old)
+    new_by_key = _keyed(new)
     unchanged: list[int] = []
     changed: list[int] = []
     added: list[int] = []
@@ -101,3 +87,42 @@ def diff_manuals(old: Manual, new: Manual) -> ManualDiff:
         added=tuple(added),
         removed=removed,
     )
+
+
+def previous_panel_indices(old: Manual, new: Manual) -> dict[int, int]:
+    """Map each ``new`` panel index to the ``old`` panel it replaces or repeats.
+
+    Uses the same alignment as :func:`diff_manuals` (``step_key`` when keyed,
+    position otherwise) and raises the same ``ValueError`` for invalid keys.
+    Added panels have no entry. Pure and offline.
+    """
+    if _positional(old, new):
+        return {index: index for index in range(min(len(old.panels), len(new.panels)))}
+    old_by_key = _keyed(old)
+    _keyed(new)
+    return {
+        new_index: old_by_key[panel.step_key][0]  # type: ignore[index]
+        for new_index, panel in enumerate(new.panels)
+        if panel.step_key in old_by_key
+    }
+
+
+def _positional(old: Manual, new: Manual) -> bool:
+    return all(
+        panel.step_key is None for manual in (old, new) for panel in manual.panels
+    )
+
+
+def _keyed(manual: Manual) -> dict[str, tuple[int, str]]:
+    by_key: dict[str, tuple[int, str]] = {}
+    for index, panel in enumerate(manual.panels):
+        key = panel.step_key
+        if not isinstance(key, str) or not key:
+            raise ValueError(
+                "Keyed manual diff requires every panel of a non-empty "
+                "manual to have a non-empty step_key."
+            )
+        if key in by_key:
+            raise ValueError(f"Duplicate step_key {key!r} within a single manual.")
+        by_key[key] = (index, panel.dependency_hash)
+    return by_key

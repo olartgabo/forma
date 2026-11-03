@@ -9,6 +9,7 @@ from forma_compiler import CutProcess
 from forma_renderer import (
     StandParameters,
     diff_manuals,
+    previous_panel_indices,
     render_manual,
     stand_continuation_blockers,
 )
@@ -71,8 +72,13 @@ class AdaptSimulateRequest(Record):
 
 
 class PanelDiff(Record):
+    """Indices into the preview manual, except ``removed`` and ``changed_from``,
+    which index the base version's manual. ``changed_from[i]`` is the base panel
+    that ``changed[i]`` replaces."""
+
     unchanged: tuple[int, ...]
     changed: tuple[int, ...]
+    changed_from: tuple[int, ...]
     added: tuple[int, ...]
     removed: tuple[int, ...]
 
@@ -316,6 +322,7 @@ def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
                     manual = base.render(result.plan)
                     if manual.status == "accepted":
                         change = diff_manuals(old_manual, manual)
+                        previous = previous_panel_indices(old_manual, manual)
                         preview = preview.model_copy(
                             update={
                                 "rank": ranks[patch_id],
@@ -333,6 +340,9 @@ def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
                                 "panel_diff": PanelDiff(
                                     unchanged=change.unchanged,
                                     changed=change.changed,
+                                    changed_from=tuple(
+                                        previous[index] for index in change.changed
+                                    ),
                                     added=change.added,
                                     removed=change.removed,
                                 ),

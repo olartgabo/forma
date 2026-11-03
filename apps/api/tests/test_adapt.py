@@ -172,7 +172,11 @@ def test_attached_brace_repair_previews_then_activates_atomically(setup):
     assert simulation["cost"]["complete_estimate"] is False
     diff = preview["panel_diff"]
     assert diff["unchanged"] == [0, 1, 2, 3, 4, 5]
-    assert diff["added"] and diff["changed"]
+    # Peel/re-attach steps insert after the six kept steps; the original fit
+    # and functional checks move to the end and pair with their originals.
+    assert diff["added"] == [6, 7, 8, 9, 10, 11]
+    assert diff["changed"] == [12, 13] and diff["changed_from"] == [6, 7]
+    assert diff["removed"] == []
     assert preview["version"]["manual"]["physical_verification"] == "not_attempted"
     # A preview changes no active state or history.
     assert active(client, plan.project_id) == plan.version_id
