@@ -147,6 +147,7 @@ export default function ProofWorkbench({
 
   return (
     <details
+      id="project-proof"
       className="proof-workbench"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >

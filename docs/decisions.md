@@ -524,3 +524,17 @@ the staged joints; brace plans and manuals are unchanged. Support replacement
 would undo a completed fold and stays blocked, as do a second repair of a
 replacement and other repeated-repair depth. Synthetic regression evidence does
 not establish a bench pass. See the [handoff](handoffs/issue-151-attached-base.md).
+
+## D040. Blueprint workbench, November 3, 2026
+
+The project workbench uses a blueprint grid and a section rail. Saved manuals
+index drawings by operation and show planned parts with their source stock and
+dimensions. Blueprint colors are a browser presentation of the compiled SVG.
+Builders can switch to the original colors and download the original SVG.
+The entry screen uses a full-width drafting surface with a labeled stand
+illustration and a separate credential strip. The illustration has no
+project dimensions or build instructions.
+The opening animation plays once per document load. Reduced-motion visitors
+see a static wordmark until the workbench hydrates.
+The manual uses the current compiled views. A rotatable assembly view remains
+subject to the physical P0 gate.
