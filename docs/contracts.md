@@ -63,6 +63,13 @@ active version or a saved preview. A version that is no longer active, or a
 preview whose base history changed, returns 409. See the
 [fabrication handoff](handoffs/issue-150-fabrication-report.md).
 
+POST `/api/projects/{id}/repairs/search` runs the bounded repair search
+(contracts in `forma_domain.repair_search_contracts`) against the active version
+and returns a `RepairSearchSummary` plus the ranked candidates as ordinary
+`AdaptPreviewSet` previews, approved through `adapt/commit`. It requires an
+idempotency key, the expected version and history cursor, and confirmed
+remaining stock. See the [repair search handoff](handoffs/issue-151-repair-search.md).
+
 POST `/api/projects/{id}/versions/{version_id}/fabrication/assess` accepts
 `FabricationAssessment`: expected inventory revision and history cursor, optional
 measured connector lengths with explicit `remaining_confirmed: true`, and

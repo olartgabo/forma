@@ -472,6 +472,21 @@ builder no way forward. The report is modeled, not observed: it never completes
 a step, authorizes cutting or changes stock. See the
 [fabrication handoff](handoffs/issue-150-fabrication-report.md).
 
+## D038: Repair search enumerates existing operators and reuses approval, November 3, 2026
+
+Issue #151 adds `POST /projects/{id}/repairs/search`. It generates repairs only
+from operators the simulator already supports: replacement from remaining usable
+sheet stock, resize to a size the user measured, and swapping a joint to another
+allowed tested profile. Angle changes are not generated because they would need
+an invented angle. At most 12 candidates are simulated; each feasible one must
+also pass the #150 fabrication report. Ranking uses known cost, undo, preserved
+work and measured material; time, price and strength stay unknown, and stability
+is reported as unverified because no stability report covers repairs yet. The
+top three are stored as ordinary previews, so approval is the existing atomic
+`adapt/commit`. Search records no physical work. `exhausted` (the limit stopped
+the search) is reported separately from `infeasible` (everything was checked).
+See the [repair search handoff](handoffs/issue-151-repair-search.md).
+
 ## D037: Reconcile fabrication readiness with explicit report-only confirmations, November 3, 2026
 
 The user chose PR #154 as the baseline and asked to retain useful parts of both

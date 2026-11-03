@@ -637,7 +637,8 @@ figcaption span {
 .plan-approval {
   margin-top: 1.5rem;
 }
-.fabrication-report {
+.fabrication-report,
+.repair-search {
   margin-top: 1.5rem;
   padding: 1rem 1.25rem;
   background: white;
@@ -646,7 +647,8 @@ figcaption span {
   border-radius: 8px;
   overflow-wrap: anywhere;
 }
-.fabrication-report summary {
+.fabrication-report summary,
+.repair-search summary {
   cursor: pointer;
   padding: 0.5rem 0;
   font-weight: 650;

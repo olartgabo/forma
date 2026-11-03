@@ -3,6 +3,7 @@ import {
   ApiError,
   approveRepair,
   loadProgress,
+  searchRepairs,
   simulateRepairs,
 } from "../lib/api";
 import type { RepairPatch } from "../lib/generated/contracts";
@@ -12,6 +13,8 @@ import type {
   AdaptSimulateRequest,
   PlanVersion,
   ProgressSnapshot,
+  RepairSearchRequest,
+  RepairSearchResult,
 } from "../lib/generated/api-contracts";
 import type { BuildPlan } from "../lib/generated/contracts";
 import { operationTitles } from "../lib/operation-titles";
@@ -35,6 +38,7 @@ import {
   repairWorkbenchReducer,
 } from "../lib/repair-workbench-state";
 import FabricationReportPanel from "./fabrication-report/fabrication-report-panel";
+import RepairSearchSummaryPanel from "./repair-options/repair-search-summary";
 import Diagram from "./manual-diagram";
 import MuseRepairPanel from "./muse-repair-panel";
 import type { MuseAvailability } from "../lib/muse-provider";
@@ -407,6 +411,9 @@ export default function AdaptWorkbench({
   const [lengths, setLengths] = useState<Record<string, string>>({});
   const [remainingConfirmed, setRemainingConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState<RepairSearchResult | null>(null);
+  const [pendingSearch, setPendingSearch] =
+    useState<RepairSearchRequest | null>(null);
   const [error, setError] = useState("");
   const [stale, setStale] = useState(false);
   const [handoffNote, setHandoffNote] = useState<"started" | "replace" | null>(
@@ -657,23 +664,74 @@ export default function AdaptWorkbench({
     }
   }
 
-  function submitSimulation(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!progress || candidates.length === 0 || !remainingConfirmed || locked)
-      return;
+  function measuredConnectors() {
     const measurements = spent.map((stock) => ({
       stock_id: stock.id,
       remaining_length_mm: Number(lengths[stock.id]),
     }));
-    if (
-      measurements.some(
-        (item, index) =>
-          !Number.isFinite(item.remaining_length_mm) ||
-          item.remaining_length_mm < 0 ||
-          (lengths[spent[index].id] ?? "").trim() === "",
-      )
+    return measurements.some(
+      (item, index) =>
+        !Number.isFinite(item.remaining_length_mm) ||
+        item.remaining_length_mm < 0 ||
+        (lengths[spent[index].id] ?? "").trim() === "",
     )
+      ? null
+      : measurements;
+  }
+
+  async function runSearch(request: RepairSearchRequest) {
+    const signal = lifetime.current.signal;
+    const startVersion = workbenchRef.current.candidateSetVersion;
+    setPendingSearch(request);
+    setBusy(true);
+    onLockChange(true);
+    setError("");
+    try {
+      const result = await searchRepairs(token, projectId, request, signal);
+      if (signal.aborted) return;
+      setPendingSearch(null);
+      setSearch(result);
+      // Search results are ordinary saved previews, approved the same way.
+      dispatch({
+        type: "simulateResolved",
+        previews: result.previews,
+        startedVersion: startVersion,
+      });
+    } catch (failure) {
+      if (signal.aborted) return;
+      setError(message(failure));
+      if (failure instanceof ApiError && failure.status >= 400) {
+        setPendingSearch(null);
+        setStale(failure.status === 409 && failure.code === "stale_version");
+      }
+    } finally {
+      if (!signal.aborted) {
+        setBusy(false);
+        onLockChange(false);
+      }
+    }
+  }
+
+  function startSearch() {
+    const measurements = measuredConnectors();
+    if (!progress || !remainingConfirmed || locked || measurements === null)
       return;
+    void runSearch({
+      expected_version_id: version.version_id,
+      expected_last_event_id: progress.last_event_id ?? null,
+      idempotency_key: crypto.randomUUID(),
+      target_ids: draft.targetId ? [draft.targetId] : [],
+      connector_measurements: measurements,
+      remaining_confirmed: true,
+    });
+  }
+
+  function submitSimulation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!progress || candidates.length === 0 || !remainingConfirmed || locked)
+      return;
+    const measurements = measuredConnectors();
+    if (measurements === null) return;
     void simulate({
       expected_version_id: version.version_id,
       expected_last_event_id: progress.last_event_id ?? null,
@@ -973,6 +1031,22 @@ export default function AdaptWorkbench({
                   >
                     Simulate repairs
                   </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={!remainingConfirmed}
+                    onClick={startSearch}
+                  >
+                    Find repair options
+                  </button>
+                  <p className="help">
+                    Find repair options checks every supported replacement and
+                    tested joint for
+                    {draft.targetId
+                      ? ` ${draft.targetId}`
+                      : " the damaged or failed parts"}{" "}
+                    and ranks the ones that pass.
+                  </p>
                 </fieldset>
               </form>
             </>
@@ -991,6 +1065,24 @@ export default function AdaptWorkbench({
                 Retry simulation
               </button>
             </aside>
+          )}
+          {pendingSearch && !busy && (
+            <aside className="retry-panel">
+              <p>
+                The connection ended before the search finished. Retrying the
+                same search returns the saved result if there is one.
+              </p>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => void runSearch(pendingSearch)}
+              >
+                Retry search
+              </button>
+            </aside>
+          )}
+          {search && search.previews === previews && (
+            <RepairSearchSummaryPanel summary={search.summary} />
           )}
           {previews && (
             <div className="adapt-previews">

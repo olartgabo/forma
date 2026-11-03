@@ -8,7 +8,7 @@ from test_adapt import active, commit, joined, patch, progress, report, simulate
 from test_plans import AUTH, OTHER
 
 from forma_api import fabrication_runtime
-from forma_api.adapt import _Base, _remaining
+from forma_api.adapt import RepairBase, confirmed_remaining
 from forma_api.fabrication_runtime import FabricationAssessment
 from forma_api.plans import PlanVersion
 from forma_api.projects import Project, ProjectError, ProjectStore
@@ -314,7 +314,7 @@ def test_report_subset_does_not_confirm_an_unused_connector(setup):
     for operation in version.plan.operations[:4]:
         current = report(client, version.project_id, version.plan, operation.id)
     with ProjectStore(directory).transaction() as connection:
-        base = _Base(connection, version.project_id, version.version_id)
+        base = RepairBase(connection, version.project_id, version.version_id)
     spent = next(
         stock
         for stock in base.progress.expected_remaining_stock
@@ -341,8 +341,13 @@ def test_report_subset_does_not_confirm_an_unused_connector(setup):
         remaining_confirmed=True,
     )
     with pytest.raises(ProjectError):
-        _remaining(base, body)
-    stocks = {stock.id: stock for stock in _remaining(base, body, require_all=False)}
+        confirmed_remaining(base, body.connector_measurements)
+    stocks = {
+        stock.id: stock
+        for stock in confirmed_remaining(
+            base, body.connector_measurements, require_all=False
+        )
+    }
     assert stocks[spent.id].remaining_length_mm.confirmed
     assert stocks[unused.id] == unused
     assert not stocks[unused.id].remaining_length_mm.confirmed
@@ -353,7 +358,7 @@ def test_report_assessment_accepts_more_than_eight_connector_measurements(setup)
     for operation in version.plan.operations[:4]:
         current = report(client, version.project_id, version.plan, operation.id)
     with ProjectStore(directory).transaction() as connection:
-        base = _Base(connection, version.project_id, version.version_id)
+        base = RepairBase(connection, version.project_id, version.version_id)
     spent = next(
         stock
         for stock in base.progress.expected_remaining_stock
@@ -380,7 +385,7 @@ def test_report_assessment_accepts_more_than_eight_connector_measurements(setup)
         remaining_confirmed=True,
     )
     body = FabricationAssessment(**values)
-    measured = _remaining(base, body, require_all=False)
+    measured = confirmed_remaining(base, body.connector_measurements, require_all=False)
     assert len(measured) == 9 and all(
         stock.remaining_length_mm.confirmed for stock in measured
     )

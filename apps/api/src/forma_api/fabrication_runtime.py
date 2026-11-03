@@ -9,13 +9,14 @@ from forma_compiler import CutProcess
 from forma_fabrication import fabrication_report
 from forma_renderer import StandParameters
 from forma_renderer.template import profile_evidence_valid
+from forma_replanner import SimulationResult
 from pydantic import Field, StringConstraints, model_validator
 
 from forma_api.adapt import (
     ConnectorMeasurement,
-    _Base,
-    _remaining,
+    RepairBase,
     carried_operation_ids,
+    confirmed_remaining,
     plan_ancestors,
     read_preview,
 )
@@ -187,6 +188,43 @@ def active_report(connection, project: Project, version_id: str) -> FabricationR
     )
 
 
+def _proposed(project, lineage, progress, process, parameters, simulation, remaining):
+    carried = carried_operation_ids(simulation)
+    proposed = VersionHistory(
+        plan=simulation.plan,
+        carried_operation_ids=carried,
+        base_last_event_id=progress.last_event_id,
+    )
+    # The authoritative measured current ledger; future work is not consumed.
+    return _report(
+        project, lineage + (proposed,), remaining, process, parameters, simulation.plan
+    )
+
+
+class ProposedReports:
+    """Reports for several simulations of one active version, loading its
+    lineage once."""
+
+    def __init__(self, connection, project: Project, remaining):
+        self.project = project
+        self.remaining = remaining
+        base, self.process, self.parameters = _saved(
+            connection, project.id, project.active_version_id
+        )
+        self.lineage, self.progress = _lineage(connection, base.plan)
+
+    def __call__(self, simulation: SimulationResult) -> FabricationReport:
+        return _proposed(
+            self.project,
+            self.lineage,
+            self.progress,
+            self.process,
+            self.parameters,
+            simulation,
+            self.remaining,
+        )
+
+
 def assess_active(
     connection, project: Project, version_id: str, body: FabricationAssessment
 ) -> FabricationReport:
@@ -195,11 +233,11 @@ def assess_active(
         or project.revision_id != body.expected_inventory_revision_id
     ):
         raise ProjectError(409, "stale_version", "The project changed; reload it")
-    base = _Base(connection, project.id, version_id)
+    base = RepairBase(connection, project.id, version_id)
     if base.progress.last_event_id != body.expected_last_event_id:
         raise ProjectError(409, "stale_version", "Physical history changed; reload it")
     remaining = (
-        _remaining(base, body, require_all=False)
+        confirmed_remaining(base, body.connector_measurements, require_all=False)
         if body.connector_measurements
         else base.progress.expected_remaining_stock
     )
@@ -230,34 +268,19 @@ def preview_report(connection, project: Project, preview_id: str) -> Fabrication
     if project.active_version_id is None:
         raise ProjectError(409, "stale_version", "The active plan changed; reload it")
     stored = read_preview(connection, project.id, project.active_version_id, preview_id)
-    base, process, parameters = _saved(
-        connection, project.id, project.active_version_id
-    )
-    lineage, progress = _lineage(connection, base.plan)
-    if stored.base_last_event_id != progress.last_event_id:
+    reports = ProposedReports(connection, project, stored.remaining_stock)
+    if stored.base_last_event_id != reports.progress.last_event_id:
         raise ProjectError(
             409, "stale_version", "Physical history changed; simulate again"
         )
-    version = stored.preview.version
-    if version is None:
+    if stored.preview.version is None:
         raise ProjectError(
             409, "blocked", "This repair candidate has no plan to schedule"
         )
-    trusted = _Base(connection, project.id, project.active_version_id)
+    trusted = RepairBase(connection, project.id, project.active_version_id)
     simulation = trusted.simulate(stored.preview.patch, stored.remaining_stock)
     if simulation != stored.preview.simulation:
         raise ProjectError(
             409, "stale_version", "Repair inputs changed; simulate again"
         )
-    carried = carried_operation_ids(stored.preview.simulation)
-    proposed = VersionHistory(
-        plan=version.plan,
-        carried_operation_ids=carried,
-        base_last_event_id=stored.base_last_event_id,
-    )
-    # Use the measured current ledger validated by the saved simulation;
-    # approval/reporting does not consume the proposed future materials.
-    remaining = stored.remaining_stock
-    return _report(
-        project, lineage + (proposed,), remaining, process, parameters, version.plan
-    )
+    return reports(simulation)
