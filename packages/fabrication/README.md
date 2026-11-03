@@ -17,12 +17,16 @@ Contracts live in `forma_domain.fabrication_contracts`.
   with its events and evidence in ingestion order, plus the approved revision
   boundary (`carried_operation_ids`, `base_last_event_id`).
 - `remaining_stock`: the API's existing expected-stock ledger for that version.
-- `declared_tools`: the builder's saved tool names, or `None` if none were saved.
+- `declared_tools`: saved tool names plus explicit scoped availability declarations,
+  or `None` if availability is unknown. Tool gaps block readiness.
 - `context_blockers`: server-side gates such as unreviewed profile evidence.
+- `profile_evidence`: original saved profile records, scoped to the project;
+  catalogue records may have independent version IDs.
 
 The report reruns `forma_compiler.validate_plan` on the scheduled plan and
-passes its blockers through unchanged. It does not reimplement stock, profile
-or geometry validation.
+passes its blockers through unchanged. It additionally checks the current
+remaining-stock projection against actual history: known source identities and region geometry, confirmed offcut creation,
+consumed parents and connector use. It does not reimplement plan geometry checks.
 
 ## Replay
 
@@ -40,18 +44,27 @@ contradictory reports make the report `history_conflict` and block every step.
 - The tabletop family records `cut_rect`, `fold`, `tape_joint`, `detach`,
   `inspect` and `functional_test`; other operation types are unsupported.
 - A part held by an attached joint cannot be marked, slotted or folded until an
-  explicit detach frees it. A join waits for pending preparation on its parts.
+  explicit detach frees it. A join waits for pending preparation on its parts
+  unless an explicit join → detach → preparation dependency path releases them.
 - A join whose access is not confirmed is blocked.
-- Tool classes per operation are matched to saved tool names by whole words. A
-  gap is a required confirmation, not a blocker, because saved tools are fixed
-  while a plan is active.
-- Calculated connector balances require a confirmation; unknown lengths block.
+- Tool classes per operation match declared available tool names by whole words.
+  A gap blocks readiness until the builder supplies actual tool names.
+- Unknown or unconfirmed current connector lengths block pending joins. Only
+  known numeric, calculated, unconfirmed balances appear in
+  `required_connector_measurement_ids` for a fresh per-report measurement.
+  Unknown or other unconfirmed starting balances require inventory confirmation
+  before plan approval or material-history reconciliation; a report cannot
+  establish original resources. A confirmed starting balance may be spent
+  hypothetically while constructing the supported order.
 
 The supported order is a deterministic topological order over dependencies,
 required joints, detach producers and the access rule, tie-broken by manual
-order. Dependencies that contradict the access rule are reported as a cycle.
+order among feasible operations. Blocked eligible steps are reconsidered after
+each transition; an independent ready step remains visible. Dependencies that
+contradict the access rule are reported as a cycle.
 Execution-state IDs hash the plan with the completed, attached, damaged and
-failed sets.
+failed sets. `snapshot.inputs_sha256` binds the complete typed input, cutting
+process and synthetic-evidence opt-in, including profile evidence and gates.
 
 Access is modeled from declared rules (`access_basis`), never observed
 (`observed_usability: not_assessed`).

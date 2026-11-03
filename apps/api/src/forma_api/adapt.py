@@ -232,7 +232,10 @@ def _records(connection, table, model, project_id, versions):
 
 
 def confirmed_remaining(
-    base: RepairBase, measurements: tuple[ConnectorMeasurement, ...]
+    base: RepairBase,
+    measurements: tuple[ConnectorMeasurement, ...],
+    *,
+    require_all: bool = True,
 ) -> tuple[Stock, ...]:
     measured = {item.stock_id: item.remaining_length_mm for item in measurements}
     stocks = []
@@ -243,6 +246,9 @@ def confirmed_remaining(
         spent = stock.kind in ("tape", "cord") and length.source == "calculated"
         if spent and not length.confirmed:
             if stock.id not in measured:
+                if not require_all:
+                    stocks.append(stock)
+                    continue
                 raise ProjectError(
                     422,
                     "validation_error",

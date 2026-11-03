@@ -176,10 +176,20 @@ export type DiagnosisResult = {
   readonly "diagnostics": DiagnosisDiagnostics;
 };
 
+export type FabricationAssessment = {
+  readonly "expected_inventory_revision_id": string;
+  readonly "expected_last_event_id": (string | null);
+  readonly "connector_measurements"?: ReadonlyArray<ConnectorMeasurement>;
+  readonly "remaining_confirmed"?: (true | null);
+  readonly "additional_tools"?: ReadonlyArray<string>;
+  readonly "tools_confirmed"?: (true | null);
+};
+
 export type FabricationReport = {
   readonly "snapshot": FabricationSnapshot;
   readonly "status": "ready" | "blocked" | "complete" | "history_conflict";
   readonly "current_state_id": string;
+  readonly "required_connector_measurement_ids"?: ReadonlyArray<string>;
   readonly "attached_joint_ids": ReadonlyArray<string>;
   readonly "damaged_part_ids": ReadonlyArray<string>;
   readonly "failed_operation_ids": ReadonlyArray<string>;
@@ -198,6 +208,7 @@ export type FabricationSnapshot = {
   readonly "version_id": string;
   readonly "inventory_revision_id": string;
   readonly "last_event_id": (string | null);
+  readonly "inputs_sha256": string;
   readonly "plan_sha256": string;
   readonly "history_sha256": string;
   readonly "process_sha256": string;

@@ -5,6 +5,7 @@ import {
   ApiError,
   loadFabricationReport,
   loadPreviewFabricationReport,
+  assessFabricationReport,
 } from "../src/lib/api.ts";
 import {
   orderText,
@@ -39,6 +40,7 @@ function report(overrides = {}) {
       plan_sha256: "0".repeat(64),
       history_sha256: "1".repeat(64),
       process_sha256: "2".repeat(64),
+      inputs_sha256: "3".repeat(64),
       rules_version: "fabrication-rules-v1",
       compiler_version: "synthetic",
     },
@@ -169,5 +171,71 @@ test("stale fabrication reports explain how to recover", async (t) => {
     (error) =>
       error instanceof ApiError &&
       /Simulate the repair again/.test(error.message),
+  );
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { code: "blocked", message: "private server text" },
+      { status: 409 },
+    ),
+  );
+  await assert.rejects(
+    loadFabricationReport(token, "project-a", "version-a"),
+    (error) =>
+      error instanceof ApiError &&
+      /supported report limits/.test(error.message) &&
+      !error.message.includes("private server text"),
+  );
+});
+
+test("fresh confirmations are read-only, scoped to exact inventory/history and never echo rejected server text", async (t) => {
+  const calls = [];
+  const body = {
+    expected_inventory_revision_id: "inventory-a",
+    expected_last_event_id: null,
+    additional_tools: ["scissors"],
+    tools_confirmed: true,
+  };
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    calls.push({ path, options });
+    return Response.json(report());
+  });
+  await assessFabricationReport(token, "project-a", "version-a", body);
+  assert.equal(
+    calls[0].path,
+    "/api/projects/project-a/versions/version-a/fabrication/assess",
+  );
+  assert.equal(calls[0].options.method, "POST");
+  assert.equal(calls[0].options.cache, "no-store");
+  assert.equal(
+    calls[0].options.headers.get("Authorization"),
+    `Bearer ${token}`,
+  );
+  assert.deepEqual(JSON.parse(calls[0].options.body), body);
+  await assert.rejects(
+    assessFabricationReport(token, "project-a", "version-a", {
+      ...body,
+      expected_last_event_id: "old-cursor",
+    }),
+    (error) => error instanceof ApiError && error.code === "invalid_response",
+  );
+  await assert.rejects(
+    assessFabricationReport(token, "project-a", "version-a", {
+      ...body,
+      expected_inventory_revision_id: "old-inventory",
+    }),
+    (error) => error instanceof ApiError && error.code === "invalid_response",
+  );
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { code: "validation_error", message: "private server text" },
+      { status: 422 },
+    ),
+  );
+  await assert.rejects(
+    assessFabricationReport(token, "project-a", "version-a", body),
+    (error) =>
+      error instanceof ApiError &&
+      /material loss/.test(error.message) &&
+      !error.message.includes("private server text"),
   );
 });

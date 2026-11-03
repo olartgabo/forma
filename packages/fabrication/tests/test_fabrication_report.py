@@ -141,6 +141,37 @@ def confirmed(plan, op_ids, *, start=0):
 
 
 def report(plan, process, events=(), *, tools=TOOLS, remaining=None, lineage=None):
+    if remaining is None:
+        histories = lineage or (VersionHistory(plan=plan, events=events),)
+        stocks = {s.id: s for s in plan.stocks}
+        for h in histories:
+            ops = {op.id: op for op in h.plan.operations}
+            for event in h.events:
+                op = ops.get(event.operation_id)
+                if event.kind != "operation_confirmed" or op is None:
+                    continue
+                if op.type == "cut_rect":
+                    stock = stocks[op.args.stock_id]
+                    stocks[stock.id] = stock.model_copy(
+                        update={
+                            "usable_regions": tuple(
+                                r
+                                for r in stock.usable_regions
+                                if r.id != op.args.source_region_id
+                            )
+                            + op.effects.created_offcuts
+                        }
+                    )
+                elif op.type in {"tape_joint", "tie_joint"}:
+                    stock = stocks[op.args.stock_id]
+                    stocks[stock.id] = stock.model_copy(
+                        update={
+                            "remaining_length_mm": measured(
+                                stock.remaining_length_mm.value - op.args.length_mm
+                            )
+                        }
+                    )
+        remaining = tuple(stocks.values())
     data = FabricationInput(
         project_id=plan.project_id,
         inventory_revision_id="inventory-fixture",
@@ -256,16 +287,19 @@ def test_report_is_deterministic_and_binds_its_inputs():
         ),
     ],
 )
-def test_missing_tools_are_named_assumptions_to_confirm(tools, tool_status, wording):
+def test_missing_tools_block_until_actual_names_are_declared(
+    tools, tool_status, wording
+):
     plan, process = stand()
     result = report(plan, process, tools=tools)
     cut = by_id(result)["stand-cut-panels"]
-    # Saved tools are fixed while a plan is active, so a gap is something the
-    # builder confirms at the step rather than a blocker they cannot clear.
-    assert cut.status == "ready"
+    assert cut.status == "blocked"
+    assert cut.next_state_id is None
+    assert result.order_status == "blocked"
     assert {t.tool: t.status for t in cut.tools}["cutting_tool"] == tool_status
     assert any(wording in c for c in cut.required_confirmations)
-    assert result.next_operation_id == "stand-cut-panels"
+    assert result.next_operation_id is None
+    assert report(plan, process, tools=TOOLS).next_operation_id == "stand-cut-panels"
 
 
 def test_tool_names_match_whole_words_only():
@@ -405,7 +439,8 @@ def test_material_shortfall_and_calculated_balance():
     assert codes(short["stand-joint-front-attach"]) == {"stock_exhausted"}
     calculated = by_id(report(plan, process, events, remaining=tape_left(300, False)))
     front = calculated["stand-joint-front-attach"]
-    assert front.status == "ready"
+    assert front.status == "blocked"
+    assert codes(front) == {"missing_measurement"}
     assert any("calculated, not measured" in c for c in front.required_confirmations)
     # The already-cut region is gone from the ledger, so a cut cannot repeat.
     fresh = by_id(report(plan, process, remaining=tape_left(500, True)))
@@ -422,6 +457,7 @@ def test_failed_check_and_damage_pause_the_build():
         kind="user_report",
         provenance="user",
         part_ids=("stand-brace",),
+        operation_ids=("stand-inspect-fit",),
         recorded_at=NOW + timedelta(hours=1),
         description="SYNTHETIC torn brace",
         verification_state="user_confirmed",
@@ -541,9 +577,11 @@ def test_detach_state_comes_from_replayed_peels_not_completed_ids():
     peel = by_id(result)[peels[0]]
     assert peel.status == "ready"
     # The plan's own peel checks pass through unchanged.
-    assert peel.required_confirmations == next(
-        o.preconditions.human_checks for o in revised.operations if o.id == peels[0]
-    )
+    assert set(
+        next(
+            o.preconditions.human_checks for o in revised.operations if o.id == peels[0]
+        )
+    ) <= set(peel.required_confirmations)
     carried_attach = by_id(result)["stand-joint-rear-attach"]
     assert carried_attach.status == "completed"
     assert carried_attach.completed_in_version_id == lineage[0].plan.version_id
@@ -595,3 +633,294 @@ def test_complete_build_has_nothing_left():
     assert result.next_operation_id is None
     assert result.supported_order == ()
     assert result.order_status == "complete"
+
+
+@pytest.mark.parametrize(
+    "problem", ["duplicate", "foreign", "geometry", "consumed", "refund"]
+)
+def test_remaining_projection_cannot_create_or_refund_resources(problem):
+    plan, process = stand()
+    remaining = list(plan.stocks)
+    events = ()
+    if problem == "duplicate":
+        remaining.append(remaining[0])
+    elif problem == "foreign":
+        remaining[0] = remaining[0].model_copy(update={"id": "foreign"})
+    elif problem == "geometry":
+        region = remaining[0].usable_regions[0]
+        remaining[0] = remaining[0].model_copy(
+            update={
+                "usable_regions": (
+                    region.model_copy(
+                        update={
+                            "geometry": region.geometry.model_copy(update={"width": 1})
+                        }
+                    ),
+                )
+            }
+        )
+    elif problem == "consumed":
+        events = confirmed(plan, ("stand-cut-panels",))
+    else:
+        events = confirmed(plan, [op.id for op in plan.operations[:4]])
+        remaining[0] = remaining[0].model_copy(update={"usable_regions": ()})
+    result = report(plan, process, events, remaining=tuple(remaining))
+    assert result.blockers
+    assert result.status == "blocked"
+    assert result.next_operation_id is None
+    assert result.order_status == "blocked"
+
+
+def test_offcut_must_come_from_an_actual_cut():
+    plan, process = stand()
+    cut = plan.operations[0]
+    offcut = m.Region(
+        id="future-offcut", geometry=m.Rect(x=180, y=500, width=10, height=10)
+    )
+    cut = cut.model_copy(
+        update={
+            "effects": cut.effects.model_copy(update={"created_offcuts": (offcut,)})
+        }
+    )
+    plan = plan.model_copy(update={"operations": (cut,) + plan.operations[1:]})
+    remaining = tuple(
+        s.model_copy(update={"usable_regions": (offcut,)}) if s.kind == "sheet" else s
+        for s in plan.stocks
+    )
+    result = report(plan, process, remaining=remaining)
+    assert any("actual confirmed source cut" in b.message for b in result.blockers)
+
+
+def test_input_hash_covers_tools_evidence_and_allow_synthetic_without_changing_execution_identity():
+    plan, process = stand()
+    data = FabricationInput(
+        project_id=plan.project_id,
+        inventory_revision_id="inventory",
+        lineage=(VersionHistory(plan=plan),),
+        remaining_stock=plan.stocks,
+        declared_tools=TOOLS,
+    )
+    original = fabrication_report(data, process=process, allow_synthetic=True)
+    evidence = process.evidence[0].model_copy(
+        update={"version_id": "independent-catalogue-version"}
+    )
+    variants = [
+        (data.model_copy(update={"declared_tools": TOOLS + ("pencil",)}), True),
+        (data.model_copy(update={"profile_evidence": (evidence,)}), True),
+        (data, False),
+    ]
+    for changed, synthetic in variants:
+        result = fabrication_report(changed, process=process, allow_synthetic=synthetic)
+        assert result.snapshot.inputs_sha256 != original.snapshot.inputs_sha256
+        assert result.current_state_id == original.current_state_id
+
+
+def test_required_connector_measurements_and_hypothetical_spending():
+    plan, process = stand()
+    events = confirmed(plan, [op.id for op in plan.operations[:3]])
+    stocks = tuple(
+        s.model_copy(update={"usable_regions": ()})
+        if s.kind == "sheet"
+        else s.model_copy(
+            update={
+                "remaining_length_mm": s.remaining_length_mm.model_copy(
+                    update={"confirmed": False}
+                )
+            }
+        )
+        for s in plan.stocks
+    )
+    result = report(plan, process, events, remaining=stocks)
+    assert result.required_connector_measurement_ids == ("fixture-tape-stock",)
+    assert by_id(result)["stand-joint-front-attach"].status == "blocked"
+    measured_stocks = tuple(
+        s.model_copy(update={"remaining_length_mm": measured(500)})
+        if s.kind == "tape"
+        else s
+        for s in stocks
+    )
+    measured_result = report(plan, process, events, remaining=measured_stocks)
+    assert measured_result.required_connector_measurement_ids == ()
+    assert measured_result.order_status == "complete"
+    assert len(measured_result.supported_order) == len(plan.operations) - 3
+
+
+def test_all_declared_precondition_confirmations_are_preserved():
+    plan, process = stand()
+    operation = plan.operations[0]
+    checks = operation.preconditions.model_copy(
+        update={
+            "accessible_part_ids": ("stand-base",),
+            "required_joint_ids": ("stand-joint-front",),
+            "confirmed_measurement_ids": ("fixture-sheet",),
+            "safe_tools_confirmed": True,
+        }
+    )
+    plan = plan.model_copy(
+        update={
+            "operations": (operation.model_copy(update={"preconditions": checks}),)
+            + plan.operations[1:]
+        }
+    )
+    from forma_fabrication.report import Ledger, _Scheduler
+
+    confirmations = _Scheduler(plan).confirmations(
+        plan.operations[0], Ledger.from_stock(plan.stocks)
+    )
+    assert "Confirm access to part stand-base." in confirmations
+    assert "Confirm required joint stand-joint-front is attached." in confirmations
+    assert "Confirm measurement fixture-sheet." in confirmations
+    assert "Confirm safe tools before this operation." in confirmations
+
+
+@pytest.mark.parametrize(
+    "problem",
+    [
+        "unknown_confirmation",
+        "duplicate_id",
+        "missing_evidence",
+        "foreign_evidence",
+        "future_evidence",
+        "nonuser_evidence",
+    ],
+)
+def test_history_rejects_untrusted_or_mislinked_physical_work(problem):
+    plan, process = stand()
+    event = confirmed(plan, ("stand-cut-panels",))[0]
+    evidence = ()
+    if problem == "unknown_confirmation":
+        event = event.model_copy(update={"verification_state": "unknown"})
+    elif problem == "missing_evidence":
+        event = event.model_copy(update={"evidence_ids": ("missing",)})
+    elif problem != "duplicate_id":
+        item = m.Evidence(
+            id="linked",
+            project_id=plan.project_id,
+            version_id=plan.version_id,
+            kind="user_report",
+            provenance="user",
+            operation_ids=(event.operation_id,),
+            recorded_at=NOW,
+            description="SYNTHETIC user report",
+            verification_state="user_confirmed",
+        )
+        if problem == "foreign_evidence":
+            item = item.model_copy(update={"project_id": "foreign"})
+        elif problem == "future_evidence":
+            item = item.model_copy(update={"recorded_at": NOW + timedelta(days=1)})
+        else:
+            item = item.model_copy(
+                update={
+                    "provenance": "synthetic_fixture",
+                    "verification_state": "unknown",
+                }
+            )
+        evidence = (item,)
+        event = event.model_copy(update={"evidence_ids": (item.id,)})
+    events = (event, event) if problem == "duplicate_id" else (event,)
+    result = report(
+        plan,
+        process,
+        lineage=(VersionHistory(plan=plan, events=events, evidence=evidence),),
+    )
+    assert result.status == "history_conflict"
+    assert result.next_operation_id is None
+    assert result.supported_order == ()
+
+
+def test_explicit_join_detach_preparation_path_has_no_false_cycle():
+    from forma_fabrication.replay import ExecutionState
+    from forma_fabrication.report import Ledger, _Scheduler
+
+    plan, _ = stand()
+    plan = front_first(plan, fold_after_join=True)
+    detach = m.Detach(
+        id="explicit-peel",
+        type="detach",
+        expected_state_id="fixture-after-peel",
+        preconditions=m.Preconditions(),
+        depends_on=("stand-joint-front-attach",),
+        part_ids=("stand-base", "stand-support"),
+        args=m.DetachArgs(joint_id="stand-joint-front", supported_inverse="peel_tape"),
+        effects=m.Effects(detached_joint_ids=("stand-joint-front",)),
+        reversible="lossy",
+    )
+    original_join = next(
+        op for op in plan.operations if op.id == "stand-joint-front-attach"
+    )
+    reattach = original_join.model_copy(
+        update={"id": "reattach-front", "depends_on": ("stand-fold-lip",)}
+    )
+    operations = []
+    for op in plan.operations:
+        if op.id == "stand-functional-test":
+            op = op.model_copy(update={"depends_on": op.depends_on + (reattach.id,)})
+        if op.id == "stand-fold-lip":
+            operations.append(detach)
+            op = op.model_copy(update={"depends_on": (detach.id,)})
+        operations.append(op)
+        if op.id == "stand-fold-lip":
+            operations.append(reattach)
+    plan = m.BuildPlan.model_validate(
+        plan.model_copy(update={"operations": tuple(operations)}).model_dump()
+    )
+    scheduler = _Scheduler(plan)
+    steps, status, blockers = scheduler.order(
+        ExecutionState(), Ledger.from_stock(plan.stocks), "a" * 64, TOOLS
+    )
+    assert status == "complete", blockers
+    order = [s.operation_id for s in steps]
+    assert (
+        order.index("stand-joint-front-attach")
+        < order.index(detach.id)
+        < order.index("stand-fold-lip")
+    )
+
+
+def test_blocked_cut_does_not_hide_independent_ready_inspection():
+    plan, process = stand()
+    original = next(op for op in plan.operations if op.id == "stand-inspect-cuts")
+    inspection = original.model_copy(
+        update={
+            "id": "independent-inspection",
+            "depends_on": (),
+            "part_ids": (),
+            "args": original.args.model_copy(
+                update={"target_ids": ("fixture-sheet",), "method": "human_inspection"}
+            ),
+        }
+    )
+    plan = plan.model_copy(update={"operations": plan.operations + (inspection,)})
+    result = report(plan, process, tools=())
+    assert by_id(result)["stand-cut-panels"].status == "blocked"
+    assert by_id(result)[inspection.id].status == "ready", result.blockers
+    assert result.status == "ready"
+    assert result.next_operation_id == inspection.id
+    assert result.supported_order[0].operation_id == inspection.id
+    assert result.order_status == "blocked"
+
+
+@pytest.mark.parametrize(
+    "measurement",
+    [
+        m.Measurement(value=None, unit="mm", source="unknown", confirmed=False),
+        m.Measurement(value=400, unit="mm", source="user_ruler", confirmed=False),
+    ],
+)
+def test_unestablished_connector_stock_has_no_impossible_assessment_id(measurement):
+    plan, process = stand()
+    events = confirmed(plan, [op.id for op in plan.operations[:3]])
+    remaining = tuple(
+        stock.model_copy(update={"usable_regions": ()})
+        if stock.kind == "sheet"
+        else stock.model_copy(update={"remaining_length_mm": measurement})
+        for stock in plan.stocks
+    )
+    result = report(plan, process, events, remaining=remaining)
+    assert result.required_connector_measurement_ids == ()
+    join = by_id(result)["stand-joint-front-attach"]
+    assert join.status == "blocked"
+    assert any(
+        "starting inventory before plan approval" in b.message for b in join.blockers
+    )
+    assert result.next_operation_id is None

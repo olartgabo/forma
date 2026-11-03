@@ -9,6 +9,7 @@ from pydantic.json_schema import models_json_schema
 
 from . import (
     assembly_geometry_contracts,
+    fabrication_contracts,
     generic_assembly,
     models,
     stability_contracts,
@@ -59,26 +60,27 @@ def typescript(schema):
     return primitives[kind]
 
 
+def domain_records():
+    return {
+        v.__name__: v
+        for module in (
+            models,
+            fabrication_contracts,
+            assembly_geometry_contracts,
+            generic_assembly,
+            stability_contracts,
+            stability_measurements,
+            stage_mechanics,
+        )
+        for v in vars(module).values()
+        if isinstance(v, type)
+        and issubclass(v, models.Record)
+        and v is not models.Record
+    }
+
+
 def artifacts():
-    records = sorted(
-        (
-            v
-            for module in (
-                models,
-                stability_contracts,
-                assembly_geometry_contracts,
-                generic_assembly,
-                stability_measurements,
-                stage_mechanics,
-            )
-            for v in vars(module).values()
-            if isinstance(v, type)
-            and issubclass(v, models.Record)
-            and v is not models.Record
-            and v.__module__ == module.__name__
-        ),
-        key=lambda cls: cls.__name__,
-    )
+    records = sorted(domain_records().values(), key=lambda cls: cls.__name__)
     _, bundle = models_json_schema([(cls, "validation") for cls in records])
     definitions = bundle["$defs"]
     schema = {

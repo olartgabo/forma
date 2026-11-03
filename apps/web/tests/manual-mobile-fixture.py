@@ -21,6 +21,7 @@ SOURCES = {
     "forma_compiler": REPO / "packages/compiler/src",
     "forma_renderer": REPO / "packages/renderer/src",
     "forma_replanner": REPO / "packages/replanner/src",
+    "forma_fabrication": REPO / "packages/fabrication/src",
 }
 # A shared virtual environment may install another checkout in editable mode.
 for source in SOURCES.values():
