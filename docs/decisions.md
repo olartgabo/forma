@@ -427,3 +427,17 @@ tokens and the optional provider key live in SSM Parameter Store, not git.
 The host has no SSH; administration goes through SSM. This resolves P004 for the
 demo only. Backups, token rotation and provider-side retention stay unverified.
 See [hosted deployment](deploy.md).
+
+## D034: Damage reports pause the build, November 2, 2026
+
+The user approved a damage report on each manual step. `POST /projects/{id}/damage`
+records a user-reported `damage` event with `user_report` evidence and optional
+photos, scoped to the step and the damaged part IDs. The builder confirms what
+they saw, so the event and evidence are `user_confirmed`; the replanner accepts
+only that state, and then only a replacement of a damaged part. Like a failed
+check, a damage event sets the build to needs review and pauses further
+confirmations until an approved revision. It consumes no stock, marks no
+operation complete and needs no provider. The progress snapshot lists
+`damaged_part_ids`, and Adapt starts a repair draft on the first damaged part.
+Asking Muse to diagnose the damage stays optional. Standalone measurement events
+are not added because no compiled plan requires a recorded measurement.

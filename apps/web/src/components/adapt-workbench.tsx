@@ -492,6 +492,12 @@ export default function AdaptWorkbench({
       if (signal.aborted) return;
       setProgress(next);
       setStale(false);
+      // Start a repair from reported damage unless a part is already chosen.
+      const damaged = next.damaged_part_ids?.[0];
+      if (damaged)
+        setDraft((current) =>
+          current.targetId ? current : { ...current, targetId: damaged },
+        );
     } catch (failure) {
       if (!signal.aborted) setError(message(failure));
     } finally {
@@ -702,7 +708,9 @@ export default function AdaptWorkbench({
                 {progress.completed_operation_ids.length} of{" "}
                 {plan.operations.length} operations recorded as done.
                 {progress.failed_operation_ids.length > 0 &&
-                  ` Failed checks: ${progress.failed_operation_ids.join(", ")}.`}
+                  ` Paused at: ${progress.failed_operation_ids.join(", ")}.`}
+                {(progress.damaged_part_ids?.length ?? 0) > 0 &&
+                  ` Damaged parts: ${progress.damaged_part_ids?.join(", ")}.`}
               </p>
               <form className="adapt-candidate" onSubmit={addCandidate}>
                 <fieldset disabled={locked || candidates.length >= 3}>

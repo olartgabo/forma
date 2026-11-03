@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ApiError, loadProgress, recordProgress } from "../lib/api";
+import {
+  ApiError,
+  loadProgress,
+  recordProgress,
+  reportDamage,
+} from "../lib/api";
 import {
   createDiagnosisFocus,
   hasFailedCheck,
@@ -8,6 +13,7 @@ import {
   type DiagnosisFocus,
 } from "../lib/build-diagnosis";
 import type {
+  DamageReport,
   Media,
   PlanVersion,
   ProgressSnapshot,
@@ -17,6 +23,10 @@ import {
   MUSE_NOT_CONFIGURED_REASON,
   type MuseAvailability,
 } from "../lib/muse-provider";
+
+type Submission =
+  | { kind: "progress"; body: ProgressUpdate }
+  | { kind: "damage"; body: DamageReport };
 
 function message(error: unknown) {
   return error instanceof ApiError
@@ -63,7 +73,11 @@ export default function PhysicalProgress({
   const [result, setResult] = useState<"passed" | "failed" | "">("");
   const [observation, setObservation] = useState("");
   const [photoIds, setPhotoIds] = useState<readonly string[]>([]);
-  const [pending, setPending] = useState<ProgressUpdate | null>(null);
+  const [pending, setPending] = useState<Submission | null>(null);
+  const [damageParts, setDamageParts] = useState<readonly string[]>([]);
+  const [damageNote, setDamageNote] = useState("");
+  const [damagePhotoIds, setDamagePhotoIds] = useState<readonly string[]>([]);
+  const [damageConfirmed, setDamageConfirmed] = useState(false);
   const [saving, setSaving] = useState(false);
   const controller = useRef(new AbortController());
   const operation = version.plan.operations.find(
@@ -115,6 +129,14 @@ export default function PhysicalProgress({
     progress.status !== "needs_review" &&
     progress.status !== "passed";
   const locked = disabled || saving || pending !== null;
+  // Damage can be reported on any step of the current history, including a
+  // completed one or after a failed check; it never completes work.
+  const canReportDamage =
+    progress !== null &&
+    progress.version_id === version.version_id &&
+    !loading &&
+    !readFailed &&
+    !stale;
   const currentProgress =
     progress && progress.version_id === version.version_id ? progress : null;
   const failedCheck = currentProgress
@@ -182,9 +204,17 @@ export default function PhysicalProgress({
     setObservation("");
     setPhotoIds([]);
     setNotice("");
+    resetDamage();
   }, [operationId, attempt]);
 
-  async function save(request: ProgressUpdate) {
+  function resetDamage() {
+    setDamageParts([]);
+    setDamageNote("");
+    setDamagePhotoIds([]);
+    setDamageConfirmed(false);
+  }
+
+  async function save(request: Submission) {
     if (saving || disabled) return;
     const signal = controller.current.signal;
     setPending(request);
@@ -194,7 +224,10 @@ export default function PhysicalProgress({
     setNotice("");
     let reportKnown = false;
     try {
-      const response = await recordProgress(token, projectId, request, signal);
+      const response =
+        request.kind === "damage"
+          ? await reportDamage(token, projectId, request.body, signal)
+          : await recordProgress(token, projectId, request.body, signal);
       if (signal.aborted) return;
       reportKnown = true;
       setPending(null);
@@ -203,6 +236,7 @@ export default function PhysicalProgress({
       setResult("");
       setObservation("");
       setPhotoIds([]);
+      resetDamage();
       const latest = response.replayed
         ? await loadProgress(token, projectId, version.version_id, signal)
         : response.progress;
@@ -211,9 +245,11 @@ export default function PhysicalProgress({
       setReadFailed(false);
       onProgressChange();
       setNotice(
-        latest.status === "needs_review"
-          ? "Failed check saved. Stop and review the build before continuing."
-          : "Your physical report was saved.",
+        request.kind === "damage"
+          ? "Damage saved. Stop and review a repair before continuing."
+          : latest.status === "needs_review"
+            ? "Failed check saved. Stop and review the build before continuing."
+            : "Your physical report was saved.",
       );
     } catch (failure) {
       if (signal.aborted) return;
@@ -256,15 +292,43 @@ export default function PhysicalProgress({
     const reportedResult = checkOperation ? result : "completed";
     if (!reportedResult) return;
     void save({
-      expected_version_id: version.version_id,
-      expected_last_event_id: progress?.last_event_id ?? null,
-      idempotency_key: crypto.randomUUID(),
-      operation_id: operationId,
-      result: reportedResult,
-      observation: observation.trim(),
-      user_confirmed: true,
-      checks_confirmed: true,
-      photo_ids: [...photoIds],
+      kind: "progress",
+      body: {
+        expected_version_id: version.version_id,
+        expected_last_event_id: progress?.last_event_id ?? null,
+        idempotency_key: crypto.randomUUID(),
+        operation_id: operationId,
+        result: reportedResult,
+        observation: observation.trim(),
+        user_confirmed: true,
+        checks_confirmed: true,
+        photo_ids: [...photoIds],
+      },
+    });
+  }
+
+  function submitDamage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (
+      !canReportDamage ||
+      locked ||
+      !damageConfirmed ||
+      damageParts.length === 0 ||
+      !damageNote.trim()
+    )
+      return;
+    void save({
+      kind: "damage",
+      body: {
+        expected_version_id: version.version_id,
+        expected_last_event_id: progress?.last_event_id ?? null,
+        idempotency_key: crypto.randomUUID(),
+        operation_id: operationId,
+        part_ids: [...damageParts],
+        observation: damageNote.trim(),
+        user_confirmed: true,
+        photo_ids: [...damagePhotoIds],
+      },
     });
   }
 
@@ -298,9 +362,12 @@ export default function PhysicalProgress({
         )}
         {progress?.status === "needs_review" && (
           <p className="error">
-            A check failed. Further confirmations are paused until an approved
-            revision resolves it; review a repair under Adapt the plan. The
-            failed report remains in history.
+            {(progress.damaged_part_ids?.length ?? 0) > 0
+              ? `Damage reported on ${progress.damaged_part_ids?.join(", ")}. `
+              : "A check failed. "}
+            Further confirmations are paused until an approved revision resolves
+            it; review a repair under Adapt the plan. The report remains in
+            history.
           </p>
         )}
         {progress?.status === "passed" && (
@@ -522,6 +589,92 @@ export default function PhysicalProgress({
             </button>
           </fieldset>
         </form>
+      )}
+      {canReportDamage && (
+        <details className="damage-report">
+          <summary>Report damage at this step</summary>
+          <form onSubmit={submitDamage}>
+            <fieldset disabled={locked}>
+              <p className="help">
+                Use this when a part tore, bent or came apart. Your report
+                pauses the build until you approve a repair; it records no
+                completed work and uses no stock.
+              </p>
+              <fieldset>
+                <legend>Which parts are damaged?</legend>
+                {version.plan.parts.map((part) => (
+                  <label className="checkbox-label" key={part.id}>
+                    <input
+                      type="checkbox"
+                      checked={damageParts.includes(part.id)}
+                      onChange={(event) =>
+                        setDamageParts((current) =>
+                          event.target.checked
+                            ? [...current, part.id]
+                            : current.filter((id) => id !== part.id),
+                        )
+                      }
+                    />
+                    {part.id}
+                  </label>
+                ))}
+              </fieldset>
+              <label htmlFor="damage-observation">What happened?</label>
+              <textarea
+                id="damage-observation"
+                rows={3}
+                maxLength={2000}
+                required
+                value={damageNote}
+                onChange={(event) => setDamageNote(event.target.value)}
+              />
+              {photos.length > 0 && (
+                <fieldset className="photo-links">
+                  <legend>Optional photos of the damage</legend>
+                  {photos.map((photo, index) => (
+                    <label className="checkbox-label" key={photo.id}>
+                      <input
+                        type="checkbox"
+                        checked={damagePhotoIds.includes(photo.id)}
+                        disabled={
+                          !damagePhotoIds.includes(photo.id) &&
+                          damagePhotoIds.length >= 8
+                        }
+                        onChange={(event) =>
+                          setDamagePhotoIds((current) =>
+                            event.target.checked
+                              ? [...current, photo.id]
+                              : current.filter((id) => id !== photo.id),
+                          )
+                        }
+                      />
+                      Photo {index + 1}
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={damageConfirmed}
+                  onChange={(event) => setDamageConfirmed(event.target.checked)}
+                />
+                I saw this damage myself and am reporting it as it is.
+              </label>
+              <button
+                type="submit"
+                className="secondary"
+                disabled={
+                  !damageConfirmed ||
+                  damageParts.length === 0 ||
+                  !damageNote.trim()
+                }
+              >
+                Save damage report
+              </button>
+            </fieldset>
+          </form>
+        </details>
       )}
       {pending && !saving && (
         <aside className="retry-panel">
