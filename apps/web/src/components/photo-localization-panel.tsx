@@ -5,8 +5,8 @@ import { loadPhotoPreview } from "../lib/photo-preview-loader";
 import {
   LocalizationError,
   localizePhoto,
+  localizationReceipts,
   validPhotoBox,
-  validLocalizationRequest,
 } from "../lib/photo-localization";
 import type {
   Box,
@@ -15,13 +15,6 @@ import type {
   PhotoLocalizationRequest,
   PhotoLocalizationResult,
 } from "../lib/generated/api-contracts";
-
-import { receipts } from "./design-candidates/pending";
-const localizationReceipts = receipts<PhotoLocalizationRequest>(
-  "forma-photo-localization-v1:",
-  validLocalizationRequest,
-  "SAM request",
-);
 
 export default function PhotoLocalizationPanel(props: {
   token: string;
