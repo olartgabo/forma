@@ -1,5 +1,6 @@
 """SYNTHETIC software checks for #149 measurement decisions; no physical pass."""
 
+import json
 import sqlite3
 
 import pytest
@@ -267,8 +268,68 @@ def test_built_stand_question_capture_and_recalculation(connected):
     change = recalc(client, project, built)
     after = change["after"]
     assert change["decision_changed"] is True
+    assert "assembled-stand measurement records: 0 → 1" in change["changed_facts"]
     assert after["outcome"] in ("none_needed", "unsupported")
     assert after["stability"]["analysis_status"] == "complete"
     assert all(m is not None for _, m in after["stability"]["case_margins_m"])
     current = client.get(f"/api/projects/{project_id}", headers=AUTH).json()
     assert current["active_version_id"] == payload["plan_version_id"]
+
+
+@pytest.fixture
+def manifest(tmp_path, monkeypatch):
+    """The production file resolver: settings exist only for listed revisions."""
+    monkeypatch.setattr(synthesis_runtime, "ALLOW_SYNTHETIC", True)
+    path = tmp_path / "design-context.json"
+    monkeypatch.setenv("FORMA_DESIGN_CONTEXT_PATH", str(path))
+    entries = []
+
+    def configure(project, context):
+        # An explicit operator step: add settings for exactly this revision.
+        entries.append(
+            DesignContext(
+                project_id=project["id"],
+                inventory_revision_id=project["revision_id"],
+                **context,
+            ).model_dump(mode="json")
+        )
+        path.write_text(json.dumps({"contexts": entries}), encoding="utf-8")
+
+    with TestClient(create_app(tmp_path / "data", TOKENS)) as client:
+        project, _, context = prepared(client)
+        sheet = project["stocks"][0]
+        unmeasured = sheet | {
+            "width_mm": UNKNOWN,
+            "height_mm": UNKNOWN,
+            "usable_regions": [],
+        }
+        project = save(
+            client, project, [unmeasured, project["stocks"][1]], "unmeasured"
+        )
+        configure(project, context)
+        yield client, project, context, configure
+
+
+def test_new_revisions_need_operator_settings_and_say_so(manifest):
+    client, project, context, configure = manifest
+    first = decide(client, project).json()
+    assert first["question"]["target"]["key"] == "stock:synthetic-sheet:width_mm"
+    project = answer(client, {}, project, "width", "width_mm", 200)
+    # The measurement is saved, but this revision has no settings yet.
+    blocked = recalc(client, project, first)
+    after = blocked["after"]
+    assert after["outcome"] == "unsupported" and after["question"] is None
+    assert any(project["revision_id"] in reason for reason in after["reasons"])
+    assert any(
+        "does not carry them forward" in c for c in after["missing_capabilities"]
+    )
+    assert "stock:synthetic-sheet:width_mm: unknown → 200" in blocked["changed_facts"]
+    assert blocked["decision_changed"] is True
+    # Nothing was carried over automatically.
+    assert decide(client, project).json()["outcome"] == "unsupported"
+    configure(project, context)
+    ready = recalc(client, project, first)
+    assert ready["after"]["question"]["target"]["key"] == (
+        "stock:synthetic-sheet:height_mm"
+    )
+    assert ready["changed_facts"] == ["stock:synthetic-sheet:width_mm: unknown → 200"]

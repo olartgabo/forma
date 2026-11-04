@@ -776,3 +776,13 @@ probabilities or effort scores. Answers use the existing inventory confirmation
 or the #146 measurement form; a "measurement unavailable" marker is the only new
 record. Unbuilt candidates' stability returns "physical test or model extension
 required" rather than reusing another stand's measurements.
+
+Thresholds are computed per sheet material, only over reviewed tape and fold
+profile pairs for that material, and are reported in 0.1 mm steps; a confirmed
+value below a rounded threshold is decided by compiling at that exact value. A
+compiler refusal of unlimited stock for an input reason (for example missing
+profile evidence) is reported as unsupported, not as infeasible. Server design
+settings stay scoped to one inventory revision: after a confirmed measurement
+the decision states that the operator must add settings for the new revision,
+and nothing is carried forward automatically, because process and profile
+evidence were reviewed for the earlier inventory.

@@ -2577,7 +2577,7 @@
               "minLength": 1,
               "type": "string"
             },
-            "maxItems": 32,
+            "maxItems": 328,
             "title": "Changed Facts",
             "type": "array"
           },
@@ -2628,7 +2628,7 @@
               "pattern": "^[a-z_]+:[A-Za-z0-9_-]{1,96}:[a-z_]+$",
               "type": "string"
             },
-            "maxItems": 64,
+            "maxItems": 160,
             "title": "Declined Target Keys",
             "type": "array"
           },
@@ -5379,7 +5379,7 @@
             "items": {
               "$ref": "#/components/schemas/SavedFact"
             },
-            "maxItems": 64,
+            "maxItems": 160,
             "title": "Facts",
             "type": "array"
           },

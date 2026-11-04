@@ -12,6 +12,7 @@ from forma_measurement import (
 )
 from forma_synthesizer import search
 from measurement_inputs import constraints, search_input, sheet, strip, tape
+from synthetic_inputs import parameters
 
 from forma_domain.synthesis_contracts import SearchBudget
 
@@ -24,7 +25,7 @@ def decide(stocks, declined=frozenset(), **overrides):
 def test_thresholds_come_from_the_compiler():
     limits = thresholds(search_input())
     # 70 mm device + two 4 mm margins; stacked panels, kerfs and margins.
-    assert (limits.width_mm, limits.height_mm) == (78, 269)
+    assert (limits.width_mm, limits.height_mm) == (78, 268.8)
     assert limits.tape_width_mm == 20 and limits.tape_length_mm == 210
     assert limits.thickness_ranges == ((1.0, 3.0),)
 
@@ -41,7 +42,7 @@ def test_a_measurement_crosses_the_supported_threshold():
     assert too_narrow.outcome == "no_feasible_candidate"
     wide = decide((sheet("sheet-a", 78), tape()))
     assert wide.question.target.key == "stock:sheet-a:height_mm"
-    assert wide.question.threshold.lower == 269
+    assert wide.question.threshold.lower == 268.8
     measured = decide((sheet("sheet-a", 120, 300), tape()))
     assert measured.question.target.key == "stock:sheet-a:usable_region"
     usable = decide((sheet("sheet-a", 120, 300, region=True), tape()))
@@ -154,7 +155,7 @@ def test_out_of_family_requirements_have_no_feasible_candidate():
         ),
     )
     assert decision.outcome == "no_feasible_candidate"
-    assert "unlimited stock" in decision.reasons[0]
+    assert "unlimited cardboard stock" in decision.reasons[0]
 
 
 def test_budget_exhaustion_is_not_a_question():
@@ -232,3 +233,52 @@ def test_comparison_explains_unchanged_decisions():
     assert change.explanation.startswith(
         "The saved values changed, but no supported decision changed"
     )
+
+
+def test_a_rounded_threshold_never_excludes_stock_the_compiler_accepts():
+    # The height threshold is reported in 0.1 mm steps (268.8 mm). A value
+    # between whole millimetres is decided by the compiler, not by rounding.
+    near = decide((sheet("sheet-a", height=268.9), tape()))
+    assert near.outcome == "question"
+    assert near.question.target.key == "stock:sheet-a:width_mm"
+    usable = decide((sheet("sheet-a", 120, 268.9, region=True), tape()))
+    assert usable.design.status == "candidates_found"
+    assert usable.outcome == "physical_test_required"
+    short = decide((sheet("sheet-a", height=268.7), tape()))
+    assert short.outcome == "no_feasible_candidate" and short.question is None
+
+
+def test_questions_only_cover_materials_with_reviewed_profiles():
+    other = sheet("sheet-other").model_copy(update={"material": "other_supported"})
+    alone = decide((other, tape()))
+    # Dimensions cannot enable a sheet the profiles do not cover.
+    assert alone.outcome == "unsupported" and alone.question is None
+    assert any("other_supported" in r and "profile" in r for r in alone.reasons)
+    assert alone.missing_capabilities
+    mixed = decide((other, sheet("sheet-z"), tape()))
+    assert mixed.question.target.stock_id == "sheet-z"
+    assert any("sheet-other" in r for r in mixed.reasons)
+
+
+def test_missing_profile_evidence_is_an_input_gap_not_impossibility():
+    gap = parameters().model_copy(update={"profile_evidence": ()})
+    data = search_input(
+        stocks=(sheet("sheet-a", 120, 300, region=True), tape()), parameters=gap
+    )
+    result = search(data)
+    assert result.status == "needs_input"
+    decision = design_decision(data, result)
+    assert decision.outcome == "unsupported" and decision.question is None
+    assert not any("unlimited" in r for r in decision.reasons)
+
+
+def test_comparisons_cover_every_inventory_fact():
+    narrow = tuple(sheet(f"sheet-{i:02d}", 60) for i in range(17))
+    before = decide((*narrow, sheet("sheet-zz"), tape()))
+    after = decide((*narrow, sheet("sheet-zz", 120), tape()))
+    assert before.question.target.key == "stock:sheet-zz:width_mm"
+    assert after.question.target.key == "stock:sheet-zz:height_mm"
+    assert len(after.facts) == 18 * 4 + 2 + 4
+    change = compare(before, after)
+    assert change.changed_facts == ("stock:sheet-zz:width_mm: unknown → 120",)
+    assert "Height of sheet sheet-zz" in change.explanation

@@ -6,11 +6,15 @@ import type {
 } from "../../lib/generated/api-contracts";
 import type { MeasurementDecision } from "../../lib/generated/contracts";
 import {
+  type Baseline,
   type Change,
   type Decision,
   MeasurementRequestError,
   answerBody,
   answerReceipts,
+  baselineAfterSave,
+  baselineForAnswer,
+  baselineForStand,
   baselineReceipts,
   measurementApi,
   unavailableReceipts,
@@ -50,8 +54,13 @@ export default function ActiveMeasurement({
   const [change, setChange] = useState<Change | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [value, setValue] = useState("");
-  const [measured, setMeasured] = useState(false);
+  // The typed value and confirmation belong to one question only. A different
+  // question (after deciding, declining or recalculating) starts empty.
+  const [answer, setAnswer] = useState({
+    questionId: "",
+    value: "",
+    measured: false,
+  });
   // Sent requests with unknown outcomes, and the decision a saved answer is
   // compared with. Each kind is kept, checked and cleared on its own.
   const [pendingAnswer, setPendingAnswer] = useState<InventoryUpdate | null>(
@@ -59,7 +68,7 @@ export default function ActiveMeasurement({
   );
   const [pendingUnavailable, setPendingUnavailable] =
     useState<UnavailableRequest | null>(null);
-  const [baseline, setBaseline] = useState<MeasurementDecision | null>(null);
+  const [baseline, setBaseline] = useState<Baseline | null>(null);
   const [receiptErrors, setReceiptErrors] = useState<Record<string, string>>(
     {},
   );
@@ -75,8 +84,7 @@ export default function ActiveMeasurement({
     controller.current?.abort();
     setDecision(null);
     setError("");
-    setValue("");
-    setMeasured(false);
+    setAnswer({ questionId: "", value: "", measured: false });
     let live = true;
     const load = <T,>(
       name: string,
@@ -123,10 +131,30 @@ export default function ActiveMeasurement({
     }
   }
 
+  async function keepBaseline(next: Baseline | null) {
+    await baselineReceipts.discard(token, project.id);
+    if (next) await baselineReceipts.retain(token, project.id, next);
+    setBaseline(next);
+  }
+
+  /** Show a decision; a built-stand question becomes the comparison point. */
+  async function show(next: Decision, from: Baseline | null = baseline) {
+    setDecision(next);
+    const kept = baselineForStand(from, next);
+    if (kept !== from) {
+      try {
+        await keepBaseline(kept);
+      } catch (failure) {
+        setError(message(failure));
+      }
+    }
+  }
+
   async function decide() {
     try {
-      setDecision(await run((signal) => api.decide(identity, signal)));
+      const next = await run((signal) => api.decide(identity, signal));
       setChange(null);
+      await show(next);
     } catch (failure) {
       setError(message(failure));
     }
@@ -136,13 +164,10 @@ export default function ActiveMeasurement({
     body: InventoryUpdate,
     before: MeasurementDecision | null,
   ) {
+    const kept = baselineForAnswer(baseline, before);
     try {
       // Keep the comparison point first, then the exact request.
-      if (before) {
-        await baselineReceipts.discard(token, project.id);
-        await baselineReceipts.retain(token, project.id, before);
-        setBaseline(before);
-      }
+      if (kept !== baseline) await keepBaseline(kept);
       await answerReceipts.retain(token, project.id, body);
     } catch (failure) {
       setError(message(failure));
@@ -153,13 +178,18 @@ export default function ActiveMeasurement({
       await run((signal) => api.saveInventory(body, signal));
       await answerReceipts.clear(token, project.id, body);
       setPendingAnswer(null);
-      setValue("");
-      setMeasured(false);
+      setAnswer({ questionId: "", value: "", measured: false });
+      await keepBaseline(baselineAfterSave(kept, true));
       onSaved();
     } catch (failure) {
       if (!(failure instanceof MeasurementRequestError && failure.retry)) {
+        // A definite refusal saved nothing: say so, and drop the comparison
+        // point unless an earlier answer was saved.
         await answerReceipts.clear(token, project.id, body);
         setPendingAnswer(null);
+        await keepBaseline(baselineAfterSave(kept, false)).catch(() => {});
+        setError(`The measurement was not saved. ${message(failure)}`);
+        return;
       }
       setError(message(failure));
     }
@@ -201,8 +231,8 @@ export default function ActiveMeasurement({
       const next = await run((signal) => api.unavailable(body, signal));
       await unavailableReceipts.clear(token, project.id, body);
       setPendingUnavailable(null);
-      setDecision(next);
       setChange(null);
+      await show(next);
     } catch (failure) {
       if (!(failure instanceof MeasurementRequestError && failure.retry)) {
         await unavailableReceipts.clear(token, project.id, body);
@@ -229,12 +259,11 @@ export default function ActiveMeasurement({
     if (!baseline) return;
     try {
       const next = await run((signal) =>
-        api.recalculate({ ...identity, baseline }, signal),
+        api.recalculate({ ...identity, baseline: baseline.decision }, signal),
       );
       setChange(next);
-      setDecision(next.after);
-      await baselineReceipts.discard(token, project.id);
-      setBaseline(null);
+      await keepBaseline(null);
+      await show(next.after, null);
     } catch (failure) {
       setError(message(failure));
     }
@@ -254,6 +283,12 @@ export default function ActiveMeasurement({
   }
 
   const question = decision?.question ?? null;
+  const current =
+    question !== null && answer.questionId === question.question_id
+      ? answer
+      : { questionId: question?.question_id ?? "", value: "", measured: false };
+  const value = current.value;
+  const measured = current.measured;
   const blocked =
     disabled || busy || Object.values(receiptErrors).some(Boolean);
   const numeric =
@@ -310,7 +345,9 @@ export default function ActiveMeasurement({
             <button
               type="button"
               disabled={blocked}
-              onClick={() => void sendAnswer(pendingAnswer, baseline)}
+              onClick={() =>
+                void sendAnswer(pendingAnswer, baseline?.decision ?? null)
+              }
             >
               Retry saving the measurement
             </button>
@@ -328,9 +365,12 @@ export default function ActiveMeasurement({
         {baseline && !pendingAnswer && (
           <div className="notice">
             <p>
-              A measurement was saved. Recalculate to see what changed and
-              whether any decision changed. Nothing is approved or built by
-              this.
+              {baseline.state === "saved"
+                ? "A measurement was saved. Recalculate to see what changed and whether any decision changed."
+                : baseline.state === "external"
+                  ? "After you record the assembled-stand measurements in the stability panel, recalculate here to compare with this question."
+                  : "An earlier measurement was sent, but whether it was saved is unknown. Recalculate to compare the current saved values with the earlier decision."}{" "}
+              Nothing is approved or built by this.
             </p>
             <button
               type="button"
@@ -446,7 +486,9 @@ export default function ActiveMeasurement({
                         id="measurement-value"
                         inputMode="decimal"
                         value={value}
-                        onChange={(event) => setValue(event.target.value)}
+                        onChange={(event) =>
+                          setAnswer({ ...current, value: event.target.value })
+                        }
                       />
                     </>
                   )}
@@ -454,7 +496,12 @@ export default function ActiveMeasurement({
                     <input
                       type="checkbox"
                       checked={measured}
-                      onChange={(event) => setMeasured(event.target.checked)}
+                      onChange={(event) =>
+                        setAnswer({
+                          ...current,
+                          measured: event.target.checked,
+                        })
+                      }
                     />
                     {numeric
                       ? "I measured this myself; it is not a photo estimate"

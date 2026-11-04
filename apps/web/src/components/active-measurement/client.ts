@@ -36,6 +36,10 @@ const captures = new Set([
   "requirements",
   "stability_measurements",
 ]);
+const questionUnits = new Set(["mm", "g", "deg", "batch"]);
+const currentUnits = new Set(["mm", "g", "deg", "none"]);
+const thresholdUnits = new Set(["mm", "g", "deg", "m"]);
+const comparisons = new Set(["at_least", "within"]);
 const sha256 = /^[0-9a-f]{64}$/;
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,95}$/;
 const KEY = /^[a-z_]+:[A-Za-z0-9_-]{1,96}:[a-z_]+$/;
@@ -81,15 +85,23 @@ function validQuestion(v: unknown): v is MeasurementQuestion {
     text(v.where) &&
     text(v.why) &&
     text(v.precision_basis) &&
+    typeof v.unit === "string" &&
+    questionUnits.has(v.unit) &&
     captures.has(String(v.capture)) &&
     (v.required_precision == null || finite(v.required_precision)) &&
     (current == null ||
       (object(current) &&
         (current.value == null || finite(current.value)) &&
+        typeof current.unit === "string" &&
+        currentUnits.has(current.unit) &&
         typeof current.confirmed === "boolean" &&
         text(current.source))) &&
     (threshold == null ||
       (object(threshold) &&
+        typeof threshold.unit === "string" &&
+        thresholdUnits.has(threshold.unit) &&
+        typeof threshold.comparison === "string" &&
+        comparisons.has(threshold.comparison) &&
         finite(threshold.lower) &&
         (threshold.upper == null || finite(threshold.upper)) &&
         text(threshold.basis))) &&
@@ -354,8 +366,54 @@ function validUnavailable(v: unknown): v is UnavailableRequest {
     v.user_confirmed === true
   );
 }
-function validBaseline(v: unknown): v is MeasurementDecision {
-  return object(v) && text(v.decision_id) && sha256.test(v.decision_id);
+/**
+ * The decision a new measurement is compared with, and what is known about
+ * that measurement: `sending` (outcome unknown), `saved` (the inventory
+ * confirmation succeeded) or `external` (assembled-stand values recorded in
+ * the #146 form; this panel records nothing).
+ */
+export type Baseline = {
+  decision: MeasurementDecision;
+  state: "sending" | "saved" | "external";
+};
+const baselineStates = new Set(["sending", "saved", "external"]);
+function validBaseline(v: unknown): v is Baseline {
+  return (
+    object(v) &&
+    typeof v.state === "string" &&
+    baselineStates.has(v.state) &&
+    object(v.decision) &&
+    text(v.decision.decision_id) &&
+    sha256.test(v.decision.decision_id)
+  );
+}
+
+/** A saved, not yet compared measurement keeps the earlier comparison point. */
+export function baselineForAnswer(
+  existing: Baseline | null,
+  before: MeasurementDecision | null,
+): Baseline | null {
+  if (existing && existing.state !== "external") return existing;
+  return before ? { decision: before, state: "sending" } : existing;
+}
+/** After a definite answer from the inventory confirmation. */
+export function baselineAfterSave(
+  kept: Baseline | null,
+  saved: boolean,
+): Baseline | null {
+  if (!kept) return null;
+  if (saved) return { ...kept, state: "saved" };
+  // A refused request saved nothing; an earlier saved answer still counts.
+  return kept.state === "saved" ? kept : null;
+}
+/** A built-stand question becomes the comparison point for #146 values. */
+export function baselineForStand(
+  existing: Baseline | null,
+  decision: MeasurementDecision,
+): Baseline | null {
+  if (decision.question?.capture !== "stability_measurements") return existing;
+  if (existing && existing.state !== "external") return existing;
+  return { decision, state: "external" };
 }
 export const answerReceipts = receipts(
   "forma-measurement-answer-pending-v1:",
@@ -369,7 +427,7 @@ export const unavailableReceipts = receipts(
 );
 /** The decision a saved answer will be compared with, kept across reloads. */
 export const baselineReceipts = receipts(
-  "forma-measurement-baseline-v1:",
+  "forma-measurement-baseline-v2:",
   validBaseline,
   "earlier decision",
 );

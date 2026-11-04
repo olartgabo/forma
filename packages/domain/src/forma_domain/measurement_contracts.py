@@ -13,6 +13,9 @@ from .models import ID, Record, Text
 from .piece_references import PieceReference
 
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+# Every supported fact of a full inventory (32 stocks, 4 facts each) plus the
+# build requirements; comparisons never truncate them.
+MAX_FACTS = 160
 TargetKey = Annotated[str, Field(pattern=r"^[a-z_]+:[A-Za-z0-9_-]{1,96}:[a-z_]+$")]
 
 DecisionOutcome = Literal[
@@ -90,7 +93,7 @@ class DecisionIdentity(Record):
     last_event_id: ID | None
     context_fingerprint: Sha256
     measurement_record_ids: tuple[ID, ...] = Field(max_length=64)
-    declined_target_keys: tuple[TargetKey, ...] = Field(max_length=64)
+    declined_target_keys: tuple[TargetKey, ...] = Field(max_length=MAX_FACTS)
     rule_version: Literal["measurement-decision-v1"] = "measurement-decision-v1"
 
 
@@ -125,7 +128,7 @@ class MeasurementDecision(Record):
     pending_questions: int = Field(ge=0)
     reasons: tuple[Text, ...] = Field(max_length=16)
     missing_capabilities: tuple[Text, ...] = Field(default=(), max_length=8)
-    facts: tuple[SavedFact, ...] = Field(default=(), max_length=64)
+    facts: tuple[SavedFact, ...] = Field(default=(), max_length=MAX_FACTS)
     design: DesignSummary | None = None
     stability: StabilitySummary | None = None
     invalidated: tuple[Text, ...] = Field(default=(), max_length=16)
@@ -144,7 +147,7 @@ class DecisionChange(Record):
 
     before_decision_id: Sha256
     after_decision_id: Sha256
-    changed_facts: tuple[Text, ...] = Field(max_length=32)
+    changed_facts: tuple[Text, ...] = Field(max_length=2 * MAX_FACTS + 8)
     decision_changed: bool
     explanation: Text
     after: MeasurementDecision

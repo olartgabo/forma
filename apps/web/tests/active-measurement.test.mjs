@@ -4,6 +4,9 @@ import { test } from "node:test";
 import {
   answerBody,
   answerReceipts,
+  baselineAfterSave,
+  baselineForAnswer,
+  baselineForStand,
   baselineReceipts,
   measurementApi,
   validateChange,
@@ -244,7 +247,12 @@ test("answer and baseline receipts survive reload independently", async () => {
   const storage = new MemoryStorage();
   const body = answerBody(project, question(), 200, "answer-0007");
   await answerReceipts.retain("token-a", "project-a", body, storage);
-  await baselineReceipts.retain("token-a", "project-a", decision(), storage);
+  await baselineReceipts.retain(
+    "token-a",
+    "project-a",
+    { decision: decision(), state: "saved" },
+    storage,
+  );
   assert.deepEqual(
     await answerReceipts.pending("token-a", "project-a", storage),
     body,
@@ -255,7 +263,7 @@ test("answer and baseline receipts survive reload independently", async () => {
   storage.setItem(answerKey, "{corrupt");
   await assert.rejects(answerReceipts.pending("token-a", "project-a", storage));
   assert.equal(
-    (await baselineReceipts.pending("token-a", "project-a", storage))
+    (await baselineReceipts.pending("token-a", "project-a", storage)).decision
       .decision_id,
     hash("a"),
   );
@@ -307,4 +315,66 @@ test("inventory saves keep the key on ambiguous outcomes", async () => {
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test("rendered units and comparisons are checked against the contract", () => {
+  const bad = [
+    question({ unit: { mm: true } }),
+    question({ unit: "inch" }),
+    question({ current: { ...unknown, unit: { value: "mm" } } }),
+    question({
+      threshold: { ...question().threshold, unit: ["mm"] },
+    }),
+    question({
+      threshold: { ...question().threshold, comparison: { at_least: 1 } },
+    }),
+  ];
+  for (const q of bad)
+    assert.throws(
+      () => validateDecision(decision({ question: q }), "project-a"),
+      (e) => e.retry === true,
+    );
+});
+
+test("a refused answer is never shown as saved", () => {
+  const before = decision();
+  const sending = baselineForAnswer(null, before);
+  assert.deepEqual(sending, { decision: before, state: "sending" });
+  // A definite refusal saved nothing and drops the comparison point.
+  assert.equal(baselineAfterSave(sending, false), null);
+  const saved = baselineAfterSave(sending, true);
+  assert.equal(saved.state, "saved");
+  // A second answer keeps the first saved comparison point, and refusing
+  // the second does not undo the first.
+  const next = decision({ decision_id: hash("c") });
+  assert.equal(baselineForAnswer(saved, next), saved);
+  assert.equal(baselineAfterSave(saved, false), saved);
+  // A retry after reload without a kept comparison point still works.
+  assert.equal(baselineForAnswer(null, null), null);
+  assert.equal(baselineAfterSave(null, true), null);
+});
+
+test("a built-stand question is kept as the comparison point", () => {
+  const stand = decision({
+    question: question({
+      target: {
+        key: "assembled_stand:version-a:assembled_stand",
+        kind: "assembled_stand",
+        property: "assembled_stand",
+        label: "Assembled stand",
+        pieces: [],
+      },
+      unit: "batch",
+      threshold: null,
+      capture: "stability_measurements",
+    }),
+  });
+  assert.deepEqual(baselineForStand(null, stand), {
+    decision: stand,
+    state: "external",
+  });
+  // An inventory answer's comparison point is not replaced.
+  const saved = { decision: decision(), state: "saved" };
+  assert.equal(baselineForStand(saved, stand), saved);
+  assert.equal(baselineForStand(null, decision()), null);
 });

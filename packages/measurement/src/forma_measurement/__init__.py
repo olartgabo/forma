@@ -3,6 +3,7 @@
 from .decide import (
     SELECTION_RULE,
     ActiveFacts,
+    Blocked,
     CaseMargin,
     Thresholds,
     active_decision,
@@ -14,6 +15,7 @@ from .decide import (
 __all__ = [
     "SELECTION_RULE",
     "ActiveFacts",
+    "Blocked",
     "CaseMargin",
     "Thresholds",
     "active_decision",

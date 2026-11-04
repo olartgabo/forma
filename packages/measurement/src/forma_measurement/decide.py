@@ -9,7 +9,8 @@ uses an estimate as a fact, approves a design or records physical work.
 
 import hashlib
 import json
-from dataclasses import dataclass, replace
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from forma_renderer import compile_stand
@@ -21,7 +22,7 @@ from forma_synthesizer import (
     domains_for,
     stand_parameters,
 )
-from forma_synthesizer.search import CANDIDATE_TIME
+from forma_synthesizer.search import CANDIDATE_TIME, INPUT_CODES
 
 from forma_domain import models as m
 from forma_domain.measurement_contracts import (
@@ -64,6 +65,13 @@ STABILITY_GAP = (
 RETENTION_GAP = (
     "Phone retention, sliding and tape joint strength have no supported model."
 )
+SETTINGS_GAP = (
+    "Server design settings (cutting process, stand parameters and reviewed "
+    "profiles) are kept per inventory revision. After each confirmed "
+    "measurement the operator must add settings for the new revision; FORMA "
+    "does not carry them forward, because they were reviewed for the earlier "
+    "inventory."
+)
 PIECES = {
     "stand-support": "Support panel",
     "stand-base": "Base panel",
@@ -96,14 +104,36 @@ def _current(measurement: m.Measurement) -> CurrentValue:
 
 @dataclass(frozen=True)
 class Thresholds:
-    """Smallest stock that admits the smallest searched design, per compiler."""
+    """Smallest stock of one material that admits the smallest searched design.
 
+    ``width_mm`` and ``height_mm`` are found in 0.1 mm steps. A confirmed value
+    below them is still checked against the compiler directly with ``fits``, so
+    a rounded threshold never excludes stock on its own.
+    """
+
+    material: str
     design: StandDesign
-    width_mm: int
-    height_mm: int
+    width_mm: float
+    height_mm: float
     tape_width_mm: float
     tape_length_mm: float
     thickness_ranges: tuple[tuple[float, float], ...]
+    fits: Callable[..., bool] = field(compare=False, repr=False)
+
+
+@dataclass(frozen=True)
+class Blocked:
+    """Why a sheet material has no threshold.
+
+    ``no_profiles``: no reviewed tape and fold pair covers the material.
+    ``needs_input``: the compiler refused unlimited, confirmed stock for an
+    input reason (for example missing profile evidence) that no stock size can
+    supply. ``infeasible``: even unlimited stock cannot make the smallest stand.
+    """
+
+    material: str
+    kind: Literal["no_profiles", "needs_input", "infeasible"]
+    reasons: tuple[str, ...]
 
 
 def _compile(data: SearchInput, design: StandDesign) -> m.CompilerResult:
@@ -133,12 +163,12 @@ def _measured(value: float, unit="mm") -> m.Measurement:
     return m.Measurement(value=value, unit=unit, source="calculated", confirmed=True)
 
 
-def _probe_sheet(thickness: float, width: float, height: float) -> m.Stock:
+def _probe_sheet(material: str, thickness: float, width: float, height: float):
     """A hypothetical sheet used only to locate thresholds; never a candidate."""
     return m.Stock(
         id="threshold-probe-sheet",
         kind="sheet",
-        material="cardboard",
+        material=material,
         condition="usable",
         width_mm=_measured(width),
         height_mm=_measured(height),
@@ -172,7 +202,10 @@ def _probe_tape() -> m.Stock:
     )
 
 
-def thickness_ranges(data: SearchInput) -> tuple[tuple[float, float], ...]:
+def thickness_ranges(
+    data: SearchInput, material: str = "cardboard"
+) -> tuple[tuple[float, float], ...]:
+    """Thicknesses accepted by both profiles of a reviewed pair for ``material``."""
     profiles = {p.id: p for p in data.joint_profiles}
     ranges = []
     for tape in sorted(p for p in profiles if profiles[p].strategy == "tape"):
@@ -181,7 +214,7 @@ def thickness_ranges(data: SearchInput) -> tuple[tuple[float, float], ...]:
             if any(
                 p.thickness_min_mm is None
                 or p.thickness_max_mm is None
-                or p.material != "cardboard"
+                or p.material != material
                 for p in pair
             ):
                 continue
@@ -192,25 +225,57 @@ def thickness_ranges(data: SearchInput) -> tuple[tuple[float, float], ...]:
     return tuple(sorted(set(ranges)))
 
 
-def thresholds(data: SearchInput) -> Thresholds | None:
-    """None when even unlimited stock cannot satisfy the saved requirements."""
-    ranges = thickness_ranges(data)
+def profile_materials(data: SearchInput) -> tuple[str, ...]:
+    """Sheet materials covered by at least one reviewed tape and fold pair."""
+    return tuple(
+        sorted(
+            {
+                p.material
+                for p in data.joint_profiles
+                if thickness_ranges(data, p.material)
+            }
+        )
+    )
+
+
+def thresholds(data: SearchInput, material: str = "cardboard") -> Thresholds | Blocked:
+    """Compiler thresholds for one sheet material, or why there are none."""
+    ranges = thickness_ranges(data, material)
     if not ranges:
-        return None
-    thickness = (ranges[0][0] + ranges[0][1]) / 2
+        return Blocked(
+            material,
+            "no_profiles",
+            (
+                f"No reviewed tape and fold profile pair covers {material} sheets. "
+                "Reviewed profiles for this material are server design context, "
+                "not a measurement.",
+            ),
+        )
+    default_thickness = (ranges[0][0] + ranges[0][1]) / 2
     tape_profiles = sorted(p.id for p in data.joint_profiles if p.strategy == "tape")
     fold_profiles = sorted(
         p.id for p in data.joint_profiles if p.strategy == "fold_brace"
     )
 
-    def with_sheet(width, height):
-        sheet = _probe_sheet(thickness, width, height)
+    def with_sheet(width, height, thickness=None):
+        sheet = _probe_sheet(
+            material,
+            default_thickness if thickness is None else thickness,
+            width,
+            height,
+        )
         return replace(data, stocks=(sheet, _probe_tape())), sheet
 
     big, sheet = with_sheet(PROBE_MM, PROBE_MM)
     widths, supports, depths = (domain_values(d) for d in domains_for(big, sheet))
+    unlimited = (
+        f"Even unlimited {material} stock cannot make the smallest supported stand "
+        "within the confirmed requirements and device sizes.",
+    )
     if not widths or not supports:
-        return None
+        return Blocked(material, "infeasible", unlimited)
+
+    needs: dict[str, str] = {}
 
     def smallest_design():
         # The first grid design (smallest width and support, shallowest base)
@@ -234,37 +299,53 @@ def thresholds(data: SearchInput) -> Thresholds | None:
                     result = _compile(big, design)
                     if result.status == "accepted":
                         return design, result
+                    for blocker in result.blockers:
+                        if blocker.code in INPUT_CODES:
+                            needs.setdefault(blocker.code, blocker.message)
         return None
 
     found = smallest_design()
     if found is None:
-        return None
+        # Unlimited, fully confirmed stock was refused for an input reason:
+        # a missing input, not proof that no stock can work.
+        if needs:
+            return Blocked(
+                material, "needs_input", tuple(needs[c] for c in sorted(needs))
+            )
+        return Blocked(material, "infeasible", unlimited)
     design, result = found
+    cache: dict[tuple, bool] = {}
 
-    def smallest(accepts) -> int:
-        low, high = 1, PROBE_MM
+    def fits(width, height, thickness=None) -> bool:
+        key = (float(width), float(height), thickness)
+        if key not in cache:
+            probe, _ = with_sheet(width, height, thickness)
+            cache[key] = _compile(probe, design).status == "accepted"
+        return cache[key]
+
+    def smallest(accepts) -> float:
+        # Tenths of a millimetre; the upper bound is known to compile.
+        low, high = 1, PROBE_MM * 10
         while low < high:
             middle = (low + high) // 2
-            if accepts(middle):
+            if accepts(middle / 10):
                 high = middle
             else:
                 low = middle + 1
-        return low
-
-    def fits(width, height):
-        probe, _ = with_sheet(width, height)
-        return _compile(probe, design).status == "accepted"
+        return low / 10
 
     tape_length = sum(
         op.args.length_mm for op in result.plan.operations if op.type == "tape_joint"
     )
     return Thresholds(
+        material=material,
         design=design,
         width_mm=smallest(lambda w: fits(w, PROBE_MM)),
         height_mm=smallest(lambda h: fits(PROBE_MM, h)),
         tape_width_mm=2 * float(data.parameters.tape_overlap_mm.value),
         tape_length_mm=float(tape_length),
         thickness_ranges=ranges,
+        fits=fits,
     )
 
 
@@ -277,7 +358,7 @@ def _identity(data: SearchInput, declined) -> DecisionIdentity:
         last_event_id=i.last_event_id,
         context_fingerprint=i.context_fingerprint,
         measurement_record_ids=i.measurement_record_ids,
-        declined_target_keys=tuple(sorted(declined))[:64],
+        declined_target_keys=tuple(sorted(declined)),
     )
 
 
@@ -335,7 +416,7 @@ def _facts(data: SearchInput) -> tuple[SavedFact, ...]:
                     confirmed=measurement.confirmed,
                 )
             )
-    return tuple(facts[:64])
+    return tuple(facts)
 
 
 def _design_summary(result: SynthesisResult) -> DesignSummary:
@@ -348,8 +429,24 @@ def _design_summary(result: SynthesisResult) -> DesignSummary:
     )
 
 
+def _settings_missing(data: SearchInput) -> bool:
+    """No server design settings resolved for this exact inventory revision."""
+    return (
+        data.process is None
+        and data.parameters is None
+        and not data.joint_profiles
+        and bool(data.context_blockers)
+    )
+
+
 def _context_gaps(data: SearchInput) -> list[str]:
     """Server-owned inputs: a user measurement cannot supply them."""
+    if _settings_missing(data):
+        return [b.message for b in data.context_blockers] + [
+            f"Design settings are needed for inventory revision "
+            f"{data.identity.inventory_revision_id} before the search can run. "
+            "Saved measurements are kept; recalculate once the settings exist."
+        ]
     gaps = []
     if data.process is None or not data.process.verified(
         allow_synthetic=data.allow_synthetic
@@ -373,8 +470,10 @@ def _context_gaps(data: SearchInput) -> list[str]:
             gaps.append("Tool and hinge-access confirmations are missing.")
     if data.kerf_mm is None or data.edge_margin_mm is None:
         gaps.append("The selected kerf and edge margin are not configured.")
-    if not thickness_ranges(data):
-        gaps.append("No reviewed tape and fold profile pair accepts cardboard.")
+    if not profile_materials(data):
+        gaps.append(
+            "No reviewed tape and fold profile pair with thickness limits is configured."
+        )
     gaps.extend(b.message for b in data.context_blockers)
     return gaps
 
@@ -443,30 +542,61 @@ def design_decision(
             pending_questions=0,
             reasons=tuple(gaps[:16]),
             missing_capabilities=(
-                "These are server design-context inputs, not measurements the builder can record here.",
+                SETTINGS_GAP
+                if _settings_missing(data)
+                else "These are server design-context inputs, not measurements the builder can record here.",
             ),
             **common,
         )
 
-    limits = thresholds(data)
-    if limits is None:
+    tapes = sorted((s for s in data.stocks if s.kind == "tape"), key=lambda s: s.id)
+    sheets = sorted((s for s in data.stocks if s.kind == "sheet"), key=lambda s: s.id)
+    materials = sorted({s.material for s in sheets}) or list(profile_materials(data))
+    by_material = {material: thresholds(data, material) for material in materials}
+    usable = {k: v for k, v in by_material.items() if isinstance(v, Thresholds)}
+    blocked = {k: v for k, v in by_material.items() if isinstance(v, Blocked)}
+    # Sheets whose material has no threshold are never asked about: no
+    # measurement of them can enable the search.
+    inapplicable = tuple(
+        f"Sheet {s.id} ({s.material}): {blocked[s.material].reasons[0]}"
+        for s in sheets
+        if s.material in blocked
+    )
+    if not usable:
+        kinds = {b.kind for b in blocked.values()}
+        reasons = tuple(dict.fromkeys(r for b in blocked.values() for r in b.reasons))
+        if kinds <= {"infeasible"}:
+            return _finish(
+                identity,
+                outcome="no_feasible_candidate",
+                pending_questions=0,
+                reasons=reasons[:16],
+                **common,
+            )
         return _finish(
             identity,
-            outcome="no_feasible_candidate",
+            outcome="unsupported",
             pending_questions=0,
-            reasons=(
-                "Even unlimited stock cannot make the smallest supported stand within the confirmed requirements and device sizes.",
+            reasons=(inapplicable + reasons)[:16],
+            missing_capabilities=(
+                "These are server design-context inputs, not measurements the builder can record here.",
             ),
             **common,
         )
-    ranges_text = ", ".join(
-        f"{low:g}–{high:g} mm" for low, high in limits.thickness_ranges
-    )
-    smallest = (
-        f"the smallest searched design ({limits.design.part_width_mm:g} mm panels, "
-        f"{limits.design.support_length_mm:g} mm support, "
-        f"{limits.design.footprint_depth_mm:g} mm base)"
-    )
+    # Tape is usable with any applicable sheet material; use the least demanding.
+    reference = min(usable.values(), key=lambda t: (t.tape_length_mm, t.material))
+
+    def describe(limits: Thresholds):
+        return (
+            f"the smallest searched design ({limits.design.part_width_mm:g} mm panels, "
+            f"{limits.design.support_length_mm:g} mm support, "
+            f"{limits.design.footprint_depth_mm:g} mm base)"
+        )
+
+    def ranges_text(limits: Thresholds):
+        return ", ".join(
+            f"{low:g}–{high:g} mm" for low, high in limits.thickness_ranges
+        )
 
     def tape_usable(stock):
         width, length = (
@@ -476,8 +606,8 @@ def design_decision(
         return (
             width is not None
             and length is not None
-            and width >= limits.tape_width_mm
-            and length >= limits.tape_length_mm
+            and width >= reference.tape_width_mm
+            and length >= reference.tape_length_mm
         )
 
     def tape_excluded(stock):
@@ -485,39 +615,40 @@ def design_decision(
             _confirmed(stock.width_mm),
             _confirmed(stock.remaining_length_mm),
         )
-        return (width is not None and width < limits.tape_width_mm) or (
-            length is not None and length < limits.tape_length_mm
+        return (width is not None and width < reference.tape_width_mm) or (
+            length is not None and length < reference.tape_length_mm
         )
 
     def sheet_excluded(stock):
+        limits = usable[stock.material]
         width, height, thickness = (
             _confirmed(stock.width_mm),
             _confirmed(stock.height_mm),
             _confirmed(stock.thickness_mm),
         )
         regions = stock.usable_regions
-        return (
-            len(regions) > 1
-            or (regions and regions[0].geometry.rotation_deg != 0)
-            or (width is not None and width < limits.width_mm)
-            or (height is not None and height < limits.height_mm)
-            or (
-                thickness is not None
-                and not any(
-                    low <= thickness <= high for low, high in limits.thickness_ranges
-                )
+        if len(regions) > 1 or (regions and regions[0].geometry.rotation_deg != 0):
+            return True
+        if thickness is not None and not any(
+            low <= thickness <= high for low, high in limits.thickness_ranges
+        ):
+            return True
+
+        def short(w, h):
+            # Below the rounded threshold, the compiler decides exactly.
+            return (w < limits.width_mm or h < limits.height_mm) and not limits.fits(
+                w, h, thickness
             )
-            or (
-                regions
-                and (
-                    regions[0].geometry.width < limits.width_mm
-                    or regions[0].geometry.height < limits.height_mm
-                )
+
+        return (
+            (width is not None and short(width, PROBE_MM))
+            or (height is not None and short(PROBE_MM, height))
+            or bool(
+                regions and short(regions[0].geometry.width, regions[0].geometry.height)
             )
         )
 
-    tapes = sorted((s for s in data.stocks if s.kind == "tape"), key=lambda s: s.id)
-    sheets = sorted((s for s in data.stocks if s.kind == "sheet"), key=lambda s: s.id)
+    candidates = [s for s in sheets if s.material in usable]
 
     def declined_stock(stock, props):
         return any(f"stock:{stock.id}:{p}" in declined for p in props)
@@ -532,14 +663,14 @@ def design_decision(
                 if _confirmed(measurement) is not None:
                     continue
                 needed = (
-                    limits.tape_width_mm
+                    reference.tape_width_mm
                     if prop == "width_mm"
-                    else limits.tape_length_mm
+                    else reference.tape_length_mm
                 )
                 basis = (
                     "Each hinge needs the confirmed tape overlap on both faces."
                     if prop == "width_mm"
-                    else f"The three hinges of {smallest} use {needed:g} mm of tape, per the compiler."
+                    else f"The three hinges of {describe(reference)} use {needed:g} mm of tape, per the compiler."
                 )
                 tape_questions.append(
                     _question(
@@ -571,11 +702,12 @@ def design_decision(
     any_tape_possible = any(tape_usable(t) for t in tapes) or bool(tape_questions)
 
     sheet_questions = []
-    for sheet in sheets:
+    for sheet in candidates:
         if sheet_excluded(sheet) or declined_stock(
             sheet, SHEET_PROPERTIES + ("usable_region",)
         ):
             continue
+        limits = usable[sheet.material]
         for prop in SHEET_PROPERTIES:
             measurement = getattr(sheet, prop)
             if _confirmed(measurement) is not None:
@@ -586,26 +718,26 @@ def design_decision(
                     lower=limits.thickness_ranges[0][0],
                     upper=limits.thickness_ranges[0][1],
                     unit="mm",
-                    basis=f"Reviewed tape and fold profiles accept {ranges_text}.",
+                    basis=f"Reviewed tape and fold profiles for {sheet.material} accept {ranges_text(limits)}.",
                 )
                 precision, precision_basis = (
                     None,
-                    f"The reading must show whether the thickness lies within {ranges_text}.",
+                    f"The reading must show whether the thickness lies within {ranges_text(limits)}.",
                 )
-                rule = f"within {ranges_text}"
+                rule = f"within {ranges_text(limits)}"
             else:
                 needed = limits.width_mm if prop == "width_mm" else limits.height_mm
                 threshold = DecisionThreshold(
                     comparison="at_least",
                     lower=needed,
                     unit="mm",
-                    basis=f"Smallest sheet {prop[:-3]} that compiles {smallest}, found by the compiler in 1 mm steps.",
+                    basis=f"Smallest sheet {prop[:-3]} that compiles {describe(limits)}, found by the compiler in 0.1 mm steps.",
                 )
                 precision, precision_basis = (
                     1.0,
-                    f"The threshold was found in 1 mm steps; a reading to the nearest millimetre settles it unless it lands within 1 mm of {needed} mm.",
+                    f"A reading to the nearest millimetre settles it unless it lands within 1 mm of {needed:g} mm; a confirmed value just below is checked against the compiler directly.",
                 )
-                rule = f"at least {needed} mm"
+                rule = f"at least {needed:g} mm"
             sheet_questions.append(
                 _question(
                     identity,
@@ -661,7 +793,7 @@ def design_decision(
                         comparison="at_least",
                         lower=limits.width_mm,
                         unit="mm",
-                        basis=f"The cut layout needs one flat rectangle of at least {limits.width_mm} × {limits.height_mm} mm.",
+                        basis=f"The cut layout needs one flat rectangle of about {limits.width_mm:g} × {limits.height_mm:g} mm or more.",
                     ),
                     precision_basis="A yes/no inspection: the cut layout needs one undamaged rectangle.",
                     affected_candidate_ids=candidate_ids,
@@ -676,7 +808,7 @@ def design_decision(
         not sheet_excluded(s)
         and all(_confirmed(getattr(s, p)) is not None for p in SHEET_PROPERTIES)
         and s.usable_regions
-        for s in sheets
+        for s in candidates
     )
     # A question on one material cannot change anything if the other material
     # is already known to block every design.
@@ -691,17 +823,22 @@ def design_decision(
             pending_questions=len(questions) - 1,
             reasons=(
                 f"{len(questions)} saved stock value(s) can change which designs fit.",
-            ),
+            )
+            + inapplicable[:15],
             **common,
         )
-    excluded = tuple(
-        f"Stock {s.id} is confirmed outside the compiler thresholds."
-        for s in sheets
-        if sheet_excluded(s)
-    ) + tuple(
-        f"Tape {t.id} is confirmed too narrow or too short."
-        for t in tapes
-        if tape_excluded(t)
+    excluded = (
+        tuple(
+            f"Stock {s.id} is confirmed outside the compiler thresholds."
+            for s in candidates
+            if sheet_excluded(s)
+        )
+        + tuple(
+            f"Tape {t.id} is confirmed too narrow or too short."
+            for t in tapes
+            if tape_excluded(t)
+        )
+        + inapplicable
     )
     if result.status == "candidates_found":
         return _finish(
@@ -726,16 +863,32 @@ def design_decision(
             **common,
         )
     if result.status == "infeasible" or not (any_sheet_possible and any_tape_possible):
+        if blocked and not any_sheet_possible and any_tape_possible:
+            # The only sheets that could help are of a material the server
+            # has no reviewed profiles or inputs for.
+            if any(b.kind != "infeasible" for b in blocked.values()) and any(
+                s.material in blocked for s in sheets
+            ):
+                return _finish(
+                    identity,
+                    outcome="unsupported",
+                    pending_questions=0,
+                    reasons=excluded[:16],
+                    missing_capabilities=(
+                        "These are server design-context inputs, not measurements the builder can record here.",
+                    ),
+                    **common,
+                )
         return _finish(
             identity,
             outcome="no_feasible_candidate",
             pending_questions=0,
             reasons=(
-                f"Designs need a flat sheet of at least {limits.width_mm} × {limits.height_mm} mm "
-                f"with thickness {ranges_text}, and tape at least {limits.tape_width_mm:g} mm wide "
-                f"with {limits.tape_length_mm:g} mm remaining.",
+                f"Designs need a flat {reference.material} sheet of about {usable[reference.material].width_mm:g} × "
+                f"{usable[reference.material].height_mm:g} mm or more with thickness {ranges_text(reference)}, "
+                f"and tape at least {reference.tape_width_mm:g} mm wide with {reference.tape_length_mm:g} mm remaining.",
             )
-            + excluded[:8],
+            + excluded[:15],
             **common,
         )
     return _finish(
@@ -925,6 +1078,18 @@ def compare(before: MeasurementDecision, after: MeasurementDecision) -> Decision
         - set(before.identity.declined_target_keys)
     ):
         changed.append(f"{key}: marked unavailable")
+    records = (
+        len(before.identity.measurement_record_ids),
+        len(after.identity.measurement_record_ids),
+    )
+    if before.identity.measurement_record_ids != after.identity.measurement_record_ids:
+        changed.append(
+            f"assembled-stand measurement records: {records[0]} → {records[1]}"
+        )
+    asked = (
+        before.question.target.key if before.question else None,
+        after.question.target.key if after.question else None,
+    )
 
     def decision_of(d: MeasurementDecision):
         return (
@@ -953,6 +1118,10 @@ def compare(before: MeasurementDecision, after: MeasurementDecision) -> Decision
             "The saved values changed, but no supported decision changed: "
             + (after.reasons[0] if after.reasons else after.outcome)
         )
+        if asked[0] != asked[1] and after.question:
+            explanation += (
+                f" The next measurement is now: {after.question.target.label}."
+            )
     else:
         explanation = (
             "Nothing the decision depends on has changed since the earlier result."
@@ -960,7 +1129,7 @@ def compare(before: MeasurementDecision, after: MeasurementDecision) -> Decision
     return DecisionChange(
         before_decision_id=before.decision_id,
         after_decision_id=after.decision_id,
-        changed_facts=tuple(changed[:32]),
+        changed_facts=tuple(changed),
         decision_changed=differs,
         explanation=explanation,
         after=after,

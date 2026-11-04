@@ -1,6 +1,6 @@
 # Issue 149 handoff: useful measurements and checked recalculation
 
-Status: implemented and locally green; independent Sol/Terra review pending.
+Status: review repairs for a8ceb93 applied and locally green; final review pending.
 
 - Issue: #149. Owner @ResniDev; feature reviewer @olartgabo.
 - Base: `main` at `34a2c5f` (#148 merged as PR #171).
@@ -40,6 +40,33 @@ See [packages/measurement/README.md](../../packages/measurement/README.md) and D
   browser storage and survive reloads; only definite refusals release them.
 - Nothing here activates a plan, records physical work or marks a test passed.
 
+## Review repairs (a8ceb93 review)
+
+1. The typed value and confirmation belong to one question ID; deciding,
+   declining or recalculating to another question starts empty. Browser
+   regression: decline sheet A after typing and confirming, sheet B is empty.
+2. Thresholds are found in 0.1 mm steps and a confirmed value below one is
+   compiled at its exact value (268.9 mm height now asks for width and, once
+   measured, finds candidates; 268.7 mm is excluded).
+3. Questions only cover sheet materials with a reviewed tape/fold pair; a sheet
+   of another material is named with that prerequisite and the decision is
+   `unsupported` when no applicable sheet remains.
+4. A compiler input refusal on unlimited stock (missing profile evidence) is
+   `unsupported`, not `no_feasible_candidate`.
+5. Facts cover the whole inventory (contract limit 160, no truncation);
+   comparisons list every change and name a changed next question.
+6. A built-stand question is kept as the comparison point (owner/project
+   browser storage, survives reload); after the #146 form records values,
+   Recalculate shows the change, including the new measurement record.
+7. The kept comparison point records whether the save is unknown, saved or
+   external. A definite 409/422 says "The measurement was not saved" and drops
+   a comparison point that only that answer created.
+8. Rendered units and threshold comparisons are validated against the contract.
+9. Design settings: no automatic carry-forward. After a confirmed measurement
+   the decision is `unsupported` with the new revision ID and the operator
+   prerequisite. The browser fixture and a route test use the production file
+   resolver with an explicit operator step instead of rebinding.
+
 ## Files
 
 - Owned: `packages/measurement/**`;
@@ -71,11 +98,15 @@ See [packages/measurement/README.md](../../packages/measurement/README.md) and D
 
 ## Checks actually run (Windows, Node 22.21.0, npm 11.16.0, Python 3.12)
 
-- `npm run check`: exit 0. Python 1744 passed; web 175 pass; devloop 18 pass;
+- `npm run check`: exit 0. Python 1744 passed at a8ceb93; web 175 pass; devloop 18 pass;
   production build compiled; formatting, Ruff and contract freshness clean.
-- Feature tests: `packages/measurement/tests/test_decide.py` (14),
-  `apps/api/tests/test_measurement_routes.py` (6),
-  `apps/web/tests/active-measurement.test.mjs` (6).
+  After the review repairs: Python 1749 passed; web 178 pass; devloop 18 pass;
+  build compiled. Browser: design and built-stand flows PASS at 390px and
+  1280px. The carry-over regression fails if the per-question answer state is
+  removed; the new decision tests fail on a8ceb93.
+- Feature tests: `packages/measurement/tests/test_decide.py` (18),
+  `apps/api/tests/test_measurement_routes.py` (7),
+  `apps/web/tests/active-measurement.test.mjs` (9).
 - Browser, local Edge via Playwright, `next dev` at 127.0.0.1:3024: `PASS 390px`
   and `PASS 1280px` — question with compiler threshold, confirmed inventory
   answer recovered after a lost response and reload with one key, explicit
@@ -115,7 +146,11 @@ this slice; the deterministic flow needs no provider.
 - Server design context is keyed by inventory revision (existing
   `FORMA_DESIGN_CONTEXT_PATH` manifest). After a confirmed measurement the
   operator must supply context for the new revision before the search can
-  run; until then the decision is `unsupported` with that reason.
+  run; until then the decision is `unsupported`, naming the revision and the
+  prerequisite. This is the main limit on the live loop. Next dependency: an
+  operator-approved policy for which settings may follow measured-value-only
+  inventory changes (same stock IDs, kinds and materials), applied in the
+  shared resolver so #148 search and #149 decisions agree.
 - The intake form records no usable region for sheets, so app-entered sheets
   reach the search only after the explicit usable-area question here.
 - Requirement questions need saved requirements; if none exist the panel points
