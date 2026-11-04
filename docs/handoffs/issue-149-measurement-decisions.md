@@ -8,7 +8,7 @@ Status: review repairs and design settings across measurement updates applied an
 
 ## What works
 
-See [packages/measurement/README.md](../../packages/measurement/README.md) and D056.
+See [packages/measurement/README.md](../../packages/measurement/README.md) and D057.
 
 - `POST /api/projects/{id}/measurement-decisions` with the expected inventory
   revision and active version. Read-only. Returns the next useful question or
@@ -124,7 +124,7 @@ and MetaMuse construction routes still resolve exact revisions only.
   `apps/web/src/components/plan-workbench.tsx` (mount), `package.json`
   (`test:web` entry), `apps/web/src/components/design-candidates/pending.ts`
   (#148's receipt helper: size limit raised to 256 KB for inventory bodies),
-  `docs/decisions.md` (D056), `docs/handoffs/README.md`. Open PR #169 also
+  `docs/decisions.md` (D057), `docs/handoffs/README.md`. Open PR #169 also
   edits `projects.py`, `generate.py`, `plan-workbench.tsx` and the generated
   contracts; whichever merges second rebases those registration lines.
 - Consumed unchanged: `forma_synthesizer` (search, domains, design builders),
