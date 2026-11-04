@@ -14,39 +14,48 @@ export default function ConstructionStepDiagrams({
   const views = ["top", "front", "side"] as const;
   return (
     <section aria-label="Proposed step diagrams">
-      <h4>Step diagrams</h4>
+      <h4>Step-by-step blueprints</h4>
       <p className="help">
         Top, front and side views of the same proposed step. Labels show
         projected bounds in millimeters, not measured material sizes or cutting
-        dimensions. Edge-on panels appear as lines. Thick outlines mark this
-        step’s pieces.
+        dimensions. Edge-on panels appear as lines. Pink, thick outlines mark
+        this step’s pieces.
       </p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+      <div className="construction-blueprints">
         {views.map((view) => {
           const { facets, fit } = orthographicConstruction(
             step.analysis.facets,
             view,
           );
+          const screen = facets.flatMap((facet) =>
+            facet.points.map((p) => ({ x: fit.x(p.x), y: fit.y(p.y) })),
+          );
+          const left = Math.min(...screen.map((p) => p.x)),
+            right = Math.max(...screen.map((p) => p.x));
+          const top = Math.min(...screen.map((p) => p.y)),
+            bottom = Math.max(...screen.map((p) => p.y));
+          const widthMm = Math.round(fit.width * 10000) / 10;
+          const heightMm = Math.round(fit.height * 10000) / 10;
           return (
-            <figure
-              key={view}
-              style={{ flex: "1 1 210px", margin: 0, minWidth: 0 }}
-            >
-              <figcaption>
-                {view[0].toUpperCase() + view.slice(1)} (
-                {view === "top"
-                  ? "X / Y"
-                  : view === "front"
-                    ? "X / Z"
-                    : "Y / Z"}
-                ) · proposed bounds {Math.round(fit.width * 10000) / 10} ×{" "}
-                {Math.round(fit.height * 10000) / 10} mm
+            <figure key={view} className="drawing-sheet construction-blueprint">
+              <figcaption className="drawing-sheet-title">
+                <strong>
+                  Step {step.index + 1} / {view}
+                </strong>
+                <span>
+                  {view === "top"
+                    ? "X / Y"
+                    : view === "front"
+                      ? "X / Z"
+                      : "Y / Z"}
+                </span>
               </figcaption>
+              <div className="drawing-sheet-ticks" aria-hidden="true" />
               <svg
-                viewBox="0 0 400 380"
+                viewBox="0 0 400 410"
                 role="img"
                 aria-label={`${view} diagram for ${step.step_id}`}
-                style={{ width: "100%", maxHeight: 230, background: "#eef3ef" }}
+                className="construction-blueprint-canvas"
               >
                 {facets
                   .sort((a, b) => a.center.depth - b.center.depth)
@@ -67,29 +76,62 @@ export default function ConstructionStepDiagrams({
                           data-part-id={facet.part_id}
                           data-facet-id={facet.facet_id}
                           data-step-focus={focus}
+                          className="construction-blueprint-panel"
                           points={facet.points
                             .map((p) => `${fit.x(p.x)},${fit.y(p.y)}`)
                             .join(" ")}
-                          fill={`hsl(${number * 63} 30% 76%)`}
-                          stroke={focus ? "#102c21" : "#718579"}
                           strokeWidth={focus ? 4 : 1.5}
                         />
                         <text
                           x={fit.x(facet.center.x)}
                           y={fit.y(facet.center.y) + 4}
                           textAnchor="middle"
-                          fontSize="16"
-                          fill="#183a30"
-                          stroke="white"
-                          strokeWidth="3"
-                          paintOrder="stroke"
+                          className="construction-blueprint-number"
                         >
                           {number}
                         </text>
                       </g>
                     );
                   })}
+                {widthMm > 0 && (
+                  <g
+                    className="construction-blueprint-dimension"
+                    data-dimension="width"
+                  >
+                    <path
+                      d={`M ${left} ${bottom + 6} V 376 M ${right} ${bottom + 6} V 376 M ${left} 366 H ${right}`}
+                    />
+                    <path
+                      d={`M ${left + Math.min(6, (right - left) / 4)} 362 L ${left} 366 L ${left + Math.min(6, (right - left) / 4)} 370 M ${right - Math.min(6, (right - left) / 4)} 362 L ${right} 366 L ${right - Math.min(6, (right - left) / 4)} 370`}
+                    />
+                    <text x={(left + right) / 2} y={392} textAnchor="middle">
+                      {widthMm} mm
+                    </text>
+                  </g>
+                )}
+                {heightMm > 0 && (
+                  <g
+                    className="construction-blueprint-dimension"
+                    data-dimension="height"
+                  >
+                    <path
+                      d={`M ${left - 6} ${top} H 19 M ${left - 6} ${bottom} H 19 M 25 ${top} V ${bottom}`}
+                    />
+                    <path
+                      d={`M 21 ${top + Math.min(6, (bottom - top) / 4)} L 25 ${top} L 29 ${top + Math.min(6, (bottom - top) / 4)} M 21 ${bottom - Math.min(6, (bottom - top) / 4)} L 25 ${bottom} L 29 ${bottom - Math.min(6, (bottom - top) / 4)}`}
+                    />
+                    <text
+                      transform={`translate(12 ${(top + bottom) / 2}) rotate(-90)`}
+                      textAnchor="middle"
+                    >
+                      {heightMm} mm
+                    </text>
+                  </g>
+                )}
               </svg>
+              <p className="construction-blueprint-caption">
+                Proposed bounds {widthMm} × {heightMm} mm · reference only
+              </p>
             </figure>
           );
         })}

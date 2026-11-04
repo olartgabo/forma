@@ -95,6 +95,7 @@ import {
   projectConstructionFacets,
   fitConstructionProjection,
   orthographicConstruction,
+  constructionCamera,
 } from "../src/lib/construction-projection.ts";
 
 const body = {
@@ -777,12 +778,13 @@ test("aborted or oversized saved response cannot populate the manual", async (t)
 test("camera fit is translation invariant, excludes nonfinite facets, and never includes the origin", () => {
   const facets =
     triangleResult().candidates[0].construction.steps[0].analysis.facets;
-  for (const angle of [0, Math.PI / 4, Math.PI]) {
-    const project = (p) => ({
-      x: p.x * Math.cos(angle) - p.y * Math.sin(angle),
-      y: p.y * Math.cos(angle) + p.x * Math.sin(angle) + p.z * 0.3,
-      depth: p.z,
-    });
+  for (const [yaw, pitch] of [
+    [0, 30],
+    [45, 25],
+    [180, -30],
+    [315, 25],
+  ]) {
+    const project = constructionCamera(yaw, pitch);
     const shifted = facets.map((f) => ({
       ...f,
       vertices: f.vertices.map((p) => ({
@@ -833,6 +835,74 @@ test("orthographic step diagrams keep canonical triangle identities and metre-to
     );
     assert.ok(
       Math.abs(projected.fit.height * 1000 - (view === "top" ? 200 : 0)) < 1e-8,
+    );
+  }
+});
+
+test("positive camera elevation paints near panels after far panels on the same viewing ray", () => {
+  const project = constructionCamera(0, 30);
+  const ray = { x: 0, y: -Math.sqrt(3) / 2, z: 0.5 };
+  const far =
+    triangleResult().candidates[0].construction.steps[0].analysis.facets[0];
+  const towardViewer = (p) => ({
+    x: p.x + ray.x,
+    y: p.y + ray.y,
+    z: p.z + ray.z,
+  });
+  const near = {
+    ...far,
+    part_id: "near-panel",
+    facet_id: "near-face",
+    vertices: far.vertices.map(towardViewer),
+    centroid: towardViewer(far.centroid),
+  };
+  const original = structuredClone([near, far]);
+  const facets = projectConstructionFacets([near, far], project);
+  facets[0].points.forEach((p, index) => {
+    const behind = facets[1].points[index];
+    assert.ok(Math.abs(p.x - behind.x) < 1e-10);
+    assert.ok(Math.abs(p.y - behind.y) < 1e-10);
+    assert.ok(Math.abs(p.depth - behind.depth - 1) < 1e-10);
+  });
+  assert.deepEqual(
+    facets
+      .sort((a, b) => a.center.depth - b.center.depth)
+      .map((f) => f.part_id),
+    [far.part_id, near.part_id],
+  );
+  assert.deepEqual(
+    [near, far],
+    original,
+    "camera never changes canonical panels",
+  );
+});
+
+test("orthographic near panels paint last: front negative Y, top positive Z, side positive X", () => {
+  const base =
+    triangleResult().candidates[0].construction.steps[0].analysis.facets[0];
+  for (const [view, towardViewer] of [
+    ["front", (p) => ({ ...p, y: p.y - 1 })],
+    ["top", (p) => ({ ...p, z: p.z + 1 })],
+    ["side", (p) => ({ ...p, x: p.x + 1 })],
+  ]) {
+    const near = {
+      ...base,
+      part_id: "near-panel",
+      facet_id: "near-face",
+      vertices: base.vertices.map(towardViewer),
+      centroid: towardViewer(base.centroid),
+    };
+    const { facets } = orthographicConstruction([near, base], view);
+    facets[0].points.forEach((p, index) => {
+      assert.equal(p.x, facets[1].points[index].x);
+      assert.equal(p.y, facets[1].points[index].y);
+      assert.ok(Math.abs(p.depth - facets[1].points[index].depth - 1) < 1e-10);
+    });
+    assert.deepEqual(
+      facets
+        .sort((a, b) => a.center.depth - b.center.depth)
+        .map((f) => f.part_id),
+      [base.part_id, near.part_id],
     );
   }
 });
