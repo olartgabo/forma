@@ -14,7 +14,7 @@ from test_projects import create
 from forma_api import design_runtime, muse_construction
 from forma_api.design_context import ResolvedDesignContext, StaticDesignContextResolver
 from forma_api.main import create_app
-from forma_api.model_gateway import GatewayError
+from forma_api.model_gateway import GatewayError, Trace
 from forma_api.routes import muse_construction as route
 
 
@@ -201,6 +201,79 @@ def test_unknown_outcome_blocks_same_and_new_keys_and_redacts(setup, error):
         assert replay.json()["code"] == "generation_outcome_unknown"
     assert len(factories) == 1
     assert json.loads(receipts(directory)[0][0])["uncertain"] is True
+    evidence = json.loads(receipts(directory)[0][0])["evidence"]
+    assert evidence["observed_attempt_count"] is None
+    assert evidence["usage"] is None
+    if isinstance(error, GatewayError):
+        assert evidence["gateway_code"] == error.code
+
+
+def test_unknown_receipt_retains_attempt_evidence_without_releasing_identity(setup):
+    client, p, _, factories, directory, monkeypatch = setup
+
+    def fail(*args, **kwargs):
+        kwargs["request_budget"].traces.extend(
+            [
+                Trace("/chat/completions", "muse-spark-1.3", 12, "ok", 101, 202),
+                Trace("SECRET endpoint", "SECRET model", -1, "SECRET status", True, -1),
+            ]
+        )
+        raise GatewayError("timeout")
+
+    monkeypatch.setattr(muse_construction, "generate_muse_construction", fail)
+    assert post(client, p).status_code == 409
+    saved = receipts(directory)[0][0]
+    evidence = json.loads(saved)["evidence"]
+    assert evidence["stage"] == "generation"
+    assert evidence["observed_attempt_count"] == 2
+    assert evidence["attempts"][0]["input_tokens"] == 101
+    assert evidence["attempts"][0]["output_tokens"] == 202
+    assert evidence["usage"] == {
+        "model_calls": 2,
+        "input_tokens": None,
+        "output_tokens": None,
+    }
+    assert evidence["attempts"][1] == dict(
+        endpoint="unknown",
+        model="unknown",
+        status="unknown",
+        elapsed_ms=None,
+        input_tokens=None,
+        output_tokens=None,
+    )
+    assert "SECRET" not in saved
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        identity = connection.execute(
+            "SELECT owner,scope,key,digest FROM requests WHERE scope LIKE '%:construction-proposal'"
+        ).fetchone()
+    for key in ("construction-001", "construction-new"):
+        assert post(client, p, body(p, idempotency_key=key)).status_code == 409
+    assert receipts(directory)[0][0] == saved
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT owner,scope,key,digest FROM requests WHERE scope LIKE '%:construction-proposal'"
+        ).fetchall() == [identity]
+    assert len(factories) == 1
+
+
+def test_legacy_unknown_receipt_stays_byte_identical(setup):
+    client, p, _, factories, directory, monkeypatch = setup
+
+    def fail(*args, **kwargs):
+        raise GatewayError("timeout")
+
+    monkeypatch.setattr(muse_construction, "generate_muse_construction", fail)
+    assert post(client, p).status_code == 409
+    legacy = '{"pending": true, "uncertain": true, "error_code": "timeout"}'
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        connection.execute(
+            "UPDATE requests SET response=? WHERE scope LIKE '%:construction-proposal'",
+            (legacy,),
+        )
+    for key in ("construction-001", "construction-new"):
+        assert post(client, p, body(p, idempotency_key=key)).status_code == 409
+    assert receipts(directory) == [(legacy,)]
+    assert len(factories) == 1
 
 
 def test_pre_dispatch_configuration_failure_releases_claim(setup):
@@ -251,6 +324,9 @@ def test_post_dispatch_race_rejects_result_and_retains_dispatch_receipt(
 
     def mutate(*args, **kwargs):
         result = original(*args, **kwargs)
+        kwargs["request_budget"].traces.append(
+            Trace("/chat/completions", "muse-spark-1.3", 12, "ok", 101, 202)
+        )
         with sqlite3.connect(directory / "projects.sqlite3") as connection:
             if mutation == "photo":
                 connection.execute("DELETE FROM media WHERE id=?", (media["id"],))
@@ -273,6 +349,13 @@ def test_post_dispatch_race_rejects_result_and_retains_dispatch_receipt(
     assert response.json()["code"] == "generation_outcome_unknown"
     receipt = json.loads(receipts(directory)[0][0])
     assert receipt["uncertain"] is True
+    assert receipt["evidence"]["stage"] == "receipt_confirmation"
+    assert receipt["evidence"]["usage"] == {
+        "model_calls": 1,
+        "input_tokens": 101,
+        "output_tokens": 202,
+    }
+    assert "candidates" not in receipt
     assert (
         receipt["error_code"]
         == {"photo": "not_found", "inventory": "stale_version", "active": "blocked"}[

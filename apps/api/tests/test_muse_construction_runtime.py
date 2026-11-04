@@ -8,7 +8,12 @@ from test_model_gateway import Fake, final
 from test_plans import stand_inputs
 
 from forma_api.design_context import DesignContext, ResolvedDesignContext
-from forma_api.model_gateway import GatewayError, ImageInput, MetaGateway
+from forma_api.model_gateway import (
+    GatewayError,
+    ImageInput,
+    MetaGateway,
+    ProposalBudget,
+)
 from forma_api.muse_construction import (
     MuseConstructionProposals,
     generate_muse_construction,
@@ -426,6 +431,26 @@ def test_unknown_provider_outcome_is_not_hidden_by_a_failed_first_candidate(inpu
     with pytest.raises(GatewayError) as error:
         run(inputs, response(bad), GatewayError("timeout"))
     assert error.value.code == "timeout"
+
+
+def test_caller_budget_retains_completed_and_unknown_attempts(inputs):
+    bad = candidate()
+    bad["stock_ids"] = ["imaginary"]
+    transport = Fake(response(bad), GatewayError("timeout"))
+    budget = ProposalBudget(max_rounds=4, seconds=60)
+    with pytest.raises(GatewayError, match="timeout"):
+        generate_muse_construction(
+            MetaGateway(transport),
+            project=inputs[0],
+            resolved=inputs[1],
+            request_budget=budget,
+        )
+    assert len(transport.calls) == len(budget.traces) == 2
+    assert budget.traces[0].input_tokens == 100
+    assert budget.traces[0].output_tokens == 200
+    assert budget.traces[1].status == "timeout"
+    assert budget.traces[1].input_tokens is None
+    assert budget.traces[1].output_tokens is None
 
 
 def test_active_build_cannot_use_new_build_proposal_runtime(inputs):

@@ -428,6 +428,7 @@ def generate_muse_construction(
     resolved: ResolvedDesignContext,
     user_notes: str | None = None,
     image: ImageInput | None = None,
+    request_budget: ProposalBudget | None = None,
 ) -> MuseConstructionResult:
     """At most two checked candidates and one correction, sharing one budget."""
     if project.active_version_id is not None:
@@ -454,7 +455,7 @@ def generate_muse_construction(
         else None,
         missing_context=[b.message for b in resolved.blockers],
     )
-    budget = ProposalBudget(max_rounds=4, seconds=60)
+    budget = request_budget or ProposalBudget(max_rounds=4, seconds=60)
     start = time.monotonic()
     proposals = gateway.propose(
         "Propose named panel geometry for the saved goal using this material inventory, or return targeted questions.",

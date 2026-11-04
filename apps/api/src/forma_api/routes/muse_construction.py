@@ -1,14 +1,21 @@
 """Consented model proposals with saved materials and durable dispatch receipts."""
 
 import hashlib
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
 
 from forma_api import design_context, design_runtime, muse_construction
 from forma_api.intake_runtime import MAX_PROVIDER_IMAGE_BYTES, SUPPORTED_IMAGE_TYPES
-from forma_api.model_gateway import GatewayError, ImageInput
+from forma_api.model_gateway import (
+    MODEL_ID_RE,
+    GatewayError,
+    ImageInput,
+    ProposalBudget,
+)
 from forma_api.projects import ProjectError, ProjectStore
+from forma_api.provider_diagnostics import summarize_usage
 from forma_api.routes.designs import (
     _PENDING,
     _UNCERTAIN_CODES,
@@ -55,6 +62,54 @@ def _photo_hash(photo):
         None
         if photo is None
         else hashlib.sha256(photo[0].encode() + photo[1]).hexdigest()
+    )
+
+
+def _failure_evidence(budget, stage):
+    """Private receipt metadata, never prompts, provider bodies or exception text.
+
+    These are observed transport attempts, not confirmed provider dispatches or
+    billing. Missing traces cannot establish that no provider call occurred.
+    """
+
+    def count(value, maximum):
+        return value if type(value) is int and 0 <= value <= maximum else None
+
+    attempts = []
+    for trace in budget.traces[:16]:
+        attempts.append(
+            dict(
+                endpoint=trace.endpoint
+                if trace.endpoint in ("/chat/completions", "/responses")
+                else "unknown",
+                model=trace.model
+                if isinstance(trace.model, str) and MODEL_ID_RE.fullmatch(trace.model)
+                else "unknown",
+                status=trace.status
+                if trace.status
+                in {
+                    "ok",
+                    "timeout",
+                    "network_error",
+                    "budget_exhausted",
+                    "invalid_response",
+                    "response_too_large",
+                    "rate_limit",
+                    "provider_http_error",
+                    "authentication",
+                    "access_denied",
+                }
+                else "unknown",
+                elapsed_ms=count(trace.elapsed_ms, 86_400_000),
+                input_tokens=count(trace.input_tokens, 10**9),
+                output_tokens=count(trace.output_tokens, 10**9),
+            )
+        )
+    return dict(
+        stage=stage,
+        observed_attempt_count=len(attempts) if attempts else None,
+        attempts=attempts,
+        usage=summarize_usage(attempts).model_dump(mode="json") if attempts else None,
     )
 
 
@@ -168,12 +223,18 @@ def muse_construction_router(
                     (owner, scope, body.idempotency_key, digest, _PENDING),
                 )
 
-        def mark_uncertain(code):
+        budget = ProposalBudget(max_rounds=4, seconds=60)
+
+        def mark_uncertain(code, stage="generation", gateway_code=None):
+            marker = json.loads(_uncertain_marker(code))
+            marker["evidence"] = _failure_evidence(budget, stage)
+            if gateway_code in _UNCERTAIN_CODES:
+                marker["evidence"]["gateway_code"] = gateway_code
             with store.transaction() as connection:
                 connection.execute(
                     "UPDATE requests SET response=? WHERE owner=? AND scope=? AND key=? AND digest=? AND response=?",
                     (
-                        _uncertain_marker(code),
+                        json.dumps(marker),
                         owner,
                         scope,
                         body.idempotency_key,
@@ -203,10 +264,11 @@ def muse_construction_router(
                 image=ImageInput(data=photo[1], mime=photo[0], consented=True)
                 if photo
                 else None,
+                request_budget=budget,
             )
         except GatewayError as exc:
             if exc.code in _UNCERTAIN_CODES:
-                mark_uncertain(_provider_error(exc).body.code)
+                mark_uncertain(_provider_error(exc).body.code, gateway_code=exc.code)
                 raise DesignError(
                     409,
                     "generation_outcome_unknown",
@@ -254,7 +316,8 @@ def muse_construction_router(
                     )
         except (DesignError, ProjectError) as exc:
             mark_uncertain(
-                exc.body.code if isinstance(exc, DesignError) else exc.envelope.code
+                exc.body.code if isinstance(exc, DesignError) else exc.envelope.code,
+                "receipt_confirmation",
             )
             raise DesignError(
                 409,
@@ -262,7 +325,7 @@ def muse_construction_router(
                 "The provider returned, but the project, photo, material context or result receipt could no longer be confirmed. Keep this request identity and reconcile it before another request.",
             ) from None
         except Exception:
-            mark_uncertain("result_not_confirmed")
+            mark_uncertain("result_not_confirmed", "receipt_confirmation")
             raise DesignError(
                 409,
                 "generation_outcome_unknown",
