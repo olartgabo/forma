@@ -19,7 +19,7 @@ from forma_api.proposal_prompts import (
 )
 from forma_api.proposal_service import IntakeObservation
 from forma_api.provider_diagnostics import ProviderUsage, summarize_usage
-from forma_domain.material_catalog import catalog_prompt
+from forma_domain.material_catalog import ItemProposal, catalog_prompt
 from forma_domain.models import ID, Record, Text
 
 MAX_PROVIDER_IMAGE_BYTES = 5_000_000
@@ -43,8 +43,18 @@ INTAKE_PROMPT = (
     "Return visible candidate material labels, structured item proposals in items, "
     "and questions for the consented inventory photo. Include one item per visible "
     "object following the catalog rules; when no objects are visible, items may be "
-    "empty. Keep measurement_source=unknown and leave unmeasured dimensions unknown."
+    "empty. Items are the primary output; labels are a summary only. Include "
+    "non-catalog tools and other objects with identity outcome=other and an "
+    "other_label, rather than putting them only in labels. Never leave items empty "
+    "when labels describe visible objects. Keep measurement_source=unknown and "
+    "leave unmeasured dimensions unknown."
 )
+
+
+class PhotoIntakeObservation(IntakeObservation):
+    """Provider-only schema: structured object proposals must be explicitly returned."""
+
+    items: tuple[ItemProposal, ...] = Field(max_length=24)
 
 
 class IntakeRequest(Record):
@@ -263,12 +273,13 @@ def observe_photo(
     try:
         observation = gateway.propose(
             INTAKE_PROMPT,
-            IntakeObservation,
+            PhotoIntakeObservation,
             image=ImageInput(image_data, content_type, True),  # type: ignore[arg-type]
             request_budget=budget,
             system_prompt=INTAKE_SYSTEM_PROMPT,
             context={"project_goal": project_goal},
             max_completion_tokens=INTAKE_MAX_COMPLETION_TOKENS,
+            reasoning_effort="low",
         )
         if not observation.items and not any(
             item.strip() for item in (*observation.labels, *observation.questions)

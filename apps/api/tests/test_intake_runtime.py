@@ -25,7 +25,15 @@ class Fake:
         return response
 
 
-def final(content):
+def final(content, *, include_items=True):
+    if include_items:
+        try:
+            data = json.loads(content)
+            if isinstance(data, dict):
+                data.setdefault("items", [])
+                content = json.dumps(data)
+        except ValueError:
+            pass
     return {"choices": [{"finish_reason": "stop", "message": {"content": content}}]}
 
 
@@ -64,7 +72,7 @@ def test_observe_photo_uses_strict_intake_schema_without_tool():
     assert "tools" not in payload
     assert (
         payload["response_format"]["json_schema"]["schema"]
-        == IntakeObservation.model_json_schema()
+        == intake_runtime.PhotoIntakeObservation.model_json_schema()
     )
     user = payload["messages"][1]["content"]
     serialized = user[0]["text"]
@@ -288,6 +296,7 @@ def test_default_intake_gateway_allows_one_long_call_without_retries(monkeypatch
     assert 119 < fake.calls[0][2] <= 120
     assert gateway.budget == 120
     assert fake.calls[0][1]["max_completion_tokens"] == 8192
+    assert fake.calls[0][1]["reasoning_effort"] == "low"
     assert gateway.max_rounds == 1
     assert gateway.max_retries == 0
     failing = Fake(GatewayError("rate_limit", retryable=True))
@@ -348,3 +357,56 @@ def test_intake_prompts_consistently_request_structured_items_and_unknown_measur
         assert "labels and questions only" not in prompt
     assert "never" in intake_runtime.INTAKE_SYSTEM_PROMPT
     assert "infer millimeters" in intake_runtime.INTAKE_SYSTEM_PROMPT
+
+
+def test_only_intake_selects_low_reasoning_effort():
+    fake = Fake(final(INTAKE_JSON), final(INTAKE_JSON))
+    gateway = MetaGateway(fake)
+    intake_runtime.observe_photo(
+        gateway, project_goal="stand", image_data=PNG, content_type="image/png"
+    )
+    gateway.propose("ordinary proposal", IntakeObservation)
+    assert fake.calls[0][1]["reasoning_effort"] == "low"
+    assert "reasoning_effort" not in fake.calls[1][1]
+
+
+def test_photo_schema_requires_items_but_legacy_observation_remains_compatible():
+    schema = intake_runtime.PhotoIntakeObservation.model_json_schema()
+    assert "items" in schema["required"]
+    assert schema["properties"]["items"]["maxItems"] == 24
+    legacy = {
+        "labels": [],
+        "measurement_source": "unknown",
+        "questions": ["Is there an object?"],
+    }
+    assert IntakeObservation.model_validate_json(json.dumps(legacy)).items == ()
+    with pytest.raises(Exception):
+        intake_runtime.PhotoIntakeObservation.model_validate_json(json.dumps(legacy))
+    assert (
+        intake_runtime.PhotoIntakeObservation.model_validate_json(
+            json.dumps({**legacy, "items": []})
+        ).items
+        == ()
+    )
+    fake = Fake(final(json.dumps(legacy), include_items=False))
+    with pytest.raises(intake_runtime.IntakeGatewayError) as failure:
+        intake_runtime.observe_photo(
+            MetaGateway(fake),
+            project_goal="stand",
+            image_data=PNG,
+            content_type="image/png",
+        )
+    assert failure.value.diagnostics.reason == "invalid_schema"
+    assert {
+        "path": ["items"],
+        "type": "missing",
+    } in failure.value.diagnostics.model_dump()["validation_issues"]
+
+
+def test_intake_prompts_make_items_primary_for_noncatalog_objects():
+    for prompt in (intake_runtime.INTAKE_SYSTEM_PROMPT, intake_runtime.INTAKE_PROMPT):
+        assert "Items are the primary output" in prompt
+        assert "labels are a summary only" in prompt
+        assert "non-catalog tools" in prompt
+        assert "outcome=other" in prompt
+        assert "Never leave items empty when labels describe visible objects" in prompt

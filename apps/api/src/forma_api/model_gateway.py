@@ -565,6 +565,8 @@ class MetaGateway:
         system_prompt: str | None = None,
         context: dict | None = None,
         max_completion_tokens: int = 2048,
+        reasoning_effort: Literal["minimal", "low", "medium", "high", "xhigh", "max"]
+        | None = None,
     ) -> T:
         """Validate using the caller's domain model; tool must run before final output."""
         if (
@@ -573,6 +575,12 @@ class MetaGateway:
             or not 1 <= max_completion_tokens <= 8192
         ):
             raise ValueError("invalid completion token bound")
+        if reasoning_effort is not None and (
+            not isinstance(reasoning_effort, str)
+            or reasoning_effort
+            not in ("minimal", "low", "medium", "high", "xhigh", "max")
+        ):
+            raise ValueError("invalid reasoning effort")
         if not 0 < len(prompt) <= 16000:
             raise GatewayError("invalid_prompt")
         if context is not None:
@@ -616,6 +624,8 @@ class MetaGateway:
                 "messages": messages,
                 "max_completion_tokens": max_completion_tokens,
             }
+            if reasoning_effort is not None:
+                payload["reasoning_effort"] = reasoning_effort
             if tool and not ran_tool:
                 payload.update(
                     tools=[

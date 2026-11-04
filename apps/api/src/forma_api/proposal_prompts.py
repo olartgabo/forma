@@ -34,7 +34,10 @@ available stock. Return only the requested flat schema and no executable code.
 TASK_PROMPTS = {
     "intake": "Return visible candidate material labels, structured item proposals in items, "
     "and questions. Include one item per visible object following the material catalog rules; "
-    "when no objects are visible, items may be empty. Keep measurement_source=unknown. "
+    "when no objects are visible, items may be empty. Items are the primary output; "
+    "labels are a summary only. Include non-catalog tools and other objects with "
+    "identity outcome=other and an other_label. Never leave items empty when labels "
+    "describe visible objects. Keep measurement_source=unknown. "
     "Do not create Stock or Measurement records or infer millimeters from the image.",
     "design": "Return at most two supported-family design candidates across this request. "
     "Use confirmed inventory facts and constraints; name assumptions and questions. "

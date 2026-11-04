@@ -83,7 +83,11 @@ export default function MaterialBoard({
       id: `item-${item.id}`,
       name: item.name,
       target: `item-${item.id}`,
-      art: category ? materialArt(category) : null,
+      art: category
+        ? materialArt(category)
+        : item.identity.outcome === "other" && item.identity.other_label
+          ? toolArt(item.identity.other_label)
+          : null,
     });
   }
   for (const stock of stocks) {

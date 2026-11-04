@@ -957,3 +957,9 @@ Selected and hovered representative cutouts use a faint alpha-derived white glow
 A deployed photo request exposed that generic invalid_response errors discarded why the proposal was rejected and any provider usage. Keep the public error family compatible while returning bounded owner-only failure diagnostics from the same request. Show those details in both photo-recognition interfaces without raw provider content or credentials. Failed recognition never becomes a material or physical observation; unknown usage stays unknown.
 
 The diagnostic reproduction exhausted 2,048 output tokens before completing the structured answer. Raise only photo intake to an 8,192 completion-token ceiling, retaining one 120-second attempt without retries. Remove conflicting labels-only prompt wording so the requested catalog item proposals are explicit.
+
+## D067 — Bounded recognition reasoning and required item records (November 4, 2026)
+
+The deployed structured-item request exhausted 8,192 output tokens. Meta documents that hidden reasoning shares this output allowance and unspecified effort is model-determined. Select low reasoning for photo intake only; other proposals retain their existing behavior. Keep one 120-second attempt and the 8,192 ceiling.
+
+A low-effort local call returned correct labels in 10.4 seconds with 665 output tokens, but omitted optional item records. Require the items field in the model-facing photo schema while retaining compatibility for stored/legacy observations. Items are primary output and labels are summaries; an image without visible objects can still return an empty list. These remain reviewable suggestions, never physical evidence.
