@@ -332,9 +332,10 @@ export default function GuidedIntake({
       setItemProblems(problemMap(saved.problems ?? []));
       setItemsDirty(false);
       if (
-        typeof saved.inventory_confirmed === "boolean" &&
-        saved.inventory_confirmed !== project.inventory_confirmed
+        typeof saved.inventory_revision_id === "string" &&
+        saved.inventory_revision_id !== project.revision_id
       ) {
+        // Confirmation changed under a new inventory revision.
         const fresh = await loadProject(token, project.id);
         if (alive.current) onProject(fresh);
         if (alive.current && !saved.inventory_confirmed)

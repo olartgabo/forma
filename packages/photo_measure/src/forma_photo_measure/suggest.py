@@ -25,6 +25,7 @@ MAX_CANDIDATES = 3
 
 Reason = Literal[
     "suggested",
+    "reference_not_found",
     "nothing_found",
     "only_reference",
     "only_cut_off",
@@ -56,7 +57,12 @@ def reference_points(gray: np.ndarray, reference: ReferenceInput) -> np.ndarray:
 
 
 def suggest_region(image: np.ndarray, reference_px: np.ndarray) -> Suggestion:
-    """One proposed box in source pixels, or the reason there is none."""
+    """One proposed box in source pixels, or the reason there is none.
+
+    Fails closed without the reference: an unlocated reference could itself
+    be the most distinct region in the photo."""
+    if len(reference_px) < 3:
+        return Suggestion("reference_not_found")
 
     height, width = image.shape[:2]
     scale = min(1.0, (MAX_SUGGEST_PIXELS / height / width) ** 0.5)
@@ -81,16 +87,14 @@ def suggest_region(image: np.ndarray, reference_px: np.ndarray) -> Suggestion:
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     # The reference, with a margin, is never material.
-    removed_reference = False
-    if len(reference_px) >= 3:
-        hull = cv2.convexHull((reference_px * scale).astype(np.float32))
-        x, y, w, h = cv2.boundingRect(hull)
-        pad = round(0.15 * max(w, h)) + size
-        hull_mask = np.zeros_like(mask)
-        cv2.fillConvexPoly(hull_mask, hull.astype(np.int32), 255)
-        hull_mask = cv2.dilate(hull_mask, np.ones((2 * pad + 1, 2 * pad + 1), np.uint8))
-        removed_reference = bool(np.any(mask[hull_mask > 0]))
-        mask[hull_mask > 0] = 0
+    hull = cv2.convexHull((reference_px * scale).astype(np.float32))
+    x, y, w, h = cv2.boundingRect(hull)
+    pad = round(0.15 * max(w, h)) + size
+    hull_mask = np.zeros_like(mask)
+    cv2.fillConvexPoly(hull_mask, hull.astype(np.int32), 255)
+    hull_mask = cv2.dilate(hull_mask, np.ones((2 * pad + 1, 2 * pad + 1), np.uint8))
+    removed_reference = bool(np.any(mask[hull_mask > 0]))
+    mask[hull_mask > 0] = 0
     count, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     total = sh * sw
     sized, inside = [], []

@@ -20,11 +20,11 @@ The reviewed project goal and the reported problem in the requests both stated t
 
 ## Actual output (sanitized, November 2, 2026 UTC, main `8d713154`, model `muse-spark-1.3`)
 
-| Stage | Reserved to settled | HTTP | Elapsed | Input | Output | Calls |
-| --- | --- | --- | --- | --- | --- | --- |
-| Intake | 20:45:43 to 20:45:52 | 200 | 9,484 ms | 2,442 | 1,716 | 1 |
-| Diagnosis | 20:45:52 to 20:46:03 | 200 | 11,219 ms | 3,033 | 1,584 | 1 |
-| Total | | | | 5,475 | 3,300 | 2 |
+| Stage     | Reserved to settled  | HTTP | Elapsed   | Input | Output | Calls |
+| --------- | -------------------- | ---- | --------- | ----- | ------ | ----- |
+| Intake    | 20:45:43 to 20:45:52 | 200  | 9,484 ms  | 2,442 | 1,716  | 1     |
+| Diagnosis | 20:45:52 to 20:46:03 | 200  | 11,219 ms | 3,033 | 1,584  | 1     |
+| Total     |                      |      |           | 5,475 | 3,300  | 2     |
 
 Sums: 2,442 + 3,033 = 5,475; 1,716 + 1,584 = 3,300. These are provider-reported tokens, not dollar billing. The ledger shows two reservations, each settled, with no pending or unknown entry.
 

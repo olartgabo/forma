@@ -37,7 +37,7 @@ class ItemProblem(Record):
     problem: Text
 
 
-class StockConflict(Record):
+class MaterialConflict(Record):
     """A saved material contradicted by what its linked item was identified as."""
 
     item_id: ID
@@ -53,9 +53,13 @@ class RecognizedItems(Record):
     # Links that no longer hold (photo deleted, stock removed or retyped).
     problems: tuple[ItemProblem, ...] = ()
     # Contradictions that keep the inventory unconfirmed until reconciled.
-    conflicts: tuple[StockConflict, ...] = ()
-    # The saved inventory's confirmation after this save.
+    conflicts: tuple[MaterialConflict, ...] = ()
+    # The saved inventory's confirmation and revision after this save. A
+    # change in confirmation issues a new inventory revision.
     inventory_confirmed: bool | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    inventory_revision_id: ID | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     replayed: bool = False
@@ -87,7 +91,7 @@ def _fits(item: RecognizedItem, stock) -> bool:
     )
 
 
-def conflicts(items, stocks) -> tuple[StockConflict, ...]:
+def conflicts(items, stocks) -> tuple[MaterialConflict, ...]:
     """Linked items whose identity contradicts the saved material's type."""
 
     by_id = {stock.id: stock for stock in stocks}
@@ -103,7 +107,7 @@ def conflicts(items, stocks) -> tuple[StockConflict, ...]:
             else f"{item.name} is identified as {what}"
         )
         found.append(
-            StockConflict(
+            MaterialConflict(
                 item_id=item.id,
                 stock_id=stock.id,
                 message=(
@@ -117,15 +121,25 @@ def conflicts(items, stocks) -> tuple[StockConflict, ...]:
     return tuple(found)
 
 
-def stored_conflicts(connection, project_id, stocks) -> tuple[StockConflict, ...]:
+def stored_conflicts(connection, project_id, stocks) -> tuple[MaterialConflict, ...]:
     ensure_table(connection)
     return conflicts(_stored(connection, project_id)[1], stocks)
 
 
 def _set_confirmed(connection, owner, project, confirmed: bool):
+    """Change confirmation under a new inventory revision, so work started
+    against the earlier revision is refused as stale when it completes."""
+    from uuid import uuid4 as _uuid4
+
     from forma_api.projects import Project
 
-    updated = Project(**{**project.model_dump(), "inventory_confirmed": confirmed})
+    updated = Project(
+        **{
+            **project.model_dump(),
+            "inventory_confirmed": confirmed,
+            "revision_id": "inventory-" + _uuid4().hex,
+        }
+    )
     connection.execute(
         "UPDATE projects SET body=? WHERE id=? AND owner=?",
         (updated.model_dump_json(), project.id, owner),
@@ -265,6 +279,7 @@ def read(store, owner: str, project_id: str) -> RecognizedItems:
             problems=problems(connection, project, items),
             conflicts=conflicts(items, project.stocks),
             inventory_confirmed=project.inventory_confirmed,
+            inventory_revision_id=project.revision_id,
         )
 
 
@@ -314,6 +329,7 @@ def save(store, owner: str, project_id: str, body: RecognizedItemsUpdate):
             problems=problems(connection, project, body.items),
             conflicts=found,
             inventory_confirmed=project.inventory_confirmed,
+            inventory_revision_id=project.revision_id,
         )
         store.remember(
             connection,
@@ -324,6 +340,32 @@ def save(store, owner: str, project_id: str, body: RecognizedItemsUpdate):
             json.loads(result.model_dump_json()),
         )
         return result
+
+
+def reconcile_existing(store) -> int:
+    """Once at startup: contradictions saved before reconciliation existed
+    withdraw confirmation like new ones. Active builds are left unchanged
+    (their inventory cannot change until the build ends); new contradictions
+    are refused during a build. Returns how many projects were held."""
+
+    from forma_api.projects import Project
+
+    held = 0
+    with store.transaction() as connection:
+        ensure_table(connection)
+        rows = connection.execute(
+            "SELECT p.owner, p.body, r.body FROM recognized_items r "
+            "JOIN projects p ON p.id = r.project_id"
+        ).fetchall()
+        for owner, project_body, items_body in rows:
+            project = Project.model_validate_json(project_body)
+            if project.active_version_id is not None or not project.inventory_confirmed:
+                continue
+            items = RecognizedInventory.model_validate_json(items_body).items
+            if conflicts(items, project.stocks):
+                reconcile_confirmation(connection, owner, project, items)
+                held += 1
+    return held
 
 
 def purge(connection, owner: str, project_id: str) -> None:

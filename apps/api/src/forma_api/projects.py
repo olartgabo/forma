@@ -233,6 +233,9 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
         raise ValueError(
             "Owner credentials must be distinct and at least 32 characters"
         )
+    from forma_api.recognized_items_runtime import reconcile_existing
+
+    reconcile_existing(store)
     # Keep only digests in the dependency closure; never expose tokens in responses.
     owners = {
         hashlib.sha256(token.encode()).digest(): owner

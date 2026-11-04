@@ -9,12 +9,12 @@ catalog (D062, `issue-177-material-catalog.md`) and the photo estimator
 A bounded live run on November 4, 2026 (Terra agents, head 7dc1744, report in
 `output/terra-live-materials/REPORT.txt`) showed:
 
-| Live test | Result |
-|---|---|
-| Synthetic corrugated cardboard | Sensible label, `items=[]` |
-| Synthetic notched sheet | Sensible label and question, `items=[]` |
-| Synthetic plastic bottle | `incomplete_output` at the 2048-token cap; finish reason not kept |
-| SAM, notched sheet | Completed with zero boxes |
+| Live test                      | Result                                                            |
+| ------------------------------ | ----------------------------------------------------------------- |
+| Synthetic corrugated cardboard | Sensible label, `items=[]`                                        |
+| Synthetic notched sheet        | Sensible label and question, `items=[]`                           |
+| Synthetic plastic bottle       | `incomplete_output` at the 2048-token cap; finish reason not kept |
+| SAM, notched sheet             | Completed with zero boxes                                         |
 
 The estimator measured the notched sheet correctly from a ground-truth box,
 but no live region ever reached it.

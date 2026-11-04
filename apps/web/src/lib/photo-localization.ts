@@ -147,6 +147,7 @@ export const localizationReceipts = receipts<PhotoLocalizationRequest>(
 export type OutlineSuggestionResult = {
   status:
     | "suggested"
+    | "reference_not_found"
     | "nothing_found"
     | "only_reference"
     | "only_cut_off"

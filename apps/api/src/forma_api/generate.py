@@ -107,9 +107,9 @@ from forma_api.proposal_service import IntakeObservation
 from forma_api.provider_diagnostics import ProviderUsage
 from forma_api.recognized_items_runtime import (
     ItemProblem,
+    MaterialConflict,
     RecognizedItems,
     RecognizedItemsUpdate,
-    StockConflict,
 )
 from forma_api.repair_runtime import (
     RepairProposeDiagnostics,
@@ -260,7 +260,7 @@ API_RECORDS = (
     OutlineSuggestion,
     OutlineSuggestionRequest,
     ItemProblem,
-    StockConflict,
+    MaterialConflict,
     RecognizedItems,
     RecognizedItemsUpdate,
     InventoryUpdate,

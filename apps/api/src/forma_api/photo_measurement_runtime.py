@@ -307,6 +307,7 @@ class OutlineSuggestion(Record):
     media_id: ID
     status: Literal[
         "suggested",
+        "reference_not_found",
         "nothing_found",
         "only_reference",
         "only_cut_off",
@@ -320,6 +321,7 @@ class OutlineSuggestion(Record):
 
 SUGGESTION_MESSAGES = {
     "suggested": "Check this suggested box. It is a guess from colour edges, not a measurement.",
+    "reference_not_found": "The reference was not found in this photo, so no outline is suggested. Mark the reference corners or draw a box around the material.",
     "nothing_found": "No region stands out from the surface. Draw a box around the material.",
     "only_reference": "Only the reference stands out. Draw a box around the material.",
     "only_cut_off": "The only regions found touch the photo edge. Step back so the whole piece is in view, or draw a box.",

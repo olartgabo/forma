@@ -335,3 +335,21 @@ test("SAM boxes for the whole photo or the reference are not materials", async (
   // Without a known reference position only the whole-photo box is dropped.
   assert.deepEqual(usableSamBoxes([ref, sheet], 800, 600).usable, [ref, sheet]);
 });
+
+test("a material beside a rotated reference is not taken for it", async () => {
+  const { usableSamBoxes } =
+    await import("../src/components/guided-intake/model.ts");
+  // Diamond-shaped card: its bounding box has empty corners.
+  const diamond = [
+    { x: 200, y: 0 },
+    { x: 400, y: 200 },
+    { x: 200, y: 400 },
+    { x: 0, y: 200 },
+  ];
+  const corner = { x1: 0, y1: 0, x2: 80, y2: 80 };
+  const onCard = { x1: 150, y1: 150, x2: 250, y2: 250 };
+  assert.deepEqual(usableSamBoxes([corner, onCard], 1000, 1000, diamond), {
+    usable: [corner],
+    rejected: 1,
+  });
+});

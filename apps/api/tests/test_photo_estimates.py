@@ -514,6 +514,7 @@ def test_unnamed_inventory_request_digests_as_before_names_existed(client):
 
 
 def test_outline_suggestion_is_local_checked_and_measurable(client, scene_png):
+    # (A missing reference fails closed; see test_estimate.)
     # The recovery offered when SAM returns no region: local, nothing saved.
     p = project(client)
     data, _ = scene_png

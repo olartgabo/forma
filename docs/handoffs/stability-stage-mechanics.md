@@ -41,11 +41,11 @@ All values are explicit SI `QuantityEstimate`s. Unknowns need measurement;
 intervals remain indeterminate. These are conditional scalar models, not material
 calibration, conservative uncertainty bounds or general structural certification.
 
-| Check | Calculation | Required scope and limits |
-| --- | --- | --- |
-| Sliding | static friction capacity = coefficient × supplied compressive reaction | Named active planar interface, supplied tangential demand and coefficient. Reaction distribution is not solved. A nonzero or unknown tangential load blocks the gravity-only tipping claim. |
-| Joint capacity | supplied scalar demand versus supplied allowable | Active stage joint, named capacity basis and matching mode. Only submitted modes are checked; no automatic internal-force, peel, moment, fatigue or interaction analysis. |
-| Deformation | end-loaded cantilever: PL³/(3EI); centrally loaded simply supported beam: PL³/(48EI) | Named prismatic linear-elastic small-deflection beam, explicit stiffness, span, load and allowable. No buckling, shear deformation, creep, material failure or cardboard anisotropy inferred. |
+| Check          | Calculation                                                                          | Required scope and limits                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sliding        | static friction capacity = coefficient × supplied compressive reaction               | Named active planar interface, supplied tangential demand and coefficient. Reaction distribution is not solved. A nonzero or unknown tangential load blocks the gravity-only tipping claim.   |
+| Joint capacity | supplied scalar demand versus supplied allowable                                     | Active stage joint, named capacity basis and matching mode. Only submitted modes are checked; no automatic internal-force, peel, moment, fatigue or interaction analysis.                     |
+| Deformation    | end-loaded cantilever: PL³/(3EI); centrally loaded simply supported beam: PL³/(48EI) | Named prismatic linear-elastic small-deflection beam, explicit stiffness, span, load and allowable. No buckling, shear deformation, creep, material failure or cardboard anisotropy inferred. |
 
 The beam implementation rejects calculated deflection at least 10% of span as
 outside its model-validity guard. That threshold is not a safe-load criterion.

@@ -106,6 +106,7 @@ def test_corrections_and_separate_instances_survive_save_and_reload(client):
         "problems": [],
         "conflicts": [],
         "inventory_confirmed": False,
+        "inventory_revision_id": p["revision_id"],
         "replayed": False,
     }
     two = [
@@ -402,3 +403,41 @@ def test_a_new_contradiction_is_refused_while_a_build_is_active(client, data_dir
     assert refused.status_code == 409, refused.text
     assert refused.json()["code"] == "blocked"
     assert confirmed(client, p) is True
+
+
+def test_withdrawal_issues_a_new_inventory_revision(client):
+    # Work started against the earlier revision is refused as stale.
+    p, cardboard, revision = linked_cardboard(client)
+    before = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()["revision_id"]
+    body = put(client, p, [bottle(cardboard)], "items-0602", revision).json()
+    after = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()["revision_id"]
+    assert after != before and body["inventory_revision_id"] == after
+    back = put(client, p, [cardboard], "items-0603", body["revision"]).json()
+    assert back["inventory_revision_id"] not in (before, after)
+
+
+def test_contradictions_saved_before_reconciliation_are_held_at_startup(
+    client, data_dir
+):
+    p, cardboard, revision = linked_cardboard(client)
+    # Simulate an earlier build: a saved contradiction, still confirmed.
+    with sqlite3.connect(data_dir / "projects.sqlite3") as connection:
+        (body,) = connection.execute(
+            "SELECT body FROM recognized_items WHERE project_id=?", (p["id"],)
+        ).fetchone()
+        stored = json.loads(body)
+        stored["items"] = [bottle(cardboard)]
+        connection.execute(
+            "UPDATE recognized_items SET body=? WHERE project_id=?",
+            (json.dumps(stored), p["id"]),
+        )
+    assert confirmed(client, p) is True
+    with TestClient(create_app(data_dir, TOKENS)) as restarted:
+        project_now = restarted.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+        assert project_now["inventory_confirmed"] is False
+        # Changing the item back restores it.
+        reread = restarted.get(
+            f"/api/projects/{p['id']}/recognized-items", headers=AUTH
+        ).json()
+        back = put(restarted, p, [cardboard], "items-0702", reread["revision"])
+        assert back.json()["inventory_confirmed"] is True

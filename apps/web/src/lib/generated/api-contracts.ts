@@ -409,6 +409,12 @@ export type ManualPanel = {
   readonly "instruction": string;
 };
 
+export type MaterialConflict = {
+  readonly "item_id": string;
+  readonly "stock_id": string;
+  readonly "message": string;
+};
+
 export type MaterialDelta = {
   readonly "stock_id": string;
   readonly "source_region_id": (string | null);
@@ -509,7 +515,7 @@ export type OutlineSuggestion = {
   readonly "project_id": string;
   readonly "revision_id": string;
   readonly "media_id": string;
-  readonly "status": "suggested" | "nothing_found" | "only_reference" | "only_cut_off" | "outline_not_confirmed" | "unsupported_shape";
+  readonly "status": "suggested" | "reference_not_found" | "nothing_found" | "only_reference" | "only_cut_off" | "outline_not_confirmed" | "unsupported_shape";
   readonly "box"?: (OutlineInput | null);
   readonly "candidates"?: number;
   readonly "message": string;
@@ -730,8 +736,9 @@ export type RecognizedItems = {
   readonly "catalog_version"?: string;
   readonly "items": ReadonlyArray<RecognizedItem>;
   readonly "problems"?: ReadonlyArray<ItemProblem>;
-  readonly "conflicts"?: ReadonlyArray<StockConflict>;
+  readonly "conflicts"?: ReadonlyArray<MaterialConflict>;
   readonly "inventory_confirmed"?: (boolean | null);
+  readonly "inventory_revision_id"?: (string | null);
   readonly "replayed"?: boolean;
 };
 
@@ -1042,12 +1049,6 @@ export type StageAnalysisResponse = {
   readonly "last_event_id": (string | null);
   readonly "analysis": StageAnalysisResult;
   readonly "hypothetical"?: boolean;
-};
-
-export type StockConflict = {
-  readonly "item_id": string;
-  readonly "stock_id": string;
-  readonly "message": string;
 };
 
 export type SynthesisMuseRequest = {

@@ -407,24 +407,65 @@ export function usableSamBoxes<T extends Box>(
 ): { usable: T[]; rejected: number } {
   const area = (b: Box) =>
     Math.max(0, b.x2 - b.x1 + 1) * Math.max(0, b.y2 - b.y1 + 1);
-  const ref: Box | null = referenceCorners.length
-    ? {
-        x1: Math.min(...referenceCorners.map((p) => p.x)),
-        y1: Math.min(...referenceCorners.map((p) => p.y)),
-        x2: Math.max(...referenceCorners.map((p) => p.x)),
-        y2: Math.max(...referenceCorners.map((p) => p.y)),
-      }
-    : null;
+  const hull = convexHull(referenceCorners);
   const usable = boxes.filter((b) => {
     if (area(b) >= WHOLE_PHOTO * width * height) return false;
-    if (!ref) return true;
-    const overlap = area({
-      x1: Math.max(b.x1, ref.x1),
-      y1: Math.max(b.y1, ref.y1),
-      x2: Math.min(b.x2, ref.x2),
-      y2: Math.min(b.y2, ref.y2),
-    });
-    return overlap <= 0.5 * area(b);
+    if (hull.length < 3) return true;
+    return clippedArea(hull, b) <= 0.5 * area(b);
   });
   return { usable, rejected: boxes.length - usable.length };
+}
+
+function convexHull(points: readonly Point[]): Point[] {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (sorted.length < 3) return sorted;
+  const cross = (o: Point, a: Point, b: Point) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const half = (list: Point[]) => {
+    const out: Point[] = [];
+    for (const p of list) {
+      while (
+        out.length >= 2 &&
+        cross(out[out.length - 2], out[out.length - 1], p) <= 0
+      )
+        out.pop();
+      out.push(p);
+    }
+    out.pop();
+    return out;
+  };
+  return [...half(sorted), ...half([...sorted].reverse())];
+}
+
+/** Area of a convex polygon clipped to a box (Sutherland-Hodgman). */
+function clippedArea(polygon: readonly Point[], box: Box): number {
+  let out = [...polygon];
+  const edges: [(p: Point) => boolean, (a: Point, b: Point) => Point][] = [
+    [(p) => p.x >= box.x1, (a, b) => at(a, b, (box.x1 - a.x) / (b.x - a.x))],
+    [(p) => p.x <= box.x2, (a, b) => at(a, b, (box.x2 - a.x) / (b.x - a.x))],
+    [(p) => p.y >= box.y1, (a, b) => at(a, b, (box.y1 - a.y) / (b.y - a.y))],
+    [(p) => p.y <= box.y2, (a, b) => at(a, b, (box.y2 - a.y) / (b.y - a.y))],
+  ];
+  for (const [inside, cut] of edges) {
+    const input = out;
+    out = [];
+    input.forEach((current, i) => {
+      const previous = input[(i + input.length - 1) % input.length];
+      if (inside(current)) {
+        if (!inside(previous)) out.push(cut(previous, current));
+        out.push(current);
+      } else if (inside(previous)) out.push(cut(previous, current));
+    });
+    if (!out.length) return 0;
+  }
+  let twice = 0;
+  out.forEach((p, i) => {
+    const q = out[(i + 1) % out.length];
+    twice += p.x * q.y - q.x * p.y;
+  });
+  return Math.abs(twice) / 2;
+}
+
+function at(a: Point, b: Point, t: number): Point {
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }

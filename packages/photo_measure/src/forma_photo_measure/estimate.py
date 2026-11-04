@@ -577,7 +577,7 @@ def estimate(image: np.ndarray, data: EstimateInput) -> PhotoEstimate:
     if outline.problem:
         builder.note(outline.problem, "blocking", REQUESTS[outline.problem])
         return builder.result("needs_better_photo", REQUESTS[outline.problem])
-    material = Polygon(outline.outer).buffer(0)
+    material = Polygon(outline.outer, list(outline.holes)).buffer(0)
     reference_area = shapely.MultiPoint(np.vstack(corners)).convex_hull
     if (
         material.area > 0

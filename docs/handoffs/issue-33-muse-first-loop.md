@@ -36,7 +36,6 @@ Final publication uses ordinary fast-forward pushes to the existing draft PR.
 Remaining legacy queue/accounting/worktree cleanup work stays disabled; the active
 supervised path does not depend on those functions. No force push or main merge.
 
-
 The first Ubuntu CI run passed all 305 Python tests and found a test-fixture
 portability error: Git cannot stage a child through a Linux symlink. Muse changed
 only the fixture to stage the link parent and explicitly allow both platform

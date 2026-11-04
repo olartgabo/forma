@@ -657,12 +657,22 @@ def test_only_the_reference_is_never_suggested():
 def test_material_cut_off_at_the_edge_is_not_suggested():
     from forma_photo_measure.suggest import suggest_region
 
+    far = np.array([(700.0, 40.0), (760.0, 40.0), (760.0, 80.0), (700.0, 80.0)])
     image = np.full((600, 800, 3), 200, np.uint8)
     cv2.rectangle(image, (0, 200), (300, 400), (40, 90, 150), -1)
-    found = suggest_region(image, np.zeros((0, 2)))
+    found = suggest_region(image, far)
     assert (found.reason, found.box) == ("only_cut_off", None)
-    blank = suggest_region(np.full((600, 800, 3), 200, np.uint8), np.zeros((0, 2)))
+    blank = suggest_region(np.full((600, 800, 3), 200, np.uint8), far)
     assert (blank.reason, blank.box) == ("nothing_found", None)
+
+
+def test_no_suggestion_when_the_reference_cannot_be_located():
+    # An unlocated card could itself be the most distinct region.
+    from forma_photo_measure.suggest import suggest_region
+
+    image, _, _ = scene()
+    found = suggest_region(image, np.zeros((0, 2)))
+    assert (found.reason, found.box) == ("reference_not_found", None)
 
 
 def test_a_box_around_the_reference_is_refused_as_material():
@@ -685,3 +695,21 @@ def test_a_box_around_the_reference_is_refused_as_material():
     )
     assert result.outcome == "needs_better_photo"
     assert not result.dimensions
+
+
+def test_a_frame_around_the_reference_is_still_material():
+    # The card sits in the frame's opening: the hole is not material.
+    frame = rect_mm(5, 5, 200, 140)
+    opening = rect_mm(15, 15, 175, 120)
+    image, h, _ = scene(outer=frame, holes=[opening], tilt=0, yaw=0)
+    from forma_photo_measure.detect import detect_markers
+
+    assert detect_markers(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
+    corners = project(h, frame)
+    outline = OutlineInput(
+        source="user_polygon",
+        polygon_px=points(corners),
+        holes_px=(points(project(h, opening)),),
+    )
+    result = estimate(image, make_input(image, outline))
+    assert "outline_is_reference" not in [d.code for d in result.diagnostics]
