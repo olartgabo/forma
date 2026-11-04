@@ -860,3 +860,6 @@ has one checked option or no measured difference to compare.
 The design comparison shows the cited claim alongside the suggested option.
 Optional research leaves current stock choices available if the provider fails.
 A stale inventory or unsupported essential requirement clears those choices.
+When the engine identifies a missing measurement, the research result opens
+the existing measurement form and fetches a decision for the current inventory.
+The builder still has to enter and confirm the measured value before saving.

@@ -592,6 +592,114 @@ try {
       `PASS ${width}px research consent, provider fallback, stale and unsupported clearance, late result discarded, exact replay and cited candidate review; existing search, probe, comparison, selection recovery and separate approval; SYNTHETIC responses only`,
     );
     await page.context().close();
+
+    const missing = fixture.unmeasured;
+    const measurementPage = await browser.newPage({
+      viewport: { width, height: 900 },
+      serviceWorkers: "block",
+    });
+    measurementPage.setDefaultTimeout(8000);
+    const measurementPosts = [];
+    const unexpectedMeasurementRequests = [];
+    let staleMeasurement = false;
+    await measurementPage.route("**/*", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== origin.origin) {
+        unexpectedMeasurementRequests.push(url.origin);
+        return route.abort();
+      }
+      if (!url.pathname.startsWith("/api/")) return route.continue();
+      if (request.method() === "POST") {
+        const body = request.postDataJSON();
+        measurementPosts.push([url.pathname, body]);
+        if (url.pathname === `${base}/synthesis/research`) {
+          assert.equal(
+            body.expected_inventory_revision_id,
+            missing.project.revision_id,
+          );
+          return route.fulfill({ json: missing.research });
+        }
+        if (url.pathname === `${base}/measurement-decisions`) {
+          if (staleMeasurement)
+            return route.fulfill({
+              status: 409,
+              json: { code: "stale_version" },
+            });
+          return route.fulfill({ json: missing.decision });
+        }
+      }
+      const responses = new Map([
+        ["/api/provider/status", { configured: true }],
+        ["/api/projects", { projects: [], next_cursor: null }],
+        [base, missing.project],
+        [`${base}/media`, { media: [] }],
+        [`${base}/plans`, fixture.plans_before],
+        [`${base}/synthesis/research`, { enabled: true }],
+      ]);
+      if (request.method() === "GET" && responses.has(url.pathname))
+        return route.fulfill({ json: responses.get(url.pathname) });
+      if (request.method() !== "GET")
+        unexpectedMeasurementRequests.push(
+          `${request.method()} ${url.pathname}`,
+        );
+      return route.fulfill({ status: 503, json: { code: "unavailable" } });
+    });
+    const missingPanel = await open(measurementPage);
+    await missingPanel
+      .getByLabel("Share this brief and option comparisons with MetaMuse")
+      .check();
+    await missingPanel
+      .getByRole("button", { name: "Research and check ideas" })
+      .click();
+    await missingPanel
+      .getByText(missing.research.question, { exact: true })
+      .waitFor();
+    await missingPanel
+      .getByRole("button", { name: "Open measurement controls" })
+      .click();
+    const controls = measurementPage.getByRole("region", {
+      name: "The measurement that matters next",
+    });
+    await controls
+      .getByText(missing.decision.question.target.label, { exact: true })
+      .waitFor();
+    assert.equal(
+      await controls.evaluate((element) => element === document.activeElement),
+      true,
+    );
+    const input = controls.getByLabel("Measured value (mm)");
+    assert.equal(await input.inputValue(), "");
+    const saveMeasurement = controls.getByRole("button", {
+      name: "Save measurement",
+    });
+    assert.equal(await saveMeasurement.isDisabled(), true);
+    await input.fill("200");
+    assert.equal(await saveMeasurement.isDisabled(), true);
+    await controls
+      .getByLabel("I measured this myself; it is not a photo estimate")
+      .check();
+    assert.equal(await saveMeasurement.isEnabled(), true);
+    assert.deepEqual(
+      measurementPosts.map(([path]) => path),
+      [`${base}/synthesis/research`, `${base}/measurement-decisions`],
+    );
+    assert.deepEqual(measurementPosts[1][1], {
+      expected_inventory_revision_id: missing.project.revision_id,
+      expected_active_version_id: null,
+    });
+    staleMeasurement = true;
+    await missingPanel
+      .getByRole("button", { name: "Open measurement controls" })
+      .click();
+    await controls.getByRole("alert").waitFor();
+    assert.equal(await saveMeasurement.count(), 0);
+    assert.equal(measurementPosts.length, 3);
+    assert.deepEqual(unexpectedMeasurementRequests, []);
+    console.log(
+      `PASS ${width}px missing research input opens current measurement controls without saving`,
+    );
+    await measurementPage.context().close();
   }
 } finally {
   await browser.close();

@@ -169,12 +169,14 @@ export default function DesignCandidates({
   context,
   disabled,
   museEnabled,
+  onMeasure,
   onSelected,
 }: {
   token: string;
   context: SearchContext;
   disabled: boolean;
   museEnabled: boolean;
+  onMeasure: () => void;
   onSelected: (versionId: string) => void;
 }) {
   const [result, setResult] = useState<Search | null>(null);
@@ -471,6 +473,7 @@ export default function DesignCandidates({
           }
         }}
         onStockSearchBlocked={setStockSearchBlocked}
+        onMeasure={onMeasure}
         onReview={reviewResearch}
       />
       <div aria-live="polite">

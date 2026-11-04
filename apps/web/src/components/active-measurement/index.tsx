@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  type Ref,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import type {
   InventoryUpdate,
   Project,
@@ -39,12 +45,18 @@ function message(error: unknown) {
   return error instanceof Error ? error.message : "The request failed.";
 }
 
+export type ActiveMeasurementControls = {
+  open: () => void;
+};
+
 export default function ActiveMeasurement({
+  ref,
   token,
   project,
   disabled,
   onSaved,
 }: {
+  ref?: Ref<ActiveMeasurementControls>;
   token: string;
   project: Project;
   disabled: boolean;
@@ -74,6 +86,7 @@ export default function ActiveMeasurement({
     {},
   );
   const controller = useRef<AbortController | null>(null);
+  const section = useRef<HTMLElement | null>(null);
   const api = measurementApi(token, project.id);
   const identity = {
     expected_inventory_revision_id: project.revision_id,
@@ -158,14 +171,42 @@ export default function ActiveMeasurement({
   }
 
   async function decide() {
+    const pending = run((signal) => api.decide(identity, signal));
+    const request = controller.current;
     try {
-      const next = await run((signal) => api.decide(identity, signal));
+      const next = await pending;
+      if (request?.signal.aborted) return;
+      if (
+        next.identity.inventory_revision_id !==
+          identity.expected_inventory_revision_id ||
+        (next.identity.active_version_id ?? null) !==
+          identity.expected_active_version_id
+      ) {
+        throw new MeasurementRequestError(
+          "Your materials or plan changed. Find the measurement again.",
+          false,
+          true,
+        );
+      }
       setChange(null);
       await show(next);
     } catch (failure) {
+      if (request?.signal.aborted) return;
+      if (failure instanceof MeasurementRequestError && failure.stale) {
+        setDecision(null);
+        setChange(null);
+        setAnswer({ questionId: "", value: "", measured: false });
+      }
       setError(message(failure));
     }
   }
+
+  useImperativeHandle(ref, () => ({
+    open() {
+      section.current?.focus();
+      if (!disabled && !busy) void decide();
+    },
+  }));
 
   async function sendAnswer(
     body: InventoryUpdate,
@@ -319,6 +360,8 @@ export default function ActiveMeasurement({
 
   return (
     <section
+      ref={section}
+      tabIndex={-1}
       className="active-measurement"
       aria-labelledby="active-measurement-title"
     >

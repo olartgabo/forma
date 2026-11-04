@@ -38,6 +38,7 @@ const copy = {
     start: "Research and check ideas",
     retry: "Retry the same research request",
     review: "Review checked designs",
+    measure: "Open measurement controls",
     stop: "Stop waiting",
     sources: "Web references",
     working: "Researching ideas and checking saved stock…",
@@ -85,6 +86,7 @@ const copy = {
     start: "Buscar y comprobar ideas",
     retry: "Reintentar la misma solicitud",
     review: "Revisar diseños comprobados",
+    measure: "Abrir controles de medición",
     stop: "Dejar de esperar",
     sources: "Referencias web",
     working: "Buscando ideas y comprobando los materiales guardados…",
@@ -123,6 +125,7 @@ export default function ResearchPanel({
   disabled,
   onInvalidate,
   onStockSearchBlocked,
+  onMeasure,
   onReview,
 }: {
   token: string;
@@ -130,6 +133,7 @@ export default function ResearchPanel({
   disabled: boolean;
   onInvalidate: (scope: "recommendation" | "search") => void;
   onStockSearchBlocked: (blocked: boolean) => void;
+  onMeasure: () => void;
   onReview: (search: Search, recommendation: ResearchAdvice | null) => void;
 }) {
   const { locale } = useMuseLanguage();
@@ -420,7 +424,21 @@ export default function ResearchPanel({
             <strong>{labels.decision[result.decision]}</strong>
           </p>
           <p>{result.reason}</p>
-          {result.question && <p>{result.question}</p>}
+          {result.question && (
+            <>
+              <p>{result.question}</p>
+              {result.decision === "needs_input" && (
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={disabled}
+                  onClick={onMeasure}
+                >
+                  {labels.measure}
+                </button>
+              )}
+            </>
+          )}
           {result.findings.length > 0 && (
             <>
               <h4>{labels.sources}</h4>

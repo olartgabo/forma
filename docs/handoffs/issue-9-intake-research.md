@@ -20,6 +20,9 @@ checks enter research. Missing inputs use the existing measurement decision
 service when it can identify a question. A hard stock failure, unsupported
 requirement or exhausted search has its own result. A search budget limit leaves
 feasibility unresolved.
+The missing-input result links directly to the workbench measurement controls.
+Opening them fetches the current deterministic decision and focuses the form.
+A stale decision clears the old form. Opening it saves nothing.
 
 For eligible inputs, a Muse Spark scout looks for cited comparable projects.
 A separate analyst reads the public brief and static stand catalog to flag a
@@ -88,9 +91,28 @@ abstains, cites an unavailable source, or chooses the wrong depth direction.
 An older receipt replays its sources and checked candidates without the
 unattributed recommendation or another dispatch.
 
+Run the three-arm replay with
+`uv run --locked pytest -q -s apps/api/tests/test_intake_research_evaluation.py`.
+It compares ordinary stock search, the real scout with adjudication omitted,
+and the full route on the same inventory and brief. Report explicit useful
+recommendations, correct abstentions, local API wall time and role call counts.
+An independent fixture label checks whether the selected citation actually
+supports the suggested tradeoff. A valid URL and a true dimensional comparison
+can still produce poor advice. The stock search cannot represent essential
+plug clearance, so the comparison records that gap separately.
+
 The live verification window is expired. An authorized probe still needs to
 confirm provider availability, retention behavior, citation shape and actual
 usage on the deployment account. Compare the same confirmed briefs with ordinary
 intake, search only, and full research before claiming an improvement. The paired
 comparison must hold findings and engine results fixed to isolate adjudication.
+Use provider-reported usage and billed cost where available, and have builders
+choose an option or abstain against the same task criteria without seeing the
+mode labels. Local replay time and call counts are software measurements.
 Keep live, deterministic and physical outcomes separate.
+
+The next candidate in the spec is a passive desk cable organizer. It needs its
+own checked topology, measured stock and cable dimensions, reviewed cutting and
+joint limits, canonical SVG and a recorded fit and retention test. The current
+compiler covers the triangular tape stand. Phone and reading stands use that
+same topology.
