@@ -2,8 +2,9 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 
+from forma_api import stability_reports as reports
 from forma_api import stability_runtime as runtime
 from forma_api.plans import PlanService
 from forma_api.progress import snapshot
@@ -62,62 +63,103 @@ def stability_router(store: ProjectStore, authenticate, resolver=None) -> APIRou
     ):
         response.headers["Cache-Control"] = "no-store"
         with store.transaction() as connection:
-            project = store.read(connection, owner, project_id)
-            version = PlanService(store).read(
-                connection, project_id, body.plan_version_id
+            authorized = reports.authorized_snapshot(
+                connection, store, owner, project_id, body
             )
-            if project.revision_id != body.expected_inventory_revision_id:
-                raise ProjectError(409, "stale_version", "Inventory changed; reload it")
-            if project.active_version_id != body.plan_version_id:
-                raise ProjectError(
-                    409, "stale_version", "Active plan changed; reload it"
-                )
-            current = snapshot(connection, version.plan)
-            events = tuple(
-                PhysicalEvent.model_validate_json(row[0])
-                for row in connection.execute(
-                    "SELECT body FROM progress_events WHERE project_id=? ORDER BY rowid",
-                    (project_id,),
-                )
+            return reports.evaluate(authorized, resolver).response
+
+    @router.post(
+        "/{project_id}/stability/reports",
+        response_model=reports.StabilityReportSaveResponse,
+    )
+    def save_report(
+        project_id: ID,
+        body: reports.StabilityReportSaveRequest,
+        owner: Owner,
+        response: Response,
+    ):
+        """Calculate on the authorized snapshot and save the immutable report."""
+        response.headers["Cache-Control"] = "no-store"
+        scope = project_id + ":stability-reports"
+        with store.transaction() as connection:
+            store.read(connection, owner, project_id)
+            hashed, replay = store.replay(
+                connection,
+                owner,
+                scope,
+                body.idempotency_key,
+                body.model_dump(mode="json"),
             )
-            evidence = tuple(
-                Evidence.model_validate_json(row[0])
-                for row in connection.execute(
-                    "SELECT body FROM progress_evidence WHERE project_id=? ORDER BY rowid",
-                    (project_id,),
+            if replay is not None:
+                return reports.refresh_replay(
+                    connection,
+                    store,
+                    owner,
+                    project_id,
+                    reports.StabilityReportSaveResponse.model_validate(replay),
                 )
+            authorized = reports.authorized_snapshot(
+                connection, store, owner, project_id, body
             )
-            invalidations = tuple(
-                EvidenceInvalidation.model_validate_json(row[0])
-                for row in connection.execute(
-                    "SELECT body FROM evidence_invalidations WHERE project_id=? ORDER BY rowid",
-                    (project_id,),
-                )
+            evaluation = reports.evaluate(authorized, resolver)
+            record = reports.build_record(evaluation, "builder")
+            saved, cached = None, False
+            if record is not None:
+                record, cached = reports.store_record(connection, record)
+                saved = reports.ProjectState(
+                    connection, store, owner, project_id
+                ).summary(record)
+            result = reports.StabilityReportSaveResponse(
+                analysis=evaluation.response, saved=saved, cached=cached
             )
-            cursor = events[-1].id if events else None
-            if cursor != body.expected_last_event_id:
-                raise ProjectError(
-                    409, "stale_version", "Physical history changed; reload it"
-                )
-            authorized = runtime.StabilitySnapshot(
-                project,
-                version,
-                current,
-                cursor,
-                events,
-                evidence,
-                invalidations,
-                latest_record(connection, project_id, version.version_id),
-                typed_evidence_ids(connection, project_id, version.version_id),
+            store.remember(
+                connection,
+                owner,
+                scope,
+                body.idempotency_key,
+                hashed,
+                result.model_dump(mode="json"),
             )
-            try:
-                return runtime.analyze(authorized, resolver)
-            except ValueError:
-                raise ProjectError(
-                    422,
-                    "validation_error",
-                    "Server stability context does not match the authorized snapshot",
-                ) from None
+            return result
+
+    @router.get(
+        "/{project_id}/stability/reports",
+        response_model=reports.StabilityReportHistory,
+    )
+    def report_history(
+        project_id: ID,
+        owner: Owner,
+        response: Response,
+        plan_version_id: ID | None = None,
+        limit: Annotated[int, Query(ge=1, le=reports.HISTORY_LIMIT)] = (
+            reports.HISTORY_LIMIT
+        ),
+    ):
+        response.headers["Cache-Control"] = "no-store"
+        with store.transaction() as connection:
+            return reports.history(
+                connection, store, owner, project_id, plan_version_id, limit
+            )
+
+    @router.get(
+        "/{project_id}/stability/reports/{report_id}",
+        response_model=reports.StabilityReportDetail,
+    )
+    def report_detail(project_id: ID, report_id: ID, owner: Owner, response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        with store.transaction() as connection:
+            return reports.detail(connection, store, owner, project_id, report_id)
+
+    @router.get(
+        "/{project_id}/stability/report-comparison",
+        response_model=reports.StabilityReportComparison,
+    )
+    def report_comparison(
+        project_id: ID, first: ID, second: ID, owner: Owner, response: Response
+    ):
+        response.headers["Cache-Control"] = "no-store"
+        with store.transaction() as connection:
+            return reports.compare(connection, store, owner, project_id, first, second)
 
     @router.post(
         "/{project_id}/stability/measurements",

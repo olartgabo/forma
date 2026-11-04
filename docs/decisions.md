@@ -717,3 +717,14 @@ excluded. The two-candidate limit and fabrication authority remain unchanged.
 
 The shared wordmark uses the supplied vector artwork and retains the existing
 header and loader colors. The browser icon uses the supplied logo in site blue.
+
+## D053: Saved stability reports and read-only MetaMuse stability tools, November 3, 2026
+
+Stability calculations can be saved as immutable reports keyed by the engine
+cache hash. History shows each report as current or stale with named reasons;
+stale reports remain readable. Two reports compare only check by check, and only
+under the same policy, cases and engine versions. MetaMuse gets two allowlisted
+read-only tools, `analyze_stability` and `explain_stability_inputs`. Their
+arguments select server-authorized identities and cases only. A report is
+modeled evidence of nothing physical, and MetaMuse cannot add measurements,
+confirm inputs or approve plans.
