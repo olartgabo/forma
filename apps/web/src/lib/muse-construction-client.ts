@@ -1,6 +1,7 @@
 import type {
   MuseConstructionRequest,
   MuseConstructionResult,
+  MuseConstructionReceipts,
 } from "./generated/api-contracts";
 // prettier-ignore
 // @ts-expect-error -- Node tests import TypeScript directly.
@@ -129,4 +130,86 @@ export async function proposeConstruction(
     );
   }
   return result;
+}
+
+// Receipt inspection is read-only and never resumes provider work.
+export async function constructionReceipts(
+  token: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<MuseConstructionReceipts> {
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  signal?.addEventListener("abort", cancel, { once: true });
+  const timeout = setTimeout(cancel, 15_000);
+  try {
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/construction/receipts`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+        credentials: "omit",
+        redirect: "error",
+        signal: controller.signal,
+      },
+    );
+    if (!response.ok) throw new Error();
+    const value: unknown = await response.json();
+    const codes = new Set([
+      "timeout",
+      "network_error",
+      "budget_exhausted",
+      "server_error",
+      "result_not_confirmed",
+      "stale_version",
+      "blocked",
+      "not_found",
+      "generation_outcome_unknown",
+    ]);
+    if (
+      !value ||
+      typeof value !== "object" ||
+      !("receipts" in value) ||
+      !Array.isArray(value.receipts) ||
+      value.receipts.length > 16
+    )
+      throw new Error();
+    const receipts = value.receipts.map((receipt: unknown) => {
+      if (
+        !receipt ||
+        typeof receipt !== "object" ||
+        !("idempotency_key" in receipt) ||
+        typeof receipt.idempotency_key !== "string" ||
+        receipt.idempotency_key.length < 8 ||
+        receipt.idempotency_key.length > 128 ||
+        !("digest" in receipt) ||
+        typeof receipt.digest !== "string" ||
+        !/^[a-f0-9]{64}$/.test(receipt.digest) ||
+        !("state" in receipt) ||
+        !["pending", "unknown", "completed"].includes(String(receipt.state))
+      )
+        throw new Error();
+      const code = "error_code" in receipt ? receipt.error_code : null;
+      if (code !== null && (typeof code !== "string" || !codes.has(code)))
+        throw new Error();
+      return {
+        idempotency_key: receipt.idempotency_key,
+        digest: receipt.digest,
+        state: receipt.state,
+        error_code: code,
+      };
+    });
+    return { receipts } as MuseConstructionReceipts;
+  } catch {
+    throw new ApiError(
+      0,
+      "receipt_status_unavailable",
+      "Request status could not be confirmed. Generation is blocked; check request status again.",
+    );
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", cancel);
+  }
 }

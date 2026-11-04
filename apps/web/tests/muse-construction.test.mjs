@@ -84,6 +84,7 @@ test("step names and piece presence follow engine identities without implying co
 });
 import {
   proposeConstruction,
+  constructionReceipts,
   uncertainConstructionOutcome,
 } from "../src/lib/muse-construction-client.ts";
 
@@ -465,4 +466,68 @@ test("only definitive server rejections permit explicit start-over; invalid loca
     "provider_error",
   ])
     assert.equal(constructionRequestCanRestart(code), false);
+});
+
+test("receipt inspection is authenticated GET only and returns bounded safe fields", async (t) => {
+  const receipt = {
+    idempotency_key: "original-key",
+    digest: "a".repeat(64),
+    state: "unknown",
+    error_code: "timeout",
+  };
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    calls++;
+    assert.equal(url, "/api/projects/project-one/construction/receipts");
+    assert.equal(init.method, "GET");
+    assert.equal(init.body, undefined);
+    assert.equal(init.headers.Authorization, "Bearer owner");
+    assert.equal(init.cache, "no-store");
+    assert.equal(init.credentials, "omit");
+    assert.equal(init.redirect, "error");
+    return new Response(
+      JSON.stringify({
+        receipts: [{ ...receipt, raw: "SECRET" }],
+        raw: "SECRET",
+      }),
+    );
+  });
+  assert.deepEqual(await constructionReceipts("owner", "project-one"), {
+    receipts: [receipt],
+  });
+  assert.equal(calls, 1);
+});
+
+test("receipt inspection fails closed without exposing bodies or retrying", async (t) => {
+  const receipt = {
+    idempotency_key: "original-key",
+    digest: "a".repeat(64),
+    state: "unknown",
+  };
+  for (const value of [
+    { receipts: [{ ...receipt, error_code: "SECRET" }] },
+    { receipts: [{ ...receipt, digest: "SECRET" }] },
+    { receipts: Array(17).fill(receipt) },
+    { receipts: null },
+  ]) {
+    let calls = 0;
+    t.mock.method(globalThis, "fetch", async () => {
+      calls++;
+      return new Response(JSON.stringify(value));
+    });
+    await assert.rejects(
+      constructionReceipts("owner", "project-one"),
+      (error) =>
+        error.code === "receipt_status_unavailable" &&
+        !error.message.includes("SECRET"),
+    );
+    assert.equal(calls, 1);
+    t.mock.restoreAll();
+  }
+  t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("SECRET");
+  });
+  await assert.rejects(constructionReceipts("owner", "project-one"), {
+    code: "receipt_status_unavailable",
+  });
 });

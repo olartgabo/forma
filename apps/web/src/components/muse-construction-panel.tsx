@@ -6,11 +6,16 @@ import type {
   Project,
   MuseConstructionResult,
   MuseConstructionCandidateResult,
+  MuseConstructionReceipts,
 } from "../lib/generated/api-contracts";
 import type { ConstructionPlan, Point3 } from "../lib/generated/contracts";
 import type { MuseAvailability } from "../lib/muse-provider";
 import { ApiError } from "../lib/api";
-import { proposeConstruction } from "../lib/muse-construction-client";
+import {
+  proposeConstruction,
+  constructionReceipts,
+  uncertainConstructionOutcome,
+} from "../lib/muse-construction-client";
 import {
   pendingConstruction,
   retainConstruction,
@@ -547,6 +552,56 @@ function ConstructionPanel({
   const [pending, setPending] = useState<PendingConstruction | null>(null);
   const [recoveryContext, setRecoveryContext] = useState<string | null>(null);
   const [storageBlocked, setStorageBlocked] = useState(false);
+  const [serverReceipts, setServerReceipts] =
+    useState<MuseConstructionReceipts | null>(null);
+  const [checkingStatus, setCheckingStatus] = useState(true);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [uncertainDispatch, setUncertainDispatch] = useState(false);
+  const statusEpoch = useRef(0);
+  const statusController = useRef<AbortController | null>(null);
+  const unresolvedReceipts =
+    serverReceipts?.receipts.filter(
+      (receipt) => receipt.state !== "completed",
+    ) ?? [];
+  async function checkStatus() {
+    const current = ++statusEpoch.current;
+    statusController.current?.abort();
+    const abort = new AbortController();
+    statusController.current = abort;
+    setCheckingStatus(true);
+    setStatusError(null);
+    try {
+      const value = await constructionReceipts(token, project.id, abort.signal);
+      if (current !== statusEpoch.current || abort.signal.aborted) return;
+      setServerReceipts(value);
+      if (
+        pending &&
+        value.receipts.some(
+          (receipt) =>
+            receipt.idempotency_key === pending.payload.idempotency_key &&
+            receipt.state === "completed",
+        )
+      )
+        setUncertainDispatch(false);
+    } catch {
+      if (current !== statusEpoch.current || abort.signal.aborted) return;
+      setServerReceipts(null);
+      setStatusError(
+        "Request status could not be confirmed. Generation is blocked; check request status again.",
+      );
+    } finally {
+      if (current === statusEpoch.current && !abort.signal.aborted)
+        setCheckingStatus(false);
+    }
+  }
+  useEffect(() => {
+    void checkStatus();
+    return () => {
+      statusEpoch.current++;
+      statusController.current?.abort();
+    };
+  }, [token, project.id]);
+
   const controller = useRef<AbortController | null>(null);
   const epoch = useRef(0);
   const photosKey = photos
@@ -625,6 +680,10 @@ function ConstructionPanel({
     );
   }
   const unavailable =
+    checkingStatus ||
+    serverReceipts === null ||
+    unresolvedReceipts.length > 0 ||
+    uncertainDispatch ||
     disabled ||
     inventoryStale ||
     !!project.active_version_id ||
@@ -711,6 +770,10 @@ function ConstructionPanel({
               "The outcome is unknown. Check the original request before starting another.",
             );
       setError(apiError);
+      if (uncertainConstructionOutcome(apiError.code)) {
+        setUncertainDispatch(true);
+        void checkStatus();
+      }
     } finally {
       if (current === epoch.current) {
         controller.current = null;
@@ -744,6 +807,7 @@ function ConstructionPanel({
     }
   }
   function cancel() {
+    setUncertainDispatch(true);
     epoch.current++;
     controller.current?.abort();
     setBusy(false);
@@ -916,6 +980,40 @@ function ConstructionPanel({
           reconcile this request.
         </p>
       )}
+      <section
+        aria-label="Saved construction request status"
+        aria-live="polite"
+      >
+        {checkingStatus && <p>Checking saved request status�</p>}
+        {statusError && <p role="alert">{statusError}</p>}
+        {(unresolvedReceipts.length > 0 || uncertainDispatch) && (
+          <p className="notice">
+            A prior construction request is pending or its provider outcome is
+            unknown. New generation is blocked until the original outcome is
+            reconciled. Checking status reads saved receipts only; it cannot
+            recover a missing provider result or resume provider work.
+          </p>
+        )}
+        {unresolvedReceipts.map((receipt) => (
+          <div key={receipt.digest} style={{ overflowWrap: "anywhere" }}>
+            <p>
+              Stored request state: {receipt.state}. Stored cause:{" "}
+              {receipt.error_code ?? "not recorded"}.
+            </p>
+            <details>
+              <summary>Original request identity</summary>
+              <p>Request digest: {receipt.digest}</p>
+            </details>
+          </div>
+        ))}
+        <button
+          type="button"
+          disabled={checkingStatus || busy}
+          onClick={() => void checkStatus()}
+        >
+          Check request status
+        </button>
+      </section>
       <div className="muse-actions">
         <button
           type="button"

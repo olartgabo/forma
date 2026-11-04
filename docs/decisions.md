@@ -1054,3 +1054,19 @@ Live MetaMuse runs on synthetic images (head 7dc1744) returned useful text label
 Synthetic results do not establish real-photo accuracy or 48-category recognition coverage.
 
 The D073 construction preview remains available as hypothetical geometry when material confirmation is missing. A held material cannot gain fabrication approval from that preview; active-build action gates and physical evidence requirements remain in force.
+
+## D074 - Gate construction generation on server receipts (November 4, 2026)
+
+Read the authenticated, owner-scoped construction receipt list before enabling
+new generation, including in a fresh browser without a local pending request.
+Pending or unknown server receipts block dispatch and show only the safe stored
+cause and original request digest. Failed, malformed or unavailable status reads
+keep generation blocked; stale reads are discarded when authorization or project
+changes. Preserve any browser-local original request payload and identity.
+
+The explicit Check request status action performs a read-only GET without provider
+consent, a new request key or a proposal POST. It does not resume provider work,
+recover a missing result or reconcile an unknown outcome by itself. Existing
+successful proposal diagrams remain reviewable, and a confirmed completed receipt
+can permit a separately consented action. Offline intercepted browser regressions
+are software checks, not live provider recovery or physical build evidence.
