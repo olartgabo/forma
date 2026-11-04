@@ -511,3 +511,39 @@ def test_unnamed_inventory_request_digests_as_before_names_existed(client):
     assert first.status_code == retry.status_code == 200
     assert retry.json()["replayed"] is True
     assert "name" not in retry.json()["project"]["stocks"][0]
+
+
+def test_outline_suggestion_is_local_checked_and_measurable(client, scene_png):
+    # (A missing reference fails closed; see test_estimate.)
+    # The recovery offered when SAM returns no region: local, nothing saved.
+    p = project(client)
+    data, _ = scene_png
+    photo = upload(client, p, data, "upload-0901")
+    request = {
+        "media_id": photo["id"],
+        "expected_revision_id": p["revision_id"],
+        "stock_kind": "sheet",
+        "reference": body(p, photo, box_around(camera()[1], SHEET))["reference"],
+    }
+    url = f"/api/projects/{p['id']}/photo-outline-suggestions"
+    found = client.post(url, json=request, headers=AUTH)
+    assert found.status_code == 200, found.text
+    suggestion = found.json()
+    assert suggestion["status"] == "suggested"
+    assert suggestion["box"]["source"] == "outline_suggestion"
+    assert "not a measurement" in suggestion["message"]
+    assert found.headers["cache-control"] == "no-store"
+    # The suggested box goes through the normal estimator checks.
+    outline = {k: v for k, v in suggestion["box"].items() if v not in (None, [])}
+    payload = {**body(p, photo, box_around(camera()[1], SHEET)), "outline": outline}
+    measured = estimate(client, p, payload)
+    assert measured.status_code == 200, measured.text
+    assert measured.json()["estimate"]["outcome"] == "estimate"
+    # Rolls and cords have no outline; other owners and stale revisions fail.
+    tape = client.post(url, json={**request, "stock_kind": "tape"}, headers=AUTH)
+    assert tape.json()["status"] == "unsupported_shape" and tape.json()["box"] is None
+    assert client.post(url, json=request, headers=OTHER).status_code == 404
+    stale = client.post(
+        url, json={**request, "expected_revision_id": "inventory-other"}, headers=AUTH
+    )
+    assert stale.status_code == 409

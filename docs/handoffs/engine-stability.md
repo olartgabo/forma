@@ -63,12 +63,12 @@ chronological history; the API also binds the inventory and global history curso
 
 ## Applicability and numeric policy for S1
 
-| Check | Supported target | Required unresolved result |
-| --- | --- | --- |
-| Whole-assembly tipping | Horizontal, coplanar support; gravity only; explicitly assumed rigid assembly; measured or justified bounded mass/COM | Missing mass/contact inputs need measurement; unsupported load or stage stays unsupported |
-| Phone retention and sliding | Separate contact model with evidence | No inference from a whole-assembly tipping pass |
-| Joint strength and deformation | Separately calibrated later models | Not verified by dimensional joint profiles |
-| Dynamic response | Separate future capability | No physical claim from animation |
+| Check                          | Supported target                                                                                                      | Required unresolved result                                                                |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Whole-assembly tipping         | Horizontal, coplanar support; gravity only; explicitly assumed rigid assembly; measured or justified bounded mass/COM | Missing mass/contact inputs need measurement; unsupported load or stage stays unsupported |
+| Phone retention and sliding    | Separate contact model with evidence                                                                                  | No inference from a whole-assembly tipping pass                                           |
+| Joint strength and deformation | Separately calibrated later models                                                                                    | Not verified by dimensional joint profiles                                                |
+| Dynamic response               | Separate future capability                                                                                            | No physical claim from animation                                                          |
 
 Caller-selected physical clearance and numerical tolerance must be separate.
 For signed clearance, a lower bound strictly above the required

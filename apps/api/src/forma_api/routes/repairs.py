@@ -12,6 +12,7 @@ from forma_api.model_gateway import GatewayError, MetaGateway
 from forma_api.plans import PlanService
 from forma_api.progress import snapshot
 from forma_api.projects import ProjectStore
+from forma_api.recognized_items_runtime import hold_blockers
 from forma_domain.models import ID
 
 
@@ -93,6 +94,13 @@ def repairs_router(
                 raise RepairError(
                     409, "stale_version", "Physical history changed; reload it"
                 )
+            if hold_blockers(connection, project_id):
+                raise RepairError(
+                    409,
+                    "blocked",
+                    "Repair advice is paused: a material in this build was "
+                    "identified as something else. Reconcile it before continuing.",
+                )
             try:
                 diagnosis_runtime.validate_diagnosis(body.diagnosis, plan=plan)
             except GatewayError:
@@ -148,6 +156,13 @@ def repairs_router(
             if snapshot(connection, plan).last_event_id != body.expected_last_event_id:
                 raise RepairError(
                     409, "stale_version", "Physical history changed; reload it"
+                )
+            if hold_blockers(connection, project_id):
+                raise RepairError(
+                    409,
+                    "blocked",
+                    "Repair advice is paused: a material in this build was "
+                    "identified as something else. Reconcile it before continuing.",
                 )
         return repair_runtime.RepairProposeResult(
             project_id=project_id,

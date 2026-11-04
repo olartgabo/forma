@@ -70,6 +70,7 @@ class RepairProposeErrorResponse(Record):
         "invalid_response",
         "provider_http_error",
         "provider_error",
+        "blocked",
     ]
     message: Text
 
@@ -89,6 +90,8 @@ PROVIDER_ERROR_CODES: frozenset[str] = frozenset(
         "invalid_response",
         "provider_http_error",
         "provider_error",
+        # Route-owned (held material); the gateway never returns it.
+        "blocked",
     }
 )
 

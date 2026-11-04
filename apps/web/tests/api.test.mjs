@@ -1636,6 +1636,7 @@ test("intake errors retain only bounded safe diagnostics and actual reported usa
         validationIssues: [],
         model: "muse-spark-1.3",
         elapsedMs: 1234,
+        finishReason: null,
         usage: diagnostics.usage,
       });
       assert.match(
@@ -3462,4 +3463,111 @@ test("material picker restores recovery after a second waste and scopes stock", 
   assert.deepEqual(recoverableRegionIds(reports, "sheet-a"), ["parent"]);
   reports.push(salvage, { ...waste, kind: "consume" });
   assert.deepEqual(recoverableRegionIds(reports, "sheet-a"), []);
+});
+
+test("a truncated intake says it ran out of room, without provider text", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      {
+        code: "invalid_response",
+        message: "PRIVATE_PROVIDER_BODY",
+        diagnostics: {
+          reason: "incomplete_output",
+          model: "muse-spark-1.3",
+          elapsed_ms: 22800,
+          finish_reason: "length",
+          usage: {
+            model_calls: 1,
+            input_tokens: 3632,
+            output_tokens: 2048,
+            reasoning_tokens: 1990,
+          },
+        },
+      },
+      { status: 502 },
+    ),
+  );
+  await assert.rejects(
+    requestIntakeObservation(token, "project-a", "media-a", "inventory-1"),
+    (error) => {
+      assert.equal(error.code, "invalid_response");
+      assert.doesNotMatch(error.message, /PRIVATE/);
+      assert.equal(error.intakeDiagnostics.finishReason, "length");
+      assert.equal(error.intakeDiagnostics.usage.reasoning_tokens, 1990);
+      assert.match(
+        intakeFailureReason(error.intakeDiagnostics),
+        /did not finish/,
+      );
+      assert.match(
+        intakeFailureReason(error.intakeDiagnostics),
+        /ran out of room/,
+      );
+      return true;
+    },
+  );
+  t.mock.restoreAll();
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      {
+        code: "invalid_response",
+        message: "x",
+        diagnostics: {
+          reason: "incomplete_output",
+          model: "muse-spark-1.3",
+          elapsed_ms: 1,
+          finish_reason: "<script>",
+          usage: { model_calls: 1 },
+        },
+      },
+      { status: 502 },
+    ),
+  );
+  await assert.rejects(
+    requestIntakeObservation(token, "project-a", "media-a", "inventory-1"),
+    (error) => {
+      // An unsanitised finish reason drops the whole diagnostics block.
+      assert.equal(error.intakeDiagnostics, null);
+      assert.doesNotMatch(error.message, /script/);
+      return true;
+    },
+  );
+});
+
+test("a held material pauses repair advice with a local message", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { code: "blocked", message: "PRIVATE_SERVER_TEXT" },
+      { status: 409 },
+    ),
+  );
+  await assert.rejects(
+    proposeRepairs(token, "project-a", repairBody),
+    (error) => {
+      assert.equal(error.code, "blocked");
+      assert.match(error.message, /identified as something else/);
+      assert.match(error.message, /material card/);
+      assert.doesNotMatch(error.message, /PRIVATE/);
+      return true;
+    },
+  );
+});
+
+test("missing or invalid recognition survives as a safe validation issue", () => {
+  const parsed = parseIntakeFailureDiagnostics({
+    reason: "invalid_schema",
+    model: "muse-spark-1.3",
+    elapsed_ms: 10,
+    usage: { model_calls: 1, input_tokens: 5, output_tokens: 5 },
+    validation_issues: [
+      { path: ["recognition"], type: "missing" },
+      { path: ["recognition"], type: "literal_error" },
+      { path: ["items"], type: "missing" },
+    ],
+  });
+  assert.deepEqual(parsed.validationIssues, [
+    { path: ["recognition"], type: "missing" },
+    { path: ["recognition"], type: "literal_error" },
+    { path: ["items"], type: "missing" },
+  ]);
+  assert.match(intakeFailureReason(parsed), /recognition: missing/);
 });

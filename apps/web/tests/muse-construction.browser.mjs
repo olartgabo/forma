@@ -100,6 +100,19 @@ try {
             message: "Outside offline construction scenario",
           },
         });
+      if (url.pathname === `${base}/construction/receipts`) {
+        assert.equal(route.request().method(), "GET");
+        return route.fulfill({
+          json: {
+            receipts: [...receipts].map(([key, value]) => ({
+              idempotency_key: key,
+              digest: "a".repeat(64),
+              state: value === "unknown" ? "unknown" : "completed",
+              error_code: value === "unknown" ? "timeout" : null,
+            })),
+          },
+        });
+      }
       if (url.pathname === `${base}/construction/propose`) {
         const body = route.request().postDataJSON();
         requests.push(body);
@@ -373,18 +386,16 @@ try {
       true,
     );
     assert.equal(await retry.isDisabled(), true);
-    await consent.check();
-    await photoConsent.check();
-    await retry.click();
-    await page.waitForFunction(() =>
-      document.body.textContent.includes("provider outcome is unknown"),
+    await panel.getByText(/Stored request state: unknown/).waitFor();
+    assert.equal(await retry.isDisabled(), true);
+    await panel
+      .getByRole("button", { name: "Check request status", exact: true })
+      .click();
+    assert.equal(
+      requests.length,
+      5,
+      "unknown receipt refresh uses GET without replay POST",
     );
-    assert.deepEqual(
-      requests[4],
-      requests[5],
-      "uncertain retry must preserve exact original payload/key",
-    );
-    assert.equal(requests.length, 6);
     assert.equal(
       await panel
         .getByRole("button", { name: "Start another proposal" })
@@ -404,7 +415,7 @@ try {
     assert.equal(await consent.isDisabled(), true);
     assert.equal(
       requests.length,
-      6,
+      5,
       "changed context preserves unknown request without automatic replay",
     );
     assert.deepEqual(errors, []);

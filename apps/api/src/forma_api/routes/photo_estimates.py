@@ -32,6 +32,20 @@ def photo_estimates_router(store: ProjectStore, authenticate) -> APIRouter:
         response.headers["Cache-Control"] = "no-store"
         return runtime.list_records(store, owner, project_id)
 
+    @router.post(
+        "/{project_id}/photo-outline-suggestions",
+        response_model=runtime.OutlineSuggestion,
+    )
+    def outline_suggestion(
+        project_id: ID,
+        body: runtime.OutlineSuggestionRequest,
+        owner: Owner,
+        response: Response,
+    ):
+        # Local and read-only; for when SAM finds no region.
+        response.headers["Cache-Control"] = "no-store"
+        return runtime.suggest(store, owner, project_id, body)
+
     return router
 
 

@@ -233,6 +233,9 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
         raise ValueError(
             "Owner credentials must be distinct and at least 32 characters"
         )
+    from forma_api.recognized_items_runtime import reconcile_existing
+
+    reconcile_existing(store)
     # Keep only digests in the dependency closure; never expose tokens in responses.
     owners = {
         hashlib.sha256(token.encode()).digest(): owner
@@ -372,11 +375,16 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                     "Photo estimates must match a current estimate for the same "
                     "material and photo: " + ", ".join(unmatched),
                 )
+            from forma_api.recognized_items_runtime import inventory_holds
+
+            # A held material keeps the inventory unconfirmed until the user
+            # removes it, retypes it or links an item that fits it.
+            contradicted = inventory_holds(connection, project_id, body.stocks)
             updated = Project(
                 **{
                     **project.model_dump(),
                     "stocks": body.stocks,
-                    "inventory_confirmed": True,
+                    "inventory_confirmed": not contradicted,
                     "revision_id": "inventory-" + uuid4().hex,
                     "requirements": body.requirements
                     if "requirements" in body.model_fields_set

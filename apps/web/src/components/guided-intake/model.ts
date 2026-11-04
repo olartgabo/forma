@@ -342,7 +342,7 @@ export type Box = { x1: number; y1: number; x2: number; y2: number };
 
 export function boxOutline(
   box: Box,
-  source: "sam_box" | "manual_box",
+  source: "sam_box" | "manual_box" | "outline_suggestion",
 ): OutlineInput {
   const x1 = Math.round(Math.min(box.x1, box.x2));
   const x2 = Math.round(Math.max(box.x1, box.x2));
@@ -406,4 +406,80 @@ export function needsReferenceValues(estimate: PhotoEstimate): boolean {
 
 export function sizeFieldsFor(kind: Kind): SizeField[] {
   return kind === "tape" || kind === "cord" ? [] : ["width_mm", "height_mm"];
+}
+
+/** A SAM box covering nearly the whole photo is the frame, not a material. */
+export const WHOLE_PHOTO = 0.9;
+
+/** SAM boxes that can be a material: never (nearly) the whole photo, and
+ * never a box lying mostly on the marked reference. */
+export function usableSamBoxes<T extends Box>(
+  boxes: readonly T[],
+  width: number,
+  height: number,
+  referenceCorners: readonly Point[] = [],
+): { usable: T[]; rejected: number } {
+  const area = (b: Box) =>
+    Math.max(0, b.x2 - b.x1 + 1) * Math.max(0, b.y2 - b.y1 + 1);
+  const hull = convexHull(referenceCorners);
+  const usable = boxes.filter((b) => {
+    if (area(b) >= WHOLE_PHOTO * width * height) return false;
+    if (hull.length < 3) return true;
+    return clippedArea(hull, b) <= 0.5 * area(b);
+  });
+  return { usable, rejected: boxes.length - usable.length };
+}
+
+function convexHull(points: readonly Point[]): Point[] {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (sorted.length < 3) return sorted;
+  const cross = (o: Point, a: Point, b: Point) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const half = (list: Point[]) => {
+    const out: Point[] = [];
+    for (const p of list) {
+      while (
+        out.length >= 2 &&
+        cross(out[out.length - 2], out[out.length - 1], p) <= 0
+      )
+        out.pop();
+      out.push(p);
+    }
+    out.pop();
+    return out;
+  };
+  return [...half(sorted), ...half([...sorted].reverse())];
+}
+
+/** Area of a convex polygon clipped to a box (Sutherland-Hodgman). */
+function clippedArea(polygon: readonly Point[], box: Box): number {
+  let out = [...polygon];
+  const edges: [(p: Point) => boolean, (a: Point, b: Point) => Point][] = [
+    [(p) => p.x >= box.x1, (a, b) => at(a, b, (box.x1 - a.x) / (b.x - a.x))],
+    [(p) => p.x <= box.x2, (a, b) => at(a, b, (box.x2 - a.x) / (b.x - a.x))],
+    [(p) => p.y >= box.y1, (a, b) => at(a, b, (box.y1 - a.y) / (b.y - a.y))],
+    [(p) => p.y <= box.y2, (a, b) => at(a, b, (box.y2 - a.y) / (b.y - a.y))],
+  ];
+  for (const [inside, cut] of edges) {
+    const input = out;
+    out = [];
+    input.forEach((current, i) => {
+      const previous = input[(i + input.length - 1) % input.length];
+      if (inside(current)) {
+        if (!inside(previous)) out.push(cut(previous, current));
+        out.push(current);
+      } else if (inside(previous)) out.push(cut(previous, current));
+    });
+    if (!out.length) return 0;
+  }
+  let twice = 0;
+  out.forEach((p, i) => {
+    const q = out[(i + 1) % out.length];
+    twice += p.x * q.y - q.x * p.y;
+  });
+  return Math.abs(twice) / 2;
+}
+
+function at(a: Point, b: Point, t: number): Point {
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }

@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 from forma_photo_measure import card_svg
 from forma_photo_measure import estimate as run_estimate
+from pydantic import Field
 
 from forma_api.projects import Key, ProjectError
 from forma_domain.models import ID, Record, Stock, Text
@@ -24,6 +25,7 @@ from forma_domain.photo_measurement_contracts import (
     EstimateInput,
     OutlineInput,
     PhotoEstimate,
+    PixelPoint,
     ReferenceInput,
 )
 
@@ -289,3 +291,103 @@ def purge(connection, owner: str, project_id: str) -> None:
 
 def card_payload() -> bytes:
     return card_svg().encode()
+
+
+class OutlineSuggestionRequest(Record):
+    media_id: ID
+    expected_revision_id: ID
+    stock_kind: Literal["sheet", "strip", "tape", "cord"]
+    reference: ReferenceInput
+
+
+class OutlineSuggestion(Record):
+    """A proposed box to check, never a measurement or a SAM result."""
+
+    project_id: ID
+    revision_id: ID
+    media_id: ID
+    status: Literal[
+        "suggested",
+        "reference_not_found",
+        "nothing_found",
+        "only_reference",
+        "only_cut_off",
+        "outline_not_confirmed",
+        "unsupported_shape",
+    ]
+    box: OutlineInput | None = None
+    candidates: int = Field(default=0, ge=0)
+    # Where the whole reference was found, so a client can tell a SAM box on
+    # the reference from one on the material. Empty when not located.
+    reference_corners_px: tuple[PixelPoint, ...] = Field(default=(), max_length=16)
+    message: Text
+
+
+SUGGESTION_MESSAGES = {
+    "suggested": "Check this suggested box. It is a guess from colour edges, not a measurement.",
+    "reference_not_found": "The reference was not found in this photo, so no outline is suggested. Mark the reference corners or draw a box around the material.",
+    "nothing_found": "No region stands out from the surface. Draw a box around the material.",
+    "only_reference": "Only the reference stands out. Draw a box around the material.",
+    "only_cut_off": "The only regions found touch the photo edge. Step back so the whole piece is in view, or draw a box.",
+    "outline_not_confirmed": "A region was found, but its edge could not be traced. Draw a box around the material.",
+    "unsupported_shape": "Rolls and cords have no outline to measure from a photo.",
+}
+
+
+def suggest(store, owner: str, project_id: str, body: OutlineSuggestionRequest):
+    """Deterministic, local and read-only: no provider call, nothing saved."""
+
+    from forma_photo_measure.suggest import reference_points, suggest_region
+
+    with store.transaction() as connection:
+        project = store.read(connection, owner, project_id)
+        if project.revision_id != body.expected_revision_id:
+            raise ProjectError(409, "stale_version", "Inventory changed; reload it")
+        row = connection.execute(
+            "SELECT content_type, width_px, height_px, body FROM media WHERE id=? AND project_id=?",
+            (body.media_id, project_id),
+        ).fetchone()
+    if row is None:
+        raise ProjectError(404, "not_found", "Photo not found")
+    content_type, width, height, data = row[0], row[1], row[2], bytes(row[3])
+
+    corners: tuple = ()
+
+    def answer(status, box=None, candidates=0):
+        return OutlineSuggestion(
+            reference_corners_px=corners,
+            project_id=project_id,
+            revision_id=body.expected_revision_id,
+            media_id=body.media_id,
+            status=status,
+            box=box,
+            candidates=candidates,
+            message=SUGGESTION_MESSAGES[status],
+        )
+
+    if body.stock_kind in ("tape", "cord"):
+        return answer("unsupported_shape")
+    if content_type not in SUPPORTED_TYPES:
+        raise ProjectError(422, "validation_error", "Unsupported photo type")
+    if not _SLOTS.acquire(blocking=False):
+        raise ProjectError(429, "blocked", "Photo measurement is busy; retry shortly")
+    try:
+        image = cv2.imdecode(
+            np.frombuffer(data, np.uint8),
+            cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION,
+        )
+        if image is None or image.shape[:2] != (height, width):
+            raise ProjectError(
+                422, "validation_error", "Stored photo could not be decoded"
+            )
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        located = reference_points(gray, body.reference)
+        corners = tuple(PixelPoint(x=float(x), y=float(y)) for x, y in located[:16])
+        found = suggest_region(image, located)
+    finally:
+        _SLOTS.release()
+    box = None
+    if found.box is not None:
+        x1, y1, x2, y2 = found.box
+        box = OutlineInput(source="outline_suggestion", x1=x1, y1=y1, x2=x2, y2=y2)
+    return answer(found.reason, box, found.candidates)

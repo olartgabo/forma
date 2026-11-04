@@ -11,16 +11,16 @@
 
 ## Scope and ownership
 
-| Owned (new) | Shared mount changed (needs @olartgabo review) |
-| --- | --- |
-| `packages/photo_measure/**` | `packages/domain/src/forma_domain/models.py`: `Measurement.source` gains `photo_estimate`, never confirmed |
-| `packages/domain/src/forma_domain/photo_measurement_contracts.py` | `packages/domain/src/forma_domain/generate.py`, `apps/api/src/forma_api/generate.py`: register contracts |
-| `apps/api/src/forma_api/photo_measurement_runtime.py`, `routes/photo_estimates.py` | `apps/api/src/forma_api/projects.py`: inventory provenance check, router mount, project-delete purge |
-| `apps/web/src/components/guided-intake/**`, `apps/web/src/lib/photo-estimates.ts` | `apps/api/src/forma_api/main.py`: public reference-card route |
-| Tests: `packages/photo_measure/tests/**`, `apps/api/tests/test_photo_estimates.py`, `packages/measurement/tests/test_photo_estimate_gate.py`, `apps/web/tests/guided-intake.test.mjs` | `apps/web/src/components/intake-workbench.tsx`: guided step is the default; the full form moves under Details and shares one save path |
-| | `packages/domain/src/forma_domain/models.py`: optional `Stock.name` (display name, 1–80 characters); generated contracts regenerated |
-| | `apps/web/src/lib/photo-localization.ts`, `photo-localization-panel.tsx`: the SAM receipt store moved to the library so both callers share one |
-| | `pyproject.toml`, `uv.lock`, `deploy/api.Dockerfile`, `package.json` (`test:web`), `apps/web/src/app/globals.css` |
+| Owned (new)                                                                                                                                                                           | Shared mount changed (needs @olartgabo review)                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/photo_measure/**`                                                                                                                                                           | `packages/domain/src/forma_domain/models.py`: `Measurement.source` gains `photo_estimate`, never confirmed                                     |
+| `packages/domain/src/forma_domain/photo_measurement_contracts.py`                                                                                                                     | `packages/domain/src/forma_domain/generate.py`, `apps/api/src/forma_api/generate.py`: register contracts                                       |
+| `apps/api/src/forma_api/photo_measurement_runtime.py`, `routes/photo_estimates.py`                                                                                                    | `apps/api/src/forma_api/projects.py`: inventory provenance check, router mount, project-delete purge                                           |
+| `apps/web/src/components/guided-intake/**`, `apps/web/src/lib/photo-estimates.ts`                                                                                                     | `apps/api/src/forma_api/main.py`: public reference-card route                                                                                  |
+| Tests: `packages/photo_measure/tests/**`, `apps/api/tests/test_photo_estimates.py`, `packages/measurement/tests/test_photo_estimate_gate.py`, `apps/web/tests/guided-intake.test.mjs` | `apps/web/src/components/intake-workbench.tsx`: guided step is the default; the full form moves under Details and shares one save path         |
+|                                                                                                                                                                                       | `packages/domain/src/forma_domain/models.py`: optional `Stock.name` (display name, 1–80 characters); generated contracts regenerated           |
+|                                                                                                                                                                                       | `apps/web/src/lib/photo-localization.ts`, `photo-localization-panel.tsx`: the SAM receipt store moved to the library so both callers share one |
+|                                                                                                                                                                                       | `pyproject.toml`, `uv.lock`, `deploy/api.Dockerfile`, `package.json` (`test:web`), `apps/web/src/app/globals.css`                              |
 
 Unchanged and reused: fabrication rules, repair search, product/assembly viewer,
 compiler, #149 decision rules, Muse intake and SAM routes and their receipts.
@@ -97,8 +97,8 @@ implemented.
 
 ## Dependencies
 
-| Package | Version | Licence | Notes |
-| --- | --- | --- | --- |
+| Package                | Version                          | Licence                                                                                      | Notes                                                                               |
+| ---------------------- | -------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | opencv-python-headless | 5.0.0.93 (released July 2, 2026) | OpenCV Apache-2.0; wheel packaging MIT; bundled FFmpeg LGPL-2.1 and libvpx BSD (unused here) | `cp37-abi3` wheels for win_amd64 and manylinux_2_28 aarch64/x86_64; no libGL needed |
 
 Uses the already-pinned numpy 2.5.4 and shapely 2.2.0. The API image
@@ -204,11 +204,11 @@ Regression tests: `test_jpeg_photo_with_generous_box_near_a_marker`,
 Counted from the UI; no participant testing was done, so no usability claim is
 made for children, older adults or anyone else.
 
-| | Before (manual form) | After (guided) |
-| --- | --- | --- |
-| Physical measuring | Width and height with a ruler per sheet | Card lines A (and B) once per printed card; ruler only for values #149 asks for |
-| Inputs per sheet | Add material, type width, tick confirmed, type height, tick confirmed, link photo, tick "I checked", Save (8) | Add or Muse suggest, draw box (or SAM), Measure, Use estimate, Save (5) |
-| One-time setup | none | Print card, measure and enter its lines |
+|                    | Before (manual form)                                                                                          | After (guided)                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Physical measuring | Width and height with a ruler per sheet                                                                       | Card lines A (and B) once per printed card; ruler only for values #149 asks for |
+| Inputs per sheet   | Add material, type width, tick confirmed, type height, tick confirmed, link photo, tick "I checked", Save (8) | Add or Muse suggest, draw box (or SAM), Measure, Use estimate, Save (5)         |
+| One-time setup     | none                                                                                                          | Print card, measure and enter its lines                                         |
 
 Thickness is not asked up front in either flow beyond the optional field; in the
 guided flow it is asked by #149 only when it changes the result.

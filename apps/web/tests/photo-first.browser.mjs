@@ -67,6 +67,7 @@ try {
         ],
       },
       [`${base}/plans`]: { plans: [] },
+      [`${base}/construction/receipts`]: { receipts: [] },
     };
     if (route.request().method() === "GET" && responses[url.pathname])
       return route.fulfill({ json: responses[url.pathname] });

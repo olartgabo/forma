@@ -16,7 +16,7 @@ from forma_api.model_gateway import (
     Tool,
 )
 from forma_api.proposal_prompts import PROMPT_VERSION, SCHEMA_VERSION, instructions
-from forma_domain.material_catalog import ItemProposal
+from forma_domain.material_catalog import ItemProposal, RecognitionOutcome
 from forma_domain.models import (
     ID,
     Blocker,
@@ -153,6 +153,19 @@ class IntakeObservation(Record):
     # One proposal per visible instance, constrained to the recognition
     # catalog with "other" and "uncertain" outcomes. Proposals, not proof.
     items: tuple[ItemProposal, ...] = Field(default=(), max_length=24)
+    # Set on every fresh structured answer (intake-items-v2). Missing means a
+    # legacy, label-only observation: never a successful catalog intake.
+    recognition: RecognitionOutcome | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def structured(self):
+        if self.recognition is not None and (self.recognition == "no_objects") != (
+            not self.items
+        ):
+            raise ValueError("no_objects exactly when no item is listed")
+        return self
 
 
 class ScopedToolArgs(Record):

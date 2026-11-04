@@ -212,14 +212,14 @@ retried. Cancel only stops FORMA waiting, and Muse may still process the
 request. Explicitly sending a new request yourself is separate from this
 internal retry and needs fresh consent.
 
-| Code                      | HTTP | What you see                                                       | What to do                                                                                                                |
-| ------------------------- | ---- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| `provider_not_configured` | 503  | "Model provider is not configured on the server"                   | Set `MODEL_API_KEY`, confirm `/api/provider/status`, restart the API.                                                     |
+| Code                      | HTTP | What you see                                                       | What to do                                                                                                            |
+| ------------------------- | ---- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `provider_not_configured` | 503  | "Model provider is not configured on the server"                   | Set `MODEL_API_KEY`, confirm `/api/provider/status`, restart the API.                                                 |
 | `timeout`                 | 504  | "Model provider request timed out; retry later"                    | Check saved previews first for generation: its outcome may be unknown. A new provider request requires fresh consent. |
-| `rate_limit`              | 429  | "Model provider rate limit reached; retry later"                   | Wait, then retry.                                                                                                         |
-| `invalid_response`        | 502  | "Model provider returned an unusable response; retry"              | Retry; if it repeats, simplify notes or use a clearer photo; switch to the recorded backup.                               |
-| `consent_required`        | 422  | "Consent to transfer this photo to the model provider is required" | Tick that panel's consent box (the button stays disabled until then). Smoke needs `--transfer-consent`.                   |
-| `stale_version`           | 409  | "Inventory changed; reload it"                                     | Press **Reload latest materials and requirements**, re-save, ask again.                                                   |
+| `rate_limit`              | 429  | "Model provider rate limit reached; retry later"                   | Wait, then retry.                                                                                                     |
+| `invalid_response`        | 502  | "Model provider returned an unusable response; retry"              | Retry; if it repeats, simplify notes or use a clearer photo; switch to the recorded backup.                           |
+| `consent_required`        | 422  | "Consent to transfer this photo to the model provider is required" | Tick that panel's consent box (the button stays disabled until then). Smoke needs `--transfer-consent`.               |
+| `stale_version`           | 409  | "Inventory changed; reload it"                                     | Press **Reload latest materials and requirements**, re-save, ask again.                                               |
 
 Other codes in the set: `provider_authentication` and `access_denied` (502, key
 or model rejected), `network_error`, `provider_http_error` and `provider_error`

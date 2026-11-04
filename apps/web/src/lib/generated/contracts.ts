@@ -535,7 +535,7 @@ export type DiagnosisProposal = {
 };
 
 export type Diagnostic = {
-  readonly "code": "reference_not_found" | "reference_unverified" | "reference_partial" | "reference_too_small" | "reference_blurry" | "degenerate_reference" | "steep_angle" | "low_resolution_at_material" | "far_from_reference" | "fit_residual_high" | "holdout_error_high" | "no_independent_check" | "lens_uncorrected" | "calibration_mismatch" | "calibration_applied" | "outline_clipped" | "outline_box_too_tight" | "outline_not_found" | "outline_crosses_horizon" | "irregular_outline" | "holes_present" | "opposite_edges_differ" | "unsupported_shape" | "not_on_reference_plane" | "thickness_not_measurable";
+  readonly "code": "reference_not_found" | "reference_unverified" | "reference_partial" | "reference_too_small" | "reference_blurry" | "degenerate_reference" | "steep_angle" | "low_resolution_at_material" | "far_from_reference" | "fit_residual_high" | "holdout_error_high" | "no_independent_check" | "lens_uncorrected" | "calibration_mismatch" | "calibration_applied" | "outline_clipped" | "outline_box_too_tight" | "outline_not_found" | "outline_is_reference" | "outline_crosses_horizon" | "irregular_outline" | "holes_present" | "opposite_edges_differ" | "unsupported_shape" | "not_on_reference_plane" | "thickness_not_measurable";
   readonly "severity": "info" | "warning" | "blocking";
   readonly "message": string;
   readonly "value"?: (number | null);
@@ -798,6 +798,12 @@ export type InspectArgs = {
   readonly "method": "photo" | "ruler" | "human_inspection";
 };
 
+export type IntakeProposal = {
+  readonly "recognition": "items" | "partial" | "no_objects";
+  readonly "items": ReadonlyArray<ProposedItem>;
+  readonly "questions": ReadonlyArray<string>;
+};
+
 export type ItemIdentity = {
   readonly "outcome": "catalog" | "other" | "uncertain";
   readonly "category_id"?: ("corrugated_cardboard" | "thin_packaging_card" | "cardstock" | "printer_paper" | "kraft_paper" | "paper_tube" | "egg_carton" | "paper_cup" | "craft_sticks" | "bamboo_skewers" | "toothpicks" | "wooden_dowels" | "wood_strips" | "small_wood_offcuts" | "plywood_sheet" | "cork_sheet" | "plastic_bottle" | "bottle_caps" | "food_container" | "plastic_lid" | "plastic_sheet" | "plastic_packaging_tray" | "drinking_straws" | "pvc_pipe" | "foam_board" | "eva_craft_foam" | "expanded_polystyrene" | "packing_foam" | "sponge" | "felt" | "fabric_scrap" | "denim_scrap" | "duct_tape" | "masking_tape" | "clear_tape" | "double_sided_tape" | "electrical_tape" | "white_glue" | "glue_stick" | "hot_glue_sticks" | "string_twine" | "zip_ties" | "rubber_bands" | "paper_clips" | "binder_clips" | "aluminum_foil" | "wire" | "nuts_and_bolts" | null);
@@ -1051,7 +1057,7 @@ export type OrderStep = {
 };
 
 export type OutlineInput = {
-  readonly "source": "sam_box" | "manual_box" | "user_polygon";
+  readonly "source": "sam_box" | "manual_box" | "outline_suggestion" | "user_polygon";
   readonly "x1"?: (number | null);
   readonly "y1"?: (number | null);
   readonly "x2"?: (number | null);
@@ -1171,6 +1177,14 @@ export type ProbeResult = {
   readonly "repair"?: (RepairProbeSummary | null);
   readonly "blockers"?: ReadonlyArray<Blocker>;
   readonly "physical_verification"?: "not_attempted";
+};
+
+export type ProposedItem = {
+  readonly "identity": ItemIdentity;
+  readonly "visible_evidence": string;
+  readonly "box"?: (VisibleBox | null);
+  readonly "visibility"?: "full" | "partial" | "unclear";
+  readonly "instance"?: "single" | "group_count_unknown";
 };
 
 export type QuantityEstimate = {

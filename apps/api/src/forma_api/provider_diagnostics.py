@@ -23,6 +23,14 @@ class ProviderUsage(Record):
     model_calls: StrictInt = Field(ge=0, le=MAX_MODEL_CALLS)
     input_tokens: StrictInt | None = Field(default=None, ge=0, le=MAX_TOKENS_TOTAL)
     output_tokens: StrictInt | None = Field(default=None, ge=0, le=MAX_TOKENS_TOTAL)
+    # Part of output_tokens, only when every call reported it. Left out of
+    # the serialized record when unknown, so earlier receipts are unchanged.
+    reasoning_tokens: StrictInt | None = Field(
+        default=None,
+        ge=0,
+        le=MAX_TOKENS_TOTAL,
+        exclude_if=lambda value: value is None,
+    )
 
 
 def _reported(trace: Any, key: str) -> Any:
@@ -58,6 +66,7 @@ def summarize_usage(traces: Iterable[Any] | None) -> ProviderUsage:
         model_calls=len(local),
         input_tokens=_total(local, "input_tokens"),
         output_tokens=_total(local, "output_tokens"),
+        reasoning_tokens=_total(local, "reasoning_tokens"),
     )
 
 

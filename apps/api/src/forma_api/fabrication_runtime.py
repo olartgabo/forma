@@ -23,6 +23,7 @@ from forma_api.adapt import (
 from forma_api.plans import PlanVersion, read_revision
 from forma_api.progress import ProgressSnapshot, snapshot
 from forma_api.projects import Project, ProjectError
+from forma_api.recognized_items_runtime import hold_blockers, require_no_holds
 from forma_domain.fabrication_contracts import (
     FabricationInput,
     FabricationReport,
@@ -128,22 +129,31 @@ def _lineage(connection, plan: BuildPlan):
 
 
 def _report(
-    project: Project, lineage, remaining, process, parameters, plan, additional_tools=()
+    project: Project,
+    lineage,
+    remaining,
+    process,
+    parameters,
+    plan,
+    additional_tools=(),
+    held=(),
 ):
+    """``held`` are material-hold blockers: the report still describes the
+    recorded history, but no order is offered while a material is held."""
     if len(lineage) > 32:
         raise ProjectError(
             409,
             "blocked",
             "Fabrication reports support at most 32 plan versions, including a proposed revision.",
         )
-    context = ()
+    context = tuple(held)
     if not profile_evidence_valid(
         plan.joint_profiles,
         parameters.profile_evidence,
         plan.project_id,
         allow_synthetic=ALLOW_SYNTHETIC,
     ):
-        context = (
+        context += (
             Blocker(
                 code="unsupported_profile",
                 message="Resolve measured profile evidence before scheduling fabrication.",
@@ -178,6 +188,7 @@ def active_report(connection, project: Project, version_id: str) -> FabricationR
         raise ProjectError(409, "stale_version", "The active plan changed; reload it")
     version, process, parameters = _saved(connection, project.id, version_id)
     lineage, progress = _lineage(connection, version.plan)
+    # Readable as history while a material is held, but marked blocked.
     return _report(
         project,
         lineage,
@@ -185,6 +196,7 @@ def active_report(connection, project: Project, version_id: str) -> FabricationR
         process,
         parameters,
         version.plan,
+        held=hold_blockers(connection, project.id),
     )
 
 
@@ -251,6 +263,7 @@ def assess_active(
             "validation_error",
             "Record material loss or reconcile a different measured balance before continuing",
         )
+    require_no_holds(connection, project.id, "Fabrication assessment")
     lineage, _ = _lineage(connection, base.version.plan)
     return _report(
         project,
@@ -267,6 +280,9 @@ def preview_report(connection, project: Project, preview_id: str) -> Fabrication
     """Schedule a saved repair preview as if approved, without approving it."""
     if project.active_version_id is None:
         raise ProjectError(409, "stale_version", "The active plan changed; reload it")
+    # A preview saved before a material was held stays saved, but is not
+    # scheduled while the hold remains.
+    require_no_holds(connection, project.id, "Scheduling this repair")
     stored = read_preview(connection, project.id, project.active_version_id, preview_id)
     reports = ProposedReports(connection, project, stored.remaining_stock)
     if stored.base_last_event_id != reports.progress.last_event_id:

@@ -12,6 +12,7 @@ Independent review approved it. The combined full project check passed 414
 Python tests, 24 client tests, contracts, types, lint, formatting and build.
 
 Actual browser checks against Muse Spark1.3 with the labelled synthetic photo:
+
 - Intake: five labels, three questions, unknown measurements, 9,531ms; consent
   cleared and repeat transfer stayed disabled.
 - Design: two model rounds/one snapshot tool, needs measurement, 8,547ms;

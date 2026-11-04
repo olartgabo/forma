@@ -1,5 +1,8 @@
 """Recognised-item cards: stable identity, corrections, links and no false support."""
 
+import json
+import sqlite3
+
 import cv2
 import numpy as np
 import pytest
@@ -8,6 +11,11 @@ from test_intake_route import AUTH, OTHER, TOKENS, project
 
 from forma_api.main import create_app
 from forma_api.model_gateway import MetaGateway
+
+
+@pytest.fixture
+def data_dir(tmp_path):
+    return tmp_path
 
 
 @pytest.fixture
@@ -96,6 +104,9 @@ def test_corrections_and_separate_instances_survive_save_and_reload(client):
         "catalog_version": "material-catalog-v1",
         "items": [],
         "problems": [],
+        "conflicts": [],
+        "inventory_confirmed": False,
+        "inventory_revision_id": p["revision_id"],
         "replayed": False,
     }
     two = [
@@ -255,3 +266,234 @@ def test_a_correction_keeps_a_saved_link_and_reports_the_mismatch(client):
         ).status_code
         == 422
     )
+
+
+def confirmed(client, p):
+    return client.get(f"/api/projects/{p['id']}", headers=AUTH).json()[
+        "inventory_confirmed"
+    ]
+
+
+def readiness_text(client, p):
+    response = client.get(f"/api/projects/{p['id']}/designs/readiness", headers=AUTH)
+    assert response.status_code == 200, response.text
+    return " ".join(response.json()["missing_inputs"])
+
+
+def linked_cardboard(client, key="items-0101"):
+    p = project(client)
+    p = save_stocks(client, p, [stock("sheet-a")], "save-0101")
+    cardboard = item(
+        "box--1",
+        None,
+        box=None,
+        box_source=None,
+        identity={"outcome": "catalog", "category_id": "corrugated_cardboard"},
+        stock_id="sheet-a",
+    )
+    first = put(client, p, [cardboard], key)
+    assert first.status_code == 200, first.text
+    assert first.json()["inventory_confirmed"] is True
+    return p, cardboard, first.json()["revision"]
+
+
+def bottle(cardboard):
+    return {
+        **cardboard,
+        "identity": {"outcome": "catalog", "category_id": "plastic_bottle"},
+        "identity_source": "user",
+        "user_fields": ["identity"],
+    }
+
+
+def test_a_contradicting_correction_withdraws_confirmation_until_reconciled(client):
+    p, cardboard, revision = linked_cardboard(client)
+    corrected = put(client, p, [bottle(cardboard)], "items-0102", revision)
+    assert corrected.status_code == 200, corrected.text
+    body = corrected.json()
+    assert body["inventory_confirmed"] is False
+    [conflict] = body["conflicts"]
+    assert conflict["stock_id"] == "sheet-a" and "Plastic bottle" in conflict["message"]
+    # Every design and fabrication gate reads this confirmation.
+    assert confirmed(client, p) is False
+    assert "Confirm the saved inventory." in readiness_text(client, p)
+    # Saving the same contradicted stock again does not confirm it.
+    current = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+    again = save_stocks(client, current, [stock("sheet-a")], "save-0102")
+    assert again["inventory_confirmed"] is False
+    # Changing the item back restores the earlier confirmation.
+    back = put(client, p, [cardboard], "items-0103", body["revision"])
+    assert back.status_code == 200, back.text
+    assert back.json()["conflicts"] == []
+    assert back.json()["inventory_confirmed"] is True
+    assert confirmed(client, p) is True
+
+
+def test_removing_the_contradicted_material_reconciles(client):
+    p, cardboard, revision = linked_cardboard(client)
+    body = put(client, p, [bottle(cardboard)], "items-0202", revision).json()
+    current = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+    removed = save_stocks(client, current, [stock("sheet-b")], "save-0202")
+    assert removed["inventory_confirmed"] is True
+    unlinked = put(
+        client,
+        p,
+        [{**bottle(cardboard), "stock_id": None}],
+        "items-0203",
+        body["revision"],
+    )
+    assert unlinked.status_code == 200, unlinked.text
+    assert unlinked.json()["inventory_confirmed"] is True
+
+
+def test_retyping_material_and_item_in_one_save_ends_confirmed(client):
+    # The inventory saves first, while the stored item still says cardboard.
+    p, cardboard, revision = linked_cardboard(client)
+    current = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+    retyped = save_stocks(
+        client, current, [stock("sheet-a", material="paperboard")], "save-0302"
+    )
+    assert retyped["inventory_confirmed"] is False
+    card = {
+        **cardboard,
+        "identity": {"outcome": "catalog", "category_id": "cardstock"},
+        "identity_source": "user",
+        "user_fields": ["identity"],
+    }
+    saved = put(client, p, [card], "items-0302", revision)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["conflicts"] == []
+    assert confirmed(client, p) is True
+
+
+def test_unlinking_without_a_hold_leaves_confirmation_as_saved(client):
+    p = project(client)
+    p = save_stocks(client, p, [stock("sheet-a")], "save-0401")
+    tape = item(
+        "box--1",
+        None,
+        box=None,
+        box_source=None,
+        identity={"outcome": "catalog", "category_id": "corrugated_cardboard"},
+        stock_id="sheet-a",
+    )
+    first = put(client, p, [tape], "items-0401")
+    assert first.json()["inventory_confirmed"] is True
+    second = put(
+        client, p, [{**tape, "stock_id": None}], "items-0402", first.json()["revision"]
+    )
+    # Unlinking with no hold leaves confirmation exactly as saved.
+    assert second.json()["inventory_confirmed"] is True
+
+
+def test_a_new_contradiction_is_refused_while_a_build_is_active(client, data_dir):
+    p, cardboard, revision = linked_cardboard(client)
+    with sqlite3.connect(data_dir / "projects.sqlite3") as connection:
+        (body,) = connection.execute(
+            "SELECT body FROM projects WHERE id=?", (p["id"],)
+        ).fetchone()
+        connection.execute(
+            "UPDATE projects SET body=? WHERE id=?",
+            (
+                json.dumps({**json.loads(body), "active_version_id": "version-1"}),
+                p["id"],
+            ),
+        )
+    refused = put(client, p, [bottle(cardboard)], "items-0502", revision)
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "blocked"
+    assert confirmed(client, p) is True
+
+
+def test_withdrawal_issues_a_new_inventory_revision(client):
+    # Work started against the earlier revision is refused as stale.
+    p, cardboard, revision = linked_cardboard(client)
+    before = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()["revision_id"]
+    body = put(client, p, [bottle(cardboard)], "items-0602", revision).json()
+    after = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()["revision_id"]
+    assert after != before and body["inventory_revision_id"] == after
+    back = put(client, p, [cardboard], "items-0603", body["revision"]).json()
+    assert back["inventory_revision_id"] not in (before, after)
+
+
+def test_contradictions_saved_before_reconciliation_are_held_at_startup(
+    client, data_dir
+):
+    p, cardboard, revision = linked_cardboard(client)
+    # Simulate an earlier build: a saved contradiction, still confirmed.
+    with sqlite3.connect(data_dir / "projects.sqlite3") as connection:
+        (body,) = connection.execute(
+            "SELECT body FROM recognized_items WHERE project_id=?", (p["id"],)
+        ).fetchone()
+        stored = json.loads(body)
+        stored["items"] = [bottle(cardboard)]
+        connection.execute(
+            "UPDATE recognized_items SET body=? WHERE project_id=?",
+            (json.dumps(stored), p["id"]),
+        )
+    assert confirmed(client, p) is True
+    with TestClient(create_app(data_dir, TOKENS)) as restarted:
+        project_now = restarted.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+        assert project_now["inventory_confirmed"] is False
+        # Changing the item back restores it.
+        reread = restarted.get(
+            f"/api/projects/{p['id']}/recognized-items", headers=AUTH
+        ).json()
+        back = put(restarted, p, [cardboard], "items-0702", reread["revision"])
+        assert back.json()["inventory_confirmed"] is True
+
+
+def test_deleting_or_unlinking_the_card_does_not_release_the_material(client):
+    p, cardboard, revision = linked_cardboard(client)
+    body = put(client, p, [bottle(cardboard)], "items-0802", revision).json()
+    gone = put(client, p, [], "items-0803", body["revision"])
+    assert gone.status_code == 200, gone.text
+    assert gone.json()["inventory_confirmed"] is False
+    [hold] = gone.json()["conflicts"]
+    assert hold["stock_id"] == "sheet-a" and hold["item_id"] is None
+    assert "Remove it or change its type" in hold["message"]
+    # Re-saving the same material does not release it either.
+    current = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+    assert (
+        save_stocks(client, current, [stock("sheet-a")], "save-0803")[
+            "inventory_confirmed"
+        ]
+        is False
+    )
+    # Retyping the material is an explicit reconciliation.
+    current = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+    retyped = save_stocks(
+        client, current, [stock("sheet-a", material="paperboard")], "save-0804"
+    )
+    assert retyped["inventory_confirmed"] is True
+
+
+def test_earlier_contradictions_in_an_active_build_are_held_at_startup(
+    client, data_dir
+):
+    p, cardboard, revision = linked_cardboard(client)
+    with sqlite3.connect(data_dir / "projects.sqlite3") as connection:
+        (items_body,) = connection.execute(
+            "SELECT body FROM recognized_items WHERE project_id=?", (p["id"],)
+        ).fetchone()
+        stored = json.loads(items_body)
+        stored["items"] = [bottle(cardboard)]
+        connection.execute(
+            "UPDATE recognized_items SET body=? WHERE project_id=?",
+            (json.dumps(stored), p["id"]),
+        )
+        (body,) = connection.execute(
+            "SELECT body FROM projects WHERE id=?", (p["id"],)
+        ).fetchone()
+        connection.execute(
+            "UPDATE projects SET body=? WHERE id=?",
+            (
+                json.dumps({**json.loads(body), "active_version_id": "version-1"}),
+                p["id"],
+            ),
+        )
+    with TestClient(create_app(data_dir, TOKENS)) as restarted:
+        now = restarted.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+        # The build stays active; its stock is no longer confirmed for repair.
+        assert now["active_version_id"] == "version-1"
+        assert now["inventory_confirmed"] is False
