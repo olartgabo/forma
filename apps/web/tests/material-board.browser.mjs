@@ -192,7 +192,7 @@ try {
             },
           });
     });
-    async function open() {
+    async function open(expectedName = "Cardboard") {
       await page.goto(`${origin.origin}/?project=${project.id}`);
       await page
         .getByLabel("Owner credential")
@@ -210,7 +210,7 @@ try {
         firstOpen = false;
       }
       await page
-        .getByRole("button", { name: "Review Cardboard", exact: true })
+        .getByRole("button", { name: `Review ${expectedName}`, exact: true })
         .waitFor();
     }
     const board = page.getByRole("region", {
@@ -526,6 +526,94 @@ try {
       ),
       false,
     );
+    // Recognized tools remain noncatalog items: only exact known other labels
+    // may use representative tool art, without changing identity or edit target.
+    const source = saved[0];
+    saved = [
+      {
+        ...source,
+        id: "recognized-scissors",
+        name: "Recognized scissors",
+        identity: { outcome: "other", other_label: "SCISSORS" },
+      },
+      {
+        ...source,
+        id: "recognized-knife",
+        name: "Recognized utility knife",
+        identity: { outcome: "other", other_label: "utility knife" },
+      },
+      {
+        ...source,
+        id: "recognized-unknown",
+        name: "Unknown other tool",
+        identity: { outcome: "other", other_label: "laser cutter" },
+      },
+      {
+        ...source,
+        id: "recognized-uncertain",
+        name: "Uncertain scissors",
+        identity: { outcome: "uncertain" },
+      },
+    ];
+    project.requirements.tools = [];
+    const unchanged = JSON.stringify(saved);
+    const mutationCount = mutations.length;
+    await open("Recognized scissors");
+    const recognizedScissors = board.getByRole("button", {
+      name: "Review Recognized scissors",
+      exact: true,
+    });
+    await recognizedScissors.waitFor();
+    assert.match(
+      await recognizedScissors.locator("img").getAttribute("src"),
+      /49-scissors\.webp$/,
+    );
+    assert.match(
+      await board
+        .getByRole("button", {
+          name: "Review Recognized utility knife",
+          exact: true,
+        })
+        .locator("img")
+        .getAttribute("src"),
+      /50-utility-knife\.webp$/,
+    );
+    assert.equal(
+      await board
+        .getByRole("button", { name: "Review Unknown other tool", exact: true })
+        .locator("img")
+        .count(),
+      0,
+    );
+    if (width > 600)
+      assert.equal(
+        await board
+          .getByRole("button", {
+            name: "Review Uncertain scissors",
+            exact: true,
+          })
+          .locator("img")
+          .count(),
+        0,
+      );
+    await recognizedScissors.click();
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.closest("li")?.id),
+      "item-recognized-scissors",
+    );
+    assert.equal(
+      JSON.stringify(saved),
+      unchanged,
+      "representative art never rewrites identities",
+    );
+    assert.equal(
+      mutations.length,
+      mutationCount,
+      "opening recognized tool review never saves or changes inventory",
+    );
+    await board.screenshot({
+      path: path.join(output, `board-recognized-tools-${width}.png`),
+    });
     assert.deepEqual(errors, []);
     assert.deepEqual(external, []);
     assert.equal(

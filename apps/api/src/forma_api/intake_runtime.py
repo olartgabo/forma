@@ -1,7 +1,7 @@
 """Server-only intake observation runtime. Proposals only; never mutates state."""
 
 import time
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import Field, StrictBool
 
@@ -21,17 +21,18 @@ MAX_PROVIDER_IMAGE_BYTES = 5_000_000
 SUPPORTED_IMAGE_TYPES = ("image/jpeg", "image/png")
 
 INTAKE_PROMPT_VERSION = "intake-items-v2"
-# Live runs on November 4, 2026 used 1560-1906 completion tokens for answers
-# of roughly 100-200 visible tokens, and one answer stopped at the old 2048
-# cap. Most completion tokens go to reasoning, so the cap is raised once to a
-# fixed bound while the answer itself is kept short (see IntakeProposal).
-INTAKE_MAX_COMPLETION_TOKENS = 4096
+# Hidden reasoning shares this allowance (D066, D067). Reasoning effort is
+# low for photo intake only, and the answer itself is bounded far below the
+# cap (IntakeProposal), so a stop at the cap is reported, never retried.
+INTAKE_MAX_COMPLETION_TOKENS = 8192
+INTAKE_REASONING_EFFORT: Literal["low"] = "low"
 
 CATALOG_RULES = catalog_prompt() + " "
 
 # Trusted instructions. No read-only tool is supplied on this call, so these
-# instructions do not require or mention one. The generic proposal-service
-# intake prompt asks for labels only; this connected call does not use it.
+# instructions do not require or mention one. The provider schema is
+# IntakeProposal: recognition, items and questions, all required. Labels are
+# derived from items, so text alone never stands in for recognition.
 INTAKE_SYSTEM_PROMPT = (
     f"Prompt {INTAKE_PROMPT_VERSION}.\n"
     "Identify the visible objects in the consented inventory photo for a"
@@ -59,16 +60,79 @@ class IntakeDiagnostics(Record):
     usage: ProviderUsage | None = None
 
 
-class IntakeFailureDiagnostics(Record):
-    """Safe, provider-reported facts about a failed call; no response text."""
+IntakeFailureReason = Literal[
+    "refusal",
+    "incomplete_output",
+    "invalid_proposal",
+    "invalid_json",
+    "invalid_schema",
+    "invalid_response",
+    "empty_observation",
+    "response_too_large",
+    "timeout",
+    "budget_exhausted",
+    "network_error",
+    "authentication",
+    "access_denied",
+    "rate_limit",
+    "provider_http_error",
+    "round_limit",
+    "provider_error",
+]
 
+
+class IntakeValidationIssue(Record):
+    path: list[str | int] = Field(max_length=8)
+    type: Literal[
+        "json_invalid",
+        "missing",
+        "extra_forbidden",
+        "string_type",
+        "string_too_long",
+        "string_too_short",
+        "int_type",
+        "int_parsing",
+        "float_type",
+        "float_parsing",
+        "bool_type",
+        "literal_error",
+        "enum",
+        "list_type",
+        "dict_type",
+        "model_type",
+        "greater_than",
+        "greater_than_equal",
+        "less_than",
+        "less_than_equal",
+        "finite_number",
+        "value_error",
+        "other",
+    ]
+
+
+class IntakeFailureDiagnostics(Record):
+    """Safe request-local failure details; never provider text or validation errors."""
+
+    reason: IntakeFailureReason
     model: str = Field(min_length=1, max_length=80)
     elapsed_ms: int = Field(ge=0)
+    usage: ProviderUsage
+    validation_issues: list[IntakeValidationIssue] = Field(
+        default_factory=list, max_length=16
+    )
     # Why generation stopped, as the provider reported it (e.g. "length").
     finish_reason: str | None = Field(
-        default=None, max_length=32, pattern=r"^[a-z_]{1,32}$"
+        default=None,
+        max_length=32,
+        pattern=r"^[a-z_]{1,32}$",
+        exclude_if=lambda value: value is None,
     )
-    usage: ProviderUsage
+
+
+class IntakeGatewayError(GatewayError):
+    def __init__(self, code: str, diagnostics: IntakeFailureDiagnostics):
+        super().__init__(code)
+        self.diagnostics = diagnostics
 
 
 class IntakeErrorResponse(Record):
@@ -86,14 +150,11 @@ class IntakeErrorResponse(Record):
         "timeout",
         "network_error",
         "invalid_response",
-        "incomplete_output",
         "provider_http_error",
         "provider_error",
     ]
     message: Text
-    diagnostics: IntakeFailureDiagnostics | None = Field(
-        default=None, exclude_if=lambda value: value is None
-    )
+    diagnostics: IntakeFailureDiagnostics | None = None
 
 
 class IntakeResult(Record):
@@ -162,16 +223,10 @@ def gateway_error_details(code: str) -> tuple[int, str, str]:
     }
     if code in details:
         return details[code]
-    if code == "incomplete_output":
-        return (
-            502,
-            "incomplete_output",
-            "Muse stopped before finishing its answer, so nothing was added. "
-            "Ask again, or add materials by hand.",
-        )
     if code in {
         "invalid_response",
         "invalid_proposal",
+        "incomplete_output",
         "refusal",
         "response_too_large",
         "invalid_tool_call",
@@ -217,8 +272,8 @@ def observe_photo(
 ) -> tuple[IntakeObservation, IntakeDiagnostics]:
     """Call Muse Spark once through the bounded gateway, without any tool.
 
-    A failed call raises ``GatewayError`` with ``diagnostics`` attached (the
-    finish reason and provider-reported usage). Nothing is retried here."""
+    A failed call raises ``IntakeGatewayError`` carrying safe diagnostics
+    (reason, finish reason, provider-reported usage). Nothing is retried."""
 
     if content_type not in SUPPORTED_IMAGE_TYPES:
         raise GatewayError("invalid_image")
@@ -229,7 +284,6 @@ def observe_photo(
         max_rounds=getattr(gateway, "max_rounds", 4),
         seconds=getattr(gateway, "budget", 60),
     )
-    model = str(getattr(gateway, "spark", "unknown"))[:80] or "unknown"
     try:
         proposal = gateway.propose(
             INTAKE_PROMPT,
@@ -239,20 +293,24 @@ def observe_photo(
             system_prompt=INTAKE_SYSTEM_PROMPT,
             context={"project_goal": project_goal},
             max_completion_tokens=INTAKE_MAX_COMPLETION_TOKENS,
+            reasoning_effort=INTAKE_REASONING_EFFORT,
         )
     except GatewayError as exc:
-        if budget.traces:
-            last = budget.traces[-1]
-            exc.diagnostics = IntakeFailureDiagnostics(  # type: ignore[attr-defined]
-                model=model,
-                elapsed_ms=last.elapsed_ms,
-                finish_reason=last.finish_reason,
-                usage=summarize_usage(budget.traces),
-            )
-        raise
+        detail = exc.diagnostic_reason or exc.code
+        reason = detail if detail in get_args(IntakeFailureReason) else "provider_error"
+        diagnostics = IntakeFailureDiagnostics(
+            reason=reason,
+            model=str(getattr(gateway, "spark", "unknown"))[:80] or "unknown",
+            elapsed_ms=round((time.monotonic() - start) * 1000),
+            usage=summarize_usage(budget.traces),
+            validation_issues=exc.validation_issues,
+            finish_reason=budget.traces[-1].finish_reason if budget.traces else None,
+        )
+        raise IntakeGatewayError(exc.code, diagnostics) from None
     elapsed_ms = round((time.monotonic() - start) * 1000)
     if budget.traces:
         elapsed_ms = budget.traces[-1].elapsed_ms
+    model = str(getattr(gateway, "spark", "unknown"))[:80] or "unknown"
     return _observation(proposal), IntakeDiagnostics(
         status="ok",
         model=model,

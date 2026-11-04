@@ -49,6 +49,14 @@ FRESH = json.dumps(
 
 
 def final(content=None):
+    if content:
+        try:
+            data = json.loads(content)
+            if isinstance(data, dict):
+                data.setdefault("items", [])
+                content = json.dumps(data)
+        except ValueError:
+            pass
     return {
         "choices": [
             {
@@ -297,6 +305,7 @@ def test_unusable_provider_output_is_redacted_502_and_readonly(
     assert error["code"] == "invalid_response"
     assert error["message"] == "Model provider returned an unusable response; retry"
     assert error["diagnostics"]["finish_reason"] == "stop"
+    assert error["diagnostics"]["reason"] == "invalid_schema"
     assert "torn" not in result.text and "stand" not in result.text
     assert len(fake.calls) == 1
     assert client.get(f"/api/projects/{p['id']}", headers=AUTH).json() == before
@@ -456,7 +465,8 @@ def test_truncated_answer_is_incomplete_with_finish_reason_and_usage(
     result = call_intake(client, p, body(p, media))
     assert result.status_code == 502
     error = result.json()
-    assert error["code"] == "incomplete_output"
+    assert error["code"] == "invalid_response"
+    assert error["diagnostics"]["reason"] == "incomplete_output"
     assert error["diagnostics"]["finish_reason"] == "length"
     assert error["diagnostics"]["usage"] == {
         "model_calls": 1,
@@ -464,4 +474,70 @@ def test_truncated_answer_is_incomplete_with_finish_reason_and_usage(
         "output_tokens": 2048,
     }
     assert "recog" not in result.text
+    assert len(fake.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "kind,reason",
+    [
+        ("refusal", "refusal"),
+        ("length", "incomplete_output"),
+        ("schema", "invalid_schema"),
+        ("json", "invalid_json"),
+        ("shape", "invalid_proposal"),
+        ("timeout", "timeout"),
+    ],
+)
+def test_owner_receives_safe_failure_diagnostics(client, monkeypatch, kind, reason):
+    p = project(client)
+    media = upload(client, p)
+    response = final()
+    response["usage"] = {"prompt_tokens": 31, "completion_tokens": 2048}
+    if kind == "refusal":
+        response["choices"][0]["message"]["refusal"] = "PRIVATE refusal text"
+    elif kind == "length":
+        response["choices"][0]["finish_reason"] = "length"
+    elif kind == "schema":
+        response["choices"][0]["message"]["content"] = '{"private":"PRIVATE payload"}'
+    elif kind == "json":
+        response["choices"][0]["message"]["content"] = "PRIVATE invalid JSON"
+    elif kind == "shape":
+        response["choices"] = []
+    else:
+        response = GatewayError("timeout")
+    fake = Fake(response)
+    install(monkeypatch, fake)
+    result = call_intake(client, p, body(p, media))
+    assert result.status_code == (504 if kind == "timeout" else 502)
+    assert result.headers["Cache-Control"] == "no-store"
+    diagnostics = result.json()["diagnostics"]
+    assert diagnostics["reason"] == reason
+    assert diagnostics["model"] == "muse-spark-1.3"
+    assert diagnostics["elapsed_ms"] >= 0
+    assert diagnostics["usage"]["model_calls"] == 1
+    if kind == "timeout":
+        assert diagnostics["usage"].get("input_tokens") is None
+        assert diagnostics["usage"].get("output_tokens") is None
+    else:
+        assert diagnostics["usage"] == {
+            "model_calls": 1,
+            "input_tokens": 31,
+            "output_tokens": 2048,
+        }
+    if kind == "schema":
+        assert {"path": ["<field>"], "type": "extra_forbidden"} in diagnostics[
+            "validation_issues"
+        ]
+    elif kind == "json":
+        assert diagnostics["validation_issues"] == [
+            {"path": [], "type": "json_invalid"}
+        ]
+    assert "PRIVATE" not in result.text
+    assert len(fake.calls) == 1
+    assert fake.calls[0][1]["max_completion_tokens"] == 8192
+    denied = client.post(
+        f"/api/projects/{p['id']}/intake", headers=OTHER, json=body(p, media)
+    )
+    assert denied.status_code == 404
+    assert "diagnostics" not in denied.json()
     assert len(fake.calls) == 1

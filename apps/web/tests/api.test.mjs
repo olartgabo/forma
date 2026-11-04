@@ -1,4 +1,9 @@
 import { recoverableRegionIds } from "../src/lib/material-recovery.ts";
+import {
+  parseIntakeFailureDiagnostics,
+  intakeFailureReason,
+  intakeFailureSummary,
+} from "../src/lib/intake-failure.ts";
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -1581,6 +1586,99 @@ test("intake provider errors use safe local messages and preserve codes", async 
     );
     t.mock.restoreAll();
   }
+});
+
+test("intake errors retain only bounded safe diagnostics and actual reported usage", async (t) => {
+  const diagnostics = {
+    reason: "invalid_proposal",
+    model: "muse-spark-1.3",
+    elapsed_ms: 1234,
+    usage: { model_calls: 1, input_tokens: 2200, output_tokens: 2048 },
+  };
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++;
+    return Response.json(
+      {
+        code: "invalid_response",
+        message: "PRIVATE_PROVIDER_BODY",
+        diagnostics,
+      },
+      { status: 502 },
+    );
+  });
+  await assert.rejects(
+    requestIntakeObservation(token, "project-a", "media-a", "inventory-1"),
+    (error) => {
+      assert.deepEqual(error.intakeDiagnostics, {
+        reason: "invalid_proposal",
+        validationIssues: [],
+        model: "muse-spark-1.3",
+        elapsedMs: 1234,
+        finishReason: null,
+        usage: diagnostics.usage,
+      });
+      assert.match(
+        intakeFailureReason(error.intakeDiagnostics),
+        /required format/,
+      );
+      assert.equal(
+        intakeFailureSummary(error.intakeDiagnostics).status,
+        "failed",
+      );
+      assert.match(formatProviderUsage(error.intakeDiagnostics.usage), /2,200/);
+      assert.doesNotMatch(JSON.stringify(error), /PRIVATE_PROVIDER_BODY/);
+      return true;
+    },
+  );
+  assert.equal(calls, 1, "failure never silently retries");
+  const unknown = parseIntakeFailureDiagnostics({
+    ...diagnostics,
+    usage: { model_calls: 1 },
+  });
+  assert.equal(unknown.usage.input_tokens, null);
+  assert.equal(unknown.usage.output_tokens, null);
+  assert.match(formatProviderUsage(unknown.usage), /not reported/);
+  for (const invalid of [
+    { ...diagnostics, reason: "PRIVATE_PROVIDER_BODY" },
+    { ...diagnostics, raw_response: "PRIVATE_PROVIDER_BODY" },
+    { ...diagnostics, model: "<script>secret</script>" },
+    { ...diagnostics, model: "a".repeat(81) },
+    { ...diagnostics, elapsed_ms: Infinity },
+    { ...diagnostics, usage: { model_calls: 17 } },
+    { ...diagnostics, usage: { model_calls: 1, input_tokens: -1 } },
+    {
+      ...diagnostics,
+      usage: { model_calls: 1, output_tokens: 16_000_000_001 },
+    },
+    {
+      ...diagnostics,
+      usage: { model_calls: 1, content: "PRIVATE_PROVIDER_BODY" },
+    },
+  ])
+    assert.equal(parseIntakeFailureDiagnostics(invalid), null);
+  assert.match(
+    intakeFailureReason({ ...unknown, reason: "incomplete_output" }),
+    /did not finish/,
+  );
+  const schema = parseIntakeFailureDiagnostics({
+    ...diagnostics,
+    reason: "invalid_schema",
+    validation_issues: [
+      { path: ["items", 0, "identity", "category_id"], type: "missing" },
+      { path: ["PRIVATE_PROVIDER_CONTENT"], type: "missing" },
+      { path: ["items"], type: "PRIVATE_PROVIDER_CONTENT" },
+    ],
+  });
+  assert.equal(schema.validationIssues.length, 1);
+  assert.match(
+    intakeFailureReason(schema),
+    /items\.0\.identity\.category_id: missing/,
+  );
+  assert.doesNotMatch(intakeFailureReason(schema), /PRIVATE_PROVIDER_CONTENT/);
+  assert.match(museCopyFor("en").intake.pending, /does not retry/);
+  assert.match(museCopyFor("es").intake.pending, /no la reintenta/);
+  assert.match(museCopyFor("en").diagnosis.pending, /may retry/);
 });
 
 test("intake 413/415 guidance differs from unchanged upload guidance", async (t) => {
@@ -3350,13 +3448,19 @@ test("a truncated intake says it ran out of room, without provider text", async 
   t.mock.method(globalThis, "fetch", async () =>
     Response.json(
       {
-        code: "incomplete_output",
+        code: "invalid_response",
         message: "PRIVATE_PROVIDER_BODY",
         diagnostics: {
+          reason: "incomplete_output",
           model: "muse-spark-1.3",
           elapsed_ms: 22800,
           finish_reason: "length",
-          usage: { model_calls: 1, input_tokens: 3632, output_tokens: 2048 },
+          usage: {
+            model_calls: 1,
+            input_tokens: 3632,
+            output_tokens: 2048,
+            reasoning_tokens: 1990,
+          },
         },
       },
       { status: 502 },
@@ -3365,10 +3469,18 @@ test("a truncated intake says it ran out of room, without provider text", async 
   await assert.rejects(
     requestIntakeObservation(token, "project-a", "media-a", "inventory-1"),
     (error) => {
-      assert.equal(error.code, "incomplete_output");
-      assert.match(error.message, /stopped before finishing/);
-      assert.match(error.message, /ran out of room/);
+      assert.equal(error.code, "invalid_response");
       assert.doesNotMatch(error.message, /PRIVATE/);
+      assert.equal(error.intakeDiagnostics.finishReason, "length");
+      assert.equal(error.intakeDiagnostics.usage.reasoning_tokens, 1990);
+      assert.match(
+        intakeFailureReason(error.intakeDiagnostics),
+        /did not finish/,
+      );
+      assert.match(
+        intakeFailureReason(error.intakeDiagnostics),
+        /ran out of room/,
+      );
       return true;
     },
   );
@@ -3378,7 +3490,13 @@ test("a truncated intake says it ran out of room, without provider text", async 
       {
         code: "invalid_response",
         message: "x",
-        diagnostics: { finish_reason: "<script>" },
+        diagnostics: {
+          reason: "incomplete_output",
+          model: "muse-spark-1.3",
+          elapsed_ms: 1,
+          finish_reason: "<script>",
+          usage: { model_calls: 1 },
+        },
       },
       { status: 502 },
     ),
@@ -3386,7 +3504,9 @@ test("a truncated intake says it ran out of room, without provider text", async 
   await assert.rejects(
     requestIntakeObservation(token, "project-a", "media-a", "inventory-1"),
     (error) => {
-      assert.doesNotMatch(error.message, /script|stopped:/);
+      // An unsanitised finish reason drops the whole diagnostics block.
+      assert.equal(error.intakeDiagnostics, null);
+      assert.doesNotMatch(error.message, /script/);
       return true;
     },
   );

@@ -1,4 +1,7 @@
 import type { Stock } from "./generated/contracts";
+// prettier-ignore
+// @ts-expect-error -- Node tests import TypeScript directly.
+import { parseIntakeFailureDiagnostics, type IntakeFailureDiagnostics } from "./intake-failure.ts";
 import type {
   BuildRequirements,
   ActivationResult,
@@ -41,12 +44,19 @@ import type {
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly intakeDiagnostics: IntakeFailureDiagnostics | null;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    intakeDiagnostics: IntakeFailureDiagnostics | null = null,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.intakeDiagnostics = intakeDiagnostics;
   }
 }
 
@@ -62,7 +72,6 @@ const INTAKE_CODES = [
   "timeout",
   "network_error",
   "invalid_response",
-  "incomplete_output",
   "provider_http_error",
   "provider_error",
 ];
@@ -78,8 +87,6 @@ const INTAKE_CODE_MESSAGES: Record<string, string> = {
   timeout: "The Muse request timed out. Try again later.",
   network_error: "Muse could not be reached from the server. Try again later.",
   invalid_response: "Muse returned an unusable response. Try again.",
-  incomplete_output:
-    "Muse stopped before finishing its answer, so nothing was added. Ask again, or add materials by hand.",
   consent_required:
     "Consent to send the selected photo and saved project goal to Meta is required before asking Muse.",
   stale_version:
@@ -147,18 +154,11 @@ async function responseError(
   repair = false,
 ): Promise<ApiError> {
   let code = "request_failed";
-  // Provider-reported reason a failed intake stopped, e.g. "length".
-  let finishReason = "";
+  let intakeDiagnostics: IntakeFailureDiagnostics | null = null;
   try {
     const body: unknown = await response.json();
-    if (intake && typeof body === "object" && body !== null) {
-      const diagnostics = (
-        body as { diagnostics?: { finish_reason?: unknown } }
-      ).diagnostics;
-      const reason = diagnostics?.finish_reason;
-      if (typeof reason === "string" && /^[a-z_]{1,32}$/.test(reason))
-        finishReason = reason;
-    }
+    if (intake && !design && !diagnosis && !repair && isRecord(body))
+      intakeDiagnostics = parseIntakeFailureDiagnostics(body.diagnostics);
     if (typeof body === "object" && body !== null && "code" in body) {
       const known = repair
         ? REPAIR_CODES
@@ -272,11 +272,10 @@ async function responseError(
     return new ApiError(
       response.status,
       code,
-      finishReason === "length"
-        ? `${message} It ran out of room for the answer.`
-        : finishReason && finishReason !== "stop"
-          ? `${message} (Muse stopped: ${finishReason}.)`
-          : message,
+      INTAKE_CODE_MESSAGES[code] ??
+        intakeStatusMessages[response.status] ??
+        "FORMA could not complete this request. Try again shortly.",
+      intakeDiagnostics,
     );
   }
   const messages: Record<number, string> = {

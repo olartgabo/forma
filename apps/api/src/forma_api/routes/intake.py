@@ -16,7 +16,13 @@ from forma_domain.models import ID
 class IntakeError(Exception):
     """Intake-owned error; codes may exceed the domain ErrorEnvelope set."""
 
-    def __init__(self, status: int, code: str, message: str, diagnostics=None):
+    def __init__(
+        self,
+        status: int,
+        code: str,
+        message: str,
+        diagnostics: intake_runtime.IntakeFailureDiagnostics | None = None,
+    ):
         self.status = status
         self.body = intake_runtime.IntakeErrorResponse(
             code=code, message=message, diagnostics=diagnostics
@@ -36,10 +42,13 @@ class IntakeRoute(APIRoute):
                 body = intake_runtime.IntakeErrorResponse(
                     code="validation_error", message="Request validation failed"
                 )
-                response = JSONResponse(body.model_dump(mode="json"), status_code=422)
+                response = JSONResponse(
+                    body.model_dump(mode="json", exclude_none=True), status_code=422
+                )
             except IntakeError as exc:
                 response = JSONResponse(
-                    exc.body.model_dump(mode="json"), status_code=exc.status
+                    exc.body.model_dump(mode="json", exclude_none=True),
+                    status_code=exc.status,
                 )
 
             response.headers["Cache-Control"] = "no-store"
@@ -50,7 +59,12 @@ class IntakeRoute(APIRoute):
 
 def _provider_error(exc: GatewayError) -> IntakeError:
     status, code, message = intake_runtime.gateway_error_details(exc.code)
-    return IntakeError(status, code, message, getattr(exc, "diagnostics", None))
+    return IntakeError(
+        status,
+        code,
+        message,
+        exc.diagnostics if isinstance(exc, intake_runtime.IntakeGatewayError) else None,
+    )
 
 
 def intake_router(

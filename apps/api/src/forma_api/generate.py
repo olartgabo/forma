@@ -48,6 +48,7 @@ from forma_api.intake_runtime import (
     IntakeFailureDiagnostics,
     IntakeRequest,
     IntakeResult,
+    IntakeValidationIssue,
 )
 from forma_api.measurement_runtime import (
     DecisionRequest,
@@ -252,6 +253,7 @@ API_RECORDS = (
     IntakeObservation,
     IntakeRequest,
     IntakeResult,
+    IntakeValidationIssue,
     PhotoLocalizationRequest,
     PhotoLocalizationResult,
     PhotoEstimateList,

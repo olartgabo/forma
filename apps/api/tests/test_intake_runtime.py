@@ -26,7 +26,15 @@ class Fake:
         return response
 
 
-def final(content):
+def final(content, *, include_items=True):
+    if include_items:
+        try:
+            data = json.loads(content)
+            if isinstance(data, dict):
+                data.setdefault("items", [])
+                content = json.dumps(data)
+        except ValueError:
+            pass
     return {"choices": [{"finish_reason": "stop", "message": {"content": content}}]}
 
 
@@ -45,6 +53,11 @@ CARDBOARD = {
 }
 INTAKE_JSON = json.dumps(
     {"recognition": "items", "items": [CARDBOARD], "questions": []}
+)
+
+# A plain IntakeObservation answer, for calls other than photo intake.
+ORDINARY_JSON = json.dumps(
+    {"labels": ["cardboard"], "measurement_source": "unknown", "questions": []}
 )
 
 
@@ -81,7 +94,8 @@ def test_observe_photo_uses_strict_intake_schema_without_tool():
     schema = payload["response_format"]["json_schema"]["schema"]
     assert schema == IntakeProposal.model_json_schema()
     assert schema["required"] == ["recognition", "items", "questions"]
-    assert payload["max_completion_tokens"] == 4096
+    assert payload["max_completion_tokens"] == 8192
+    assert payload["reasoning_effort"] == "low"
     user = payload["messages"][1]["content"]
     serialized = user[0]["text"]
     assert "SECRET GOAL" in serialized
@@ -274,14 +288,16 @@ def test_truncated_answer_keeps_finish_reason_and_usage_without_retry():
         )
     assert error.value.code == "incomplete_output"
     diagnostics = error.value.diagnostics
+    assert diagnostics.reason == "incomplete_output"
     assert diagnostics.finish_reason == "length"
     assert diagnostics.usage.input_tokens == 3632
     assert diagnostics.usage.output_tokens == 2048
     assert diagnostics.usage.reasoning_tokens == 1990
     assert len(fake.calls) == 1
+    # The public code stays in the existing family; the reason says why.
     assert intake_runtime.gateway_error_details("incomplete_output")[:2] == (
         502,
-        "incomplete_output",
+        "invalid_response",
     )
 
 
@@ -308,9 +324,11 @@ def test_the_largest_valid_answer_leaves_most_of_the_budget_for_reasoning():
         IntakeProposal.model_validate(
             {"recognition": "partial", "items": [item] * 13, "questions": []}
         )
-    # Conservatively one token per three characters.
+    # Conservatively one token per three characters: even the largest valid
+    # answer fits inside the old 2048 cap, leaving the rest of the 8192 cap
+    # for low-effort reasoning.
     tokens = len(biggest.model_dump_json()) / 3
-    assert tokens < intake_runtime.INTAKE_MAX_COMPLETION_TOKENS / 2
+    assert tokens < 2048 <= intake_runtime.INTAKE_MAX_COMPLETION_TOKENS / 4
 
 
 @pytest.mark.parametrize(
@@ -325,7 +343,7 @@ def test_the_largest_valid_answer_leaves_most_of_the_budget_for_reasoning():
         ("network_error", 502, "network_error"),
         ("invalid_response", 502, "invalid_response"),
         ("invalid_proposal", 502, "invalid_response"),
-        ("incomplete_output", 502, "incomplete_output"),
+        ("incomplete_output", 502, "invalid_response"),
         ("provider_http_error", 502, "provider_http_error"),
         ("something_private", 502, "provider_error"),
     ],
@@ -411,6 +429,8 @@ def test_default_intake_gateway_allows_one_long_call_without_retries(monkeypatch
     )
     assert 119 < fake.calls[0][2] <= 120
     assert gateway.budget == 120
+    assert fake.calls[0][1]["max_completion_tokens"] == 8192
+    assert fake.calls[0][1]["reasoning_effort"] == "low"
     assert gateway.max_rounds == 1
     assert gateway.max_retries == 0
     failing = Fake(GatewayError("rate_limit", retryable=True))
@@ -420,3 +440,100 @@ def test_default_intake_gateway_allows_one_long_call_without_retries(monkeypatch
             gateway, project_goal="stand", image_data=PNG, content_type="image/png"
         )
     assert len(failing.calls) == 1
+
+
+def test_failure_diagnostics_use_only_current_request_and_allowlisted_reason():
+    fake = Fake(
+        final_usage(INTAKE_JSON, {"prompt_tokens": 100, "completion_tokens": 50}),
+        GatewayError("PRIVATE unknown error"),
+    )
+    gateway = MetaGateway(fake)
+    intake_runtime.observe_photo(
+        gateway, project_goal="private goal", image_data=PNG, content_type="image/png"
+    )
+    with pytest.raises(intake_runtime.IntakeGatewayError) as failure:
+        intake_runtime.observe_photo(
+            gateway,
+            project_goal="private goal",
+            image_data=PNG,
+            content_type="image/png",
+        )
+    safe = failure.value.diagnostics.model_dump(mode="json")
+    assert safe["reason"] == "provider_error"
+    assert safe["usage"] == {
+        "model_calls": 1,
+        "input_tokens": None,
+        "output_tokens": None,
+    }
+    assert "PRIVATE" not in json.dumps(safe)
+    assert "private goal" not in json.dumps(safe)
+
+
+def test_intake_completion_budget_does_not_change_other_proposal_defaults():
+    fake = Fake(final(INTAKE_JSON), final(ORDINARY_JSON))
+    gateway = MetaGateway(fake)
+    intake_runtime.observe_photo(
+        gateway, project_goal="stand", image_data=PNG, content_type="image/png"
+    )
+    gateway.propose("ordinary proposal", IntakeObservation)
+    assert [request[1]["max_completion_tokens"] for request in fake.calls] == [
+        8192,
+        2048,
+    ]
+
+
+def test_intake_prompts_consistently_request_structured_items_and_unknown_measurements():
+    system = intake_runtime.INTAKE_SYSTEM_PROMPT
+    assert "recognition, items and questions" in system
+    assert "one entry per visible object" in system
+    assert "no_objects only when the photo shows no object at all" in system
+    assert "never infer millimeters" in system
+    assert "labels and questions only" not in system
+    assert "labels" not in intake_runtime.INTAKE_PROMPT
+    assert "as an item" in intake_runtime.INTAKE_PROMPT
+
+
+def test_only_intake_selects_low_reasoning_effort():
+    fake = Fake(final(INTAKE_JSON), final(ORDINARY_JSON))
+    gateway = MetaGateway(fake)
+    intake_runtime.observe_photo(
+        gateway, project_goal="stand", image_data=PNG, content_type="image/png"
+    )
+    gateway.propose("ordinary proposal", IntakeObservation)
+    assert fake.calls[0][1]["reasoning_effort"] == "low"
+    assert "reasoning_effort" not in fake.calls[1][1]
+
+
+def test_photo_schema_requires_items_but_legacy_observation_remains_compatible():
+    schema = IntakeProposal.model_json_schema()
+    assert schema["required"] == ["recognition", "items", "questions"]
+    assert schema["properties"]["items"]["maxItems"] == 12
+    legacy = {
+        "labels": [],
+        "measurement_source": "unknown",
+        "questions": ["Is there an object?"],
+    }
+    # A stored legacy observation still parses; a fresh one must be structured.
+    assert IntakeObservation.model_validate_json(json.dumps(legacy)).items == ()
+    with pytest.raises(Exception):
+        IntakeProposal.model_validate_json(json.dumps(legacy))
+    fake = Fake(final(json.dumps(legacy), include_items=False))
+    with pytest.raises(intake_runtime.IntakeGatewayError) as failure:
+        intake_runtime.observe_photo(
+            MetaGateway(fake),
+            project_goal="stand",
+            image_data=PNG,
+            content_type="image/png",
+        )
+    assert failure.value.diagnostics.reason == "invalid_schema"
+    issues = failure.value.diagnostics.model_dump()["validation_issues"]
+    assert {"path": ["items"], "type": "missing"} in issues
+    assert {"path": ["recognition"], "type": "missing"} in issues
+
+
+def test_intake_prompts_make_items_primary_for_noncatalog_objects():
+    system = intake_runtime.INTAKE_SYSTEM_PROMPT
+    assert "outcome=other with a short other_label" in system
+    assert "identity.outcome=uncertain" in system
+    # Labels are derived from items, never asked for.
+    assert "labels" not in system.split("LANGUAGE:")[0]

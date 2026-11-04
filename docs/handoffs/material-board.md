@@ -33,7 +33,7 @@ loading delays. Model suggestions remain unconfirmed.
 
 `apps/web/public/materials` contains 60 optimized assets (48 materials, 12 tools),
 totalling 3,574,018 bytes versus 56,103,953 bytes of originals. They are at most
-720px, 12,956–184,132 bytes each, and retain transparency. Only visible cutouts are
+720px, 12,956â€“184,132 bytes each, and retain transparency. Only visible cutouts are
 requested, at most six at once. The manifest records per-file sizes and dimensions.
 PNG masters remain in the external asset archive. To reproduce conversion:
 
@@ -71,11 +71,11 @@ its STOP files.
 
 Final browser run passed at 1280, 390 and 320 pixels, including saved corrections, keyboard focus, missing-image fallback, and construction pending/success/rejection. No provider calls were made.
 
-## Runtime verification — November 4, 2026
+## Runtime verification â€” November 4, 2026
 
 After independent review of the harness and eight offline control checks, one
 live intake request used the supplied synthetic corrugated-cardboard reference
-image (1261 × 1247 pixels; 2,012,015 bytes). The actual app intake runtime and
+image (1261 Ã— 1247 pixels; 2,012,015 bytes). The actual app intake runtime and
 fixed-origin server transport were used; credentials remained server-only.
 The run allowed one call, no retries, a 4,096 completion-token limit, a 30-second
 request timeout and a fixed one-hour authorization. Input controls limit image
@@ -102,3 +102,19 @@ the existing unknown receipt remains unchanged and unresolved.
 The old local invocation is no longer running. Its original receipt lacks a provider response identifier, failure code and usage; provider completion and billing remain unknown. An append-only reconciliation event records that distinction. The documented stored Responses retrieval route cannot recover this unidentified Chat Completions call. No old request was replayed.
 
 Photo intake now receives one attempt with a 120-second timeout and total budget, with zero retries. Other gateway defaults remain unchanged. The separate smoke harness also respects its fixed authorization end time. A new deployed browser test must have its own reservation; historical unknowns remain preserved.
+
+### Deployed photo-flow finding
+
+PR #185 deployed successfully at bfa6321df325bf6e3141114b76d0721d23f099bd. All 60 hosted cutouts again matched local assets. A new owner-authenticated browser run created a separate project and uploaded the supplied 1,087,269-byte synthetic material-board reference. Its one intake request ended with the app showing invalid_response; the response had no failure details or usage. No board result was invented. The run halted, and an append-only reconciliation records terminal app failure with unknown provider usage/billing.
+
+The follow-up preserves bounded request-local rejection reasons and available usage on intake errors. Both recognition interfaces display validated failure diagnostics; raw provider output, schema inputs and credentials remain excluded. This is observability for a new explicitly bounded test, not recovery of missing historical provider receipts.
+
+A separately reserved local diagnostic reproduced incomplete_output after 17,781 ms with 2,669 input and 2,048 output tokens, exhausting the old completion allowance. An independently reviewed one-call verification at 8,192 maximum then returned a schema-valid observation after 32,000 ms using 2,669 input and 2,708 output tokens. This establishes the output-limit repair locally, not a deployed end-to-end pass. It returned zero structured items, exposing conflicting legacy instructions that said labels/questions only; the intake prompt now explicitly requests structured item proposals as well. Empty observations remain legitimate for images without recognizable objects.
+
+Intake therefore uses an 8,192-token completion ceiling, one 120-second attempt and zero retries. Ordinary proposal defaults remain 2,048. Historical unknown receipts are preserved; known usage from these distinct local tests is not substituted for them.
+
+### Recognition effort and structured-item contract
+
+The PR186 deployed guided call returned incomplete_output after 47,710 ms with 2,725 input and 8,192 output tokens; the new diagnostic UI exposed this accurately and no board result was fabricated. A separate low-reasoning local test returned valid labels after 10,360 ms using 2,725 input and 665 output tokens, but omitted the optional structured items. Photo recognition now requests low reasoning and a runtime-specific schema with required items, while legacy stored observations remain compatible. The existing 120-second, one-call/no-retry bounds remain unchanged. Provider reference: https://dev.meta.ai/docs/reasoning .
+
+The required-items + low-reasoning local verification returned four validated proposals in 9,938 ms, using 2,828 input and 887 output tokens: corrugated cardboard and duct tape as catalog identities; scissors and utility knife as other identities. The result is a software reference-image check, not physical evidence or recognition-coverage validation. Recognized other identities matching an existing exact tool label can use representative tool artwork without adding tools to saved inventory or confirming availability.

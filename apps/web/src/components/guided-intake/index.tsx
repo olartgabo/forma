@@ -4,7 +4,18 @@
 // Stock values live in the workbench's rows (one draft shared with Details);
 // this component keeps only display state such as names, boxes and outlines.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { loadProject, requestIntakeObservation } from "../../lib/api";
+import { ApiError, loadProject, requestIntakeObservation } from "../../lib/api";
+import {
+  intakeFailureReason,
+  intakeFailureSummary,
+  type IntakeFailureDiagnostics,
+} from "../../lib/intake-failure";
+import MuseRequestStatus from "../muse-request-status";
+import { useMuseLanguage } from "../muse-language-provider";
+import {
+  museDiagnosticsFromResult,
+  type MuseDiagnosticsSummary,
+} from "../../lib/provider-usage";
 import {
   localizationReceipts,
   localizePhoto,
@@ -209,7 +220,19 @@ export default function GuidedIntake({
   const [reference, setReference] = useState<Record<string, ReferenceDraft>>(
     {},
   );
-  const [error, setError] = useState("");
+  const [error, setErrorValue] = useState("");
+  const [successDiagnostics, setSuccessDiagnostics] =
+    useState<MuseDiagnosticsSummary | null>(null);
+  const [failureDiagnostics, setFailureDiagnostics] =
+    useState<IntakeFailureDiagnostics | null>(null);
+  function setError(value: string) {
+    setErrorValue(value);
+    setFailureDiagnostics(null);
+    setSuccessDiagnostics(null);
+  }
+  const { locale, copy } = useMuseLanguage();
+  const intakeController = useRef<AbortController | null>(null);
+  const intakeEpoch = useRef(0);
   const [notice, setNotice] = useState("");
   // Materials SAM found no usable region for: the photo, reference and
   // material are kept, and the card offers a drawn box or a suggestion.
@@ -235,6 +258,31 @@ export default function GuidedIntake({
   >({});
   const [focus, setFocus] = useState<string | null>(null);
   const alive = useRef(true);
+  const photosKey = photos
+    .map((photo) => `${photo.id}:${photo.content_type}:${photo.byte_count}`)
+    .join(",");
+  useEffect(() => {
+    intakeEpoch.current += 1;
+    intakeController.current?.abort();
+    intakeController.current = null;
+    setFailureDiagnostics(null);
+    setSuccessDiagnostics(null);
+    setErrorValue("");
+    setNotice("");
+    setMuseConsent(false);
+    setBusy((current) => (current === "muse" ? "" : current));
+    return () => {
+      intakeEpoch.current += 1;
+      intakeController.current?.abort();
+    };
+  }, [
+    token,
+    project.id,
+    project.revision_id,
+    project.goal,
+    photoId,
+    photosKey,
+  ]);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -532,14 +580,27 @@ export default function GuidedIntake({
     if (!photo || !museConsent || locked || itemsState !== "ready") return;
     setBusy("muse");
     setError("");
+    setNotice("");
+    setMuseConsent(false);
+    const controller = new AbortController();
+    intakeController.current = controller;
+    const requestEpoch = ++intakeEpoch.current;
     try {
       const result = await requestIntakeObservation(
         token,
         project.id,
         photo.id,
         project.revision_id,
+        controller.signal,
       );
-      if (!alive.current) return;
+      if (
+        !alive.current ||
+        controller.signal.aborted ||
+        requestEpoch !== intakeEpoch.current
+      )
+        return;
+      setSuccessDiagnostics(museDiagnosticsFromResult(result.diagnostics));
+      // Only structured items become cards; labels alone never do.
       setNotice(
         intakeNotice(
           result.observation,
@@ -557,9 +618,27 @@ export default function GuidedIntake({
         ),
       );
     } catch (failure) {
-      if (alive.current) setError((failure as Error).message);
+      if (
+        alive.current &&
+        !controller.signal.aborted &&
+        requestEpoch === intakeEpoch.current
+      ) {
+        const diagnostics =
+          failure instanceof ApiError ? failure.intakeDiagnostics : null;
+        setError(
+          diagnostics
+            ? intakeFailureReason(diagnostics, locale)
+            : (failure as Error).message,
+        );
+        setFailureDiagnostics(diagnostics);
+      }
     } finally {
-      if (alive.current) {
+      if (
+        alive.current &&
+        !controller.signal.aborted &&
+        requestEpoch === intakeEpoch.current
+      ) {
+        intakeController.current = null;
         setBusy("");
         setMuseConsent(false);
       }
@@ -1067,6 +1146,22 @@ export default function GuidedIntake({
           </div>
         )}
       </div>
+      <MuseRequestStatus
+        busy={busy === "muse"}
+        pendingMessage={copy.intake.pending}
+        onCancel={() => {
+          intakeEpoch.current += 1;
+          intakeController.current?.abort();
+          intakeController.current = null;
+          setBusy("");
+          setError("");
+          setNotice(copy.intake.cancelled);
+        }}
+        diagnostics={
+          successDiagnostics ?? intakeFailureSummary(failureDiagnostics)
+        }
+        locale={locale}
+      />
       <MaterialBoard
         items={items}
         stocks={stocks}
