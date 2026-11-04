@@ -148,7 +148,7 @@ each changed step beside its original step and marks new steps as having none.
 manual and the authenticated readiness response in the actual connected workbench at
 390px and 320px. Each width runs fresh progress and an injected synthetic failed-check
 UI state (not a persisted physical event or server replay). It checks diagrams,
-instructions, tools, parts, checkpoints, bill of materials, bounded width, reachable
+the enlarged diagram's pan cue and keyboard panning to its far edge, instructions, tools, parts, checkpoints, bill of materials, bounded width, reachable
 Next, zero writes, disabled save/diagnosis and prerequisite blocking. A third
 scenario per width submits a damage report to an intercepted route and checks the
 exact request, the paused build and the removed save control. A fourth records a
