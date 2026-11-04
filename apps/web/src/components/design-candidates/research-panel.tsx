@@ -13,6 +13,12 @@ import {
   researchReceipts,
 } from "./research-client";
 
+export type ResearchAdvice = {
+  candidateId: string;
+  reason: string;
+  source: ResearchResult["findings"][number];
+};
+
 const copy = {
   en: {
     title: "Find ideas for this build",
@@ -24,6 +30,7 @@ const copy = {
     phone: "Phone stand",
     reading: "Reading stand",
     clearance: "Plug clearance is essential",
+    clearanceGate: "Clear this requirement to compare stock-only designs.",
     brief: "Public brief sent to MetaMuse",
     transfer:
       "MetaMuse may also see how checked options compare in sheet and tape use or base depth. Photos and exact measurements stay in FORMA.",
@@ -69,6 +76,8 @@ const copy = {
     phone: "Soporte para teléfono",
     reading: "Atril de lectura",
     clearance: "El espacio para el conector es imprescindible",
+    clearanceGate:
+      "Quita este requisito para comparar opciones basadas solo en tus materiales.",
     brief: "Descripción pública que recibirá MetaMuse",
     transfer:
       "MetaMuse también puede recibir comparaciones entre las opciones comprobadas sobre el uso de lámina y cinta o la profundidad de la base. Las fotos y las medidas exactas se quedan en FORMA.",
@@ -113,17 +122,20 @@ export default function ResearchPanel({
   context,
   disabled,
   onInvalidate,
+  onStockSearchBlocked,
   onReview,
 }: {
   token: string;
   context: SearchContext;
   disabled: boolean;
-  onInvalidate: () => void;
-  onReview: (search: Search, recommendation: string | null) => void;
+  onInvalidate: (scope: "recommendation" | "search") => void;
+  onStockSearchBlocked: (blocked: boolean) => void;
+  onReview: (search: Search, recommendation: ResearchAdvice | null) => void;
 }) {
   const { locale } = useMuseLanguage();
   const labels = copy[locale];
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [receiptLoaded, setReceiptLoaded] = useState(false);
   const [useCase, setUseCase] =
     useState<IntakeResearchRequest["use_case"]>("phone_stand");
   const [clearance, setClearance] = useState(false);
@@ -137,10 +149,16 @@ export default function ResearchPanel({
   const [result, setResult] = useState<ResearchResult | null>(null);
   const dispatch = useRef<AbortController | null>(null);
   const { projectId, inventoryRevisionId } = context;
+  const needsClearance = pending?.needs_plug_clearance ?? clearance;
+
+  useEffect(() => {
+    onStockSearchBlocked(!receiptLoaded || needsClearance);
+  }, [receiptLoaded, needsClearance, onStockSearchBlocked]);
 
   useEffect(() => {
     const load = new AbortController();
-    setEnabled(false);
+    setEnabled(null);
+    setReceiptLoaded(false);
     setPending(null);
     setReceiptError(false);
     setConsented(false);
@@ -154,15 +172,21 @@ export default function ResearchPanel({
         activeVersionId: null,
         lastEventId: null,
       });
-      const available = await api.enabled(load.signal).catch(() => false);
-      if (load.signal.aborted || !available) return;
       try {
         const retained = await researchReceipts.pending(token, projectId);
-        if (!load.signal.aborted) setPending(retained);
+        if (load.signal.aborted) return;
+        setPending(retained);
+        if (retained?.expected_inventory_revision_id === inventoryRevisionId) {
+          setUseCase(retained.use_case);
+          setClearance(retained.needs_plug_clearance);
+        }
       } catch {
         if (!load.signal.aborted) setReceiptError(true);
       }
-      if (!load.signal.aborted) setEnabled(true);
+      if (load.signal.aborted) return;
+      setReceiptLoaded(true);
+      const available = await api.enabled(load.signal).catch(() => false);
+      if (!load.signal.aborted) setEnabled(available);
     }
     void initialize();
     return () => {
@@ -179,8 +203,8 @@ export default function ResearchPanel({
     setConsented(false);
   }
 
-  function reviseBrief() {
-    onInvalidate();
+  function reviseBrief(needsPlugClearance: boolean) {
+    onInvalidate(needsPlugClearance ? "search" : "recommendation");
     setConsented(false);
     setResult(null);
     setFailure(null);
@@ -191,7 +215,7 @@ export default function ResearchPanel({
     pending.expected_inventory_revision_id !== inventoryRevisionId;
   const brief = publicResearchBrief(
     pending?.use_case ?? useCase,
-    pending?.needs_plug_clearance ?? clearance,
+    needsClearance,
   );
 
   async function investigate() {
@@ -215,7 +239,7 @@ export default function ResearchPanel({
     dispatch.current = active;
     setPending(request);
     setBusy(true);
-    onInvalidate();
+    onInvalidate(request.needs_plug_clearance ? "search" : "recommendation");
     setResult(null);
     setFailure(null);
     try {
@@ -229,6 +253,8 @@ export default function ResearchPanel({
         );
       } catch (error) {
         if (active.signal.aborted) return;
+        if (error instanceof SynthesisRequestError && error.stale)
+          onInvalidate("search");
         if (error instanceof SynthesisRequestError && !error.retry) {
           await researchReceipts.clear(token, projectId, request);
           if (!active.signal.aborted) setPending(null);
@@ -264,6 +290,7 @@ export default function ResearchPanel({
     try {
       await researchReceipts.discard(token, projectId);
       setPending(null);
+      if (!enabled) setClearance(false);
       setReceiptError(false);
       setConsented(false);
     } catch {
@@ -271,7 +298,27 @@ export default function ResearchPanel({
     }
   }
 
-  if (!enabled) return null;
+  if (!enabled) {
+    if (!needsClearance) return null;
+    return (
+      <fieldset className="design-muse" lang={locale}>
+        <legend>{labels.title}</legend>
+        <p>{labels.clearance}</p>
+        <p className="help">{labels.clearanceGate}</p>
+        {enabled === false && (
+          <p role="status">{labels.coverage.unavailable}</p>
+        )}
+        {receiptError && <p role="alert">{labels.storedError}</p>}
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => void discard()}
+        >
+          {labels.discard}
+        </button>
+      </fieldset>
+    );
+  }
   return (
     <fieldset className="design-muse" lang={locale}>
       <legend>{labels.title}</legend>
@@ -288,7 +335,7 @@ export default function ResearchPanel({
                 ? "reading_stand"
                 : "phone_stand",
             );
-            reviseBrief();
+            reviseBrief(clearance);
           }}
         >
           <option value="phone_stand">{labels.phone}</option>
@@ -298,15 +345,16 @@ export default function ResearchPanel({
       <label className="checkbox-label">
         <input
           type="checkbox"
-          checked={pending?.needs_plug_clearance ?? clearance}
+          checked={needsClearance}
           disabled={disabled || busy || pending !== null}
           onChange={(event) => {
             setClearance(event.target.checked);
-            reviseBrief();
+            reviseBrief(event.target.checked);
           }}
         />
         {labels.clearance}
       </label>
+      {needsClearance && <p className="help">{labels.clearanceGate}</p>}
       <p>
         <strong>{labels.brief}</strong>
       </p>
@@ -400,11 +448,17 @@ export default function ResearchPanel({
               type="button"
               disabled={disabled}
               onClick={() => {
-                if (result.search)
-                  onReview(
-                    result.search,
-                    result.recommended_candidate_id ?? null,
-                  );
+                if (!result.search) return;
+                const index = result.recommendation_source_index;
+                const candidateId = result.recommended_candidate_id;
+                const source =
+                  index == null ? undefined : result.findings[index];
+                onReview(
+                  result.search,
+                  candidateId && source
+                    ? { candidateId, reason: result.reason, source }
+                    : null,
+                );
               }}
             >
               {labels.review}
@@ -416,6 +470,22 @@ export default function ResearchPanel({
   );
 }
 
-export function researchRecommendationLabel(locale: keyof typeof copy) {
-  return copy[locale].recommendation;
+export function ResearchRecommendation({ advice }: { advice: ResearchAdvice }) {
+  const { locale } = useMuseLanguage();
+  const labels = copy[locale];
+  return (
+    <div className="notice" lang={locale}>
+      <p>
+        <strong>{labels.recommendation}</strong>
+      </p>
+      <p lang="en">{advice.reason}</p>
+      <p>
+        {labels.recommendationSource}{" "}
+        <a href={advice.source.url} target="_blank" rel="noopener noreferrer">
+          {advice.source.title}
+        </a>
+      </p>
+      <p>{advice.source.claim}</p>
+    </div>
+  );
 }

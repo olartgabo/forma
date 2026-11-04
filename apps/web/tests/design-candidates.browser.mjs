@@ -60,6 +60,19 @@ try {
     let releaseResearch = () => {};
     const heldResearch = new Promise((resolve) => (releaseResearch = resolve));
     let markResearchStarted = () => {};
+    let delayResearchAvailability = false;
+    let releaseResearchAvailability = () => {};
+    const heldAvailability = new Promise(
+      (resolve) => (releaseResearchAvailability = resolve),
+    );
+    let releaseClearance = () => {};
+    const heldClearance = new Promise(
+      (resolve) => (releaseClearance = resolve),
+    );
+    let markClearanceStarted = () => {};
+    const clearanceStarted = new Promise(
+      (resolve) => (markClearanceStarted = resolve),
+    );
     const researchStarted = new Promise(
       (resolve) => (markResearchStarted = resolve),
     );
@@ -93,15 +106,38 @@ try {
             project_id: project.id,
             inventory_revision_id: project.revision_id,
           };
-          if (body.needs_plug_clearance)
+          if (body.needs_plug_clearance) {
+            if (researchBodies.length === 3) {
+              markClearanceStarted();
+              await heldClearance;
+            }
+            return route
+              .fulfill({
+                json: {
+                  ...common,
+                  coverage: "not_run",
+                  decision: "unsupported",
+                  reason:
+                    "Plug clearance is essential and has no supported check.",
+                  findings: [],
+                },
+              })
+              .catch(() => {});
+          }
+          if (body.use_case === "reading_stand" && researchBodies.length === 2)
+            return route.fulfill({
+              status: 409,
+              json: { code: "stale_version" },
+            });
+          if (body.use_case === "reading_stand")
             return route.fulfill({
               json: {
                 ...common,
-                coverage: "not_run",
-                decision: "unsupported",
-                reason:
-                  "Plug clearance is essential and has no supported check.",
+                coverage: "unavailable",
+                decision: "eligible",
+                reason: "The existing stand search found checked proposals.",
                 findings: [],
+                search: searchB,
               },
             });
           const checked = {
@@ -125,7 +161,7 @@ try {
             recommended_candidate_id: second.candidate_id,
             recommendation_source_index: 1,
           };
-          if (researchBodies.length === 2) {
+          if (researchBodies.length === 5) {
             markResearchStarted();
             await heldResearch;
             return route.fulfill({ json: checked }).catch(() => {});
@@ -179,6 +215,11 @@ try {
         unexpected.push(`POST ${url.pathname}`);
         return route.fulfill({ status: 500, json: { code: "unexpected" } });
       }
+      if (
+        url.pathname === `${base}/synthesis/research` &&
+        delayResearchAvailability
+      )
+        await heldAvailability;
       const replay = new Map([
         ["/api/provider/status", { configured: true }],
         ["/api/projects", { projects: [], next_cursor: null }],
@@ -334,10 +375,74 @@ try {
     );
     const clearance = research.getByLabel("Plug clearance is essential");
     assert.equal(await start.isDisabled(), true);
+    const useCase = research.getByRole("combobox", {
+      name: "What are you making?",
+    });
+    await useCase.selectOption("reading_stand");
+    await consent.check();
+    await start.click();
+    await research.getByText("Research unavailable", { exact: true }).waitFor();
+    assert.equal(
+      await panel
+        .getByRole("button", { name: "Use design B" })
+        .isEnabled({ timeout: 2000 }),
+      true,
+      "ordinary designs remain usable after a provider failure",
+    );
+    assert.equal(await earlier.isVisible(), true);
+
+    await consent.check();
+    await start.click();
+    await research
+      .getByText("Your inventory changed. Reload it before researching again.")
+      .waitFor();
+    assert.equal(
+      await panel.getByRole("button", { name: "Use design B" }).count(),
+      0,
+      "stale results clear the earlier stock choices",
+    );
+
+    await panel
+      .getByRole("button", { name: "Search stock-feasible designs" })
+      .click();
+    await panel.getByRole("article", { name: "Design A" }).waitFor();
     await clearance.check();
     await research.getByText(/no glue. Plug clearance is essential/).waitFor();
     await consent.check();
     await start.click();
+    await clearanceStarted;
+    await research.getByRole("button", { name: "Stop waiting" }).click();
+    releaseClearance();
+
+    delayResearchAvailability = true;
+    await page.reload();
+    panel = await open(page);
+    await research
+      .getByText("Plug clearance is essential", { exact: true })
+      .waitFor();
+    assert.equal(
+      await panel
+        .getByRole("button", { name: "Search stock-feasible designs" })
+        .isDisabled(),
+      true,
+      "stock search cannot bypass clearance while availability is unresolved",
+    );
+    delayResearchAvailability = false;
+    releaseResearchAvailability();
+    const clearanceRetry = research.getByRole("button", {
+      name: "Retry the same research request",
+    });
+    await clearanceRetry.waitFor();
+    assert.equal(await clearance.isChecked(), true);
+    assert.equal(
+      await panel
+        .getByRole("button", { name: "Search stock-feasible designs" })
+        .isDisabled(),
+      true,
+      "a restored clearance requirement still blocks stock-only search",
+    );
+    await consent.check();
+    await clearanceRetry.click();
     await research
       .getByText("This requirement is outside the supported checks")
       .waitFor();
@@ -345,6 +450,8 @@ try {
       await panel.getByRole("button", { name: "Use design B" }).count(),
       0,
     );
+
+    assert.deepEqual(researchBodies[2], researchBodies[3]);
 
     // A late research response must not replace ordinary search. Recover
     // it with the retained body, then require explicit review and selection.
@@ -381,12 +488,31 @@ try {
       .filter({ hasText: "Source used for the recommendation" })
       .getByRole("link", { name: "SYNTHETIC deeper base reference" })
       .waitFor();
-    assert.deepEqual(researchBodies[1], researchBodies[2]);
+    assert.deepEqual(researchBodies[4], researchBodies[5]);
     assert.equal(await panel.getByText("Suggested by research").count(), 0);
     await research
       .getByRole("button", { name: "Review checked designs" })
       .click();
-    await panel.getByText("Suggested by research").waitFor();
+    const reviewedA = panel.getByRole("article", { name: "Design A" });
+    const reviewedB = panel.getByRole("article", { name: "Design B" });
+    await reviewedB
+      .getByText("Suggested by research")
+      .waitFor({ timeout: 2000 });
+    assert.equal(await reviewedA.getByText("Suggested by research").count(), 0);
+    assert.match(
+      await reviewedB.innerText(),
+      /SYNTHETIC recommendation over checked designs/,
+    );
+    assert.equal(
+      await reviewedB
+        .getByRole("link", { name: "SYNTHETIC deeper base reference" })
+        .getAttribute("href"),
+      "https://example.com/deeper-base",
+    );
+    assert.equal(
+      await reviewedB.getByText("An example uses a deeper base.").count(),
+      1,
+    );
     assert.equal(selectCalls, 0, "research review must not save a preview");
 
     // Choose design B; the response is lost, then the page is reloaded.
@@ -463,7 +589,7 @@ try {
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
     console.log(
-      `PASS ${width}px research consent, unsupported clearance, late result discarded, exact replay and explicit candidate review; existing search, probe, comparison, selection recovery and separate approval; SYNTHETIC responses only`,
+      `PASS ${width}px research consent, provider fallback, stale and unsupported clearance, late result discarded, exact replay and cited candidate review; existing search, probe, comparison, selection recovery and separate approval; SYNTHETIC responses only`,
     );
     await page.context().close();
   }

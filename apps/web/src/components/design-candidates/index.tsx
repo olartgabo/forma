@@ -5,7 +5,6 @@ import type {
 } from "../../lib/generated/api-contracts";
 import type { StandDesign } from "../../lib/generated/contracts";
 import Diagram from "../manual-diagram";
-import { useMuseLanguage } from "../muse-language-provider";
 import {
   type Candidate,
   type MuseResult,
@@ -22,7 +21,10 @@ import {
   selectionReceipts,
   synthesisApi,
 } from "./client";
-import ResearchPanel, { researchRecommendationLabel } from "./research-panel";
+import ResearchPanel, {
+  type ResearchAdvice,
+  ResearchRecommendation,
+} from "./research-panel";
 
 const LABELS: Record<SearchParameter, string> = {
   part_width_mm: "Panel width",
@@ -60,9 +62,11 @@ function message(error: unknown) {
 function CandidateColumn({
   report,
   label,
+  advice,
 }: {
   report: Candidate;
   label: string;
+  advice?: ResearchAdvice | null;
 }) {
   const brace = report.pieces.find((p) => p.dependent);
   const material = report.material;
@@ -70,6 +74,7 @@ function CandidateColumn({
   return (
     <article className="design-candidate" aria-label={label}>
       <h4>{label}</h4>
+      {advice && <ResearchRecommendation advice={advice} />}
       <dl className="design-candidate-facts">
         <dt>Sheet</dt>
         <dd>{report.design.sheet_stock_id}</dd>
@@ -172,10 +177,12 @@ export default function DesignCandidates({
   museEnabled: boolean;
   onSelected: (versionId: string) => void;
 }) {
-  const { locale } = useMuseLanguage();
   const [result, setResult] = useState<Search | null>(null);
   const [researchEpoch, setResearchEpoch] = useState(0);
-  const [recommendedId, setRecommendedId] = useState<string | null>(null);
+  const [stockSearchBlocked, setStockSearchBlocked] = useState(true);
+  const [researchAdvice, setResearchAdvice] = useState<ResearchAdvice | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [probe, setProbe] = useState<ProbeState | null>(null);
@@ -200,7 +207,7 @@ export default function DesignCandidates({
   useEffect(() => {
     controller.current?.abort();
     setResult(null);
-    setRecommendedId(null);
+    setResearchAdvice(null);
     setProbe(null);
     setSaved("");
     setError("");
@@ -253,7 +260,7 @@ export default function DesignCandidates({
     // Unmount the research panel's current request and ignore late replies
     // when the builder switches back to ordinary stock search.
     setResearchEpoch((epoch) => epoch + 1);
-    setRecommendedId(null);
+    setResearchAdvice(null);
     try {
       const next = await run((signal) =>
         synthesisApi(token, context.projectId).search(context, signal),
@@ -267,9 +274,9 @@ export default function DesignCandidates({
     }
   }
 
-  function reviewResearch(next: Search, recommendation: string | null) {
+  function reviewResearch(next: Search, recommendation: ResearchAdvice | null) {
     setResult(next);
-    setRecommendedId(recommendation);
+    setResearchAdvice(recommendation);
     setProbe(null);
     setSaved("");
     setMuse(null);
@@ -446,7 +453,7 @@ export default function DesignCandidates({
       <button
         type="button"
         onClick={() => void search()}
-        disabled={disabled || busy}
+        disabled={disabled || busy || stockSearchBlocked}
       >
         {busy && !result ? "Searching…" : "Search stock-feasible designs"}
       </button>
@@ -455,12 +462,15 @@ export default function DesignCandidates({
         token={token}
         context={context}
         disabled={disabled || busy}
-        onInvalidate={() => {
-          setResult(null);
-          setRecommendedId(null);
-          setProbe(null);
-          setMuse(null);
+        onInvalidate={(scope) => {
+          setResearchAdvice(null);
+          if (scope === "search") {
+            setResult(null);
+            setProbe(null);
+            setMuse(null);
+          }
         }}
+        onStockSearchBlocked={setStockSearchBlocked}
         onReview={reviewResearch}
       />
       <div aria-live="polite">
@@ -515,7 +525,7 @@ export default function DesignCandidates({
           </p>
         )}
       </div>
-      {result && (
+      {result && !stockSearchBlocked && (
         <div className="design-search-result">
           <p>
             <strong>{SEARCH_TEXT[result.status]}</strong> Checked{" "}
@@ -534,14 +544,14 @@ export default function DesignCandidates({
             <div className="design-candidate-grid">
               {candidates.map((c, index) => (
                 <div key={c.candidate_id}>
-                  {recommendedId === c.candidate_id && (
-                    <p className="notice" lang={locale}>
-                      {researchRecommendationLabel(locale)}
-                    </p>
-                  )}
                   <CandidateColumn
                     report={c}
                     label={`Design ${String.fromCharCode(65 + index)}`}
+                    advice={
+                      researchAdvice?.candidateId === c.candidate_id
+                        ? researchAdvice
+                        : null
+                    }
                   />
                   <div className="design-candidate-actions">
                     <button

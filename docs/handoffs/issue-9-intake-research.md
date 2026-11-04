@@ -33,10 +33,15 @@ With one checked option or no comparable difference, only the scout runs.
 
 The workbench shows sources, coverage and the next action separately and marks
 the source the recommendation used. The builder can bring those same checked
-candidates into the existing comparison and selection flow. Selection uses the
-existing synthesis route to recheck the
-search and save a preview. Activation is a separate explicit approval. Research
-writes no inventory, plan, operation, or physical evidence.
+candidates into the existing comparison and see the rationale and cited claim
+on the suggested option. Current stock choices stay usable during compatible
+research and provider failures. An unsupported essential requirement or stale
+inventory clears those choices. A pending request restores its essential clearance
+requirement before stock search can run. After replay, the current form retains the
+requirement for review. Selection uses the existing
+synthesis route to recheck the search and save a preview. Activation requires
+explicit approval. Research writes no inventory, plan, operation, or physical
+evidence.
 
 ## API and privacy
 
