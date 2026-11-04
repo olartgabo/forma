@@ -1087,3 +1087,39 @@ reference, and a partly hidden sheet does not establish its full dimensions.
 These prefills do not grant fabrication approval or reconcile an unknown request.
 Intercepted browser checks exercise the connected draft and save flow with
 synthetic responses; they do not establish accuracy on the user's actual photo.
+
+## D076 - Restore construction manuals and explicitly authorize separate replacements (November 4, 2026)
+
+Read completed construction manuals through the existing authenticated preview
+route for the current inventory revision. Validate identities, nested display
+geometry and bounded collections before rendering. Abort stale reads on project
+changes, edits or generation so an older saved response cannot replace a newer
+result. Legacy results do not record their entry mode: restored manuals therefore
+require a fresh proposed-dimensions review, never inferred measurement approval.
+
+Fit the 3D camera to finite facets present in the selected step without including
+the world origin. Top, front and side diagrams use the same canonical facets,
+piece identities and step highlights. Projected bounds convert meters to proposed
+millimeters; they are neither measured dimensions nor cutting instructions.
+Existing preparation outlines and physical-readiness limitations remain visible.
+This supports planar-panel proposals, not arbitrary objects or new fabrication
+operations.
+
+The user explicitly authorizes a separate paid replacement despite the original
+unknown outcome. An owner/project-scoped, append-only authorization binds one
+successor request identity to the latest unknown receipt and current revision.
+The authorization endpoint does not invoke a provider. The browser archives the
+original exact payload before selecting the bound successor and requires fresh
+sharing consent and an explicit Ask. Durable reservation history prevents a used
+but cleared successor from being mistaken for an unused authorization. Known
+definitive failures may retry the same bound identity with fresh consent; a new
+unknown successor halts and needs another explicit authorization. No automatic
+retry loop is added.
+
+Original receipt bytes and unknown usage never change. An ancestor becomes
+historical and nonblocking only when its exact authorized successor chain ends in
+a validated completed receipt. Its original outcome remains unknown. Completed
+replacement manuals can then be reopened, and separately consented subsequent
+generation remains possible. Any agent live verification still requires its own
+finite call ceiling, deadline and durable usage record; intercepted browser tests
+do not establish provider success or physical build readiness.

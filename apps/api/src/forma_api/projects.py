@@ -131,6 +131,20 @@ class ProjectStore:
                 "response TEXT NOT NULL, PRIMARY KEY(owner, scope, key))"
             )
             connection.execute(
+                "CREATE TABLE IF NOT EXISTS construction_replacements "
+                "(owner TEXT NOT NULL, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, "
+                "original_key TEXT NOT NULL, original_digest TEXT NOT NULL, "
+                "replacement_key TEXT NOT NULL, revision_id TEXT NOT NULL, created_at TEXT NOT NULL, "
+                "PRIMARY KEY(owner, project_id, original_key, revision_id), "
+                "UNIQUE(owner, project_id, replacement_key))"
+            )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS construction_replacement_reservations "
+                "(owner TEXT NOT NULL, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, "
+                "replacement_key TEXT NOT NULL, created_at TEXT NOT NULL, "
+                "PRIMARY KEY(owner, project_id, replacement_key))"
+            )
+            connection.execute(
                 "CREATE TABLE IF NOT EXISTS media "
                 "(id TEXT PRIMARY KEY, project_id TEXT NOT NULL "
                 "REFERENCES projects(id) ON DELETE CASCADE, "
