@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ResearchRequest,
   ResearchRun,
@@ -40,13 +40,6 @@ export default function SourcingPanel({
 }) {
   const [projectId, setProjectId] = useState("");
   const [researchLocked, setResearchLocked] = useState(false);
-  const reportBusy = useCallback(
-    (busy: boolean) => {
-      setResearchLocked(busy);
-      onBusyChange?.(busy);
-    },
-    [onBusyChange],
-  );
   return (
     <section className={styles.panel} data-blueprint-surface="shopping-panel">
       <h2>Find materials nearby</h2>
@@ -76,7 +69,8 @@ export default function SourcingPanel({
           projectId={projectId}
           disabled={disabled}
           onOpen={onOpen}
-          onBusyChange={reportBusy}
+          onBusyChange={onBusyChange}
+          onProjectLockChange={setResearchLocked}
         />
       )}
       {!projects.length && (
@@ -92,12 +86,14 @@ function ProjectSourcing({
   disabled,
   onOpen,
   onBusyChange,
+  onProjectLockChange,
 }: {
   token: string;
   projectId: string;
   disabled: boolean;
   onOpen: (id: string) => void;
   onBusyChange?: (busy: boolean) => void;
+  onProjectLockChange?: (locked: boolean) => void;
 }) {
   const [needs, setNeeds] = useState<SourcingNeeds | null>(null);
   const [error, setError] = useState("");
@@ -131,9 +127,13 @@ function ProjectSourcing({
   const [uncertain, setUncertain] = useState(false);
   const [pending, setPending] = useState<ResearchRequest | null>(null);
   useEffect(() => {
-    onBusyChange?.(busy || uncertain || locationBusy);
-  }, [onBusyChange, busy, uncertain, locationBusy]);
+    onBusyChange?.(busy || locationBusy);
+  }, [onBusyChange, busy, locationBusy]);
+  useEffect(() => {
+    onProjectLockChange?.(busy || uncertain || locationBusy);
+  }, [onProjectLockChange, busy, uncertain, locationBusy]);
   useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
+  useEffect(() => () => onProjectLockChange?.(false), [onProjectLockChange]);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => {
     const current = new AbortController();

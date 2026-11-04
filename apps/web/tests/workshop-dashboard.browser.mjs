@@ -173,6 +173,8 @@ async function scenario(width, mode, savedDrawing = false) {
   let listCalls = 0;
   let moreCalls = 0;
   let researchPosts = 0;
+  let researchReads = 0;
+  let latestResearch;
   let finishResearch;
   const researchGate = new Promise((resolve) => {
     finishResearch = resolve;
@@ -195,22 +197,21 @@ async function scenario(width, mode, savedDrawing = false) {
       const body = request.postDataJSON();
       assert.equal(body.source, "supplier_page");
       await researchGate;
-      return route.fulfill({
-        json: {
-          id: "retained-research",
-          project_id: fixture.id,
-          revision_id: fixture.revision_id,
-          item: body.item,
-          area: body.area,
-          currency: body.currency,
-          observed_at: "2026-11-04T12:00:00Z",
-          status: "succeeded",
-          offers: [],
-          usage: null,
-          error: null,
-          replayed: false,
-        },
-      });
+      latestResearch = {
+        id: "retained-research",
+        project_id: fixture.id,
+        revision_id: fixture.revision_id,
+        item: body.item,
+        area: body.area,
+        currency: body.currency,
+        observed_at: "2026-11-04T12:00:00Z",
+        status: researchPosts === 1 ? "succeeded" : "outcome_unknown",
+        offers: [],
+        usage: null,
+        error: researchPosts === 1 ? null : "provider_outcome_unknown",
+        replayed: false,
+      };
+      return route.fulfill({ json: latestResearch });
     }
     if (request.method() !== "GET") {
       writes.push(`${request.method()} ${url.pathname}`);
@@ -249,6 +250,12 @@ async function scenario(width, mode, savedDrawing = false) {
       });
     }
     const base = `/api/projects/${fixture.id}`;
+    if (url.pathname === `${base}/sourcing/research/retained-research`) {
+      researchReads++;
+      return route.fulfill({
+        json: { ...latestResearch, status: "succeeded", error: null },
+      });
+    }
     const selected = summaries.find((project) =>
       url.pathname.startsWith(`/api/projects/${project.id}/`),
     );
@@ -632,6 +639,42 @@ async function scenario(width, mode, savedDrawing = false) {
           "one pair of scissors",
         );
         assert.equal(researchPosts, 1);
+        await page
+          .getByRole("button", { name: "Check supplier page", exact: true })
+          .click();
+        await page
+          .getByText("The previous research outcome is unresolved.", {
+            exact: false,
+          })
+          .waitFor();
+        assert(await page.getByLabel("Shopping project").isDisabled());
+        assert.equal(
+          await nav
+            .getByRole("button", { name: "Home", exact: true })
+            .isDisabled(),
+          false,
+        );
+        await nav.getByRole("button", { name: "Home", exact: true }).click();
+        await nav
+          .getByRole("button", { name: "Shopping list", exact: true })
+          .click();
+        assert.equal(
+          await page.getByLabel("Item to research").inputValue(),
+          "one pair of scissors",
+        );
+        assert(await page.getByLabel("Shopping project").isDisabled());
+        await page
+          .getByRole("button", { name: "Check research status", exact: true })
+          .click();
+        await page
+          .getByRole("button", { name: "Check supplier page", exact: true })
+          .waitFor();
+        assert.equal(
+          await page.getByLabel("Shopping project").isDisabled(),
+          false,
+        );
+        assert.equal(researchPosts, 2);
+        assert.equal(researchReads, 1);
       }
       await nav
         .getByRole("button", { name: "My materials", exact: true })

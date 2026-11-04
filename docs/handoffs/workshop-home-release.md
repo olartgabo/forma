@@ -29,7 +29,9 @@ layout without provider calls or project writes. This is regression coverage;
 Terra's separate computer-use acceptance runs against the actual deployed app.
 
 Shopping state stays mounted after first opening the section. Active location or
-supplier requests and unresolved outcomes lock project changes and navigation
-until the current action finishes or is reconciled. Reconciliation controls stay
-usable. The regression retains a supplier-page draft across section changes and
-checks locking during a delayed reply, then retention and unlocking afterward.
+supplier requests lock navigation until the response arrives. An unresolved
+outcome locks only that shopping selector and its new-request controls; Home and
+unrelated projects remain accessible. Reconciliation stays usable. The regression
+retains drafts across sections, checks locking during a delayed reply, and verifies
+that an unknown response preserves its receipt through Home/back and reconciles
+with GET without an extra research POST.
