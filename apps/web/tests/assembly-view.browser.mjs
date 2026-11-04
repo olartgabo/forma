@@ -111,7 +111,7 @@ try {
           json:
             mode === "partial"
               ? fixture.partial_context
-              : mode === "measured"
+              : mode === "measured" || mode === "overlay"
                 ? fixture.measured_context
                 : mode === "assembled"
                   ? fixture.assembled_context
@@ -148,11 +148,13 @@ try {
               ? { ...fixture.view, project_id: "foreign" }
               : mode === "partial"
                 ? fixture.partial_view
-                : mode === "measured"
-                  ? fixture.measured_view
-                  : mode === "assembled"
-                    ? fixture.assembled_view
-                    : fixture.view,
+                : mode === "overlay"
+                  ? fixture.overlay_view
+                  : mode === "measured"
+                    ? fixture.measured_view
+                    : mode === "assembled"
+                      ? fixture.assembled_view
+                      : fixture.view,
         });
       }
       if (!replay.has(url.pathname)) {
@@ -428,6 +430,61 @@ try {
     );
     assert.equal(analysisRequests.length, 1);
     assert.equal(measurementWrites.length, 1);
+    mode = "overlay";
+    await viewer
+      .getByRole("button", { name: "Refresh assembly view", exact: true })
+      .click();
+    const savedOverlay = viewer.getByRole("group", {
+      name: /modeled stability overlay/,
+    });
+    await savedOverlay.waitFor();
+    await viewer
+      .getByText(
+        `Saved report status: ${fixture.overlay_view.overlay_report.status}.`,
+        { exact: false },
+      )
+      .waitFor();
+    const overlayRequests = viewRequests.length;
+    await viewer.getByLabel("Saved report case").selectOption("landscape");
+    await viewer
+      .getByRole("group", {
+        name: "landscape modeled stability overlay",
+        exact: true,
+      })
+      .waitFor();
+    const overlayPoints = await savedOverlay
+      .locator("polygon")
+      .getAttribute("points");
+    await viewer
+      .getByRole("button", { name: "Orbit right", exact: true })
+      .click();
+    assert.notEqual(
+      await savedOverlay.locator("polygon").getAttribute("points"),
+      overlayPoints,
+      "saved overlay follows the same display camera",
+    );
+    const separate = viewer.getByLabel("Separate parts (display only)");
+    await separate.fill("0.5");
+    assert.equal(
+      await savedOverlay.count(),
+      0,
+      "separated display hides world-space overlays",
+    );
+    await separate.fill("0");
+    await savedOverlay.waitFor();
+    assert.equal(
+      viewRequests.length,
+      overlayRequests,
+      "case/camera/separation performs no reads or analyses",
+    );
+    assert.equal(analysisRequests.length, 1);
+    assert.equal(measurementWrites.length, 1);
+    await viewer.screenshot({
+      path: path.join(
+        os.tmpdir(),
+        `forma-assembly-overlay-current-${width}.png`,
+      ),
+    });
     mode = "late";
     await viewer
       .getByRole("button", { name: "Refresh assembly view", exact: true })
