@@ -32,6 +32,7 @@ remaining blockers clear so an agent can resume without repeating experiments.
 | #14   | [Proof summary](issue-14-proof-summary.md)                                                                                    | Versioned snapshots, revision records, evidence invalidations, carried work and photo-excluded text/JSON exports implemented; physical outcomes and measured waste/salvage remain pending                           |
 | #16   | [Current-flow documentation](issue-16-current-flow-docs.md)                                                                   | Setup, architecture and development status reconciled with merged connected flow; AWS deployment verified ([deploy](../deploy.md)); submission acceptance remains pending                                           |
 | #148  | [Stock-feasible design search](issue-148-stock-feasible-search.md)                                                            | Bounded deterministic stand search, read-only probe, two-design comparison and explicit preview selection implemented; physical and live provider acceptance pending                                                |
+| #149  | [Measurement decisions](issue-149-measurement-decisions.md) | Deterministic next-measurement decisions, existing-service capture and explicit recalculation implemented; physical and model-extension cases remain explicit |
 
 The [fabrication report](issue-150-fabrication-report.md) handoff covers the
 read-only next-step report, its declared access/tool rules and its manual and

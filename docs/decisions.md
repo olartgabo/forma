@@ -763,3 +763,16 @@ are generated lazily and the time budget covers final evaluation. MetaMuse may
 compare the proposed designs through one read-only tool, `compare_stand_designs`,
 choosing only authorized candidate IDs and one grid probe value; the probe is the
 engine's result, shown apart from the model's words.
+
+## D056: Measurement decisions from compiler thresholds, November 4, 2026
+
+The app asks for a measurement (#149) only when a confirmed value can change a
+supported decision: whether a saved sheet or tape can be used by the stand
+search, or whether a built stand's modeled tipping result can be computed.
+Sheet and tape thresholds are found by compiling the smallest searched design
+on hypothetical stock, never by a second geometry rule; that stock never
+becomes a candidate. Questions follow a fixed order with stock-ID ties and no
+probabilities or effort scores. Answers use the existing inventory confirmation
+or the #146 measurement form; a "measurement unavailable" marker is the only new
+record. Unbuilt candidates' stability returns "physical test or model extension
+required" rather than reusing another stand's measurements.

@@ -2,7 +2,7 @@
 // exact body and key so a completed request replays on the server instead of
 // saving a second preview or dispatching MetaMuse again. Scoped to a SHA-256
 // digest of the owner credential and the project.
-const MAX_LENGTH = 16384;
+const MAX_LENGTH = 262144;
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,95}$/;
 
 function object(v: unknown): v is Record<string, unknown> {

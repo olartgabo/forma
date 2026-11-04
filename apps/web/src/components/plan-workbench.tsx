@@ -7,6 +7,7 @@ import {
   loadPlan,
 } from "../lib/api";
 import AdaptWorkbench from "./adapt-workbench";
+import ActiveMeasurement from "./active-measurement";
 import DesignCandidates from "./design-candidates";
 import FabricationReportPanel from "./fabrication-report/fabrication-report-panel";
 import { operationTitles } from "../lib/operation-titles";
@@ -600,6 +601,12 @@ export default function PlanWorkbench({
           </div>
         )}
       </div>
+      <ActiveMeasurement
+        token={token}
+        project={project}
+        disabled={approvalDisabled || pending !== null || saving}
+        onSaved={onReload}
+      />
       {!project.active_version_id && (
         <DesignCandidates
           token={token}

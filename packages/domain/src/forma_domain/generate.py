@@ -13,6 +13,7 @@ from . import (
     construction_resources,
     fabrication_contracts,
     generic_assembly,
+    measurement_contracts,
     models,
     piece_references,
     stability_contracts,
@@ -70,6 +71,7 @@ def domain_records():
         for module in (
             models,
             fabrication_contracts,
+            measurement_contracts,
             assembly_geometry_contracts,
             generic_assembly,
             construction_plan,
