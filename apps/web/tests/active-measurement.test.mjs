@@ -274,6 +274,42 @@ test("answer and baseline receipts survive reload independently", async () => {
   );
 });
 
+test("baseline replacement preserves the earlier decision when storage fails", async () => {
+  const storage = new MemoryStorage();
+  const before = { decision: decision(), state: "sending" };
+  const after = { ...before, state: "saved" };
+  await baselineReceipts.retain("token-a", "project-a", before, storage);
+  await assert.rejects(
+    baselineReceipts.retain("token-a", "project-a", after, storage),
+    /unresolved/,
+  );
+  const setItem = storage.setItem;
+  storage.setItem = () => {
+    throw new Error("storage full");
+  };
+  await assert.rejects(
+    baselineReceipts.replace("token-a", "project-a", after, storage),
+    /storage full/,
+  );
+  assert.deepEqual(
+    await baselineReceipts.pending("token-a", "project-a", storage),
+    before,
+  );
+  storage.setItem = setItem;
+  await baselineReceipts.replace("token-a", "project-a", after, storage);
+  assert.deepEqual(
+    await baselineReceipts.pending("token-a", "project-a", storage),
+    after,
+  );
+  const [key] = storage.values.keys();
+  storage.setItem(key, "{corrupt");
+  await assert.rejects(
+    baselineReceipts.replace("token-a", "project-a", before, storage),
+    /cannot be verified/,
+  );
+  assert.equal(storage.getItem(key), "{corrupt");
+});
+
 function respond(status, body) {
   return async () =>
     new Response(JSON.stringify(body), {

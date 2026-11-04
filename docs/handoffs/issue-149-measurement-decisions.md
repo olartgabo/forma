@@ -205,5 +205,36 @@ this slice; the deterministic flow needs no provider.
 
 ## Next
 
+### Publication review follow-up (November 4)
+
+The independent review of `3741d0d` confirmed the eight earlier repairs and
+found two remaining edge cases. Large inventories could produce more than 48
+settings notices; adjacent notices are now packed within the response bounds,
+keeping the source-revision entry separate and every stock name for a full
+32-item replacement. Excess evidence notices have an explicit omitted count;
+the complete settings still determine identity and all compiler checks apply.
+The production-resolver route regression replaces all 32 stock IDs and expects
+an explicit unsupported result, not a server error.
+
+A successful inventory response is now handled separately from browser receipt
+cleanup failures. A storage failure after the server saves cannot be called a
+refused measurement; the project is refreshed and exact-key recovery retained.
+Browser regressions cover both receipt removal and baseline storage failure.
+Replacing the baseline uses one storage write, preserving its previous value
+when the write fails. Both browser regressions reload, retry the exact request
+and compare against the original decision. Publication checks: 35 focused
+Python tests, 180 web tests, TypeScript, formatting, lint and generated contracts
+pass; browser design, built-stand and both storage-failure cases pass at 390px
+and 1280px. These are offline checks with synthetic inputs.
+
+The API container also includes the new measurement package, alongside the
+synthesizer package added on main in #173. Without that copy the installed API
+could not import the measurement routes. Docker is unavailable in this local
+environment; local source/package coverage does not claim a container run.
+
+Publication does not establish live provider or physical acceptance. Historical
+local changes from unrelated worktrees are preserved separately as inert
+backups, not included in this feature.
+
 One independent Sol/Terra review of the diff from `main`, then feature review
 and exact-head remote checks before merge. Do not merge automatically.

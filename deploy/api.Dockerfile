@@ -19,6 +19,8 @@ COPY packages/fabrication/src packages/fabrication/src
 COPY packages/repair_search/src packages/repair_search/src
 COPY packages/stability/src packages/stability/src
 COPY packages/eval/src packages/eval/src
+COPY packages/synthesizer/src packages/synthesizer/src
+COPY packages/measurement/src packages/measurement/src
 RUN uv sync --locked --no-dev --no-editable
 
 RUN useradd --system --uid 10001 forma && mkdir /data && chown forma /data

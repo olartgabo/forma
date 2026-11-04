@@ -66,6 +66,7 @@ export default function ActiveMeasurement({
   const [pendingAnswer, setPendingAnswer] = useState<InventoryUpdate | null>(
     null,
   );
+  const [savedAnswerKey, setSavedAnswerKey] = useState<string | null>(null);
   const [pendingUnavailable, setPendingUnavailable] =
     useState<UnavailableRequest | null>(null);
   const [baseline, setBaseline] = useState<Baseline | null>(null);
@@ -85,6 +86,12 @@ export default function ActiveMeasurement({
     setDecision(null);
     setError("");
     setAnswer({ questionId: "", value: "", measured: false });
+  }, [contextKey, token]);
+
+  // Receipt state belongs to the owner/project, not an inventory revision.
+  // A refresh after a confirmed save must not replace it with stale storage.
+  useEffect(() => {
+    setSavedAnswerKey(null);
     let live = true;
     const load = <T,>(
       name: string,
@@ -115,7 +122,7 @@ export default function ActiveMeasurement({
     return () => {
       live = false;
     };
-  }, [contextKey, token, project.id]);
+  }, [token, project.id]);
   useEffect(() => () => controller.current?.abort(), []);
 
   async function run<T>(work: (signal: AbortSignal) => Promise<T>) {
@@ -132,8 +139,8 @@ export default function ActiveMeasurement({
   }
 
   async function keepBaseline(next: Baseline | null) {
-    await baselineReceipts.discard(token, project.id);
-    if (next) await baselineReceipts.retain(token, project.id, next);
+    if (next) await baselineReceipts.replace(token, project.id, next);
+    else await baselineReceipts.discard(token, project.id);
     setBaseline(next);
   }
 
@@ -176,11 +183,6 @@ export default function ActiveMeasurement({
     setPendingAnswer(body);
     try {
       await run((signal) => api.saveInventory(body, signal));
-      await answerReceipts.clear(token, project.id, body);
-      setPendingAnswer(null);
-      setAnswer({ questionId: "", value: "", measured: false });
-      await keepBaseline(baselineAfterSave(kept, true));
-      onSaved();
     } catch (failure) {
       if (!(failure instanceof MeasurementRequestError && failure.retry)) {
         // A definite refusal saved nothing: say so, and drop the comparison
@@ -192,7 +194,26 @@ export default function ActiveMeasurement({
         return;
       }
       setError(message(failure));
+      return;
     }
+
+    // The server confirmed the save. Local receipt failures cannot change that
+    // outcome or prevent the workbench from fetching the saved inventory.
+    const saved = baselineAfterSave(kept, true);
+    setSavedAnswerKey(body.idempotency_key);
+    setBaseline(saved);
+    setAnswer({ questionId: "", value: "", measured: false });
+    try {
+      // Keep the exact retry until the saved comparison point is durable too.
+      await keepBaseline(saved);
+      await answerReceipts.clear(token, project.id, body);
+      setPendingAnswer(null);
+    } catch (failure) {
+      setError(
+        `The measurement was saved, but its local recovery record could not be updated. ${message(failure)}`,
+      );
+    }
+    onSaved();
   }
 
   function saveAnswer() {
@@ -339,8 +360,10 @@ export default function ActiveMeasurement({
         {pendingAnswer && (
           <div className="notice">
             <p>
-              A measurement was sent but its result is unknown. Retrying sends
-              the same request, so it cannot be saved twice.
+              {savedAnswerKey === pendingAnswer.idempotency_key
+                ? "The measurement was saved, but its local recovery record still needs updating."
+                : "A measurement was sent but its result is unknown."}{" "}
+              Retrying sends the same request, so it cannot be saved twice.
             </p>
             <button
               type="button"

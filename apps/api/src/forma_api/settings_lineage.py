@@ -97,6 +97,32 @@ def _describe(stock: Stock) -> str:
     return f"{stock.material} {stock.kind}"
 
 
+def _bounded_notes(notes: list[str]) -> tuple[str, ...]:
+    """Pack explanations into the response bounds without losing stock names.
+
+    Keep ordinary short lists separate. Large inventories can describe both
+    removed and new stock; combine adjacent notes before limiting the response.
+    """
+    if len(notes) <= 48:
+        return tuple(notes)
+    # The first entry identifies the source revision; consumers keep it apart
+    # from stock/evidence reasons, so never combine other notices into it.
+    packed: list[str] = [notes[0]]
+    for index, note in enumerate(notes[1:], start=1):
+        if len(packed) > 1 and len(packed[-1]) + len(note) + 1 <= 2000:
+            packed[-1] += "\n" + note
+        elif len(packed) < 47:
+            packed.append(note)
+        else:
+            packed.append(
+                f"{len(notes) - index} additional settings notices are omitted. "
+                "The operator must review the full design settings and evidence. "
+                "All compatibility checks still apply."
+            )
+            break
+    return tuple(packed)
+
+
 def _evidence_notes(resolved: ResolvedDesignContext) -> list[str]:
     evidence = list(resolved.process.evidence if resolved.process else ())
     if resolved.parameters is not None:
@@ -208,6 +234,6 @@ def _carry(project, current, chain, source, resolved) -> Settings:
             fingerprint=fingerprint,
         ),
         covered=frozenset(covered),
-        notes=tuple(notes),
+        notes=_bounded_notes(notes),
         source_revision_id=since,
     )

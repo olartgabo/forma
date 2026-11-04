@@ -527,3 +527,25 @@ def test_own_settings_for_a_revision_take_precedence(manifest):
     decision = decide(client, project).json()
     assert decision["settings"] == []
     assert decision["question"]["target"]["key"] == "stock:synthetic-sheet:height_mm"
+
+
+def test_replacing_full_inventory_keeps_all_settings_names(manifest):
+    client, project, context, configure, _, _ = manifest
+    sheet = project["stocks"][0]
+    old = [sheet | {"id": f"old-sheet-{i}"} for i in range(32)]
+    project = save(client, project, old, "full-old-inventory")
+    configure(project, context)
+    new = [sheet | {"id": f"new-sheet-{i}"} for i in range(32)]
+    project = save(client, project, new, "full-new-inventory")
+    response = decide(client, project)
+    assert response.status_code == 200, response.text
+    decision = response.json()
+    assert decision["outcome"] == "unsupported"
+    assert decision["question"] is None
+    assert len(decision["settings"]) <= 48
+    assert all(len(note) <= 2000 for note in decision["settings"])
+    notes = "\n".join(decision["settings"])
+    for item in old:
+        assert f"Stock {item['id']} was removed" in notes
+    for item in new:
+        assert f"Stock {item['id']} was added" in notes

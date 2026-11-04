@@ -21,6 +21,12 @@ export type Receipts<T> = {
     body: T,
     storage?: Storage,
   ): Promise<void>;
+  replace(
+    token: string,
+    projectId: string,
+    body: T,
+    storage?: Storage,
+  ): Promise<void>;
   clear(
     token: string,
     projectId: string,
@@ -97,6 +103,22 @@ export function receipts<T>(
       const prior = read(key, projectId, storage);
       if (prior && JSON.stringify(prior) === JSON.stringify(body))
         storage.removeItem(key);
+    },
+    async replace(token, projectId, body, storage = local()) {
+      if (!valid(body))
+        throw new Error(`The ${what} cannot be safely retained.`);
+      const key = await storageKey(token, projectId);
+      // Validate any existing record, then replace it in one storage write.
+      // A failed setItem leaves the previous comparison point available.
+      read(key, projectId, storage);
+      const serialized = JSON.stringify({
+        version: 1,
+        project_id: projectId,
+        body,
+      });
+      storage.setItem(key, serialized);
+      if (storage.getItem(key) !== serialized)
+        throw new Error(`The browser could not update the ${what}.`);
     },
     async discard(token, projectId, storage = local()) {
       storage.removeItem(await storageKey(token, projectId));

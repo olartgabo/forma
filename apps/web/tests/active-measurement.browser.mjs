@@ -305,8 +305,150 @@ async function standFlow(width) {
   await finish(session, width);
 }
 
+async function storageFailureAfterSave(width, failureKind) {
+  const { before, after, declined } = fixture;
+  const base = `/api/projects/${before.id}`;
+  const writes = [];
+  let saved = false;
+  let refreshedAfterSave = false;
+  const session = await newPage(width, (route, request, url) => {
+    if (request.method() === "GET") {
+      if (url.pathname === base && saved) refreshedAfterSave = true;
+      const common = new Map([
+        ["/api/provider/status", { configured: true }],
+        ["/api/projects", { projects: [], next_cursor: null }],
+        [base, saved ? after : before],
+        [`${base}/media`, { media: [] }],
+        [`${base}/designs/readiness`, fixture.readiness],
+        [`${base}/plans`, { plans: [] }],
+      ]);
+      if (common.has(url.pathname))
+        return route.fulfill({ json: common.get(url.pathname) });
+    }
+    if (
+      request.method() === "POST" &&
+      url.pathname === `${base}/measurement-decisions`
+    )
+      return route.fulfill({ json: declined });
+    if (
+      request.method() === "POST" &&
+      url.pathname === `${base}/measurement-decisions/recalculate`
+    ) {
+      assert.equal(
+        request.postDataJSON().baseline.decision_id,
+        declined.decision_id,
+      );
+      return route.fulfill({ json: fixture.change });
+    }
+    if (request.method() === "PUT" && url.pathname === `${base}/inventory`) {
+      writes.push(request.postDataJSON());
+      saved = true;
+      return route.fulfill({
+        json: { ...fixture.saved, replayed: writes.length > 1 },
+      });
+    }
+    return undefined;
+  });
+  const { page } = session;
+  // Arm storage failure only after fetch receives the successful inventory
+  // response. The exact receipt must already have been retained and dispatched.
+  await page.addInitScript((kind) => {
+    const originalFetch = window.fetch;
+    const original = Storage.prototype[kind];
+    let armed = false;
+    window.storageFailures = 0;
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      if (
+        response.ok &&
+        String(args[0]).endsWith("/inventory") &&
+        args[1]?.method === "PUT"
+      )
+        armed = true;
+      return response;
+    };
+    Storage.prototype[kind] = function (key, ...args) {
+      const target =
+        kind === "removeItem"
+          ? "forma-measurement-answer-pending-v1:"
+          : "forma-measurement-baseline-v2:";
+      if (armed && !window.disableStorageFailure && key.startsWith(target)) {
+        window.storageFailures += 1;
+        throw new Error("Injected post-save storage failure");
+      }
+      return original.call(this, key, ...args);
+    };
+  }, failureKind);
+  let panel = await open(page, before.id);
+  await panel
+    .getByRole("button", { name: "Find the measurement that matters" })
+    .click();
+  await panel.getByLabel("Measured value (mm)").fill("200");
+  await panel
+    .getByLabel("I measured this myself; it is not a photo estimate")
+    .check();
+  const refreshed = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(base) && response.request().method() === "GET",
+  );
+  await panel.getByRole("button", { name: "Save measurement" }).click();
+  await panel
+    .getByText(
+      "The measurement was saved, but its local recovery record still needs updating.",
+      { exact: false },
+    )
+    .waitFor();
+  await page.waitForFunction(() => window.storageFailures > 0);
+  await refreshed;
+  assert.equal(
+    refreshedAfterSave,
+    true,
+    "onSaved refreshes the project after storage failure",
+  );
+  assert.equal(
+    await panel.getByText(/The measurement was not saved/).count(),
+    0,
+  );
+  assert.equal(await panel.getByText(/its result is unknown/).count(), 0);
+  const retained = await page.evaluate(
+    () =>
+      Object.entries(localStorage).find(([key]) =>
+        key.startsWith("forma-measurement-answer-pending-v1:"),
+      )?.[1],
+  );
+  assert.deepEqual(JSON.parse(retained).body, writes[0]);
+  // A fresh page loses in-memory success, but retries the identical receipt.
+  await page.reload();
+  await page.evaluate(() => {
+    window.disableStorageFailure = true;
+  });
+  panel = await open(page, before.id);
+  await page.evaluate(() => {
+    window.disableStorageFailure = true;
+  });
+  const replayed = page.waitForResponse((response) =>
+    response.url().endsWith(`${base}/inventory`),
+  );
+  await panel
+    .getByRole("button", { name: "Retry saving the measurement" })
+    .click();
+  await replayed;
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[1], writes[0]);
+  await panel.getByText("A measurement was saved.").waitFor();
+  await panel.getByRole("button", { name: "Recalculate" }).click();
+  await panel.getByRole("article", { name: "What changed" }).waitFor();
+  await finish(session, width);
+}
+
 try {
   for (const width of [390, 1280]) {
+    for (const failureKind of ["removeItem", "setItem"]) {
+      await storageFailureAfterSave(width, failureKind);
+      console.log(
+        `PASS ${width}px ${failureKind} failure after successful save: saved state, project refresh and exact receipt retry preserved`,
+      );
+    }
     await designFlow(width);
     console.log(
       `PASS ${width}px design: declining one sheet leaves the next sheet's answer empty, confirmed inventory answer recovered after a lost response and reload with one key, recalculation reaches the next question with server-carried settings (no operator step for the new revision), a refused save is not shown as saved; replayed SYNTHETIC responses only`,
