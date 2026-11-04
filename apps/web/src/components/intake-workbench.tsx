@@ -208,6 +208,11 @@ export default function IntakeWorkbench() {
               <p className="scope-note">
                 Check physical fit and stability by hand.
               </p>
+              <p>
+                <a href="/walkthrough">
+                  Explore a filled-in project, start to finish →
+                </a>
+              </p>
             </div>
             <figure className="welcome-drawing">
               <svg viewBox="0 0 540 395" aria-hidden="true">

@@ -1,5 +1,21 @@
 # Web product
 
+The public `/walkthrough` route contains a labeled synthetic recipe-card project
+with all saved engine/model replies, stage navigation, the generated manual and
+assembly preview. Notes remain in browser storage and can be downloaded. Browsing
+has no API/provider side effects; physical reports and tests remain unperformed.
+The landing page links to it before sign-in. The current example includes real
+compiler rejections and unresolved connected-stability measurements.
+
+Regenerate deterministic outputs with `python tools/generate-pipeline-walkthrough.py`,
+then publish only the sanitized bundle with
+`python tools/prepare-pipeline-walkthrough.py --provider <explicit-completed-provider-report>`.
+Provider runs are separate, opt-in, bounded and journaled; never run them during
+browser validation. Run `apps/web/tests/pipeline-walkthrough.browser.mjs` with an
+available Playwright module, local server URL and screenshot directory. It checks
+1280/390/320px navigation, history/reload, review notes, all instructions, rotation
+and zero API/provider requests.
+
 The active Manual and repair preview retain PR #154's next-step report and
 manual-step navigation. Missing tools and unconfirmed connector remainders block
 readiness. Active reports accept explicitly confirmed tool names and fresh
