@@ -93,12 +93,41 @@ from forma_api.stability_measurements import (
     StabilityMeasurementRequest,
     StabilityMeasurementResponse,
 )
+from forma_api.stability_muse import (
+    CaseNote,
+    StabilityMuseExplanation,
+    StabilityMuseRequest,
+    StabilityMuseResult,
+)
+from forma_api.stability_reports import (
+    ComparisonRow,
+    DependencyVersions,
+    ReportFreshness,
+    SavedStabilityReport,
+    StabilityReportComparison,
+    StabilityReportDetail,
+    StabilityReportHistory,
+    StabilityReportSaveRequest,
+    StabilityReportSaveResponse,
+    StabilityReportSummary,
+)
 from forma_api.stability_runtime import (
     StabilityAnalysisRequest,
     StabilityAnalysisResponse,
     StabilityContext,
 )
 from forma_api.stability_stages import StageAnalysisRequest, StageAnalysisResponse
+from forma_api.synthesis_muse import (
+    CandidateNote,
+    DesignMuseExplanation,
+    SynthesisMuseRequest,
+    SynthesisMuseResult,
+)
+from forma_api.synthesis_runtime import (
+    SynthesisProbeRequest,
+    SynthesisSearchRequest,
+    SynthesisSelectRequest,
+)
 from forma_domain import (
     models,
 )
@@ -133,6 +162,20 @@ API_RECORDS = (
     StabilityAnalysisRequest,
     StabilityAnalysisResponse,
     StabilityContext,
+    StabilityReportSaveRequest,
+    StabilityReportSaveResponse,
+    StabilityReportSummary,
+    StabilityReportHistory,
+    StabilityReportDetail,
+    StabilityReportComparison,
+    SavedStabilityReport,
+    ReportFreshness,
+    ComparisonRow,
+    StabilityMuseRequest,
+    StabilityMuseResult,
+    StabilityMuseExplanation,
+    CaseNote,
+    DependencyVersions,
     ActivationResult,
     AdaptCommitRequest,
     AdaptCommitResult,
@@ -207,6 +250,13 @@ API_RECORDS = (
     SavedProjectList,
     SavedProjectSummary,
     SimulationResult,
+    CandidateNote,
+    DesignMuseExplanation,
+    SynthesisMuseRequest,
+    SynthesisMuseResult,
+    SynthesisProbeRequest,
+    SynthesisSearchRequest,
+    SynthesisSelectRequest,
 )
 OUTPUT = "apps/web/src/lib/generated/api-contracts.ts"
 

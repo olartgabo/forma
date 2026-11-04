@@ -718,7 +718,64 @@ excluded. The two-candidate limit and fabrication authority remain unchanged.
 The shared wordmark uses the supplied vector artwork and retains the existing
 header and loader colors. The browser icon uses the supplied logo in site blue.
 
-## D053: Inspect canonical assembly geometry in the manual, November 3, 2026
+## D053: Saved stability reports and read-only MetaMuse stability tools, November 3, 2026
+
+Stability calculations can be saved as immutable reports keyed by the engine
+cache hash. History shows each report as current or stale with named reasons;
+stale reports remain readable. Two reports compare only check by check, and only
+under the same policy, cases and engine versions. MetaMuse gets two allowlisted
+read-only tools, `analyze_stability` and `explain_stability_inputs`. Their
+arguments select server-authorized identities and cases only. A report is
+modeled evidence of nothing physical, and MetaMuse cannot add measurements,
+confirm inputs or approve plans.
+
+## D054. Use the cube for long construction requests, November 3, 2026
+
+The construction proposal shows its text status and Cancel on dispatch. After
+10 seconds waiting for the proposal response, a blueprint-blue Rubik's Cube
+appears below the request controls. It reverses three quarter turns when a
+rotatable construction preview is ready. Results display immediately. Errors,
+cancellations and blocked results clear the cube. Reduced motion shows a static
+cube during the wait and skips the solve. The animation reports no percentage
+and does not indicate physical acceptance.
+
+## D055: Bounded stock-feasible stand search, November 3, 2026
+
+Design search (#148) enumerates a finite step-aligned grid of panel width,
+support length and base depth for each saved single-region sheet, tape stock and
+reviewed tape/fold profile pair. Grid bounds come from confirmed device sizes,
+the sheet's usable region and the footprint limits; the support angle is the
+user's requirement and the lip comes from the confirmed stand parameters. Every
+grid point is compiled by `compile_stand` and the independent validator. A node
+budget (deterministic) and a time guard bound the search; running out is
+reported apart from infeasibility. At most two acceptable designs are proposed,
+ordered by consumed sheet area, then panel area, then their values; the second
+prefers another sheet or base depth. Stability, retention and joint strength
+for an unbuilt geometry stay missing, incompatible or unsupported. Measurements
+of another assembled stand never transfer. Search and probe write nothing.
+Selecting a design saves an ordinary preview through the existing plan
+transaction; activation remains the separate approval. An active build changes
+only through the existing repair simulation.
+
+Review repair, same day: compiler requests for measurements, confirmations or
+reviewed profiles make a search `needs_input`, never `infeasible`. Candidates
+are generated lazily and the time budget covers final evaluation. MetaMuse may
+compare the proposed designs through one read-only tool, `compare_stand_designs`,
+choosing only authorized candidate IDs and one grid probe value; the probe is the
+engine's result, shown apart from the model's words.
+
+## D056: Deploy main automatically, November 3, 2026
+
+The user asked for every `main` commit to reach the hosted demo without a
+manual step. A GitHub Actions workflow runs after `Offline checks` passes on a
+push to `main`, assumes a narrow IAM role through GitHub OIDC and runs the
+existing update steps on the instance through SSM Run Command. No long-lived
+AWS keys are stored in GitHub, and the host still has no SSH. The role trusts
+only this repository's `production` environment, which accepts deployments from
+`main` only. Deploys run one at a time and never move the host to an older
+commit. See [hosted deployment](deploy.md).
+
+## D059: Inspect canonical assembly geometry in the manual, November 3, 2026
 
 The user requested issue #152 after the canonical geometry baseline merged.
 The active manual adds an owner-scoped assembly viewer using that producer's

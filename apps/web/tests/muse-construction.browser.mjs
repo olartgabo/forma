@@ -16,17 +16,27 @@ try {
     const context = await browser.newContext({
       viewport: { width, height: 900 },
       serviceWorkers: "block",
+      reducedMotion: width === 390 ? "no-preference" : "reduce",
     });
     const page = await context.newPage();
+    await page.clock.install();
     const errors = [],
       unexpected = [],
       requests = [];
-    let mode = "success";
+    let mode = "slow";
     let providerDispatches = 0;
     const receipts = new Map();
     let dispatched;
     const dispatchObserved = new Promise((resolve) => {
       dispatched = resolve;
+    });
+    let releaseProposal;
+    const proposalReleased = new Promise((resolve) => {
+      releaseProposal = resolve;
+    });
+    let releaseRejection;
+    const rejectionReleased = new Promise((resolve) => {
+      releaseRejection = resolve;
     });
     page.on("pageerror", (e) => errors.push(e.message));
     const base = `/api/projects/${fixture.project.id}`;
@@ -90,6 +100,7 @@ try {
           );
         }
         providerDispatches++;
+        if (mode === "slow") await proposalReleased;
         if (mode === "delayed") {
           // The server completes the paid request, but navigation loses its
           // response. Recovery must use this completed receipt, never a new key.
@@ -97,7 +108,8 @@ try {
           dispatched();
           return;
         }
-        if (mode === "rejected")
+        if (mode === "rejected") {
+          await rejectionReleased;
           return route.fulfill({
             status: 502,
             json: {
@@ -105,6 +117,7 @@ try {
               message: "private-provider-detail",
             },
           });
+        }
         if (mode === "uncertain") {
           receipts.set(body.idempotency_key, "unknown");
           return route.fulfill({
@@ -160,8 +173,35 @@ try {
     assert.equal(await ask.isDisabled(), true);
     await photoConsent.check();
     assert.equal(await ask.isEnabled(), true);
+    const proposalRequest = page.waitForRequest("**/construction/propose");
     await ask.click();
+    await proposalRequest;
+    const cube = panel.locator("[data-cube-state]");
+    const solvingCube = panel.locator('[data-cube-state="solving"]');
+    await page.clock.fastForward(8_000);
+    assert.equal(await cube.count(), 0, "short waits use text status");
+    await page.clock.fastForward(2_000);
+    await panel.locator('[data-cube-state="waiting"]').waitFor();
+    assert.equal(
+      await cube.evaluate(
+        (element) => element.getAnimations({ subtree: true }).length,
+      ),
+      width === 390 ? 1 : 0,
+    );
+    releaseProposal();
+    if (width === 390) {
+      await solvingCube.waitFor();
+      assert.equal(
+        await panel
+          .getByRole("heading", { name: "Proposed organizer" })
+          .isVisible(),
+        true,
+        "the result renders alongside the solve",
+      );
+    }
     await panel.getByRole("heading", { name: "Proposed organizer" }).waitFor();
+    if (width !== 390) assert.equal(await solvingCube.isVisible(), false);
+    await cube.waitFor({ state: "detached" });
     assert.equal(requests.length, 1);
     assert.equal(await consent.isChecked(), false);
     assert.equal(await photoConsent.isChecked(), false);
@@ -244,6 +284,7 @@ try {
     await photoConsent.check();
     await retry.click();
     await panel.getByRole("heading", { name: "Proposed organizer" }).waitFor();
+    assert.equal(await cube.count(), 0, "a quick replay skips the cube");
     assert.deepEqual(
       requests[1],
       requests[2],
@@ -259,8 +300,18 @@ try {
     mode = "rejected";
     await consent.check();
     await photoConsent.check();
+    const rejectedRequest = page.waitForRequest("**/construction/propose");
     await ask.click();
+    await rejectedRequest;
+    await page.clock.fastForward(10_000);
+    await panel.locator('[data-cube-state="waiting"]').waitFor();
+    releaseRejection();
     await panel.getByText(/server rejected the model output/).waitFor();
+    assert.equal(
+      await cube.count(),
+      0,
+      "a rejection clears the cube immediately",
+    );
     assert.ok(!(await panel.innerText()).includes("private-provider-detail"));
     await panel.getByRole("button", { name: "Start another proposal" }).click();
     assert.equal(
@@ -322,7 +373,7 @@ try {
     );
     await context.close();
     console.log(
-      `PASS ${width}px consent/photo, engine steps/names, camera-only, durable reload recovery, terminal start-over and unknown/stale request blocking; offline replay only`,
+      `PASS ${width}px long-wait cube, consent/photo, engine steps/names, camera-only, durable reload recovery, terminal start-over and unknown/stale request blocking; offline replay only`,
     );
   }
 } finally {

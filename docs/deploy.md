@@ -58,7 +58,27 @@ AWS CLI, clones this repository at the exact commit substituted for
 
 ## Updating
 
-Through SSM Run Command (`AWS-RunShellScript`) or a Session Manager shell:
+Every push to `main` deploys itself. When the `Offline checks` workflow passes
+for that commit, `.github/workflows/deploy.yml` assumes IAM role
+`forma-github-deploy` through GitHub OIDC, runs the steps below on the instance
+through SSM Run Command, and then requests `/api/health` over HTTPS. Its job
+runs in the GitHub environment `production`, which only `main` may deploy to,
+and the role trusts only that environment of this repository. The role may send
+`AWS-RunShellScript` to the FORMA instance and read command results, nothing
+else. A failed check, build or health request fails the job. Compose builds
+every image before it replaces any container, so a failed build leaves the
+previous version serving.
+
+`Offline checks` also builds `deploy/api.Dockerfile`, starts the image and
+requests its `/api/health`, so an image that builds but cannot start fails the
+pull request instead of the host.
+
+The workflow skips a commit the host has already moved past, so a late run for
+an older commit does not roll the host back. To redeploy a commit, rerun its
+`Deploy` job in GitHub Actions.
+
+By hand, through SSM Run Command (`AWS-RunShellScript`) or a Session Manager
+shell:
 
 ```sh
 git -C /opt/forma fetch origin

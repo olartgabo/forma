@@ -5,7 +5,7 @@ adapter calls the existing `preview_geometry` / `project_nominal_geometry`
 producer and returns its exact facets, IDs, SI coordinates, stage and hash.
 `packages/assembly_view/projection.ts` owns only orthographic display projection.
 No SVG parsing, physical pose producer, GPU context, render loop or model call
-was added. Product decision D053 records the bounded scope.
+was added. Product decision D059 records the bounded scope.
 
 The authenticated GET binds the active project, plan, inventory revision and
 required explicit history cursor in one database transaction. Empty query cursor
