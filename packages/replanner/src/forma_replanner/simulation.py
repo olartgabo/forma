@@ -915,7 +915,8 @@ def simulate_patch(
             # availability. Any change to it is a conflict, not confirmation.
             # Regions are still collected below so structural reconciliation,
             # including duplicate detection, applies unchanged.
-            if stock != original:
+            # The display name is not physical; a rename alone is no change.
+            if stock.model_copy(update={"name": original.name}) != original:
                 fail(
                     "needs_confirmation",
                     "Unused inventory changed from its original unknown state; confirm the new identity, measurements or condition explicitly.",

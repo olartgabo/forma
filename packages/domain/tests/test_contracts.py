@@ -262,3 +262,16 @@ def test_all_irreversible_variants_require_confirmation():
     )
     with pytest.raises(ValidationError):
         TypeAdapter(m.Operation).validate_python(operation)
+
+
+def test_unnamed_stock_serializes_exactly_as_before_names_existed():
+    # Requests and plans recorded before Stock.name must digest and replay
+    # unchanged, so an unset name is omitted rather than written as null.
+    from forma_domain.fixtures import synthetic_inventory_a
+
+    for stock in synthetic_inventory_a():
+        legacy = stock.model_dump(mode="json")
+        assert "name" not in legacy
+        assert type(stock).model_validate(legacy).model_dump(mode="json") == legacy
+    named = synthetic_inventory_a()[0].model_copy(update={"name": "Lid"})
+    assert named.model_dump(mode="json")["name"] == "Lid"

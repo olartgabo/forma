@@ -122,6 +122,7 @@ def test_success_is_readonly_and_openapi_lists_route(client, monkeypatch):
         "labels": ["cardboard sheet"],
         "measurement_source": "unknown",
         "questions": ["Measure thickness"],
+        "items": [],
     }
     assert result["diagnostics"]["status"] == "ok"
     assert result["diagnostics"]["model"] == "muse-spark-1.3"
@@ -307,6 +308,7 @@ def test_question_only_provider_output_succeeds_unknown_and_readonly(
         "labels": [],
         "measurement_source": "unknown",
         "questions": ["Measure its thickness"],
+        "items": [],
     }
     assert result.json()["diagnostics"]["status"] == "ok"
     assert len(fake.calls) == 1
@@ -371,3 +373,61 @@ def test_private_errors_are_not_cached(client, monkeypatch):
         response = call_intake(client, p, payload)
         assert response.status_code in (422, 502)
         assert response.headers["cache-control"] == "no-store"
+
+
+def test_catalog_items_are_returned_and_off_catalog_answers_refused(
+    client, monkeypatch
+):
+    p = project(client)
+    media = upload(client, p)
+    items = [
+        {
+            "identity": {
+                "outcome": "catalog",
+                "category_id": "cardstock",
+                "alternatives": ["thin_packaging_card"],
+            },
+            "visible_evidence": "thin printed card",
+            "box": {"x1": 0.1, "y1": 0.1, "x2": 0.5, "y2": 0.6},
+            "visibility": "partial",
+            "instance": "single",
+        },
+        {
+            "identity": {"outcome": "uncertain", "alternatives": []},
+            "visible_evidence": "grey shape under the box",
+            "box": None,
+            "visibility": "unclear",
+            "instance": "group_count_unknown",
+        },
+    ]
+    content = json.dumps(
+        {"labels": [], "measurement_source": "unknown", "questions": [], "items": items}
+    )
+    fake = Fake(final(content))
+    install(monkeypatch, fake)
+    result = call_intake(client, p, body(p, media))
+    assert result.status_code == 200, result.text
+    returned = result.json()["observation"]["items"]
+    assert [i["identity"]["outcome"] for i in returned] == ["catalog", "uncertain"]
+    assert "category_id" not in returned[1]["identity"] or (
+        returned[1]["identity"]["category_id"] is None
+    )
+    # The catalog and its rules are in the trusted instructions sent.
+    sent = json.dumps(fake.calls[0])
+    assert "corrugated_cardboard" in sent and "outcome=uncertain" in sent
+
+    q = project(client, key="project-002")
+    media = upload(client, q)
+    forced = [{**items[0], "identity": {"outcome": "catalog", "category_id": "pet"}}]
+    content = json.dumps(
+        {
+            "labels": ["x"],
+            "measurement_source": "unknown",
+            "questions": [],
+            "items": forced,
+        }
+    )
+    install(monkeypatch, Fake(final(content)))
+    refused = call_intake(client, q, body(q, media))
+    assert refused.status_code == 502
+    assert refused.json()["code"] == "invalid_response"

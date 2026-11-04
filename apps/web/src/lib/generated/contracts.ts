@@ -91,7 +91,9 @@ export type AssemblyViewResponse = {
   readonly "geometry"?: (CanonicalGeometryPreview | null);
   readonly "operation_parts": ReadonlyArray<AssemblyOperationParts>;
   readonly "blockers"?: ReadonlyArray<string>;
-  readonly "overlay_coverage"?: "unavailable";
+  readonly "overlay_coverage"?: "unavailable" | "available";
+  readonly "overlay_report_id"?: (string | null);
+  readonly "overlay_report"?: (StabilityReport | null);
 };
 
 export type AttachBrace = {
@@ -155,6 +157,19 @@ export type BuildPlan = {
   readonly "constraints": Constraints;
   readonly "compiler_version": string;
   readonly "created_at": string;
+};
+
+export type CameraCalibration = {
+  readonly "calibration_id": string;
+  readonly "device_label": string;
+  readonly "image_width_px": number;
+  readonly "image_height_px": number;
+  readonly "camera_matrix": readonly [readonly [number, number, number], readonly [number, number, number], readonly [number, number, number]];
+  readonly "distortion": readonly [number, number, number, number, number];
+  readonly "rms_reprojection_px": number;
+  readonly "view_count": number;
+  readonly "crop"?: "full_frame";
+  readonly "method_version"?: "card-calibration-v1";
 };
 
 export type CandidateCheck = {
@@ -228,6 +243,24 @@ export type CanonicalGeometryPreview = {
   readonly "ground_polygon": ReadonlyArray<Point3>;
   readonly "assumption_ids": ReadonlyArray<string>;
   readonly "assumptions": ReadonlyArray<string>;
+};
+
+export type CaptureDeclaration = {
+  readonly "shape": "flat" | "curved" | "folded" | "stacked" | "raised" | "roll";
+  readonly "same_surface_as_reference": boolean;
+};
+
+export type CategoryInfo = {
+  readonly "id": "corrugated_cardboard" | "thin_packaging_card" | "cardstock" | "printer_paper" | "kraft_paper" | "paper_tube" | "egg_carton" | "paper_cup" | "craft_sticks" | "bamboo_skewers" | "toothpicks" | "wooden_dowels" | "wood_strips" | "small_wood_offcuts" | "plywood_sheet" | "cork_sheet" | "plastic_bottle" | "bottle_caps" | "food_container" | "plastic_lid" | "plastic_sheet" | "plastic_packaging_tray" | "drinking_straws" | "pvc_pipe" | "foam_board" | "eva_craft_foam" | "expanded_polystyrene" | "packing_foam" | "sponge" | "felt" | "fabric_scrap" | "denim_scrap" | "duct_tape" | "masking_tape" | "clear_tape" | "double_sided_tape" | "electrical_tape" | "white_glue" | "glue_stick" | "hot_glue_sticks" | "string_twine" | "zip_ties" | "rubber_bands" | "paper_clips" | "binder_clips" | "aluminum_foil" | "wire" | "nuts_and_bolts";
+  readonly "label": string;
+  readonly "group": "paper_cardboard" | "wood_plant" | "plastic" | "foam_soft" | "tape_adhesive_tie" | "connector_metal";
+  readonly "form": "flat_sheet" | "thick_sheet" | "soft_sheet" | "stick_strip" | "tube" | "container_3d" | "block_3d" | "small_part" | "roll" | "adhesive_container" | "loose_cord";
+  readonly "material_family": string;
+  readonly "composition_unknown": boolean;
+  readonly "support": "build_rules_available" | "build_rules_not_available";
+  readonly "stock_kind"?: ("sheet" | "strip" | "tape" | "cord" | null);
+  readonly "stock_material"?: ("cardboard" | "paperboard" | "other_supported" | null);
+  readonly "support_note"?: (string | null);
 };
 
 export type CenterOfMass = {
@@ -500,6 +533,13 @@ export type DiagnosisProposal = {
   readonly "failure_type": "torn_slot" | "wrong_dimension" | "missing_material" | "damaged_part" | "unstable" | "unknown";
 };
 
+export type Diagnostic = {
+  readonly "code": "reference_not_found" | "reference_unverified" | "reference_partial" | "reference_too_small" | "reference_blurry" | "degenerate_reference" | "steep_angle" | "low_resolution_at_material" | "far_from_reference" | "fit_residual_high" | "holdout_error_high" | "no_independent_check" | "lens_uncorrected" | "calibration_mismatch" | "calibration_applied" | "outline_clipped" | "outline_box_too_tight" | "outline_not_found" | "outline_crosses_horizon" | "irregular_outline" | "holes_present" | "opposite_edges_differ" | "unsupported_shape" | "not_on_reference_plane" | "thickness_not_measurable";
+  readonly "severity": "info" | "warning" | "blocking";
+  readonly "message": string;
+  readonly "value"?: (number | null);
+};
+
 export type DimensionDomain = {
   readonly "sheet_stock_id": string;
   readonly "parameter": "part_width_mm" | "support_length_mm" | "footprint_depth_mm";
@@ -511,6 +551,18 @@ export type DimensionDomain = {
   readonly "lower_basis": string;
   readonly "upper_basis": string;
   readonly "empty_reason"?: (string | null);
+};
+
+export type DimensionEstimate = {
+  readonly "name": "edge_length_mm" | "edge_width_mm" | "enclosing_length_mm" | "enclosing_width_mm" | "outline_area_mm2" | "hole_area_mm2";
+  readonly "definition": string;
+  readonly "unit": "mm" | "mm2";
+  readonly "value": number;
+  readonly "display_value": number;
+  readonly "display_step": number;
+  readonly "sensitivity_low": number;
+  readonly "sensitivity_high": number;
+  readonly "stock_field"?: ("width_mm" | "height_mm" | null);
 };
 
 export type Effects = {
@@ -527,6 +579,20 @@ export type ErrorEnvelope = {
   readonly "code": "validation_error" | "not_found" | "forbidden" | "stale_version" | "idempotency_conflict" | "blocked";
   readonly "message": string;
   readonly "blockers"?: ReadonlyArray<Blocker>;
+};
+
+export type EstimateInput = {
+  readonly "stock_id": string;
+  readonly "stock_kind": "sheet" | "strip" | "tape" | "cord";
+  readonly "stock_material": "cardboard" | "paperboard" | "other_supported";
+  readonly "media_id": string;
+  readonly "media_sha256": string;
+  readonly "image_width_px": number;
+  readonly "image_height_px": number;
+  readonly "reference": ReferenceInput;
+  readonly "outline": OutlineInput;
+  readonly "capture": CaptureDeclaration;
+  readonly "calibration"?: (CameraCalibration | null);
 };
 
 export type Evidence = {
@@ -731,6 +797,21 @@ export type InspectArgs = {
   readonly "method": "photo" | "ruler" | "human_inspection";
 };
 
+export type ItemIdentity = {
+  readonly "outcome": "catalog" | "other" | "uncertain";
+  readonly "category_id"?: ("corrugated_cardboard" | "thin_packaging_card" | "cardstock" | "printer_paper" | "kraft_paper" | "paper_tube" | "egg_carton" | "paper_cup" | "craft_sticks" | "bamboo_skewers" | "toothpicks" | "wooden_dowels" | "wood_strips" | "small_wood_offcuts" | "plywood_sheet" | "cork_sheet" | "plastic_bottle" | "bottle_caps" | "food_container" | "plastic_lid" | "plastic_sheet" | "plastic_packaging_tray" | "drinking_straws" | "pvc_pipe" | "foam_board" | "eva_craft_foam" | "expanded_polystyrene" | "packing_foam" | "sponge" | "felt" | "fabric_scrap" | "denim_scrap" | "duct_tape" | "masking_tape" | "clear_tape" | "double_sided_tape" | "electrical_tape" | "white_glue" | "glue_stick" | "hot_glue_sticks" | "string_twine" | "zip_ties" | "rubber_bands" | "paper_clips" | "binder_clips" | "aluminum_foil" | "wire" | "nuts_and_bolts" | null);
+  readonly "other_label"?: (string | null);
+  readonly "alternatives"?: ReadonlyArray<"corrugated_cardboard" | "thin_packaging_card" | "cardstock" | "printer_paper" | "kraft_paper" | "paper_tube" | "egg_carton" | "paper_cup" | "craft_sticks" | "bamboo_skewers" | "toothpicks" | "wooden_dowels" | "wood_strips" | "small_wood_offcuts" | "plywood_sheet" | "cork_sheet" | "plastic_bottle" | "bottle_caps" | "food_container" | "plastic_lid" | "plastic_sheet" | "plastic_packaging_tray" | "drinking_straws" | "pvc_pipe" | "foam_board" | "eva_craft_foam" | "expanded_polystyrene" | "packing_foam" | "sponge" | "felt" | "fabric_scrap" | "denim_scrap" | "duct_tape" | "masking_tape" | "clear_tape" | "double_sided_tape" | "electrical_tape" | "white_glue" | "glue_stick" | "hot_glue_sticks" | "string_twine" | "zip_ties" | "rubber_bands" | "paper_clips" | "binder_clips" | "aluminum_foil" | "wire" | "nuts_and_bolts">;
+};
+
+export type ItemProposal = {
+  readonly "identity": ItemIdentity;
+  readonly "visible_evidence": string;
+  readonly "box"?: (VisibleBox | null);
+  readonly "visibility"?: "full" | "partial" | "unclear";
+  readonly "instance"?: "single" | "group_count_unknown";
+};
+
 export type JoinArgs = {
   readonly "joint_id": string;
 };
@@ -869,7 +950,7 @@ export type MeasuredSupportRectangle = {
 export type Measurement = {
   readonly "value": (number | null);
   readonly "unit": "mm" | "g" | "deg";
-  readonly "source": "user_ruler" | "known_reference" | "calculated" | "unknown";
+  readonly "source": "user_ruler" | "known_reference" | "calculated" | "photo_estimate" | "unknown";
   readonly "confirmed": boolean;
   readonly "evidence_ids"?: ReadonlyArray<string>;
 };
@@ -968,6 +1049,16 @@ export type OrderStep = {
   readonly "reordered": boolean;
 };
 
+export type OutlineInput = {
+  readonly "source": "sam_box" | "manual_box" | "user_polygon";
+  readonly "x1"?: (number | null);
+  readonly "y1"?: (number | null);
+  readonly "x2"?: (number | null);
+  readonly "y2"?: (number | null);
+  readonly "polygon_px"?: ReadonlyArray<PixelPoint>;
+  readonly "holes_px"?: ReadonlyArray<ReadonlyArray<PixelPoint>>;
+};
+
 export type Part = {
   readonly "id": string;
   readonly "source_stock_id": string;
@@ -980,6 +1071,24 @@ export type Part = {
 export type PartCentroid = {
   readonly "part_id": string;
   readonly "centroid": Point3;
+};
+
+export type PhotoEstimate = {
+  readonly "input_digest": string;
+  readonly "input": EstimateInput;
+  readonly "outcome": "estimate" | "enclosing_only" | "needs_better_photo" | "needs_manual_measurement" | "unsupported_shape" | "reference_not_found" | "reference_unverified";
+  readonly "dimensions"?: ReadonlyArray<DimensionEstimate>;
+  readonly "reference_corners_px"?: ReadonlyArray<PixelPoint>;
+  readonly "reference_corners_mm"?: ReadonlyArray<PixelPoint>;
+  readonly "outline_px"?: ReadonlyArray<PixelPoint>;
+  readonly "holes_px"?: ReadonlyArray<ReadonlyArray<PixelPoint>>;
+  readonly "calibration_status": "uncalibrated" | "applied" | "mismatch";
+  readonly "uncertainty"?: (Uncertainty | null);
+  readonly "diagnostics"?: ReadonlyArray<Diagnostic>;
+  readonly "assumptions"?: ReadonlyArray<string>;
+  readonly "request"?: (string | null);
+  readonly "method_version"?: "planar-homography-v1";
+  readonly "measurement_status"?: "photo_estimate_unconfirmed";
 };
 
 export type PhysicalEvent = {
@@ -1011,6 +1120,11 @@ export type PieceReference = {
   readonly "geometry_class": "triangle" | "rectangle" | "convex_polygon" | "concave_polygon" | "multi_facet";
   readonly "role"?: (string | null);
   readonly "annotation"?: (PieceAnnotation | null);
+};
+
+export type PixelPoint = {
+  readonly "x": number;
+  readonly "y": number;
 };
 
 export type Point3 = {
@@ -1064,12 +1178,42 @@ export type QuantityEstimate = {
   readonly "uncertainty_notes"?: ReadonlyArray<string>;
 };
 
+export type RecognizedInventory = {
+  readonly "items"?: ReadonlyArray<RecognizedItem>;
+};
+
+export type RecognizedItem = {
+  readonly "id": string;
+  readonly "name": string;
+  readonly "identity": ItemIdentity;
+  readonly "identity_source": "muse_suggestion" | "user";
+  readonly "media_id"?: (string | null);
+  readonly "box"?: (VisibleBox | null);
+  readonly "box_source"?: ("muse_approximate" | "sam" | "user" | null);
+  readonly "visibility"?: "full" | "partial" | "unclear";
+  readonly "instance"?: "single" | "group_count_unknown";
+  readonly "stock_id"?: (string | null);
+  readonly "user_fields"?: ReadonlyArray<"identity" | "name" | "box" | "visibility" | "instance" | "stock_id">;
+};
+
 export type Rect = {
   readonly "x": number;
   readonly "y": number;
   readonly "width": number;
   readonly "height": number;
   readonly "rotation_deg"?: 0 | 90;
+};
+
+export type ReferenceInput = {
+  readonly "kind": "forma_card" | "aruco_marker" | "rectangle";
+  readonly "printed_check_x_mm"?: (number | null);
+  readonly "printed_check_y_mm"?: (number | null);
+  readonly "width_mm"?: (number | null);
+  readonly "height_mm"?: (number | null);
+  readonly "size_source"?: ("ruler" | "published_standard" | null);
+  readonly "size_tolerance_mm": number;
+  readonly "aruco_id"?: (number | null);
+  readonly "corners_px"?: ReadonlyArray<PixelPoint>;
 };
 
 export type Region = {
@@ -1289,6 +1433,7 @@ export type StandDesign = {
 
 export type Stock = {
   readonly "id": string;
+  readonly "name"?: (string | null);
   readonly "kind": "sheet" | "strip" | "tape" | "cord";
   readonly "material": "cardboard" | "paperboard" | "other_supported";
   readonly "width_mm": Measurement;
@@ -1360,12 +1505,32 @@ export type ToolCheck = {
   readonly "declared_name": (string | null);
 };
 
+export type Uncertainty = {
+  readonly "method"?: "monte_carlo_sensitivity";
+  readonly "samples": number;
+  readonly "reference_corner_sigma_px": number;
+  readonly "outline_sigma_px": number;
+  readonly "outline_edge_residual_px"?: (number | null);
+  readonly "reference_size_tolerance_mm": number;
+  readonly "fit_rms_mm"?: (number | null);
+  readonly "holdout_max_error_mm"?: (number | null);
+  readonly "holdout_checks": number;
+  readonly "statement"?: string;
+};
+
 export type VersionHistory = {
   readonly "plan": BuildPlan;
   readonly "events"?: ReadonlyArray<PhysicalEvent>;
   readonly "evidence"?: ReadonlyArray<Evidence>;
   readonly "carried_operation_ids"?: ReadonlyArray<string>;
   readonly "base_last_event_id"?: (string | null);
+};
+
+export type VisibleBox = {
+  readonly "x1": number;
+  readonly "y1": number;
+  readonly "x2": number;
+  readonly "y2": number;
 };
 
 export type Operation = (Measure | Mark | CutRect | CutSlot | Fold | InsertTab | TapeJoint | TieJoint | AttachBrace | Detach | Inspect | FunctionalTest);

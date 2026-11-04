@@ -75,11 +75,8 @@ class Scripted:
             if self.explanation
             else {
                 "report_id": result["report_id"],
-                "summary": "Modeled tipping result explained from the tool output.",
-                "case_notes": [
-                    {"case_id": case["case_id"], "note": "Explained modeled case."}
-                    for case in result["cases"]
-                ],
+                "case_ids": [case["case_id"] for case in result["cases"]][:2],
+                "check_types": ["tip"],
             }
         )
         return {
@@ -282,7 +279,8 @@ def test_explain_report_reads_stale_history_without_new_writes(connected, muse):
     transport = Scripted(
         explanation=lambda r: {
             "report_id": r["report_id"],
-            "summary": "This older report is stale.",
+            "case_ids": ["portrait"],
+            "check_types": ["tip"],
         }
     )
     response = ask(current, transport, mode="explain_report", report_id=report_id)
@@ -424,3 +422,266 @@ def test_completed_request_with_lost_response_replays_without_dispatch(connected
     # A different key for the stale identity is still refused before dispatch.
     fresh_key = ask(body, transport, key="lost-response-2")
     assert fresh_key.status_code == 409 and transport.calls == []
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "unsafe_prose",
+        "foreign_case",
+        "foreign_check",
+        "absent_check",
+        "empty",
+        "duplicate",
+        "too_many",
+    ],
+)
+def test_closed_focus_rejects_model_prose_and_foreign_selectors(
+    connected, muse, change
+):
+    _, _, directory, ask = muse
+    body = measured(connected)
+
+    def invalid(result):
+        focus = dict(
+            report_id=result["report_id"], case_ids=["portrait"], check_types=["tip"]
+        )
+        if change == "unsafe_prose":
+            focus.update(
+                summary="Physical test passed. Certified safe.",
+                case_notes=[dict(case_id="portrait", note="Approved physical test")],
+            )
+        elif change == "foreign_case":
+            focus["case_ids"] = ["upside-down"]
+        elif change == "foreign_check":
+            focus["check_types"] = ["certified-safe"]
+        elif change == "absent_check":
+            focus["check_types"] = ["joint"]
+        elif change == "empty":
+            focus["case_ids"] = []
+        elif change == "duplicate":
+            focus["check_types"] = ["tip", "tip"]
+        else:
+            focus["case_ids"] = ["portrait", "landscape", "third"]
+        return focus
+
+    transport = Scripted(explanation=invalid)
+    response = ask(body, transport)
+    assert response.status_code == 502, response.text
+    assert response.json()["code"] == "invalid_response"
+    assert "Certified safe" not in response.text
+    assert len(transport.calls) == 2
+    assert saved_reports(directory) == []
+
+
+@pytest.mark.parametrize(
+    "status,selected_case",
+    [
+        ("modeled_fail", "landscape"),
+        ("modeled_fail", "portrait"),
+        ("indeterminate", "landscape"),
+    ],
+)
+def test_focus_preserves_aggregate_failure_and_actual_selected_status(
+    connected, muse, status, selected_case
+):
+    client, url, directory, ask = muse
+    body = measured(connected)
+    first = save(
+        client, url, body, body["expected_last_event_id"], "focus-reference"
+    ).json()
+    changed = copy.deepcopy(body)
+    changed["idempotency_key"] = "focus-measurements-02"
+    if status == "modeled_fail":
+        changed["measurements"]["cases"][1]["device"]["center_of_mass_m"]["x"] = 1.0
+    else:
+        changed["measurements"]["required_margin_m"] = first["analysis"]["report"][
+            "overlays"
+        ][0]["signed_margin_m"]
+    receipt = client.post(measurement_url(url), headers=AUTH, json=changed)
+    assert receipt.status_code == 200, receipt.text
+    current = body | {"expected_last_event_id": receipt.json()["last_event_id"]}
+    transport = Scripted(
+        explanation=lambda result: dict(
+            report_id=result["report_id"], case_ids=[selected_case], check_types=["tip"]
+        )
+    )
+    response = ask(current, transport)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    report = next(
+        json.loads(row[1])["report"]
+        for row in saved_reports(directory)
+        if row[0] == result["report"]["report_id"]
+    )
+    row = next(
+        row
+        for row in report["results"]
+        if row["case_id"] == selected_case and row["check_type"] == "tip"
+    )
+    assert report["status"] == status
+    assert (
+        result["explanation"]["summary"]
+        == f"Saved report status: {status}. Selected result counts: {row['status']}: 1."
+    )
+    assert row["status"] in result["explanation"]["case_notes"][0]["note"]
+    assert result["focused_results"] == [row]
+    assert result["explanation"]["questions"] == []
+    assert (
+        "cannot establish a physical test pass, safety certification"
+        in result["explanation"]["missing_inputs"][0]
+    )
+    assert result["usage"] == dict(model_calls=2, input_tokens=200, output_tokens=40)
+    replay_transport = Scripted()
+    replay = ask(current, replay_transport)
+    assert replay.json() == result | {"replayed": True}
+    assert replay_transport.calls == []
+
+
+def legacy_digest(body, project_id, key):
+    from forma_api.routes.designs import _digest
+    from forma_api.stability_muse import LEGACY_PROMPT_VERSION, StabilityMuseRequest
+
+    request = StabilityMuseRequest.model_validate(
+        {
+            k: body[k]
+            for k in (
+                "plan_version_id",
+                "expected_inventory_revision_id",
+                "expected_last_event_id",
+            )
+        }
+        | dict(
+            idempotency_key=key, mode="analyze_current", provider_context_consented=True
+        )
+    )
+    return _digest(
+        dict(
+            request=request.model_dump(mode="json"),
+            project_id=project_id,
+            prompt_version=LEGACY_PROMPT_VERSION,
+        )
+    )
+
+
+def test_legacy_completed_receipt_replays_engine_text_without_provider_or_old_prose(
+    connected, muse
+):
+    client, url, directory, ask = muse
+    body = measured(connected)
+    first = ask(body, Scripted(), key="legacy-receipt-01")
+    assert first.status_code == 200, first.text
+    legacy = first.json()
+    legacy.pop("focus")
+    legacy.pop("focused_results")
+    legacy["prompt_version"] = "stability-explanation-v1"
+    legacy["explanation"] = dict(
+        report_id=legacy["report"]["report_id"],
+        summary="Physical test passed. Certified safe.",
+        case_notes=[dict(case_id="portrait", note="Certified safe")],
+    )
+    project_id = url.split("/")[2]
+    with sqlite3.connect(directory / "projects.sqlite3") as db:
+        db.execute(
+            "UPDATE requests SET digest=?,response=? WHERE key=? AND scope=?",
+            (
+                legacy_digest(body, project_id, "legacy-receipt-01"),
+                json.dumps(legacy),
+                "legacy-receipt-01",
+                project_id + ":stability-muse",
+            ),
+        )
+    changed = copy.deepcopy(body)
+    changed["idempotency_key"] = "legacy-measurements-02"
+    changed["measurements"]["stand"]["mass_kg"] = 0.12
+    assert (
+        client.post(measurement_url(url), headers=AUTH, json=changed).status_code == 200
+    )
+    transport = Scripted()
+    response = ask(body, transport, key="legacy-receipt-01")
+    assert response.status_code == 200, response.text
+    assert response.json()["replayed"]
+    assert response.json()["prompt_version"] == "stability-focus-v2"
+    assert response.json()["usage"] == first.json()["usage"]
+    assert response.json()["report"]["freshness"]["current"] is False
+    assert response.json()["focus"]["case_ids"]
+    assert "Certified safe" not in response.text
+    assert "Physical test passed" not in response.text
+    assert transport.calls == []
+
+
+@pytest.mark.parametrize("uncertain", [False, True])
+def test_legacy_pending_and_unknown_receipts_block_same_and_changed_key(
+    connected, muse, uncertain
+):
+    _, url, directory, ask = muse
+    body = measured(connected)
+    project_id = url.split("/")[2]
+    marker = {"pending": True} | (
+        {"uncertain": True, "error_code": "timeout"} if uncertain else {}
+    )
+    with sqlite3.connect(directory / "projects.sqlite3") as db:
+        db.execute(
+            "INSERT INTO requests VALUES (?,?,?,?,?)",
+            (
+                "alice",
+                project_id + ":stability-muse",
+                "legacy-receipt-01",
+                legacy_digest(body, project_id, "legacy-receipt-01"),
+                json.dumps(marker),
+            ),
+        )
+    transport = Scripted()
+    for key in ("legacy-receipt-01", "changed-receipt-02"):
+        response = ask(body, transport, key=key)
+        assert response.status_code == 409, response.text
+        assert response.json()["code"] == (
+            "generation_outcome_unknown" if uncertain else "generation_in_progress"
+        )
+    assert transport.calls == []
+
+
+def test_zero_result_legacy_receipt_blocks_without_dispatch(
+    connected, muse, monkeypatch
+):
+    from forma_api import stability_reports as reports
+
+    _, url, directory, ask = muse
+    body = measured(connected)
+    first = ask(body, Scripted(), key="legacy-empty-01")
+    assert first.status_code == 200, first.text
+    value = first.json()
+    value.pop("focus")
+    value.pop("focused_results")
+    project_id = url.split("/")[2]
+    with sqlite3.connect(directory / "projects.sqlite3") as db:
+        db.execute(
+            "UPDATE requests SET digest=?,response=? WHERE key=?",
+            (
+                legacy_digest(body, project_id, "legacy-empty-01"),
+                json.dumps(value),
+                "legacy-empty-01",
+            ),
+        )
+    original = reports.read_record
+
+    def empty_report(connection, project_id, report_id):
+        saved = original(connection, project_id, report_id)
+        return saved.model_copy(
+            update={
+                "report": saved.report.model_copy(
+                    update={
+                        "results": (),
+                        "status": "unsupported",
+                        "coverage": "unsupported",
+                    }
+                )
+            }
+        )
+
+    monkeypatch.setattr(reports, "read_record", empty_report)
+    transport = Scripted()
+    response = ask(body, transport, key="legacy-empty-01")
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "blocked"
+    assert transport.calls == []

@@ -79,6 +79,27 @@ and expire with context changes. Lengths must match current expected stock;
 different balances need physical material reconciliation. The existing GET
 routes remain available. See [the combined handoff](handoffs/issue-150-combined.md).
 
+POST `/api/projects/{id}/photo-estimates` computes a local, deterministic planar
+estimate (contracts in `forma_domain.photo_measurement_contracts`) for one stock
+card, photo, reference and outline, with an idempotency key and the expected
+inventory revision; GET lists every estimate with `current`/`stale` status and
+reasons. No provider is called. `PUT /inventory` accepts a `photo_estimate`
+measurement only unconfirmed and only when it equals a current estimate's
+displayed value for that stock, field and linked photo. GET
+`/api/photo-reference-card.svg` is the public printable reference. See the
+[photo measurement handoff](handoffs/issue-177-photo-measurement.md).
+
+The intake observation also returns `items`: one `ItemProposal` per visible
+object, constrained to the 48 recognition categories in
+`forma_domain.material_catalog` with `other` and `uncertain` outcomes and up to
+three alternatives; a pile is `group_count_unknown`, never a count. GET/PUT
+`/api/projects/{id}/recognized-items` stores the editable `RecognizedItem`
+cards (stable ID, display name, identity and who set it, approximate box, link
+to a saved stock) under their own revision and idempotency key. Only the
+categories mapped to existing build rules may link to a stock of the matching
+kind and material; saving cards never creates, measures or confirms stock. See
+the [material catalog handoff](handoffs/issue-177-material-catalog.md).
+
 Every mutation validates authenticated project scope, runtime input and
 idempotency. `adapt/commit` checks expected active version and returns 409 for
 stale writes. Neither simulation nor provider tools activate a plan.

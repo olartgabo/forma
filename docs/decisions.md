@@ -840,7 +840,86 @@ repaired states retain the authoritative SVG/history fallback. Planned and
 user-reported assembly remain nominal; absent matching numerical overlays are
 shown as unavailable. No camera action dispatches analysis or changes evidence.
 
-## D060. Check web research against saved materials during intake, November 4, 2026
+## D060: Bind displayed stability claims to saved results, November 4, 2026
+
+Following the merged #147 and #152 implementations, MetaMuse selects a bounded
+focus from authorized saved cases and check types. The server derives displayed
+statuses, explanations and cautions from the saved engine report. Model-written
+prose cannot assert a physical pass. Completed older receipts retain their request
+identity and usage but receive the same deterministic presentation; unresolved
+provider outcomes continue to block new dispatches.
+
+The assembly viewer reads matching saved reports without running analysis. Report
+identity, canonical geometry, measurements, profiles, history and engine dependencies
+must match the current authorized context. Missing or stale overlays remain
+unavailable. Camera controls and case selection change display only; separated
+parts hide world-coordinate overlays. Stored reports remain readable after an
+engine or numerical dependency upgrade and are marked stale.
+
+## D061: Reference-scaled planar photo estimates stay estimates, November 4, 2026
+
+The user requested photo-first intake with calibrated dimension estimates (#177).
+This deliberately changes #7's rule that image-derived sizes stay unknown: a
+flat sheet or strip photographed beside a verified reference may now prefill an
+unconfirmed `photo_estimate` value. The domain validator forbids a confirmed
+`photo_estimate`, so every existing confirmed-measurement gate still requires a
+ruler value; "save estimated dimensions" never becomes "measured".
+
+Method: OpenCV 5.0.0.93 ArUco detection and a least-squares planar homography,
+with optional lens correction bound to an exact uncropped image size (library
+only for now; the API does not yet store calibrations, so app estimates are
+uncalibrated and say so). The
+printable FORMA card has four markers (16 points), so the fit has residuals and
+each marker can be predicted from the others; a single marker or a user-marked
+rectangle is accepted but reported as having no independent check. The printed
+check lines must be measured with a ruler, because printer scaling is not
+observable in the photo. Outlines are seeded from SAM or manual boxes, segmented
+against the surrounding surface and snapped to the colour edge; the measured
+edge scatter raises the outline uncertainty, and ragged or non-square outlines
+give enclosing dimensions only, never stock size. Uncertainty is a stated
+Monte Carlo sensitivity, not a calibrated confidence interval.
+
+Rejected: a single pixel-per-millimetre scale (wrong under perspective); one
+known line length (does not define plane geometry); bounding boxes or convex
+hulls as stock (overstate usable material); learned metric depth (Depth
+Anything 3, Depth Pro) or reconstruction (COLMAP) without a measured
+improvement on our materials, compatible licences and deployable resources.
+Accuracy on real photographs is unvalidated until the evaluation procedure in
+the [photo measurement handoff](handoffs/issue-177-photo-measurement.md) runs.
+
+## D062: Recognition categories are not fabrication materials, November 4, 2026
+
+The user extended #177 to an initial catalog of 48 everyday categories. They are
+recognition categories: what a visible object probably is. Identity, a
+suggested material family, visible form and fabrication support are separate
+fields. Seven categories map onto build rules that already exist (corrugated
+cardboard to a cardboard sheet; thin packaging card and cardstock to a
+paperboard sheet; duct, masking and clear tape to tape; string or twine to
+cord). The other 41, and every `other` or `uncertain` answer, are shown as
+"Identified; build rules not available yet" and can never link to a stock, so
+recognised inventory stays visible without enabling operations. Nothing is
+forced into cardboard or a generic supported material.
+
+Muse returns structured item proposals constrained to the catalog through the
+existing bounded, consented intake call. `uncertain` never selects a category,
+alternatives carry look-alikes, and a pile is one proposal without a count.
+Proposals and SAM boxes locate and suggest; they are not evidence of
+composition, thickness, strength, mass or remaining quantity. A later
+suggestion never changes an existing card; it is skipped when it overlaps one.
+
+Measurement follows visible form: planar outlines for thin flat sheets (the
+existing estimator), top-face-only outlines for thick sheets, as-laid outlines
+for soft sheets, length and width for straight sticks lying flat, no photo size
+for tubes, containers, blocks and small parts, and no quantity for rolls,
+adhesive containers and loose cord. This change exposes these capabilities as
+text; photo measurement still runs only for supported sheet and strip stock.
+
+Recognition accuracy is not evaluated: no labelled real photographs exist in
+this checkout. `forma_api.recognition_evaluate` scores recorded proposals
+against such a set and refuses a coverage claim until every category and scene
+type has real labelled instances.
+
+## D063: Check web research against saved materials during intake, November 4, 2026
 
 An opt-in investigation adds cited research to the existing stock-feasible
 stand search. FORMA checks the saved materials and requirements first. A scout

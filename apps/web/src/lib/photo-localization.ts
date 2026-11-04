@@ -7,6 +7,9 @@ export class LocalizationError extends Error {
     this.code = code;
   }
 }
+// prettier-ignore
+// @ts-expect-error -- Node tests import TypeScript directly.
+import { receipts } from "../components/design-candidates/pending.ts";
 import type {
   Box,
   Media,
@@ -133,3 +136,10 @@ export function validLocalizationRequest(
     !v.concept.toLowerCase().includes(" and ")
   );
 }
+
+// One retained SAM request per owner and project, shared by every SAM caller.
+export const localizationReceipts = receipts<PhotoLocalizationRequest>(
+  "forma-photo-localization-v1:",
+  validLocalizationRequest,
+  "SAM request",
+);

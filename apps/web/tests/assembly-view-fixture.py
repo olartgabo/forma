@@ -139,6 +139,16 @@ def main(output):
             )
             assert measured_view.status_code == 200, measured_view.text
             data["measured_view"] = measured_view.json()
+            report_saved = client.post(
+                base + "/stability/reports",
+                headers=t.AUTH,
+                json=params | {"idempotency_key": "assembly-overlay-fixture"},
+            )
+            assert report_saved.status_code == 200, report_saved.text
+            data["overlay_view"] = client.get(
+                base + "/assembly-view", params=params, headers=t.AUTH
+            ).json()
+            assert data["overlay_view"]["overlay_coverage"] == "available"
             assert (
                 data["measured_view"]["last_event_id"]
                 != data["assembled_view"]["last_event_id"]

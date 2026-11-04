@@ -123,7 +123,9 @@ constraints; a person checks actual joint grip, stability and function.
 
 Spark interprets, diagnoses and proposes. SAM assists object review with manual
 box/label fallback. Neither determines exact photo scale, hidden strength or
-physical success. Provider details stay in the API gateway. The compiler works
+physical success. The offline `forma_photo_measure` package estimates flat sizes
+against a verified printed reference; its values stay unconfirmed estimates
+(D061). Provider details stay in the API gateway. The compiler works
 without an API key. See [contracts.md](contracts.md) and
 [model-compatibility.md](model-compatibility.md).
 

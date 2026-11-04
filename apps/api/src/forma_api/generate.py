@@ -64,6 +64,11 @@ from forma_api.photo_localization import (
     PhotoLocalizationRequest,
     PhotoLocalizationResult,
 )
+from forma_api.photo_measurement_runtime import (
+    PhotoEstimateList,
+    PhotoEstimateRecord,
+    PhotoEstimateRequest,
+)
 from forma_api.plans import (
     ActivationResult,
     CompilePreview,
@@ -97,6 +102,11 @@ from forma_api.projects import (
 from forma_api.proof import ProofSnapshot, ProofVersion
 from forma_api.proposal_service import IntakeObservation
 from forma_api.provider_diagnostics import ProviderUsage
+from forma_api.recognized_items_runtime import (
+    ItemProblem,
+    RecognizedItems,
+    RecognizedItemsUpdate,
+)
 from forma_api.repair_runtime import (
     RepairProposeDiagnostics,
     RepairProposeErrorResponse,
@@ -112,6 +122,7 @@ from forma_api.stability_measurements import (
 from forma_api.stability_muse import (
     CaseNote,
     StabilityMuseExplanation,
+    StabilityMuseFocus,
     StabilityMuseRequest,
     StabilityMuseResult,
 )
@@ -191,6 +202,7 @@ API_RECORDS = (
     StabilityMuseRequest,
     StabilityMuseResult,
     StabilityMuseExplanation,
+    StabilityMuseFocus,
     CaseNote,
     DependencyVersions,
     ActivationResult,
@@ -237,6 +249,12 @@ API_RECORDS = (
     IntakeResult,
     PhotoLocalizationRequest,
     PhotoLocalizationResult,
+    PhotoEstimateList,
+    PhotoEstimateRecord,
+    PhotoEstimateRequest,
+    ItemProblem,
+    RecognizedItems,
+    RecognizedItemsUpdate,
     InventoryUpdate,
     ManualBillItem,
     ManualDocument,

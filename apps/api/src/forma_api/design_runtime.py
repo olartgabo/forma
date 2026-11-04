@@ -191,6 +191,12 @@ def missing_inputs(project, resolved: ResolvedDesignContext) -> list[str]:
         for label, measurement in required:
             if measurement.value is None:
                 missing.append(f"Measure the {label} of stock {stock.id}.")
+            elif measurement.source == "photo_estimate":
+                # A photo estimate (#177) is never a confirmed measurement.
+                missing.append(
+                    f"Measure the {label} of stock {stock.id} with a ruler; "
+                    "the photo estimate is not confirmed."
+                )
     if project.requirements is None:
         missing.append("Confirm device and space requirements.")
     else:
