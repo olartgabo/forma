@@ -9086,6 +9086,20 @@
             "title": "Material",
             "type": "string"
           },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Name"
+          },
           "remaining_length_mm": {
             "$ref": "#/components/schemas/Measurement"
           },

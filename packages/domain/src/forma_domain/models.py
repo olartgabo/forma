@@ -56,6 +56,9 @@ class Region(Record):
 
 class Stock(Record):
     id: ID
+    # Editable display name. The ID is the stable identity: renaming keeps the
+    # ID, its photo links and its photo estimates.
+    name: Annotated[str, Field(min_length=1, max_length=80)] | None = None
     kind: Literal["sheet", "strip", "tape", "cord"]
     material: Literal["cardboard", "paperboard", "other_supported"]
     width_mm: Measurement

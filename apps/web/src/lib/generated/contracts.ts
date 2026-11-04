@@ -1385,6 +1385,7 @@ export type StandDesign = {
 
 export type Stock = {
   readonly "id": string;
+  readonly "name"?: (string | null);
   readonly "kind": "sheet" | "strip" | "tape" | "cord";
   readonly "material": "cardboard" | "paperboard" | "other_supported";
   readonly "width_mm": Measurement;

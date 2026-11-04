@@ -5,12 +5,15 @@ import {
   boxOutline,
   clearValue,
   defaultName,
+  displayName,
   editablePoints,
   estimateSummary,
   nameFromId,
   newStock,
   recordRuler,
   referenceInput,
+  renameStock,
+  replaceStock,
   sizeState,
   stalePhotoValues,
   stockIdFor,
@@ -163,6 +166,52 @@ test("saved photo values are flagged when no current estimate matches", () => {
     "width_mm",
     "height_mm",
   ]);
+});
+
+test("rename keeps the stable ID, photo links and estimate through save and reload", () => {
+  const id = stockIdFor("Cardboard sheet A", "1f2e3d4c-aaaa");
+  const estimate = record({}, { input: { stock_id: id, media_id: "photo-1" } });
+  const estimated = applyEstimate(
+    newStock(id, suggestFromLabel("cardboard"), "photo-1", "Cardboard sheet A"),
+    estimate,
+  );
+  const renamed = renameStock(estimated, "  Big lid  ");
+  assert.equal(renamed.id, id);
+  assert.equal(displayName(renamed), "Big lid");
+  assert.deepEqual(renamed.image_ids, ["photo-1"]);
+  assert.deepEqual(renamed.width_mm, estimated.width_mm);
+  // Save and reload: the inventory is stored and returned as JSON.
+  const reloaded = JSON.parse(JSON.stringify({ stocks: [renamed] })).stocks[0];
+  assert.equal(reloaded.id, id);
+  assert.equal(displayName(reloaded), "Big lid");
+  assert.equal(reloaded.width_mm.source, "photo_estimate");
+  assert.equal(reloaded.width_mm.confirmed, false);
+  assert.deepEqual(stalePhotoValues(reloaded, [estimate]), []);
+  // A stock saved before names existed still shows the name from its ID.
+  const { name: _name, ...legacy } = reloaded;
+  assert.equal(displayName(legacy), "Cardboard sheet A");
+  assert.equal(renameStock(reloaded, "Big lid"), reloaded);
+  assert.equal(displayName(renameStock(reloaded, "   ")), "Material");
+});
+
+test("a different piece gets a new ID and drops photo values and links", () => {
+  const id = stockIdFor("Cardboard sheet A", "1f2e3d4c-aaaa");
+  const estimate = record({}, { input: { stock_id: id, media_id: "photo-1" } });
+  const measured = recordRuler(
+    applyEstimate(
+      newStock(id, suggestFromLabel("cardboard"), "photo-1", "Lid"),
+      estimate,
+    ),
+    "thickness_mm",
+    4,
+  );
+  const other = replaceStock(measured, "99aa88bb-cccc");
+  assert.notEqual(other.id, id);
+  assert.equal(displayName(other), "Lid");
+  assert.deepEqual(other.image_ids, []);
+  for (const field of ["width_mm", "height_mm", "thickness_mm"])
+    assert.equal(other[field].source, "unknown");
+  assert.throws(() => applyEstimate(other, estimate), /another material/);
 });
 
 test("reference input requires the printed check or a known size", () => {

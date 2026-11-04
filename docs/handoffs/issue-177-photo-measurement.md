@@ -18,6 +18,7 @@
 | `apps/api/src/forma_api/photo_measurement_runtime.py`, `routes/photo_estimates.py` | `apps/api/src/forma_api/projects.py`: inventory provenance check, router mount, project-delete purge |
 | `apps/web/src/components/guided-intake/**`, `apps/web/src/lib/photo-estimates.ts` | `apps/api/src/forma_api/main.py`: public reference-card route |
 | Tests: `packages/photo_measure/tests/**`, `apps/api/tests/test_photo_estimates.py`, `packages/measurement/tests/test_photo_estimate_gate.py`, `apps/web/tests/guided-intake.test.mjs` | `apps/web/src/components/intake-workbench.tsx`: guided step is the default; the full form moves under Details and shares one save path |
+| | `packages/domain/src/forma_domain/models.py`: optional `Stock.name` (display name, 1–80 characters); generated contracts regenerated |
 | | `apps/web/src/lib/photo-localization.ts`, `photo-localization-panel.tsx`: the SAM receipt store moved to the library so both callers share one |
 | | `pyproject.toml`, `uv.lock`, `deploy/api.Dockerfile`, `package.json` (`test:web`), `apps/web/src/app/globals.css` |
 
@@ -27,15 +28,22 @@ compiler, #149 decision rules, Muse intake and SAM routes and their receipts.
 ## Behaviour
 
 Default flow: goal → photo (with the printed card) → named cards → "Measure from
-photo" → "Use photo estimate for exploring" or "I measured it with a ruler" or
+photo" → "Save estimated dimensions" or "I measured it with a ruler" or
 "I don't know" → Save materials → next #149 question with the material
 highlighted and why it matters → existing design proposals.
 
 - Cards come from a consented Muse intake call or "Add a material by hand".
   Labels map to kind/material; unclear materials say "Material type is a guess".
-  IDs are generated and carry the readable name (`cardboard-sheet-a--1f2e3d4c`);
-  they appear only under Details. Renaming makes a new identity and drops photo
-  values.
+  The editable name is stored in `Stock.name`; the ID is generated once
+  (`cardboard-sheet-a--1f2e3d4c`), appears only under Details and never changes
+  on rename, so photo links and current estimates survive rename → save →
+  reload. Stocks saved before `Stock.name` show the name from their ID.
+  "Different piece" is the replacement action: a new ID under the same name,
+  photo values, ruler values, regions and photo links dropped, and the old
+  ID's estimates stale on save. Changing type or material still retires them.
+- "Save estimated dimensions" stores unconfirmed `photo_estimate` values. The
+  card says the app may ask for a ruler measurement before a buildable design;
+  no exploratory design is generated from estimates.
 - Location: consented SAM ("Find it in the photo") or a dragged box. Outlines can
   be adjusted with pointer or keyboard (arrow keys, Shift for 10 px) and
   re-measured as a drawn polygon. Rectangle references are marked the same way.
@@ -100,6 +108,8 @@ machine (Docker is not installed), and the hosted host was not deployed.
 
 ## Checks run
 
+Rename/identity correction: see "Name and wording correction" below.
+
 `npm run check` (Node 22.23.4, npm 11.16.0 via corepack) exited 0 on
 2c55efc: format, lint, contracts current, typecheck, 199 web tests, 1838
 Python tests, devloop 18 tests, Next production build.
@@ -119,6 +129,17 @@ Python tests, devloop 18 tests, Next production build.
   regressions; repaired in 2c55efc (lock Details during guided writes, apply
   guided edits to the latest draft, read early `removed` records). Second
   re-review: APPROVE, no regressions. Two repair attempts used.
+
+## Name and wording correction (before merge)
+
+Requested after the first approval: separate the editable name from the stable
+ID, and describe what "use the estimate" does today. Regressions:
+`apps/web/tests/guided-intake.test.mjs` ("rename keeps the stable ID, photo
+links and estimate through save and reload", "a different piece gets a new ID
+…") and `apps/api/tests/test_photo_estimates.py::test_rename_keeps_identity_and_estimate_through_save_and_reload`
+(real inventory route: rename → save → reload keeps ID, name, photo link,
+value and a current record; a new ID retires it). Checks and focused review
+for this commit are recorded in the PR.
 
 ## Accuracy
 

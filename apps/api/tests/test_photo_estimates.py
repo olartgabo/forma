@@ -433,3 +433,58 @@ def test_records_from_development_builds_still_load(client, scene_png, tmp_path)
     retried = estimate(client, p, payload)
     assert retried.status_code == 200
     assert retried.json()["estimate_id"] == created["estimate_id"]
+
+
+def test_rename_keeps_identity_and_estimate_through_save_and_reload(client, scene_png):
+    data, outline = scene_png
+    p = project(client)
+    photo = upload(client, p, data, "upload-0001")
+    record = estimate(client, p, body(p, photo, outline)).json()
+    width = dims(record)["width_mm"]["display_value"]
+    height = dims(record)["height_mm"]["display_value"]
+    estimated = stock(
+        photo["id"],
+        measurement(width, "photo_estimate"),
+        measurement(height, "photo_estimate"),
+    )
+    first = save(client, p, [{**estimated, "name": "Cardboard sheet A"}], "save-0001")
+    assert first.status_code == 200
+    renamed = save(
+        client,
+        first.json()["project"],
+        [{**estimated, "name": "Big lid"}],
+        "save-0002",
+    )
+    assert renamed.status_code == 200
+
+    reloaded = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+    saved = reloaded["stocks"][0]
+    assert saved["id"] == "sheet-a"
+    assert saved["name"] == "Big lid"
+    assert saved["image_ids"] == [photo["id"]]
+    assert saved["width_mm"] == {
+        **measurement(width, "photo_estimate"),
+        "evidence_ids": [],
+    }
+    records = client.get(
+        f"/api/projects/{p['id']}/photo-estimates", headers=AUTH
+    ).json()["records"]
+    assert [(r["status"], r["retired"]) for r in records] == [("current", None)]
+
+    # Replacing the piece (a new ID) still retires the old estimate.
+    replaced = save(
+        client,
+        reloaded,
+        [
+            {
+                **stock(photo["id"], measurement(), measurement(), stock_id="sheet-b"),
+                "name": "Big lid",
+            }
+        ],
+        "save-0003",
+    )
+    assert replaced.status_code == 200
+    records = client.get(
+        f"/api/projects/{p['id']}/photo-estimates", headers=AUTH
+    ).json()["records"]
+    assert records[0]["status"] == "stale"

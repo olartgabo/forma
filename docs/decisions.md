@@ -847,7 +847,7 @@ This deliberately changes #7's rule that image-derived sizes stay unknown: a
 flat sheet or strip photographed beside a verified reference may now prefill an
 unconfirmed `photo_estimate` value. The domain validator forbids a confirmed
 `photo_estimate`, so every existing confirmed-measurement gate still requires a
-ruler value; "use for exploring" never becomes "measured".
+ruler value; "save estimated dimensions" never becomes "measured".
 
 Method: OpenCV 5.0.0.93 ArUco detection and a least-squares planar homography,
 with optional lens correction bound to an exact uncropped image size (library

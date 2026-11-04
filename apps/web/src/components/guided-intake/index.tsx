@@ -46,7 +46,7 @@ import {
   editablePoints,
   estimateSummary,
   latestRecord,
-  nameFromId,
+  displayName,
   newStock,
   polygonOutline,
   recordRuler,
@@ -54,6 +54,8 @@ import {
   sizeFieldsFor,
   sizeState,
   stalePhotoValues,
+  renameStock,
+  replaceStock,
   stockIdFor,
   suggestFromLabel,
   applyEstimate,
@@ -64,14 +66,13 @@ import {
 } from "./model";
 
 type Extra = {
-  name: string;
   mediaId: string | null;
   materialGuessed: boolean;
   box: Box | null;
   boxSource: "sam_box" | "manual_box";
   polygon: Point[] | null;
 };
-type Card = Extra & { stock: Stock };
+type Card = Extra & { stock: Stock; name: string };
 
 // Which material a retained SAM request was for, so a recovered result can
 // only attach to that material.
@@ -98,7 +99,6 @@ function extraFor(
   const record = latestRecord(records, stock.id);
   const outline = record?.estimate.input.outline;
   return {
-    name: nameFromId(stock.id),
     mediaId: record?.estimate.input.media_id ?? stock.image_ids?.[0] ?? null,
     materialGuessed: false,
     box:
@@ -230,6 +230,7 @@ export default function GuidedIntake({
     ...extraFor(stock, records),
     ...extras[stock.id],
     stock,
+    name: displayName(stock),
   }));
   const photo = photos.find((p) => p.id === photoId);
   const draft: ReferenceDraft = reference[photoId] ?? {
@@ -254,7 +255,7 @@ export default function GuidedIntake({
       ...card,
       ...(typeof change === "function" ? change(card) : change),
     };
-    const { stock, ...extra } = next;
+    const { stock, name: _name, ...extra } = next;
     setExtras((current) => {
       const copy = { ...current };
       delete copy[id];
@@ -280,9 +281,8 @@ export default function GuidedIntake({
       const name = defaultName(suggestion, taken);
       taken.push(name);
       const id = stockIdFor(name, crypto.randomUUID());
-      added.push(newStock(id, suggestion, mediaId));
+      added.push(newStock(id, suggestion, mediaId, name));
       newExtras[id] = {
-        name,
         mediaId,
         materialGuessed: suggestion.materialGuessed,
         box: null,
@@ -304,30 +304,22 @@ export default function GuidedIntake({
       return copy;
     });
     if (name === undefined || name.trim() === card.name) return;
-    // The ID carries the name; a renamed material is a new identity, so its
-    // photo estimates no longer apply until it is measured again.
-    const id = stockIdFor(name.trim() || "Material", crypto.randomUUID());
-    const unknownSize = {
-      value: null,
-      unit: "mm" as const,
-      source: "unknown" as const,
-      confirmed: false,
-    };
+    // Renaming keeps the stable ID, photo links and estimates.
+    patch(card.stock.id, (c) => ({ stock: renameStock(c.stock, name) }));
+  }
+  function replacePiece(card: Card) {
+    // A different physical piece: new ID, photo values and links dropped.
+    const stock = replaceStock(card.stock, crypto.randomUUID());
     patch(card.stock.id, {
-      name: name.trim() || "Material",
-      stock: {
-        ...card.stock,
-        id,
-        width_mm:
-          card.stock.width_mm.source === "photo_estimate"
-            ? unknownSize
-            : card.stock.width_mm,
-        height_mm:
-          card.stock.height_mm.source === "photo_estimate"
-            ? unknownSize
-            : card.stock.height_mm,
-      },
+      stock,
+      mediaId: null,
+      box: null,
+      boxSource: "manual_box",
+      polygon: null,
     });
+    setNotice(
+      `${card.name} is now a different piece. Take a photo or measure it again.`,
+    );
   }
 
   async function suggest() {
@@ -1051,6 +1043,14 @@ export default function GuidedIntake({
                 >
                   Remove
                 </button>
+                <button
+                  type="button"
+                  className="quiet"
+                  disabled={locked}
+                  onClick={() => replacePiece(card)}
+                >
+                  Different piece
+                </button>
               </div>
               <div className="field-row">
                 <label>
@@ -1340,7 +1340,7 @@ export default function GuidedIntake({
                             }
                           }}
                         >
-                          Use photo estimate for exploring
+                          Save estimated dimensions
                         </button>
                       )}
                     <button
@@ -1359,6 +1359,11 @@ export default function GuidedIntake({
                       I don&apos;t know
                     </button>
                   </div>
+                  <p className="help">
+                    Estimated dimensions are saved as unconfirmed. Before a
+                    buildable design, the app may ask you to measure a size with
+                    a ruler.
+                  </p>
                   <details className="ruler-entry">
                     <summary>I measured it with a ruler</summary>
                     <div className="field-row">

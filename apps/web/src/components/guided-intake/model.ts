@@ -78,7 +78,8 @@ export function defaultName(
 
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,95}$/;
 
-/** A stable ID that carries the readable name, so names survive reloads. */
+/** A stable ID, generated once. It starts from the first name for readability
+ * under Details; later renames change `Stock.name`, never the ID. */
 export function stockIdFor(name: string, random: string): string {
   const slug = name
     .normalize("NFKD")
@@ -94,7 +95,8 @@ export function stockIdFor(name: string, random: string): string {
   return ID.test(id) ? id : `material--${suffix}`;
 }
 
-/** The readable name encoded in an ID, or a neutral fallback. */
+/** The name encoded in an ID: the fallback for stocks saved before
+ * `Stock.name` existed. */
 export function nameFromId(id: string): string {
   const [slug] = id.split("--");
   if (!slug || slug === id) return "Material";
@@ -111,6 +113,42 @@ export function nameFromId(id: string): string {
     .join(" ");
 }
 
+export const NAME_LIMIT = 80;
+
+/** The editable display name, falling back to the one in the ID. */
+export function displayName(stock: Pick<Stock, "id" | "name">): string {
+  return stock.name?.trim() || nameFromId(stock.id);
+}
+
+/** Renaming is not a physical change: the ID, photo links and every value,
+ * including unconfirmed photo estimates, stay as they are. */
+export function renameStock(stock: Stock, name: string): Stock {
+  const next = name.trim().slice(0, NAME_LIMIT) || "Material";
+  return next === displayName(stock) && stock.name === next
+    ? stock
+    : { ...stock, name: next };
+}
+
+/** "This is a different piece": a new identity under the same name. Photo
+ * estimates and photo links described the old piece, so they are dropped and
+ * the saved estimates for the old ID become stale on save. Ruler values are
+ * dropped too: they were measured on the old piece. */
+export function replaceStock(stock: Stock, random: string): Stock {
+  const name = displayName(stock);
+  return {
+    ...stock,
+    id: stockIdFor(name, random),
+    name,
+    condition: "uncertain",
+    width_mm: unknownMeasurement(),
+    height_mm: unknownMeasurement(),
+    thickness_mm: unknownMeasurement(),
+    remaining_length_mm: unknownMeasurement(),
+    usable_regions: [],
+    image_ids: [],
+  };
+}
+
 export function unknownMeasurement(): Measurement {
   return { value: null, unit: "mm", source: "unknown", confirmed: false };
 }
@@ -119,9 +157,11 @@ export function newStock(
   id: string,
   suggestion: Suggestion,
   mediaId: string | null,
+  name?: string,
 ): Stock {
   return {
     id,
+    name: (name ?? nameFromId(id)).trim().slice(0, NAME_LIMIT) || "Material",
     kind: suggestion.kind,
     material: suggestion.material,
     condition: "uncertain",
@@ -144,7 +184,8 @@ export function prefill(estimate: PhotoEstimate) {
   return values;
 }
 
-/** "Use photo estimate for exploring": unconfirmed photo_estimate values. */
+/** "Save estimated dimensions": unconfirmed photo_estimate values. The app
+ * may still ask for a ruler value before a buildable design. */
 export function applyEstimate(
   stock: Stock,
   record: PhotoEstimateRecord,
