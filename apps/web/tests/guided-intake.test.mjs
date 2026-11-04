@@ -9,9 +9,11 @@ import {
   editablePoints,
   estimateSummary,
   nameFromId,
+  needsReferenceValues,
   newStock,
   recordRuler,
   referenceInput,
+  refusalReasons,
   renameStock,
   replaceStock,
   sizeState,
@@ -265,6 +267,41 @@ test("boxes, outlines and summaries", () => {
     estimateSummary({ outcome: "needs_better_photo", dimensions: [] }),
     null,
   );
+});
+
+test("refused estimates expose their blocking reason and whether the reference is at fault", () => {
+  const scale = {
+    outcome: "reference_unverified",
+    diagnostics: [
+      { code: "reference_partial", severity: "warning", message: "W" },
+      {
+        code: "reference_unverified",
+        severity: "blocking",
+        message:
+          "The measured check lines differ from the card by more than 15 %; re-measure them.",
+      },
+    ],
+  };
+  assert.deepEqual(refusalReasons(scale), [
+    "The measured check lines differ from the card by more than 15 %; re-measure them.",
+  ]);
+  assert.equal(needsReferenceValues(scale), true);
+  // A missing card needs a new photo, not different numbers.
+  const missing = {
+    outcome: "reference_not_found",
+    diagnostics: [
+      {
+        code: "reference_not_found",
+        severity: "blocking",
+        message: "No FORMA card marker was found.",
+      },
+    ],
+  };
+  assert.deepEqual(refusalReasons(missing), [
+    "No FORMA card marker was found.",
+  ]);
+  assert.equal(needsReferenceValues(missing), false);
+  assert.deepEqual(refusalReasons(record().estimate), []);
 });
 
 test("client validates estimate records and keeps exact retries for unknown outcomes", async () => {
