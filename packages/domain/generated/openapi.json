@@ -608,6 +608,17 @@
             "title": "Plan Version Id",
             "type": "string"
           },
+          "planned_illustration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlannedOperationIllustration"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "project_id": {
             "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
             "title": "Project Id",
@@ -7499,6 +7510,63 @@
           "y"
         ],
         "title": "PixelPoint",
+        "type": "object"
+      },
+      "PlannedOperationIllustration": {
+        "additionalProperties": false,
+        "description": "Display-only target-position reference, independent of physical history.",
+        "properties": {
+          "facets": {
+            "items": {
+              "$ref": "#/components/schemas/CanonicalFacet"
+            },
+            "maxItems": 32,
+            "title": "Facets",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Notes",
+            "type": "array"
+          },
+          "operation_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "planned_joint_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Planned Joint Ids",
+            "type": "array"
+          },
+          "present_part_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Present Part Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "operation_id",
+          "present_part_ids",
+          "planned_joint_ids",
+          "facets",
+          "notes"
+        ],
+        "title": "PlannedOperationIllustration",
         "type": "object"
       },
       "Point3": {

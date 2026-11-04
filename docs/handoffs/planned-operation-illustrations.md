@@ -1,0 +1,7 @@
+# Planned operation illustrations
+
+The connected assembly viewer can show a selected manual operation even when the physical-history projection is unsupported. The read-only assembly-view endpoint accepts `selected_operation_id` and returns a separate planned illustration derived from validated plan operation effects and the canonical target facets. The picture shows present planned parts in target positions, with joints listed only as planned. Before the lip fold, its face is flattened along the canonical fold edge using its source dimensions. It is an illustration, not an observed pose, support, center of mass, stability result, or completed operation. Physical geometry, its blockers, and matching saved overlays remain independent.
+
+The underlying compiled-plan canonical producer currently supports the validated initial triangular stand. Unsupported or repaired plans remain explicit rather than receiving fabricated generic geometry. The separate generated-construction pipeline already produces polygonal per-step facets for supported generic targets; this change does not turn the stand renderer into a general fabrication authority.
+
+Focused checks: API display tests (12 passed), planned projection tests across two different stand dimensions (2 passed), and existing assembly viewer browser replay at 390 and 1280 px. The browser exercises every manual operation, rotation while physical projection is unsupported, and stale/foreign handling. Its synthetic fixture and intercepted capture save do not constitute physical evidence or a provider test.

@@ -70,6 +70,17 @@ def main(output):
             result = client.get(base + "/assembly-view", params=params, headers=t.AUTH)
             assert result.status_code == 200, result.text
             data["view"] = result.json()
+            data["planned_illustrations"] = {}
+            for operation in version.plan.operations:
+                result = client.get(
+                    base + "/assembly-view",
+                    params=params | {"selected_operation_id": operation.id},
+                    headers=t.AUTH,
+                )
+                assert result.status_code == 200, result.text
+                data["planned_illustrations"][operation.id] = result.json()[
+                    "planned_illustration"
+                ]
             data["progress"] = client.get(
                 base + f"/versions/{version.version_id}/progress", headers=t.AUTH
             ).json()

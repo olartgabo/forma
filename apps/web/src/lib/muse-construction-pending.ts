@@ -56,6 +56,7 @@ export function validPendingConstruction(v: unknown): v is PendingConstruction {
   const p = v.payload;
   if (
     !keys(p, [
+      ...(Object.hasOwn(p, "approximate") ? ["approximate"] : []),
       "expected_revision_id",
       "user_notes",
       "media_id",
@@ -63,6 +64,8 @@ export function validPendingConstruction(v: unknown): v is PendingConstruction {
       "provider_transfer_consented",
       "idempotency_key",
     ]) ||
+    (Object.hasOwn(p, "approximate") && p.approximate !== true) ||
+    (p.approximate === true && p.media_id === null) ||
     !identifier(p.expected_revision_id) ||
     !(
       p.user_notes === null ||

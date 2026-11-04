@@ -105,6 +105,39 @@ def test_intermediate_falls_back_and_reported_assembly_remains_nominal(connected
     assert full["geometry"]["state_basis"] == "nominal"
 
 
+def test_each_operation_has_separate_planned_illustration(connected):
+    plan = authorized(connected).version.plan
+    present, joints = set(), set()
+    for operation in plan.operations:
+        present.update(operation.effects.created_part_ids)
+        joints.difference_update(operation.effects.detached_joint_ids)
+        joints.update(operation.effects.attached_joint_ids)
+        response = request(connected, selected_operation_id=operation.id)
+        assert response.status_code == 200, response.text
+        illustration = response.json()["planned_illustration"]
+        assert illustration["operation_id"] == operation.id
+        assert set(illustration["present_part_ids"]) == present
+        assert set(illustration["planned_joint_ids"]) == joints
+        assert {f["part_id"] for f in illustration["facets"]} == present
+        assert "not actual positions" in illustration["notes"][0]
+    assert request(connected, selected_operation_id="foreign").status_code == 422
+
+
+def test_planned_reference_does_not_replace_unsupported_physical_state(connected):
+    snap = authorized(connected)
+    operation = snap.version.plan.operations[0]
+    damaged = replace(
+        snap,
+        progress=snap.progress.model_copy(update={"damaged_part_ids": ("conflict",)}),
+    )
+    result = assembly_view(damaged, operation.id)
+    assert result.status == "unsupported"
+    assert result.geometry is None
+    assert result.overlay_coverage == "unavailable"
+    assert result.planned_illustration is not None
+    assert any("flat" in n for n in result.planned_illustration.notes)
+
+
 @pytest.mark.parametrize(
     "field", ["failed_operation_ids", "damaged_part_ids", "carried_operation_ids"]
 )

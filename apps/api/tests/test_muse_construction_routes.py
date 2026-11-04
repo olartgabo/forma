@@ -1,5 +1,6 @@
 """Provider dispatch boundary tests: generated images and injected runtime only."""
 
+import hashlib
 import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
@@ -14,7 +15,7 @@ from test_projects import create
 from forma_api import design_runtime, muse_construction
 from forma_api.design_context import ResolvedDesignContext, StaticDesignContextResolver
 from forma_api.main import create_app
-from forma_api.model_gateway import GatewayError
+from forma_api.model_gateway import GatewayError, Trace
 from forma_api.routes import muse_construction as route
 
 
@@ -45,7 +46,7 @@ def setup(tmp_path, monkeypatch):
             ),
         )
 
-    monkeypatch.setattr(design_runtime, "default_gateway_factory", factory)
+    monkeypatch.setattr(muse_construction, "default_gateway_factory", factory)
     monkeypatch.setattr(muse_construction, "generate_muse_construction", run)
     monkeypatch.setattr(
         route.design_context,
@@ -144,6 +145,49 @@ def test_auth_foreign_photo_and_photo_consent(setup):
     assert not calls and not factories
 
 
+def test_approximate_requires_owned_consented_photo_before_dispatch(setup):
+    client, p, calls, factories, directory, _ = setup
+    assert post(client, p, body(p, approximate=True)).status_code == 422
+    other = create(client, "project-other")
+    foreign = upload(client, other).json()["media"]
+    assert (
+        post(
+            client,
+            p,
+            body(
+                p,
+                approximate=True,
+                media_id=foreign["id"],
+                provider_transfer_consented=True,
+            ),
+        ).status_code
+        == 404
+    )
+    photo_record = upload(client, p).json()["media"]
+    assert (
+        post(
+            client, p, body(p, approximate=True, media_id=photo_record["id"])
+        ).status_code
+        == 422
+    )
+    assert not calls and not factories and not receipts(directory)
+    assert (
+        post(
+            client,
+            p,
+            body(
+                p,
+                approximate=True,
+                media_id=photo_record["id"],
+                provider_transfer_consented=True,
+            ),
+        ).status_code
+        == 200
+    )
+    assert calls[0]["approximate"] is True
+    assert calls[0]["request_budget"].max_rounds == 1
+
+
 def test_media_type_and_size_before_dispatch(setup):
     client, p, calls, factories, directory, _ = setup
     media = upload(client, p, body=photo("WEBP"), content_type="image/webp").json()[
@@ -201,6 +245,257 @@ def test_unknown_outcome_blocks_same_and_new_keys_and_redacts(setup, error):
         assert replay.json()["code"] == "generation_outcome_unknown"
     assert len(factories) == 1
     assert json.loads(receipts(directory)[0][0])["uncertain"] is True
+    evidence = json.loads(receipts(directory)[0][0])["evidence"]
+    assert evidence["observed_attempt_count"] is None
+    assert evidence["usage"] is None
+    if isinstance(error, GatewayError):
+        assert evidence["gateway_code"] == error.code
+
+
+def test_unknown_receipt_retains_attempt_evidence_without_releasing_identity(setup):
+    client, p, _, factories, directory, monkeypatch = setup
+
+    def fail(*args, **kwargs):
+        kwargs["request_budget"].traces.extend(
+            [
+                Trace("/chat/completions", "muse-spark-1.3", 12, "ok", 101, 202),
+                Trace("SECRET endpoint", "SECRET model", -1, "SECRET status", True, -1),
+            ]
+        )
+        raise GatewayError("timeout")
+
+    monkeypatch.setattr(muse_construction, "generate_muse_construction", fail)
+    assert post(client, p).status_code == 409
+    saved = receipts(directory)[0][0]
+    evidence = json.loads(saved)["evidence"]
+    assert evidence["stage"] == "generation"
+    assert evidence["observed_attempt_count"] == 2
+    assert evidence["attempts"][0]["input_tokens"] == 101
+    assert evidence["attempts"][0]["output_tokens"] == 202
+    assert evidence["usage"] == {
+        "model_calls": 2,
+        "input_tokens": None,
+        "output_tokens": None,
+    }
+    assert evidence["attempts"][1] == dict(
+        endpoint="unknown",
+        model="unknown",
+        status="unknown",
+        elapsed_ms=None,
+        input_tokens=None,
+        output_tokens=None,
+    )
+    assert "SECRET" not in saved
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        identity = connection.execute(
+            "SELECT owner,scope,key,digest FROM requests WHERE scope LIKE '%:construction-proposal'"
+        ).fetchone()
+    for key in ("construction-001", "construction-new"):
+        assert post(client, p, body(p, idempotency_key=key)).status_code == 409
+    assert receipts(directory)[0][0] == saved
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT owner,scope,key,digest FROM requests WHERE scope LIKE '%:construction-proposal'"
+        ).fetchall() == [identity]
+    assert len(factories) == 1
+
+
+def test_legacy_unknown_receipt_stays_byte_identical(setup):
+    client, p, _, factories, directory, monkeypatch = setup
+
+    def fail(*args, **kwargs):
+        raise GatewayError("timeout")
+
+    monkeypatch.setattr(muse_construction, "generate_muse_construction", fail)
+    assert post(client, p).status_code == 409
+    legacy = '{"pending": true, "uncertain": true, "error_code": "timeout"}'
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        connection.execute(
+            "UPDATE requests SET response=? WHERE scope LIKE '%:construction-proposal'",
+            (legacy,),
+        )
+    for key in ("construction-001", "construction-new"):
+        assert post(client, p, body(p, idempotency_key=key)).status_code == 409
+    assert receipts(directory) == [(legacy,)]
+    assert len(factories) == 1
+
+
+@pytest.mark.parametrize("unknown", [False, True])
+def test_pre_approximate_schema_receipts_preserve_identity_and_replay(setup, unknown):
+    client, p, calls, factories, directory, _ = setup
+    media_id = upload(client, p).json()["media"]["id"]
+    # Construct the old wire shape explicitly, without today's request model
+    # or digest helper. The deployed schema had no approximate field.
+    legacy_request = {
+        "expected_revision_id": p["revision_id"],
+        "user_notes": None,
+        "media_id": media_id,
+        "provider_context_consented": True,
+        "provider_transfer_consented": True,
+        "idempotency_key": "legacy-construction-001",
+    }
+    if unknown:
+        saved = '{"pending": true, "uncertain": true, "error_code": "timeout"}'
+    else:
+        saved = json.dumps(
+            {
+                "project_id": p["id"],
+                "inventory_revision_id": p["revision_id"],
+                "status": "blocked",
+                "questions": [],
+                "replayed": False,
+                "candidates": [
+                    {
+                        "candidate_id": "legacy-option",
+                        "title": "Hypothetical panel",
+                        "rationale": "Measurements remain unknown.",
+                        "status": "blocked",
+                        "construction": None,
+                        "fabrication_plan": None,
+                        "fabrication_report": None,
+                        "blockers": ["Measurements required."],
+                    }
+                ],
+                "diagnostics": {
+                    "status": "ok",
+                    "model": "muse-spark-1.3",
+                    "elapsed_ms": 1,
+                    "model_rounds": 1,
+                    "tool_executions": 0,
+                },
+            }
+        )
+    scope = p["id"] + ":construction-proposal"
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        owner = connection.execute(
+            "SELECT owner FROM projects WHERE id=?", (p["id"],)
+        ).fetchone()[0]
+        mime, photo_bytes = connection.execute(
+            "SELECT content_type,body FROM media WHERE id=?", (media_id,)
+        ).fetchone()
+        legacy_digest = hashlib.sha256(
+            json.dumps(
+                {
+                    "request": legacy_request,
+                    "project_id": p["id"],
+                    "context_fingerprint": StaticDesignContextResolver(None)(
+                        p["id"], p["revision_id"]
+                    ).fingerprint,
+                    "photo_hash": hashlib.sha256(
+                        mime.encode() + photo_bytes
+                    ).hexdigest(),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        original_row = (
+            owner,
+            scope,
+            legacy_request["idempotency_key"],
+            legacy_digest,
+            saved,
+        )
+        connection.execute("INSERT INTO requests VALUES (?,?,?,?,?)", original_row)
+    for payload in (legacy_request, legacy_request | {"approximate": False}):
+        result = post(client, p, payload)
+        if unknown:
+            assert result.status_code == 409
+            assert result.json()["code"] == "generation_outcome_unknown"
+        else:
+            assert result.status_code == 200
+            assert result.json()["replayed"] is True
+            assert result.json()["candidates"][0]["estimated_materials"] == []
+    if unknown:
+        assert (
+            post(
+                client, p, legacy_request | {"idempotency_key": "another-legacy-key"}
+            ).json()["code"]
+            == "generation_outcome_unknown"
+        )
+    for change in ({"user_notes": "Changed goal"}, {"approximate": True}):
+        result = post(client, p, legacy_request | change)
+        assert result.status_code == 409
+        assert result.json()["code"] == "idempotency_conflict"
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT * FROM requests WHERE scope=?", (scope,)
+        ).fetchall() == [original_row]
+    assert not calls and not factories
+
+
+def test_receipt_read_is_owner_scoped_read_only_and_excludes_raw_payload(setup):
+    client, p, _, factories, directory, monkeypatch = setup
+    assert post(client, p).status_code == 200
+    completed = receipts(directory)[0][0]
+    legacy = '{"pending":true,"uncertain":true,"error_code":"timeout","evidence":{"SECRET":"raw"}}'
+    malformed = '{"SECRET":"raw response", "error_code":"SECRET"}'
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        owner, scope = connection.execute(
+            "SELECT owner,scope FROM requests WHERE scope LIKE '%:construction-proposal'"
+        ).fetchone()
+        connection.executemany(
+            "INSERT INTO requests VALUES (?,?,?,?,?)",
+            [
+                (owner, scope, "legacy-unknown", "a" * 64, legacy),
+                (owner, scope, "pending-original", "b" * 64, route._PENDING),
+                (owner, scope, "corrupt-response", "c" * 64, malformed),
+                (owner, scope + "-unrelated", "different-scope", "d" * 64, legacy),
+            ],
+        )
+        before = connection.execute("SELECT * FROM requests ORDER BY rowid").fetchall()
+
+    def forbidden(*args, **kwargs):
+        pytest.fail(
+            "Receipt inspection must not construct a gateway or resolve context"
+        )
+
+    monkeypatch.setattr(muse_construction, "default_gateway_factory", forbidden)
+    monkeypatch.setattr(route.design_context, "default_context_resolver", forbidden)
+    url = f"/api/projects/{p['id']}/construction/receipts"
+    assert client.get(url).status_code == 401
+    assert client.get(url, headers=OTHER).status_code == 404
+    response = client.get(url, headers=AUTH)
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    by_key = {r["idempotency_key"]: r for r in response.json()["receipts"]}
+    assert len(by_key) == 4
+    assert by_key["construction-001"]["state"] == "completed"
+    assert by_key["legacy-unknown"] == dict(
+        idempotency_key="legacy-unknown",
+        digest="a" * 64,
+        state="unknown",
+        error_code="timeout",
+    )
+    assert by_key["pending-original"]["state"] == "pending"
+    assert by_key["corrupt-response"]["state"] == "unknown"
+    assert "SECRET" not in response.text
+    assert "candidates" not in response.text and completed not in response.text
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert (
+            connection.execute("SELECT * FROM requests ORDER BY rowid").fetchall()
+            == before
+        )
+    assert len(factories) == 1
+
+
+def test_receipt_read_returns_at_most_sixteen(setup):
+    client, p, _, factories, directory, _ = setup
+    assert post(client, p).status_code == 200
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        owner, scope = connection.execute(
+            "SELECT owner,scope FROM requests WHERE scope LIKE '%:construction-proposal'"
+        ).fetchone()
+        connection.executemany(
+            "INSERT INTO requests VALUES (?,?,?,?,?)",
+            [
+                (owner, scope, f"pending-{i:03}", "a" * 64, route._PENDING)
+                for i in range(20)
+            ],
+        )
+    result = client.get(f"/api/projects/{p['id']}/construction/receipts", headers=AUTH)
+    assert len(result.json()["receipts"]) == 16
+    assert len(factories) == 1
 
 
 def test_pre_dispatch_configuration_failure_releases_claim(setup):
@@ -209,7 +504,7 @@ def test_pre_dispatch_configuration_failure_releases_claim(setup):
     def bad_factory():
         raise ValueError("SECRET api key")
 
-    monkeypatch.setattr(design_runtime, "default_gateway_factory", bad_factory)
+    monkeypatch.setattr(muse_construction, "default_gateway_factory", bad_factory)
     result = post(client, p)
     assert result.status_code == 503
     assert "SECRET" not in result.text
@@ -251,6 +546,9 @@ def test_post_dispatch_race_rejects_result_and_retains_dispatch_receipt(
 
     def mutate(*args, **kwargs):
         result = original(*args, **kwargs)
+        kwargs["request_budget"].traces.append(
+            Trace("/chat/completions", "muse-spark-1.3", 12, "ok", 101, 202)
+        )
         with sqlite3.connect(directory / "projects.sqlite3") as connection:
             if mutation == "photo":
                 connection.execute("DELETE FROM media WHERE id=?", (media["id"],))
@@ -273,6 +571,13 @@ def test_post_dispatch_race_rejects_result_and_retains_dispatch_receipt(
     assert response.json()["code"] == "generation_outcome_unknown"
     receipt = json.loads(receipts(directory)[0][0])
     assert receipt["uncertain"] is True
+    assert receipt["evidence"]["stage"] == "receipt_confirmation"
+    assert receipt["evidence"]["usage"] == {
+        "model_calls": 1,
+        "input_tokens": 101,
+        "output_tokens": 202,
+    }
+    assert "candidates" not in receipt
     assert (
         receipt["error_code"]
         == {"photo": "not_found", "inventory": "stale_version", "active": "blocked"}[

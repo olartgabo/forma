@@ -118,6 +118,7 @@ export async function requestView(
   token: string,
   expected: ExpectedContext,
   signal: AbortSignal,
+  selectedOperationId: string | null = null,
 ) {
   const root = `/api/projects/${encodeURIComponent(expected.projectId)}`;
   async function json(url: string): Promise<unknown> {
@@ -145,9 +146,32 @@ export async function requestView(
     expected_inventory_revision_id: expected.inventoryRevisionId,
     expected_last_event_id: context.last_event_id ?? "",
   });
-  return validateView(
+  if (selectedOperationId)
+    params.set("selected_operation_id", selectedOperationId);
+  const result = validateView(
     await json(`${root}/assembly-view?${params}`),
     expected,
     context.last_event_id,
   );
+  const illustration = result.planned_illustration;
+  if (
+    illustration &&
+    (illustration.operation_id !== selectedOperationId ||
+      !Array.isArray(illustration.facets) ||
+      illustration.facets.length > 32 ||
+      !Array.isArray(illustration.notes) ||
+      !illustration.notes.every((n) => typeof n === "string") ||
+      !Array.isArray(illustration.present_part_ids) ||
+      illustration.facets.some(
+        (f) =>
+          !illustration.present_part_ids.includes(f.part_id) ||
+          !Array.isArray(f.vertices) ||
+          f.vertices.length !== 4 ||
+          [...f.vertices, f.centroid].some(
+            (p) => !p || ![p.x, p.y, p.z].every(Number.isFinite),
+          ),
+      ))
+  )
+    throw new Error("The planned illustration is invalid or stale.");
+  return result;
 }

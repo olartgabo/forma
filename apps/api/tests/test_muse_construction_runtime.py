@@ -8,7 +8,12 @@ from test_model_gateway import Fake, final
 from test_plans import stand_inputs
 
 from forma_api.design_context import DesignContext, ResolvedDesignContext
-from forma_api.model_gateway import GatewayError, ImageInput, MetaGateway
+from forma_api.model_gateway import (
+    GatewayError,
+    ImageInput,
+    MetaGateway,
+    ProposalBudget,
+)
 from forma_api.muse_construction import (
     MuseConstructionProposals,
     generate_muse_construction,
@@ -134,6 +139,50 @@ def response(*candidates, questions=()):
     value = final(json.dumps(dict(candidates=candidates, questions=questions)))
     value["usage"] = dict(prompt_tokens=100, completion_tokens=200)
     return value
+
+
+def test_approximate_photo_produces_unverified_manual_without_stock(inputs):
+    project, context = inputs
+    project = project.model_copy(update={"stocks": (), "inventory_confirmed": False})
+    proposed = candidate()
+    proposed.pop("stock_ids")
+    proposed["estimated_materials"] = [
+        dict(label="Cardboard", width_mm=120, height_mm=80, thickness_mm=None)
+    ]
+    transport = Fake(response(proposed))
+    budget = ProposalBudget()
+    result = generate_muse_construction(
+        MetaGateway(transport, max_retries=0),
+        project=project,
+        resolved=context,
+        image=ImageInput(
+            b"\x89PNG\r\n\x1a\nsoftware-test", "image/png", consented=True
+        ),
+        user_notes="Use a 120 mm wide sheet",
+        approximate=True,
+        request_budget=budget,
+    )
+    item = result.candidates[0]
+    assert item.estimated_materials[0].width_mm == 120
+    assert len(item.construction.steps) == 2
+    assert item.fabrication_plan is None and item.fabrication_report is None
+    assert item.status == "needs_measurement"
+    assert len(transport.calls) == 1
+    assert budget.max_rounds == budget.rounds == len(budget.traces) == 1
+    assert budget.traces[0].input_tokens == 100
+    assert "120 mm" in str(transport.calls[0][1])
+
+
+@pytest.mark.parametrize("value", [-1, 0, 10001, float("nan"), float("inf")])
+def test_approximate_dimensions_reject_invalid_values(value):
+    from pydantic import ValidationError
+
+    from forma_api.muse_construction import EstimatedMaterial
+
+    with pytest.raises(ValidationError):
+        EstimatedMaterial(
+            label="Sheet", width_mm=value, height_mm=None, thickness_mm=None
+        )
 
 
 def run(inputs, *responses, image=None):
@@ -340,6 +389,80 @@ def test_stock_shortage_is_feedback_not_new_inventory(inputs):
     assert result.questions == ("Can you provide a larger measured sheet?",)
 
 
+@pytest.mark.parametrize("failure", ["schema", "refusal", "incomplete"])
+def test_completed_unusable_correction_keeps_checked_geometry_and_usage(
+    inputs, failure
+):
+    large = candidate()
+    for index in (1, 2):
+        large["pieces"][0]["vertices_mm"][index]["x"] = 800.0
+    correction = response()
+    choice = correction["choices"][0]
+    if failure == "schema":
+        choice["message"]["content"] = '{"SECRET": "private raw content"}'
+    elif failure == "refusal":
+        choice["message"]["refusal"] = "SECRET refusal text"
+    else:
+        choice["finish_reason"] = "length"
+    result, transport = run(inputs, response(large), correction)
+    assert len(transport.calls) == 2
+    assert len(result.candidates) == 1
+    assert result.candidates[0].construction is not None
+    assert result.candidates[0].fabrication_plan is None
+    assert result.status == result.candidates[0].status == "blocked"
+    assert any("no allocation found" in b for b in result.candidates[0].blockers)
+    assert "usable correction" in result.questions[0]
+    assert "SECRET" not in result.model_dump_json()
+    assert result.diagnostics.usage.input_tokens == 200
+    assert result.diagnostics.usage.output_tokens == 400
+
+
+def test_local_budget_expiry_keeps_first_result_without_second_dispatch(
+    inputs, monkeypatch
+):
+    from forma_api import muse_construction
+
+    clock = [0.0]
+    monkeypatch.setattr(muse_construction.time, "monotonic", lambda: clock[0])
+    evaluate = muse_construction._evaluate
+
+    def slow_evaluate(*args):
+        result = evaluate(*args)
+        clock[0] = 121.0
+        return result
+
+    monkeypatch.setattr(muse_construction, "_evaluate", slow_evaluate)
+    large = candidate()
+    for index in (1, 2):
+        large["pieces"][0]["vertices_mm"][index]["x"] = 800.0
+    result, transport = run(inputs, response(large))
+    assert len(transport.calls) == 1
+    assert result.candidates[0].construction is not None
+    assert result.status == "blocked"
+    assert "before a correction was sent" in result.questions[0]
+    assert result.diagnostics.usage.model_calls == 1
+    assert result.diagnostics.usage.input_tokens == 100
+
+
+def test_missing_reviewed_profiles_keeps_geometry_without_fabrication_or_correction(
+    inputs,
+):
+    project, _ = inputs
+    transport = Fake(response(candidate(joined=True)))
+    result = generate_muse_construction(
+        MetaGateway(transport),
+        project=project,
+        resolved=ResolvedDesignContext.missing("Supply reviewed profiles"),
+    )
+    assert len(transport.calls) == 1
+    item = result.candidates[0]
+    assert len(item.construction.steps) == 4
+    assert item.fabrication_plan is None and item.fabrication_report is None
+    assert item.status == result.status == "blocked"
+    assert "Supply reviewed profiles" in item.blockers
+    assert any("available reviewed profile" in b for b in item.blockers)
+
+
 def test_missing_context_returns_geometry_with_blockers_without_repeated_spending(
     inputs,
 ):
@@ -426,6 +549,71 @@ def test_unknown_provider_outcome_is_not_hidden_by_a_failed_first_candidate(inpu
     with pytest.raises(GatewayError) as error:
         run(inputs, response(bad), GatewayError("timeout"))
     assert error.value.code == "timeout"
+
+
+def test_caller_budget_retains_completed_and_unknown_attempts(inputs):
+    bad = candidate()
+    bad["stock_ids"] = ["imaginary"]
+    transport = Fake(response(bad), GatewayError("timeout"))
+    budget = ProposalBudget(max_rounds=4, seconds=60)
+    with pytest.raises(GatewayError, match="timeout"):
+        generate_muse_construction(
+            MetaGateway(transport),
+            project=inputs[0],
+            resolved=inputs[1],
+            request_budget=budget,
+        )
+    assert len(transport.calls) == len(budget.traces) == 2
+    assert budget.traces[0].input_tokens == 100
+    assert budget.traces[0].output_tokens == 200
+    assert budget.traces[1].status == "timeout"
+    assert budget.traces[1].input_tokens is None
+    assert budget.traces[1].output_tokens is None
+
+
+def test_construction_factory_shares_120_second_deadline_across_two_calls(
+    inputs, monkeypatch
+):
+    from forma_api import muse_construction
+
+    monkeypatch.setenv("MODEL_API_KEY", "offline-test-key")
+    gateway = muse_construction.default_gateway_factory()
+    assert gateway.timeout == gateway.budget == 120
+    assert gateway.max_rounds == 2 and gateway.max_retries == 0
+    clock = [0.0]
+    monkeypatch.setattr(muse_construction.time, "monotonic", lambda: clock[0])
+    large = candidate()
+    for index in (1, 2):
+        large["pieces"][0]["vertices_mm"][index]["x"] = 800.0
+
+    class SlowFirst(Fake):
+        def post(self, *args):
+            result = super().post(*args)
+            if len(self.calls) == 1:
+                clock[0] = 70.0
+            return result
+
+    transport = SlowFirst(
+        response(large), response(questions=["Supply a larger sheet"])
+    )
+    gateway.transport = transport
+    result = generate_muse_construction(gateway, project=inputs[0], resolved=inputs[1])
+    assert [call[2] for call in transport.calls] == [120.0, 50.0]
+    assert all(call[1]["reasoning_effort"] == "low" for call in transport.calls)
+    assert result.diagnostics.usage.model_calls == 2
+
+
+@pytest.mark.parametrize("code", ["timeout", "network_error", "provider_http_error"])
+def test_construction_factory_never_retries_a_failed_attempt(inputs, monkeypatch, code):
+    from forma_api import muse_construction
+
+    monkeypatch.setenv("MODEL_API_KEY", "offline-test-key")
+    gateway = muse_construction.default_gateway_factory()
+    transport = Fake(GatewayError(code, retryable=code == "provider_http_error"))
+    gateway.transport = transport
+    with pytest.raises(GatewayError, match=code):
+        generate_muse_construction(gateway, project=inputs[0], resolved=inputs[1])
+    assert len(transport.calls) == 1
 
 
 def test_active_build_cannot_use_new_build_proposal_runtime(inputs):

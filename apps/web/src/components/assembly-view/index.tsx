@@ -40,7 +40,7 @@ export default function AssemblyView({
   const [overlayCase, setOverlayCase] = useState("");
   const drag = useRef<{ id: number; x: number; y: number } | null>(null);
   // A response cannot survive a changed authorization, history, or manual context.
-  const identity = `${token}:${projectId}:${planVersionId}:${inventoryRevisionId}:${refreshKey}:${reload}`;
+  const identity = `${token}:${projectId}:${planVersionId}:${inventoryRevisionId}:${refreshKey}:${reload}:${selectedOperationId ?? ""}`;
   const [loadedIdentity, setLoadedIdentity] = useState("");
   useEffect(() => {
     setResponse(null);
@@ -59,6 +59,7 @@ export default function AssemblyView({
       token,
       { projectId, planVersionId, inventoryRevisionId },
       controller.signal,
+      selectedOperationId,
     )
       .then((value) => {
         if (!controller.signal.aborted) {
@@ -81,9 +82,21 @@ export default function AssemblyView({
       controller.abort();
       drag.current = null;
     };
-  }, [open, identity, token, projectId, planVersionId, inventoryRevisionId]);
+  }, [
+    open,
+    identity,
+    token,
+    projectId,
+    planVersionId,
+    inventoryRevisionId,
+    selectedOperationId,
+  ]);
   const view = loadedIdentity === identity ? response : null;
   const geometry = view?.geometry;
+  const illustration = view?.planned_illustration;
+  const plannedFacets = illustration?.facets.length
+    ? projectFacets(illustration.facets, camera)
+    : [];
   const links = view?.operation_parts ?? [];
   const operationParts =
     links.find((item) => item.operation_id === selectedOperationId)?.part_ids ??
@@ -140,6 +153,48 @@ export default function AssemblyView({
           {view?.blockers?.map((message) => (
             <p key={message}>{message}</p>
           ))}
+          {illustration && (
+            <section
+              aria-label="Planned operation illustration"
+              data-operation-id={illustration.operation_id}
+            >
+              <h4>Planned operation illustration</h4>
+              {illustration.notes.map((note) => (
+                <p key={note}>{note}</p>
+              ))}
+              {plannedFacets.length ? (
+                <svg
+                  viewBox="0 0 480 380"
+                  role="img"
+                  aria-label="Planned target positions for this operation"
+                >
+                  {plannedFacets.map((facet) => (
+                    <g key={facet.facet_id}>
+                      <polygon
+                        points={facet.points
+                          .map((p) => `${p.x},${p.y}`)
+                          .join(" ")}
+                        fill="#e2e8f0"
+                        stroke="#1e3a5f"
+                        strokeWidth="2"
+                      />
+                      <text x={facet.label.x} y={facet.label.y}>
+                        {facet.part_id}
+                      </text>
+                    </g>
+                  ))}
+                </svg>
+              ) : (
+                <p>No part geometry is available at this operation.</p>
+              )}
+              <button type="button" onClick={() => orbit(-15, 0)}>
+                Rotate planned illustration left
+              </button>
+              <button type="button" onClick={() => orbit(15, 0)}>
+                Rotate planned illustration right
+              </button>
+            </section>
+          )}
           {geometry && (
             <>
               <h4>
