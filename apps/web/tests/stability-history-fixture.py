@@ -151,6 +151,13 @@ def main(output):
             fixture["muse"] = muse.json()
             assert fixture["muse"]["report"]["report_id"] == new_id
             fixture["new_detail"] = get(f"/stability/reports/{new_id}")
+            report = fixture["new_detail"]["saved"]["report"]
+            assert fixture["muse"]["explanation"]["summary"].startswith(
+                f"Saved report status: {report['status']}."
+            )
+            assert all(
+                row in report["results"] for row in fixture["muse"]["focused_results"]
+            )
             # Another tab records changed measurements after the explanation.
             third = copy.deepcopy(changed)
             third.update(
