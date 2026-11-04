@@ -20,7 +20,7 @@ from forma_domain.material_catalog import (
     RecognizedItem,
     item_label,
 )
-from forma_domain.models import ID, Record, Text
+from forma_domain.models import ID, Blocker, Record, Text
 
 SCOPE = ":recognized-items"
 
@@ -177,6 +177,43 @@ def held(connection, project_id, items) -> tuple[MaterialConflict, ...]:
             (project_id,),
         ).fetchall()
     )
+
+
+def hold_blockers(connection, project_id) -> tuple[Blocker, ...]:
+    """The project's held materials as report blockers (empty when none).
+
+    A hold withdraws current eligibility only. Saved events, evidence, plan
+    versions and repair previews are kept unchanged."""
+
+    found = held(connection, project_id, _stored(connection, project_id)[1])
+    if not found:
+        return ()
+    return (
+        Blocker(
+            code="needs_confirmation",
+            message=(
+                "A material in this build was identified as something else. "
+                "Reconcile it (correct the item, or remove or retype the "
+                "material) before continuing. Earlier records are unchanged."
+            ),
+            target_ids=tuple(conflict.stock_id for conflict in found),
+        ),
+    )
+
+
+def require_no_holds(connection, project_id, action: str) -> None:
+    """Refuse a current repair or fabrication action while a material is held.
+
+    Checked inside the action's own transaction, after any exact-body replay
+    (a replay returns an earlier, already recorded outcome)."""
+
+    if hold_blockers(connection, project_id):
+        raise ProjectError(
+            409,
+            "blocked",
+            f"{action} is paused: a material in this build was identified as "
+            "something else. Reconcile it before continuing.",
+        )
 
 
 def inventory_holds(connection, project_id, stocks) -> bool:
@@ -394,9 +431,10 @@ def save(store, owner: str, project_id: str, body: RecognizedItemsUpdate):
 
 def reconcile_existing(store) -> int:
     """Once at startup: contradictions saved before reconciliation existed
-    are held like new ones, active builds included (their physical history
-    is untouched; repair search requires confirmation). Returns how many
-    projects were held."""
+    are held like new ones, active builds included. Their physical history,
+    previews and plan versions are untouched; repair and fabrication actions
+    for the build are paused while the hold remains (``require_no_holds``).
+    Returns how many projects were held."""
 
     from forma_api.projects import Project
 

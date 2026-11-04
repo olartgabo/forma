@@ -775,7 +775,7 @@ export type RepairProposeDiagnostics = {
 };
 
 export type RepairProposeErrorResponse = {
-  readonly "code": "validation_error" | "not_found" | "stale_version" | "consent_required" | "provider_not_configured" | "provider_authentication" | "access_denied" | "rate_limit" | "timeout" | "network_error" | "invalid_response" | "provider_http_error" | "provider_error";
+  readonly "code": "validation_error" | "not_found" | "stale_version" | "consent_required" | "provider_not_configured" | "provider_authentication" | "access_denied" | "rate_limit" | "timeout" | "network_error" | "invalid_response" | "provider_http_error" | "provider_error" | "blocked";
   readonly "message": string;
 };
 

@@ -3511,3 +3511,22 @@ test("a truncated intake says it ran out of room, without provider text", async 
     },
   );
 });
+
+test("a held material pauses repair advice with a local message", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { code: "blocked", message: "PRIVATE_SERVER_TEXT" },
+      { status: 409 },
+    ),
+  );
+  await assert.rejects(
+    proposeRepairs(token, "project-a", repairBody),
+    (error) => {
+      assert.equal(error.code, "blocked");
+      assert.match(error.message, /identified as something else/);
+      assert.match(error.message, /material card/);
+      assert.doesNotMatch(error.message, /PRIVATE/);
+      return true;
+    },
+  );
+});

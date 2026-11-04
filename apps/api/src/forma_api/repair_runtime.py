@@ -70,6 +70,7 @@ class RepairProposeErrorResponse(Record):
         "invalid_response",
         "provider_http_error",
         "provider_error",
+        "blocked",
     ]
     message: Text
 
