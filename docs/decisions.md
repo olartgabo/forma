@@ -963,3 +963,29 @@ The diagnostic reproduction exhausted 2,048 output tokens before completing the 
 The deployed structured-item request exhausted 8,192 output tokens. Meta documents that hidden reasoning shares this output allowance and unspecified effort is model-determined. Select low reasoning for photo intake only; other proposals retain their existing behavior. Keep one 120-second attempt and the 8,192 ceiling.
 
 A low-effort local call returned correct labels in 10.4 seconds with 665 output tokens, but omitted optional item records. Require the items field in the model-facing photo schema while retaining compatibility for stored/legacy observations. Items are primary output and labels are summaries; an image without visible objects can still return an empty list. These remain reviewable suggestions, never physical evidence.
+
+
+## D068: Location-first sourcing with verified Meta-discovered prices, November 4, 2026
+
+The user requests automatic nearby discovery, explicit browser location permission
+instead of mandatory city selection, real Meta runtime tests and deployment after
+acceptance. Shopping list now resolves a consented rounded device point into city
+metadata, suggests an editable currency and keeps manual city entry as fallback.
+Only coarse locality and public shop hints reach the separately consented model.
+
+Meta discovers actual product URLs through official search metadata. Its prices
+remain proposals; a robots/TLS/refusal-aware reader verifies structured primary
+product identity, currency and amount. A portable CA bundle repairs missing trust
+roots without disabling TLS. Main-product microdata can use matching single-item
+GA4 JSON currency evidence, never unrelated analytics or executed JavaScript.
+
+Nearby mapped shops and online prices are distinct; neither establishes local stock
+or changes physical engine state. Refusals persist across requests and deployment
+for their finite retention. The initial real output-limit response retained its
+actual usage and was reconciled before further bounded calls. No coding-worker
+STOP, provider payment setting or historical unknown receipt was changed.
+
+The local complete flow returned ten real mapped San Francisco shops and a verified
+USD 21.99 online catalogue observation without a pasted URL. Browser GPS is simulated
+software input, not physical evidence. Exact-head checks, independent review and
+the existing deployment workflow gate release; see handoffs/local-sourcing.md.
