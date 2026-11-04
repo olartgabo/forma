@@ -36,6 +36,12 @@ from forma_api.diagnosis_runtime import (
     DiagnosisResult,
 )
 from forma_api.fabrication_runtime import FabricationAssessment
+from forma_api.intake_research import (
+    IntakeResearchAvailability,
+    IntakeResearchRequest,
+    IntakeResearchResult,
+)
+from forma_api.intake_research_muse import ResearchFinding
 from forma_api.intake_runtime import (
     IntakeDiagnostics,
     IntakeErrorResponse,
@@ -271,6 +277,10 @@ API_RECORDS = (
     DecisionRequest,
     RecalculateRequest,
     UnavailableRequest,
+    IntakeResearchAvailability,
+    IntakeResearchRequest,
+    IntakeResearchResult,
+    ResearchFinding,
     SynthesisSearchRequest,
     SynthesisSelectRequest,
 )

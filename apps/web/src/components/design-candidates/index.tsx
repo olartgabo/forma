@@ -5,6 +5,7 @@ import type {
 } from "../../lib/generated/api-contracts";
 import type { StandDesign } from "../../lib/generated/contracts";
 import Diagram from "../manual-diagram";
+import { useMuseLanguage } from "../muse-language-provider";
 import {
   type Candidate,
   type MuseResult,
@@ -21,6 +22,7 @@ import {
   selectionReceipts,
   synthesisApi,
 } from "./client";
+import ResearchPanel, { researchRecommendationLabel } from "./research-panel";
 
 const LABELS: Record<SearchParameter, string> = {
   part_width_mm: "Panel width",
@@ -170,7 +172,10 @@ export default function DesignCandidates({
   museEnabled: boolean;
   onSelected: (versionId: string) => void;
 }) {
+  const { locale } = useMuseLanguage();
   const [result, setResult] = useState<Search | null>(null);
+  const [researchEpoch, setResearchEpoch] = useState(0);
+  const [recommendedId, setRecommendedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [probe, setProbe] = useState<ProbeState | null>(null);
@@ -195,6 +200,7 @@ export default function DesignCandidates({
   useEffect(() => {
     controller.current?.abort();
     setResult(null);
+    setRecommendedId(null);
     setProbe(null);
     setSaved("");
     setError("");
@@ -244,6 +250,10 @@ export default function DesignCandidates({
   }
 
   async function search() {
+    // Unmount the research panel's current request and ignore late replies
+    // when the builder switches back to ordinary stock search.
+    setResearchEpoch((epoch) => epoch + 1);
+    setRecommendedId(null);
     try {
       const next = await run((signal) =>
         synthesisApi(token, context.projectId).search(context, signal),
@@ -255,6 +265,15 @@ export default function DesignCandidates({
     } catch (failure) {
       setError(message(failure));
     }
+  }
+
+  function reviewResearch(next: Search, recommendation: string | null) {
+    setResult(next);
+    setRecommendedId(recommendation);
+    setProbe(null);
+    setSaved("");
+    setMuse(null);
+    setError("");
   }
 
   async function runProbe(candidate: Candidate) {
@@ -431,6 +450,19 @@ export default function DesignCandidates({
       >
         {busy && !result ? "Searching…" : "Search stock-feasible designs"}
       </button>
+      <ResearchPanel
+        key={`${contextKey}:${researchEpoch}`}
+        token={token}
+        context={context}
+        disabled={disabled || busy}
+        onInvalidate={() => {
+          setResult(null);
+          setRecommendedId(null);
+          setProbe(null);
+          setMuse(null);
+        }}
+        onReview={reviewResearch}
+      />
       <div aria-live="polite">
         {error && (
           <p className="error" role="alert">
@@ -502,6 +534,11 @@ export default function DesignCandidates({
             <div className="design-candidate-grid">
               {candidates.map((c, index) => (
                 <div key={c.candidate_id}>
+                  {recommendedId === c.candidate_id && (
+                    <p className="notice" lang={locale}>
+                      {researchRecommendationLabel(locale)}
+                    </p>
+                  )}
                   <CandidateColumn
                     report={c}
                     label={`Design ${String.fromCharCode(65 + index)}`}

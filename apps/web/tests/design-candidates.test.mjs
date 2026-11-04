@@ -14,6 +14,11 @@ import {
   validateSearch,
   validateSelection,
 } from "../src/components/design-candidates/client.ts";
+import {
+  publicResearchBrief,
+  researchReceipts,
+  validateResearch,
+} from "../src/components/design-candidates/research-client.ts";
 
 const context = {
   projectId: "project-a",
@@ -503,4 +508,103 @@ test("incomplete candidates and MetaMuse probes are rejected before rendering", 
       .engine_probe.value_mm,
     90,
   );
+});
+
+test("research can recommend only a cited, current, checked engine candidate", () => {
+  const response = {
+    project_id: context.projectId,
+    inventory_revision_id: context.inventoryRevisionId,
+    coverage: "complete",
+    decision: "eligible",
+    findings: [
+      {
+        title: "SYNTHETIC reference",
+        claim: "A taped brace is used.",
+        url: "https://example.com/stand",
+      },
+    ],
+    reason: "SYNTHETIC reason",
+    search: result(),
+    recommended_candidate_id: candidate().candidate_id,
+  };
+  assert.equal(
+    validateResearch(response, context).recommended_candidate_id,
+    candidate().candidate_id,
+  );
+  for (const changed of [
+    { recommended_candidate_id: "foreign-candidate" },
+    { findings: [] },
+    { inventory_revision_id: "inventory-b" },
+    { search: result({ identity: { ...identity, project_id: "foreign" } }) },
+    { decision: "blocked" },
+    { search: null },
+  ]) {
+    assert.throws(() => validateResearch({ ...response, ...changed }, context));
+  }
+  for (const url of [
+    "javascript:alert(1)",
+    "http://example.com/stand",
+    "https://account@example.com/stand",
+  ]) {
+    assert.throws(() =>
+      validateResearch(
+        { ...response, findings: [{ ...response.findings[0], url }] },
+        context,
+      ),
+    );
+  }
+  const missing = validateResearch(
+    {
+      ...response,
+      decision: "needs_input",
+      coverage: "not_run",
+      question: "Measure the usable sheet width.",
+      findings: [],
+      search: null,
+      recommended_candidate_id: null,
+    },
+    context,
+  );
+  assert.equal(missing.search, null);
+  assert.match(missing.question, /usable sheet width/);
+});
+
+test("research previews the fixed public brief and retains the exact retry", async () => {
+  assert.equal(
+    publicResearchBrief("reading_stand", true),
+    "Research a low-risk cardboard tabletop reading stand made with tape and no glue. Plug clearance is essential.",
+  );
+  const data = new Map();
+  const storage = {
+    getItem: (key) => data.get(key) ?? null,
+    setItem: (key, value) => data.set(key, value),
+    removeItem: (key) => data.delete(key),
+  };
+  const request = {
+    expected_inventory_revision_id: context.inventoryRevisionId,
+    idempotency_key: "research-key-01",
+    consented: true,
+    use_case: "phone_stand",
+    needs_plug_clearance: false,
+  };
+  const { projectId } = context;
+  await researchReceipts.retain("synthetic-owner", projectId, request, storage);
+  await assert.rejects(() =>
+    researchReceipts.retain(
+      "synthetic-owner",
+      projectId,
+      { ...request, use_case: "reading_stand" },
+      storage,
+    ),
+  );
+  assert.deepEqual(
+    await researchReceipts.pending("synthetic-owner", projectId, storage),
+    request,
+  );
+  assert.equal(
+    await researchReceipts.pending("other-owner", projectId, storage),
+    null,
+  );
+  await researchReceipts.clear("synthetic-owner", projectId, request, storage);
+  assert.equal(data.size, 0);
 });

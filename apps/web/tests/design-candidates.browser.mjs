@@ -49,6 +49,7 @@ try {
     const errors = [];
     const unexpected = [];
     const posts = [];
+    const researchBodies = [];
     let saved = false;
     let selectCalls = 0;
     let probeCalls = 0;
@@ -56,6 +57,12 @@ try {
     let museCalls = 0;
     let releaseProbe = () => {};
     const heldProbe = new Promise((resolve) => (releaseProbe = resolve));
+    let releaseResearch = () => {};
+    const heldResearch = new Promise((resolve) => (releaseResearch = resolve));
+    let markResearchStarted = () => {};
+    const researchStarted = new Promise(
+      (resolve) => (markResearchStarted = resolve),
+    );
     page.on("pageerror", (e) => errors.push(e.message));
     await page.context().route("**/*", async (route) => {
       const request = route.request();
@@ -68,6 +75,57 @@ try {
       const method = request.method();
       if (method === "POST") {
         const body = request.postDataJSON();
+        if (url.pathname === `${base}/synthesis/research`) {
+          researchBodies.push(body);
+          assert.deepEqual(Object.keys(body).sort(), [
+            "consented",
+            "expected_inventory_revision_id",
+            "idempotency_key",
+            "needs_plug_clearance",
+            "use_case",
+          ]);
+          assert.equal(body.consented, true);
+          assert.equal(
+            body.expected_inventory_revision_id,
+            project.revision_id,
+          );
+          const common = {
+            project_id: project.id,
+            inventory_revision_id: project.revision_id,
+          };
+          if (body.needs_plug_clearance)
+            return route.fulfill({
+              json: {
+                ...common,
+                coverage: "not_run",
+                decision: "unsupported",
+                reason:
+                  "Plug clearance is essential and has no supported check.",
+                findings: [],
+              },
+            });
+          const checked = {
+            ...common,
+            coverage: "complete",
+            decision: "eligible",
+            reason: "SYNTHETIC recommendation over checked designs.",
+            findings: [
+              {
+                title: "SYNTHETIC taped brace reference",
+                claim: "An example uses a taped brace.",
+                url: "https://example.com/stand",
+              },
+            ],
+            search: searchB,
+            recommended_candidate_id: second.candidate_id,
+          };
+          if (researchBodies.length === 2) {
+            markResearchStarted();
+            await heldResearch;
+            return route.fulfill({ json: checked }).catch(() => {});
+          }
+          return route.fulfill({ json: { ...checked, replayed: true } });
+        }
         posts.push([url.pathname, body]);
         if (url.pathname === `${base}/synthesis/search`) {
           assert.equal(
@@ -121,6 +179,7 @@ try {
         [base, project],
         [`${base}/media`, { media: [] }],
         [`${base}/designs/readiness`, fixture.readiness],
+        [`${base}/synthesis/research`, { enabled: true }],
         [`${base}/plans`, saved ? fixture.plans_after : fixture.plans_before],
         [`${base}/versions/${version.version_id}`, version],
       ]);
@@ -256,6 +315,69 @@ try {
       ],
     );
 
+    // Research must have fresh consent, and a required unsupported check
+    // clears earlier design choices instead of silently relaxing the brief.
+    const research = panel.getByRole("group", {
+      name: "Find ideas for this build",
+    });
+    const start = research.getByRole("button", {
+      name: "Research and check ideas",
+    });
+    const consent = research.getByLabel(
+      "Share this brief with MetaMuse for web research",
+    );
+    const clearance = research.getByLabel("Plug clearance is essential");
+    assert.equal(await start.isDisabled(), true);
+    await clearance.check();
+    await research.getByText(/no glue. Plug clearance is essential/).waitFor();
+    await consent.check();
+    await start.click();
+    await research
+      .getByText("This requirement is outside the supported checks")
+      .waitFor();
+    assert.equal(
+      await panel.getByRole("button", { name: "Use design B" }).count(),
+      0,
+    );
+
+    // A late research response must not replace ordinary search. Recover
+    // it with the retained body, then require explicit review and selection.
+    await clearance.uncheck();
+    await consent.check();
+    await start.click();
+    await researchStarted;
+    await panel
+      .getByRole("button", { name: "Search stock-feasible designs" })
+      .click();
+    await panel.getByRole("article", { name: "Design A" }).waitFor();
+    releaseResearch();
+    const retryResearch = research.getByRole("button", {
+      name: "Retry the same research request",
+    });
+    await retryResearch.waitFor();
+    assert.equal(
+      await research.getByText("Checked designs to review").count(),
+      0,
+    );
+    assert.equal(await retryResearch.isDisabled(), true);
+    await consent.check();
+    await retryResearch.click();
+    const source = research.getByRole("link", {
+      name: "SYNTHETIC taped brace reference",
+    });
+    await source.waitFor();
+    assert.equal(
+      await source.getAttribute("href"),
+      "https://example.com/stand",
+    );
+    assert.deepEqual(researchBodies[1], researchBodies[2]);
+    assert.equal(await panel.getByText("Suggested by research").count(), 0);
+    await research
+      .getByRole("button", { name: "Review checked designs" })
+      .click();
+    await panel.getByText("Suggested by research").waitFor();
+    assert.equal(selectCalls, 0, "research review must not save a preview");
+
     // Choose design B; the response is lost, then the page is reloaded.
     await panel.getByRole("button", { name: "Use design B" }).click();
     await panel
@@ -330,7 +452,7 @@ try {
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
     console.log(
-      `PASS ${width}px search/compare two named designs, probe race ignored and regenerated brace shown, consented MetaMuse comparison with engine probe, recovered earlier answer shown as history without actions, lost selection recovered after reload with one key while a corrupt MetaMuse receipt is cleared alone, separate explicit approval; replayed SYNTHETIC responses only`,
+      `PASS ${width}px research consent, unsupported clearance, late result discarded, exact replay and explicit candidate review; existing search, probe, comparison, selection recovery and separate approval; SYNTHETIC responses only`,
     );
     await page.context().close();
   }

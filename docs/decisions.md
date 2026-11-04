@@ -840,16 +840,15 @@ repaired states retain the authoritative SVG/history fallback. Planned and
 user-reported assembly remain nominal; absent matching numerical overlays are
 shown as unavailable. No camera action dispatches analysis or changes evidence.
 
-## D060. Draft decision for optional web research during intake, November 4, 2026
+## D060. Check web research against saved materials during intake, November 4, 2026
 
-Add an opt-in investigation before design proposal. A Muse Spark scout finds
-cited projects while a separate analyst maps requirements and flags potential
-blockers. FORMA runs existing checks on saved inputs. A bounded adjudicator uses
-findings and check results to recommend an approach, a decisive question or a
-stop. Code enforces check outcomes and preserves unknowns.
+An opt-in investigation adds cited research to the existing stock-feasible
+stand search. FORMA checks the saved materials and requirements first. A scout
+finds public references and a separate analyst flags applicable concerns.
+A bounded adjudicator can recommend one of the engine's checked candidates
+or abstain. The ordinary candidate review and explicit approval still apply.
 
-The builder approves a public brief and can continue without research. Findings
-stay separate from inventory, immutable plans and physical evidence. Any design
-still goes through fabrication checks, compiler validation and explicit approval.
-The feature starts disabled pending the
+The builder approves the public brief. Findings stay separate from inventory,
+plans and physical evidence. Unsupported essential requirements and hard
+blockers stay visible. The feature starts disabled pending the
 [provider handoff and acceptance checks](handoffs/issue-9-intake-research.md).

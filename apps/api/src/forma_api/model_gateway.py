@@ -463,8 +463,14 @@ class MetaGateway:
                     payload["model"],
                     round((time.monotonic() - start) * 1000),
                     status,
-                    count("prompt_tokens"),
-                    count("completion_tokens"),
+                    count(
+                        "input_tokens" if "input_tokens" in usage else "prompt_tokens"
+                    ),
+                    count(
+                        "output_tokens"
+                        if "output_tokens" in usage
+                        else "completion_tokens"
+                    ),
                 )
             )
             if trace_sink is not None:
