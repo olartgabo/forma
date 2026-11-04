@@ -138,8 +138,20 @@ ID, and describe what "use the estimate" does today. Regressions:
 links and estimate through save and reload", "a different piece gets a new ID
 …") and `apps/api/tests/test_photo_estimates.py::test_rename_keeps_identity_and_estimate_through_save_and_reload`
 (real inventory route: rename → save → reload keeps ID, name, photo link,
-value and a current record; a new ID retires it). Checks and focused review
-for this commit are recorded in the PR.
+value and a current record; a new ID retires it).
+
+`Stock.name` is not physical: it is omitted from serialization when unset, so
+inventories, plans and request receipts saved before it existed digest and
+replay unchanged (`test_unnamed_stock_serializes_exactly_as_before_names_existed`,
+`test_unnamed_inventory_request_digests_as_before_names_existed`), and the
+replanner ignores a name-only change to unused stock
+(`test_renaming_unused_unknown_stock_is_not_a_physical_change`). A rename still
+creates a new inventory revision, so unsaved design previews refresh through
+the existing path; estimates and photo links are kept.
+
+Focused Sol review of 4600916: REQUEST_CHANGES, 2 findings (whole-Stock
+equality in the replanner; `"name": null` changing legacy request digests).
+Both repaired in the next commit with the regressions above.
 
 ## Accuracy
 

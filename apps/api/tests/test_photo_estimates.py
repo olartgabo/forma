@@ -488,3 +488,26 @@ def test_rename_keeps_identity_and_estimate_through_save_and_reload(client, scen
         f"/api/projects/{p['id']}/photo-estimates", headers=AUTH
     ).json()["records"]
     assert records[0]["status"] == "stale"
+
+
+def test_unnamed_inventory_request_digests_as_before_names_existed(client):
+    from forma_api.projects import InventoryUpdate
+
+    p = project(client)
+    legacy = {
+        "expected_revision_id": p["revision_id"],
+        "idempotency_key": "save-legacy",
+        "stocks": [stock("photo-x", measurement(), measurement())],
+        "user_confirmed": True,
+    }
+    legacy["stocks"][0]["image_ids"] = []
+    dumped = InventoryUpdate.model_validate(legacy).model_dump(
+        mode="json", exclude={"requirements"}
+    )
+    # What a pre-name build digested: every field except a name.
+    assert "name" not in dumped["stocks"][0]
+    first = client.put(f"/api/projects/{p['id']}/inventory", headers=AUTH, json=legacy)
+    retry = client.put(f"/api/projects/{p['id']}/inventory", headers=AUTH, json=legacy)
+    assert first.status_code == retry.status_code == 200
+    assert retry.json()["replayed"] is True
+    assert "name" not in retry.json()["project"]["stocks"][0]
