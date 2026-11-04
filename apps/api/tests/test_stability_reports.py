@@ -416,3 +416,31 @@ def test_replay_after_measurement_change_reports_current_staleness(connected):
     ).json()
     assert detail["freshness"] == data["saved"]["freshness"]
     assert rows(directory) == stored_before
+
+
+@pytest.mark.parametrize("component", ["engine", "numpy", "shapely", "geos"])
+def test_dependency_upgrade_marks_history_detail_and_replay_stale(
+    connected, monkeypatch, component
+):
+    client, url, _, directory = connected
+    body, event = measured(connected)
+    first = save(client, url, body, event, "dependency-fresh-01").json()
+    saved_id = first["saved"]["report_id"]
+    stored_before = rows(directory)
+    current = reports.dependencies()
+    monkeypatch.setattr(
+        reports,
+        "dependencies",
+        lambda: current.model_copy(update={component: "synthetic-next-version"}),
+    )
+    base = reports_url(production(url))
+    history = client.get(base, headers=AUTH)
+    detail = client.get(base + "/" + saved_id, headers=AUTH)
+    replay = save(client, url, body, event, "dependency-fresh-01")
+    assert history.status_code == detail.status_code == replay.status_code == 200
+    expected = {"current": False, "stale_reasons": ["engine_changed"]}
+    assert history.json()["reports"][0]["freshness"] == expected
+    assert detail.json()["freshness"] == expected
+    assert replay.json()["saved"]["freshness"] == expected
+    assert replay.json()["analysis"] == first["analysis"]
+    assert rows(directory) == stored_before

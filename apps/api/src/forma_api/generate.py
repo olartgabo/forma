@@ -111,6 +111,7 @@ from forma_api.stability_measurements import (
 from forma_api.stability_muse import (
     CaseNote,
     StabilityMuseExplanation,
+    StabilityMuseFocus,
     StabilityMuseRequest,
     StabilityMuseResult,
 )
@@ -190,6 +191,7 @@ API_RECORDS = (
     StabilityMuseRequest,
     StabilityMuseResult,
     StabilityMuseExplanation,
+    StabilityMuseFocus,
     CaseNote,
     DependencyVersions,
     ActivationResult,

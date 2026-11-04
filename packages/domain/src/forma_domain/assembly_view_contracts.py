@@ -6,6 +6,7 @@ from pydantic import Field, model_validator
 
 from .assembly_geometry_contracts import CanonicalGeometryPreview
 from .models import ID, Record, Text
+from .stability_contracts import StabilityReport
 
 
 class AssemblyOperationParts(Record):
@@ -23,7 +24,9 @@ class AssemblyViewResponse(Record):
     geometry: CanonicalGeometryPreview | None = None
     operation_parts: tuple[AssemblyOperationParts, ...] = Field(max_length=64)
     blockers: tuple[Text, ...] = ()
-    overlay_coverage: Literal["unavailable"] = "unavailable"
+    overlay_coverage: Literal["unavailable", "available"] = "unavailable"
+    overlay_report_id: ID | None = None
+    overlay_report: StabilityReport | None = None
 
     @model_validator(mode="after")
     def coherent_display(self):
@@ -45,4 +48,31 @@ class AssemblyViewResponse(Record):
             for item in self.operation_parts
         ):
             raise ValueError("Operation links reference unknown display parts")
+        report = self.overlay_report
+        if (self.overlay_coverage == "available") != (report is not None):
+            raise ValueError("Available overlays require a saved report")
+        if report is None:
+            if self.overlay_report_id is not None:
+                raise ValueError("Missing overlay report cannot have an identity")
+        elif (
+            geometry is None
+            or self.overlay_report_id != "stability-report-" + report.cache_hash
+            or report.identity.project_id != self.project_id
+            or report.identity.plan_version_id != self.plan_version_id
+            or report.identity.inventory_revision != self.inventory_revision_id
+            or report.identity.history_cursor != self.last_event_id
+            or report.identity.canonical_geometry_hash != geometry.geometry_hash
+            or report.geometry_version != geometry.producer_version
+            or not report.overlays
+            or any(
+                not any(
+                    result.case_id == overlay.case_id
+                    and result.check_type == "tip"
+                    and result.computation == "complete"
+                    for result in report.results
+                )
+                for overlay in report.overlays
+            )
+        ):
+            raise ValueError("Saved overlay must match the exact canonical snapshot")
         return self

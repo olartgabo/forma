@@ -66,6 +66,13 @@ def stability_muse_router(
                 prompt_version=muse.PROMPT_VERSION,
             )
         )
+        legacy_digest = _digest(
+            dict(
+                request=body.model_dump(mode="json"),
+                project_id=project_id,
+                prompt_version=muse.LEGACY_PROMPT_VERSION,
+            )
+        )
 
         def receipt(connection):
             """Settled answer for this exact request, with freshness judged now."""
@@ -75,7 +82,7 @@ def stability_muse_router(
             ).fetchone()
             if row is None:
                 return None
-            if row[0] != digest:
+            if row[0] not in (digest, legacy_digest):
                 raise DesignError(
                     409, "idempotency_conflict", "Key already used for another request"
                 )
@@ -91,7 +98,43 @@ def stability_muse_router(
                 )
             if row[1] == _STALE:
                 raise _stale()
-            result = muse.StabilityMuseResult.model_validate_json(row[1])
+            value = json.loads(row[1])
+            saved = reports.read_record(
+                connection, project_id, value["report"]["report_id"]
+            )
+            if saved is None:
+                raise DesignError(
+                    404,
+                    "not_found",
+                    "The saved stability report is no longer available",
+                )
+            focus = (
+                muse.default_focus(
+                    saved.report,
+                    tuple(case.case_id for case in saved.analysis_input.cases),
+                )
+                if row[0] == legacy_digest
+                else muse.StabilityMuseFocus.model_validate(value["focus"])
+            )
+            if focus is None:
+                raise DesignError(
+                    422,
+                    "blocked",
+                    "The saved report contains no check results. Its completed provider request will not be sent again.",
+                )
+            # Legacy free text is never parsed into or returned as an explanation.
+            value.update(
+                focus=focus.model_dump(mode="json"),
+                explanation=muse.render_focus(saved.report, focus).model_dump(
+                    mode="json"
+                ),
+                focused_results=[
+                    row.model_dump(mode="json")
+                    for row in muse.selected_results(saved.report, focus)
+                ],
+                prompt_version=muse.PROMPT_VERSION,
+            )
+            result = muse.StabilityMuseResult.model_validate(value)
             state = reports.ProjectState(connection, store, owner, project_id)
             return result.model_copy(
                 update={
@@ -135,6 +178,10 @@ def stability_muse_router(
                     allowed_plan_version_id=body.plan_version_id,
                     allowed_report_ids=[expected],
                     allowed_case_ids=allowed_cases,
+                    allowed_result_pairs=[
+                        dict(case_id=r.case_id, check_type=r.check_type)
+                        for r in report.results
+                    ],
                 )
             else:
                 state = reports.ProjectState(connection, store, owner, project_id)
@@ -151,6 +198,10 @@ def stability_muse_router(
                     allowed_case_ids=[c.case_id for c in saved.analysis_input.cases],
                     report_is_current=fresh.current,
                     stale_reasons=list(fresh.stale_reasons),
+                    allowed_result_pairs=[
+                        dict(case_id=r.case_id, check_type=r.check_type)
+                        for r in saved.report.results
+                    ],
                 )
         with store.transaction() as connection:
             reports.authorized_snapshot(connection, store, owner, project_id, body)
@@ -203,7 +254,7 @@ def stability_muse_router(
                 "Model provider is not configured on the server",
             ) from None
         try:
-            explanation, usage = muse.explain(
+            explanation, focus, usage = muse.explain(
                 gateway, handler, context=context, question=body.question
             )
         except GatewayError as exc:
@@ -258,6 +309,8 @@ def stability_muse_router(
                             connection, store, owner, project_id
                         ).summary(saved),
                         explanation=explanation,
+                        focus=focus,
+                        focused_results=muse.selected_results(saved.report, focus),
                         usage=usage,
                     )
                     cursor = connection.execute(

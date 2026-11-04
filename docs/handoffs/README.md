@@ -49,6 +49,9 @@ No handoff establishes a real provider result or physical pass through fixture
 checks. User-confirmed measurements, observed build/recovery outcomes and
 authenticated end-to-end integration remain separate acceptance evidence.
 
+The [saved stability output and overlay follow-up](issue-147-152-completion.md)
+records the remaining #147/#152 work after their original PRs merged.
+
 The [stand replacement continuation](issue-39-stand-continuation.md) documents
 the shared family validator, replacement SVGs, bounded original uncut-base
 extension and unsupported resize variants for #39. The

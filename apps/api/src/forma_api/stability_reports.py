@@ -38,7 +38,11 @@ from forma_domain.stability_contracts import (
 REPORT_PREFIX = "stability-report-"
 HISTORY_LIMIT = 50
 StaleReason = Literal[
-    "plan_changed", "inventory_changed", "history_changed", "evidence_invalidated"
+    "plan_changed",
+    "inventory_changed",
+    "history_changed",
+    "evidence_invalidated",
+    "engine_changed",
 ]
 
 
@@ -288,6 +292,8 @@ def read_record(connection, project_id, saved_id):
 
 def freshness(saved, project, cursor, invalidated) -> ReportFreshness:
     reasons = []
+    if saved.dependencies != dependencies():
+        reasons.append("engine_changed")
     if project.active_version_id != saved.plan_version_id:
         reasons.append("plan_changed")
     if project.revision_id != saved.inventory_revision_id:

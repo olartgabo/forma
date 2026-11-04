@@ -45,6 +45,13 @@ jobs:
             exit 1
           fi
 
+  web-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f deploy/web.Dockerfile -t forma-web .
+
   attribution:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
