@@ -49,6 +49,7 @@ try {
     const errors = [];
     const unexpected = [];
     const posts = [];
+    const researchBodies = [];
     let saved = false;
     let selectCalls = 0;
     let probeCalls = 0;
@@ -56,6 +57,25 @@ try {
     let museCalls = 0;
     let releaseProbe = () => {};
     const heldProbe = new Promise((resolve) => (releaseProbe = resolve));
+    let releaseResearch = () => {};
+    const heldResearch = new Promise((resolve) => (releaseResearch = resolve));
+    let markResearchStarted = () => {};
+    let delayResearchAvailability = false;
+    let releaseResearchAvailability = () => {};
+    const heldAvailability = new Promise(
+      (resolve) => (releaseResearchAvailability = resolve),
+    );
+    let releaseClearance = () => {};
+    const heldClearance = new Promise(
+      (resolve) => (releaseClearance = resolve),
+    );
+    let markClearanceStarted = () => {};
+    const clearanceStarted = new Promise(
+      (resolve) => (markClearanceStarted = resolve),
+    );
+    const researchStarted = new Promise(
+      (resolve) => (markResearchStarted = resolve),
+    );
     page.on("pageerror", (e) => errors.push(e.message));
     await page.context().route("**/*", async (route) => {
       const request = route.request();
@@ -68,6 +88,86 @@ try {
       const method = request.method();
       if (method === "POST") {
         const body = request.postDataJSON();
+        if (url.pathname === `${base}/synthesis/research`) {
+          researchBodies.push(body);
+          assert.deepEqual(Object.keys(body).sort(), [
+            "consented",
+            "expected_inventory_revision_id",
+            "idempotency_key",
+            "needs_plug_clearance",
+            "use_case",
+          ]);
+          assert.equal(body.consented, true);
+          assert.equal(
+            body.expected_inventory_revision_id,
+            project.revision_id,
+          );
+          const common = {
+            project_id: project.id,
+            inventory_revision_id: project.revision_id,
+          };
+          if (body.needs_plug_clearance) {
+            if (researchBodies.length === 3) {
+              markClearanceStarted();
+              await heldClearance;
+            }
+            return route
+              .fulfill({
+                json: {
+                  ...common,
+                  coverage: "not_run",
+                  decision: "unsupported",
+                  reason:
+                    "Plug clearance is essential and has no supported check.",
+                  findings: [],
+                },
+              })
+              .catch(() => {});
+          }
+          if (body.use_case === "reading_stand" && researchBodies.length === 2)
+            return route.fulfill({
+              status: 409,
+              json: { code: "stale_version" },
+            });
+          if (body.use_case === "reading_stand")
+            return route.fulfill({
+              json: {
+                ...common,
+                coverage: "unavailable",
+                decision: "eligible",
+                reason: "The existing stand search found checked proposals.",
+                findings: [],
+                search: searchB,
+              },
+            });
+          const checked = {
+            ...common,
+            coverage: "complete",
+            decision: "eligible",
+            reason: "SYNTHETIC recommendation over checked designs.",
+            findings: [
+              {
+                title: "SYNTHETIC taped brace reference",
+                claim: "An example uses a taped brace.",
+                url: "https://example.com/stand",
+              },
+              {
+                title: "SYNTHETIC deeper base reference",
+                claim: "An example uses a deeper base.",
+                url: "https://example.com/deeper-base",
+              },
+            ],
+            search: searchB,
+            recommended_candidate_id: second.candidate_id,
+            recommendation_source_index: 1,
+          };
+          if (researchBodies.length === 5) {
+            markResearchStarted();
+            await heldResearch;
+            return route.fulfill({ json: checked }).catch(() => {});
+          }
+          return route.fulfill({ json: { ...checked, replayed: true } });
+        }
         posts.push([url.pathname, body]);
         if (url.pathname === `${base}/synthesis/search`) {
           assert.equal(
@@ -115,12 +215,18 @@ try {
         unexpected.push(`POST ${url.pathname}`);
         return route.fulfill({ status: 500, json: { code: "unexpected" } });
       }
+      if (
+        url.pathname === `${base}/synthesis/research` &&
+        delayResearchAvailability
+      )
+        await heldAvailability;
       const replay = new Map([
         ["/api/provider/status", { configured: true }],
         ["/api/projects", { projects: [], next_cursor: null }],
         [base, project],
         [`${base}/media`, { media: [] }],
         [`${base}/designs/readiness`, fixture.readiness],
+        [`${base}/synthesis/research`, { enabled: true }],
         [`${base}/plans`, saved ? fixture.plans_after : fixture.plans_before],
         [`${base}/versions/${version.version_id}`, version],
       ]);
@@ -256,6 +362,159 @@ try {
       ],
     );
 
+    // Research must have fresh consent, and a required unsupported check
+    // clears earlier design choices instead of silently relaxing the brief.
+    const research = panel.getByRole("group", {
+      name: "Find ideas for this build",
+    });
+    const start = research.getByRole("button", {
+      name: "Research and check ideas",
+    });
+    const consent = research.getByLabel(
+      "Share this brief and option comparisons with MetaMuse",
+    );
+    const clearance = research.getByLabel("Plug clearance is essential");
+    assert.equal(await start.isDisabled(), true);
+    const useCase = research.getByRole("combobox", {
+      name: "What are you making?",
+    });
+    await useCase.selectOption("reading_stand");
+    await consent.check();
+    await start.click();
+    await research.getByText("Research unavailable", { exact: true }).waitFor();
+    assert.equal(
+      await panel
+        .getByRole("button", { name: "Use design B" })
+        .isEnabled({ timeout: 2000 }),
+      true,
+      "ordinary designs remain usable after a provider failure",
+    );
+    assert.equal(await earlier.isVisible(), true);
+
+    await consent.check();
+    await start.click();
+    await research
+      .getByText("Your inventory changed. Reload it before researching again.")
+      .waitFor();
+    assert.equal(
+      await panel.getByRole("button", { name: "Use design B" }).count(),
+      0,
+      "stale results clear the earlier stock choices",
+    );
+
+    await panel
+      .getByRole("button", { name: "Search stock-feasible designs" })
+      .click();
+    await panel.getByRole("article", { name: "Design A" }).waitFor();
+    await clearance.check();
+    await research.getByText(/no glue. Plug clearance is essential/).waitFor();
+    await consent.check();
+    await start.click();
+    await clearanceStarted;
+    await research.getByRole("button", { name: "Stop waiting" }).click();
+    releaseClearance();
+
+    delayResearchAvailability = true;
+    await page.reload();
+    panel = await open(page);
+    await research
+      .getByText("Plug clearance is essential", { exact: true })
+      .waitFor();
+    assert.equal(
+      await panel
+        .getByRole("button", { name: "Search stock-feasible designs" })
+        .isDisabled(),
+      true,
+      "stock search cannot bypass clearance while availability is unresolved",
+    );
+    delayResearchAvailability = false;
+    releaseResearchAvailability();
+    const clearanceRetry = research.getByRole("button", {
+      name: "Retry the same research request",
+    });
+    await clearanceRetry.waitFor();
+    assert.equal(await clearance.isChecked(), true);
+    assert.equal(
+      await panel
+        .getByRole("button", { name: "Search stock-feasible designs" })
+        .isDisabled(),
+      true,
+      "a restored clearance requirement still blocks stock-only search",
+    );
+    await consent.check();
+    await clearanceRetry.click();
+    await research
+      .getByText("This requirement is outside the supported checks")
+      .waitFor();
+    assert.equal(
+      await panel.getByRole("button", { name: "Use design B" }).count(),
+      0,
+    );
+
+    assert.deepEqual(researchBodies[2], researchBodies[3]);
+
+    // A late research response must not replace ordinary search. Recover
+    // it with the retained body, then require explicit review and selection.
+    await clearance.uncheck();
+    await consent.check();
+    await start.click();
+    await researchStarted;
+    await panel
+      .getByRole("button", { name: "Search stock-feasible designs" })
+      .click();
+    await panel.getByRole("article", { name: "Design A" }).waitFor();
+    releaseResearch();
+    const retryResearch = research.getByRole("button", {
+      name: "Retry the same research request",
+    });
+    await retryResearch.waitFor();
+    assert.equal(
+      await research.getByText("Checked designs to review").count(),
+      0,
+    );
+    assert.equal(await retryResearch.isDisabled(), true);
+    await consent.check();
+    await retryResearch.click();
+    const source = research.getByRole("link", {
+      name: "SYNTHETIC taped brace reference",
+    });
+    await source.waitFor();
+    assert.equal(
+      await source.getAttribute("href"),
+      "https://example.com/stand",
+    );
+    await research
+      .getByRole("listitem")
+      .filter({ hasText: "Source used for the recommendation" })
+      .getByRole("link", { name: "SYNTHETIC deeper base reference" })
+      .waitFor();
+    assert.deepEqual(researchBodies[4], researchBodies[5]);
+    assert.equal(await panel.getByText("Suggested by research").count(), 0);
+    await research
+      .getByRole("button", { name: "Review checked designs" })
+      .click();
+    const reviewedA = panel.getByRole("article", { name: "Design A" });
+    const reviewedB = panel.getByRole("article", { name: "Design B" });
+    await reviewedB
+      .getByText("Suggested by research")
+      .waitFor({ timeout: 2000 });
+    assert.equal(await reviewedA.getByText("Suggested by research").count(), 0);
+    assert.match(
+      await reviewedB.innerText(),
+      /SYNTHETIC recommendation over checked designs/,
+    );
+    assert.equal(
+      await reviewedB
+        .getByRole("link", { name: "SYNTHETIC deeper base reference" })
+        .getAttribute("href"),
+      "https://example.com/deeper-base",
+    );
+    assert.equal(
+      await reviewedB.getByText("An example uses a deeper base.").count(),
+      1,
+    );
+    assert.equal(selectCalls, 0, "research review must not save a preview");
+
     // Choose design B; the response is lost, then the page is reloaded.
     await panel.getByRole("button", { name: "Use design B" }).click();
     await panel
@@ -330,9 +589,117 @@ try {
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
     console.log(
-      `PASS ${width}px search/compare two named designs, probe race ignored and regenerated brace shown, consented MetaMuse comparison with engine probe, recovered earlier answer shown as history without actions, lost selection recovered after reload with one key while a corrupt MetaMuse receipt is cleared alone, separate explicit approval; replayed SYNTHETIC responses only`,
+      `PASS ${width}px research consent, provider fallback, stale and unsupported clearance, late result discarded, exact replay and cited candidate review; existing search, probe, comparison, selection recovery and separate approval; SYNTHETIC responses only`,
     );
     await page.context().close();
+
+    const missing = fixture.unmeasured;
+    const measurementPage = await browser.newPage({
+      viewport: { width, height: 900 },
+      serviceWorkers: "block",
+    });
+    measurementPage.setDefaultTimeout(8000);
+    const measurementPosts = [];
+    const unexpectedMeasurementRequests = [];
+    let staleMeasurement = false;
+    await measurementPage.route("**/*", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.origin !== origin.origin) {
+        unexpectedMeasurementRequests.push(url.origin);
+        return route.abort();
+      }
+      if (!url.pathname.startsWith("/api/")) return route.continue();
+      if (request.method() === "POST") {
+        const body = request.postDataJSON();
+        measurementPosts.push([url.pathname, body]);
+        if (url.pathname === `${base}/synthesis/research`) {
+          assert.equal(
+            body.expected_inventory_revision_id,
+            missing.project.revision_id,
+          );
+          return route.fulfill({ json: missing.research });
+        }
+        if (url.pathname === `${base}/measurement-decisions`) {
+          if (staleMeasurement)
+            return route.fulfill({
+              status: 409,
+              json: { code: "stale_version" },
+            });
+          return route.fulfill({ json: missing.decision });
+        }
+      }
+      const responses = new Map([
+        ["/api/provider/status", { configured: true }],
+        ["/api/projects", { projects: [], next_cursor: null }],
+        [base, missing.project],
+        [`${base}/media`, { media: [] }],
+        [`${base}/plans`, fixture.plans_before],
+        [`${base}/synthesis/research`, { enabled: true }],
+      ]);
+      if (request.method() === "GET" && responses.has(url.pathname))
+        return route.fulfill({ json: responses.get(url.pathname) });
+      if (request.method() !== "GET")
+        unexpectedMeasurementRequests.push(
+          `${request.method()} ${url.pathname}`,
+        );
+      return route.fulfill({ status: 503, json: { code: "unavailable" } });
+    });
+    const missingPanel = await open(measurementPage);
+    await missingPanel
+      .getByLabel("Share this brief and option comparisons with MetaMuse")
+      .check();
+    await missingPanel
+      .getByRole("button", { name: "Research and check ideas" })
+      .click();
+    await missingPanel
+      .getByText(missing.research.question, { exact: true })
+      .waitFor();
+    await missingPanel
+      .getByRole("button", { name: "Open measurement controls" })
+      .click();
+    const controls = measurementPage.getByRole("region", {
+      name: "The measurement that matters next",
+    });
+    await controls
+      .getByText(missing.decision.question.target.label, { exact: true })
+      .waitFor();
+    assert.equal(
+      await controls.evaluate((element) => element === document.activeElement),
+      true,
+    );
+    const input = controls.getByLabel("Measured value (mm)");
+    assert.equal(await input.inputValue(), "");
+    const saveMeasurement = controls.getByRole("button", {
+      name: "Save measurement",
+    });
+    assert.equal(await saveMeasurement.isDisabled(), true);
+    await input.fill("200");
+    assert.equal(await saveMeasurement.isDisabled(), true);
+    await controls
+      .getByLabel("I measured this myself; it is not a photo estimate")
+      .check();
+    assert.equal(await saveMeasurement.isEnabled(), true);
+    assert.deepEqual(
+      measurementPosts.map(([path]) => path),
+      [`${base}/synthesis/research`, `${base}/measurement-decisions`],
+    );
+    assert.deepEqual(measurementPosts[1][1], {
+      expected_inventory_revision_id: missing.project.revision_id,
+      expected_active_version_id: null,
+    });
+    staleMeasurement = true;
+    await missingPanel
+      .getByRole("button", { name: "Open measurement controls" })
+      .click();
+    await controls.getByRole("alert").waitFor();
+    assert.equal(await saveMeasurement.count(), 0);
+    assert.equal(measurementPosts.length, 3);
+    assert.deepEqual(unexpectedMeasurementRequests, []);
+    console.log(
+      `PASS ${width}px missing research input opens current measurement controls without saving`,
+    );
+    await measurementPage.context().close();
   }
 } finally {
   await browser.close();

@@ -26,10 +26,11 @@ def main(output):
         os.environ["FORMA_DATA_DIR"] = directory
         os.environ.pop("FORMA_API_TOKENS", None)
         t = importlib.import_module("test_plans")
-        from forma_api import design_runtime, synthesis_runtime
+        from forma_api import design_runtime, intake_research, synthesis_runtime
         from forma_api.model_gateway import MetaGateway
 
         Scripted = importlib.import_module("test_synthesis_muse").Scripted
+        measurements = importlib.import_module("test_measurement_routes")
         from forma_api.design_context import (
             DesignContext,
             StaticDesignContextResolver,
@@ -138,6 +139,40 @@ def main(output):
                     replayed=False,
                 ),
             )
+            sheet, tape = project["stocks"]
+            unmeasured = sheet | {
+                "width_mm": measurements.UNKNOWN,
+                "height_mm": measurements.UNKNOWN,
+                "usable_regions": [],
+            }
+            missing = measurements.save(
+                client, project, [unmeasured, tape], "browser-unmeasured"
+            )
+            holder["context"] = holder["context"].model_copy(
+                update={"inventory_revision_id": missing["revision_id"]}
+            )
+            intake_research.enabled = lambda: True
+            MetaGateway.from_env = provider_forbidden
+            research = post(
+                "/synthesis/research",
+                {
+                    "expected_inventory_revision_id": missing["revision_id"],
+                    "idempotency_key": "browser-unmeasured-research",
+                    "consented": True,
+                    "use_case": "phone_stand",
+                    "needs_plug_clearance": False,
+                },
+            )
+            decision = post("/measurement-decisions", measurements.request(missing))
+            assert research["decision"] == "needs_input" and research["question"]
+            assert decision["question"]["target"]["key"] == (
+                "stock:synthetic-sheet:width_mm"
+            )
+            fixture["unmeasured"] = {
+                "project": missing,
+                "research": research,
+                "decision": decision,
+            }
     Path(output).write_text(json.dumps(fixture, indent=2), encoding="utf-8")
 
 

@@ -918,3 +918,27 @@ Recognition accuracy is not evaluated: no labelled real photographs exist in
 this checkout. `forma_api.recognition_evaluate` scores recorded proposals
 against such a set and refuses a coverage claim until every category and scene
 type has real labelled instances.
+
+## D063: Check web research against saved materials during intake, November 4, 2026
+
+An opt-in investigation adds cited research to the existing stock-feasible
+stand search. FORMA checks the saved materials and requirements first. A scout
+finds public references and a separate analyst flags applicable concerns.
+A bounded adjudicator can recommend one of the engine's checked candidates
+or abstain. The ordinary candidate review and explicit approval still apply.
+
+The builder approves the public brief. Findings stay separate from inventory,
+plans and physical evidence. Unsupported essential requirements and hard
+blockers stay visible. The feature starts disabled pending the
+[provider handoff and acceptance checks](handoffs/issue-9-intake-research.md).
+
+Recommendations identify the cited finding and a directional comparison the
+engine confirms for the selected option. The scout runs alone when the engine
+has one checked option or no measured difference to compare.
+
+The design comparison shows the cited claim alongside the suggested option.
+Optional research leaves current stock choices available if the provider fails.
+A stale inventory or unsupported essential requirement clears those choices.
+When the engine identifies a missing measurement, the research result opens
+the existing measurement form and fetches a decision for the current inventory.
+The builder still has to enter and confirm the measured value before saving.

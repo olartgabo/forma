@@ -7,7 +7,9 @@ import {
   loadPlan,
 } from "../lib/api";
 import AdaptWorkbench from "./adapt-workbench";
-import ActiveMeasurement from "./active-measurement";
+import ActiveMeasurement, {
+  type ActiveMeasurementControls,
+} from "./active-measurement";
 import DesignCandidates from "./design-candidates";
 import FabricationReportPanel from "./fabrication-report/fabrication-report-panel";
 import { operationTitles } from "../lib/operation-titles";
@@ -79,6 +81,7 @@ export default function PlanWorkbench({
   const [step, setStep] = useState(0);
   const [stabilityRefresh, setStabilityRefresh] = useState(0);
   const [measurementRefresh, setMeasurementRefresh] = useState(0);
+  const measurementControls = useRef<ActiveMeasurementControls | null>(null);
   const [measurementPending, setMeasurementPending] = useState(false);
   const handleMeasurementsSaved = useCallback(() => {
     setMeasurementRefresh((value) => value + 1);
@@ -603,6 +606,7 @@ export default function PlanWorkbench({
         )}
       </div>
       <ActiveMeasurement
+        ref={measurementControls}
         token={token}
         project={project}
         disabled={approvalDisabled || pending !== null || saving}
@@ -619,6 +623,7 @@ export default function PlanWorkbench({
           }}
           disabled={approvalDisabled || pending !== null || saving}
           museEnabled={museAvailability?.enabled !== false}
+          onMeasure={() => measurementControls.current?.open()}
           onSelected={(versionId) => {
             setSelected(versionId);
             setAttempt((value) => value + 1);
