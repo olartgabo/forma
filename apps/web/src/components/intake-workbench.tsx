@@ -23,6 +23,7 @@ import {
   type MuseProviderStatus,
 } from "../lib/muse-provider";
 import FormaWordmark from "./forma-wordmark";
+import PhotoLocalizationPanel from "./photo-localization-panel";
 import MuseIntakePanel from "./muse-intake-panel";
 import MuseConstructionPanel from "./muse-construction-panel";
 import MuseDiagnosisPanel from "./muse-diagnosis-panel";
@@ -1277,6 +1278,13 @@ function ProjectWorkbench({
               )}
             </section>
           </div>
+          <PhotoLocalizationPanel
+            token={token}
+            project={project}
+            photos={photos}
+            inventoryStale={stale || dirty}
+            disabled={locked}
+          />
           <MuseIntakePanel
             token={token}
             project={project}

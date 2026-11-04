@@ -1,0 +1,63 @@
+.viewer {
+  min-width: 0;
+  margin-block: 1.5rem;
+}
+.content {
+  margin-top: 1rem;
+  overflow-wrap: anywhere;
+}
+.canvas {
+  display: block;
+  width: 100%;
+  max-width: 720px;
+  height: auto;
+  background: white;
+  border: 1px solid #64748b;
+  touch-action: none;
+}
+.canvas:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 3px;
+}
+.label {
+  fill: #0f172a;
+  font:
+    18px system-ui,
+    sans-serif;
+  paint-order: stroke;
+  stroke: white;
+  stroke-width: 4px;
+  pointer-events: none;
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0.75rem;
+}
+.viewer button {
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.slider {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-block: 0.75rem;
+}
+.slider input {
+  min-height: 44px;
+  max-width: 100%;
+}
+.identity {
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: reduce) {
+  .viewer * {
+    animation: none;
+    transition: none;
+  }
+}

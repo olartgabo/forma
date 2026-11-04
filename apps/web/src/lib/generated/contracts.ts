@@ -58,6 +58,11 @@ export type AssemblyJoint = {
   readonly "second": FacetEdge;
 };
 
+export type AssemblyOperationParts = {
+  readonly "operation_id": string;
+  readonly "part_ids": ReadonlyArray<string>;
+};
+
 export type AssemblyPart = {
   readonly "part_id": string;
   readonly "facets": ReadonlyArray<AssemblyFacet>;
@@ -74,6 +79,19 @@ export type AssemblyStage = {
   readonly "label": string;
   readonly "present_part_ids": ReadonlyArray<string>;
   readonly "active_joint_ids": ReadonlyArray<string>;
+};
+
+export type AssemblyViewResponse = {
+  readonly "project_id": string;
+  readonly "plan_version_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "last_event_id": (string | null);
+  readonly "evidence_revision": string;
+  readonly "status": "ready" | "unsupported";
+  readonly "geometry"?: (CanonicalGeometryPreview | null);
+  readonly "operation_parts": ReadonlyArray<AssemblyOperationParts>;
+  readonly "blockers"?: ReadonlyArray<string>;
+  readonly "overlay_coverage"?: "unavailable";
 };
 
 export type AttachBrace = {
@@ -349,6 +367,13 @@ export type ConsumableJointArgs = {
   readonly "length_mm": number;
 };
 
+export type CurrentValue = {
+  readonly "value"?: (number | null);
+  readonly "unit": "mm" | "g" | "deg" | "none";
+  readonly "source": string;
+  readonly "confirmed": boolean;
+};
+
 export type CutRect = {
   readonly "id": string;
   readonly "part_ids"?: ReadonlyArray<string>;
@@ -394,6 +419,34 @@ export type CutSlotArgs = {
   readonly "edge_margin_mm": number;
 };
 
+export type DecisionChange = {
+  readonly "before_decision_id": string;
+  readonly "after_decision_id": string;
+  readonly "changed_facts": ReadonlyArray<string>;
+  readonly "decision_changed": boolean;
+  readonly "explanation": string;
+  readonly "after": MeasurementDecision;
+};
+
+export type DecisionIdentity = {
+  readonly "project_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "active_version_id": (string | null);
+  readonly "last_event_id": (string | null);
+  readonly "context_fingerprint": string;
+  readonly "measurement_record_ids": ReadonlyArray<string>;
+  readonly "declined_target_keys": ReadonlyArray<string>;
+  readonly "rule_version"?: "measurement-decision-v1";
+};
+
+export type DecisionThreshold = {
+  readonly "comparison": "at_least" | "within";
+  readonly "lower": number;
+  readonly "upper"?: (number | null);
+  readonly "unit": "mm" | "g" | "deg" | "m";
+  readonly "basis": string;
+};
+
 export type DesignCandidate = {
   readonly "id": string;
   readonly "family": "tabletop_fixture_v1";
@@ -409,6 +462,14 @@ export type DesignCandidate = {
 export type DesignProposals = {
   readonly "candidates": ReadonlyArray<DesignCandidate>;
   readonly "questions": ReadonlyArray<string>;
+};
+
+export type DesignSummary = {
+  readonly "search_id": string;
+  readonly "status": string;
+  readonly "candidate_ids": ReadonlyArray<string>;
+  readonly "nodes_evaluated": number;
+  readonly "nodes_total": number;
 };
 
 export type Detach = {
@@ -813,6 +874,48 @@ export type Measurement = {
   readonly "evidence_ids"?: ReadonlyArray<string>;
 };
 
+export type MeasurementDecision = {
+  readonly "decision_id": string;
+  readonly "identity": DecisionIdentity;
+  readonly "outcome": "question" | "none_needed" | "no_feasible_candidate" | "unsupported" | "physical_test_required" | "budget_exhausted";
+  readonly "question"?: (MeasurementQuestion | null);
+  readonly "pending_questions": number;
+  readonly "reasons": ReadonlyArray<string>;
+  readonly "missing_capabilities"?: ReadonlyArray<string>;
+  readonly "facts"?: ReadonlyArray<SavedFact>;
+  readonly "design"?: (DesignSummary | null);
+  readonly "stability"?: (StabilitySummary | null);
+  readonly "invalidated"?: ReadonlyArray<string>;
+  readonly "settings"?: ReadonlyArray<string>;
+  readonly "selection_rule": string;
+  readonly "physical_verification"?: "not_attempted";
+};
+
+export type MeasurementQuestion = {
+  readonly "question_id": string;
+  readonly "target": MeasurementTarget;
+  readonly "unit": "mm" | "g" | "deg" | "batch";
+  readonly "method": string;
+  readonly "where": string;
+  readonly "current"?: (CurrentValue | null);
+  readonly "threshold"?: (DecisionThreshold | null);
+  readonly "required_precision"?: (number | null);
+  readonly "precision_basis": string;
+  readonly "affected_candidate_ids"?: ReadonlyArray<string>;
+  readonly "affected_case_ids"?: ReadonlyArray<string>;
+  readonly "why": string;
+  readonly "capture": "inventory" | "requirements" | "stability_measurements";
+};
+
+export type MeasurementTarget = {
+  readonly "key": string;
+  readonly "kind": "stock" | "requirement" | "assembled_stand";
+  readonly "property": "width_mm" | "height_mm" | "thickness_mm" | "remaining_length_mm" | "usable_region" | "device_mass_g" | "support_angle_deg" | "max_footprint_width_mm" | "max_footprint_height_mm" | "assembled_stand";
+  readonly "stock_id"?: (string | null);
+  readonly "label": string;
+  readonly "pieces"?: ReadonlyArray<PieceReference>;
+};
+
 export type MechanicalSnapshot = {
   readonly "bodies": ReadonlyArray<BodyMass>;
   readonly "contacts": ReadonlyArray<SupportContact>;
@@ -1021,6 +1124,12 @@ export type RigidTransform = {
   readonly "translation_m": Point3;
 };
 
+export type SavedFact = {
+  readonly "key": string;
+  readonly "value"?: (number | null);
+  readonly "confirmed": boolean;
+};
+
 export type SearchBudget = {
   readonly "max_nodes"?: number;
   readonly "max_seconds"?: number;
@@ -1106,6 +1215,13 @@ export type StabilityReport = {
   readonly "assumption_ids"?: ReadonlyArray<string>;
   readonly "state_basis"?: ("nominal" | "observed" | null);
   readonly "input_warnings"?: ReadonlyArray<string>;
+};
+
+export type StabilitySummary = {
+  readonly "plan_version_id": string;
+  readonly "analysis_status": string;
+  readonly "case_margins_m": ReadonlyArray<readonly [string, (number | null)]>;
+  readonly "required_margin_m"?: (number | null);
 };
 
 export type StageAnalysisResult = {

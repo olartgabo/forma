@@ -774,3 +774,68 @@ AWS keys are stored in GitHub, and the host still has no SSH. The role trusts
 only this repository's `production` environment, which accepts deployments from
 `main` only. Deploys run one at a time and never move the host to an older
 commit. See [hosted deployment](deploy.md).
+
+## D057: Measurement decisions from compiler thresholds, November 4, 2026
+
+The app asks for a measurement (#149) only when a confirmed value can change a
+supported decision: whether a saved sheet or tape can be used by the stand
+search, or whether a built stand's modeled tipping result can be computed.
+Sheet and tape thresholds are found by compiling the smallest searched design
+on hypothetical stock, never by a second geometry rule; that stock never
+becomes a candidate. Questions follow a fixed order with stock-ID ties and no
+probabilities or effort scores. Answers use the existing inventory confirmation
+or the #146 measurement form; a "measurement unavailable" marker is the only new
+record. Unbuilt candidates' stability returns "physical test or model extension
+required" rather than reusing another stand's measurements.
+
+Thresholds are computed per sheet material, only over reviewed tape and fold
+profile pairs for that material, and are reported in 0.1 mm steps; a confirmed
+value below a rounded threshold is decided by compiling at that exact value. A
+compiler refusal of unlimited stock for an input reason (for example missing
+profile evidence) is reported as unsupported, not as infeasible.
+
+Server design settings are reviewed for one inventory revision. When the
+current revision has none, the newest earlier revision that has them is used
+for stock that is still the same item: the same stable stock ID, kind and
+material in every saved revision since, read from the inventory route's own
+receipts. Only measured facts may differ, and the search, compiler and
+fabrication report recheck them. Stock added, removed and re-added, or changed
+in kind or material is left out of the search and named; removed stock is
+named; a changed tool list drops only the tool confirmation. Evidence is used
+exactly as recorded and never renewed or confirmed. The revision's own
+settings always win, an invalid or unreadable earlier entry is never used,
+and without a complete history the operator prerequisite stays.
+
+## D058 - Hosted SAM photo localization; no generated 3D physics (November 4, 2026)
+
+Connect the existing SAM 3.1 gateway to explicitly consented, private JPEG/PNG
+photo localization. Source-pixel boxes and a manually adjustable fallback produce
+an unverified, locally reviewed named photo reference. They never create stock,
+measure millimeters, infer density/COM, alter canonical geometry or record evidence.
+Exact-body browser recovery receipts and server pending/terminal receipts prevent
+silent repeated paid requests; unknown outcomes require operator reconciliation.
+
+The official [model catalog](https://dev.meta.ai/docs/models) lists hosted SAM 3.1;
+[SAM documentation](https://dev.meta.ai/docs/sam/overview) defines source-pixel
+boxes and valid empty matches. This slice consumes boxes only, not masks.
+[SAM 3D Objects setup](https://github.com/facebookresearch/sam-3d-objects/blob/main/doc/setup.md)
+requires Linux and at least 32 GB GPU memory; the inspected local GTX 1660 Ti has
+6144 MiB. Reconstructed hidden surfaces would be proposals, not measured material
+or center-of-mass evidence. No 3D hosting or dependency is added. Future calibrated
+multi-view reconstruction needs a separate evidence contract before physical use.
+No live SAM inference or physical acceptance is claimed by this implementation.
+
+## D059: Inspect canonical assembly geometry in the manual, November 3, 2026
+
+The user requested issue #152 after the canonical geometry baseline merged.
+The active manual adds an owner-scoped assembly viewer using that producer's
+exact facets, part IDs, stage and geometry hash. The display adapter projects
+those coordinates; orbit, zoom and separated-part offsets change presentation
+only. Selecting a part or operation navigates the existing manual and records
+no physical work.
+
+This explicitly authorizes the scoped viewer despite the earlier physical-P0
+pause on optional 3D presentation. Unsupported partial, damaged, detached or
+repaired states retain the authoritative SVG/history fallback. Planned and
+user-reported assembly remain nominal; absent matching numerical overlays are
+shown as unavailable. No camera action dispatches analysis or changes evidence.

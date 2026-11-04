@@ -7,6 +7,7 @@ import {
   loadPlan,
 } from "../lib/api";
 import AdaptWorkbench from "./adapt-workbench";
+import ActiveMeasurement from "./active-measurement";
 import DesignCandidates from "./design-candidates";
 import FabricationReportPanel from "./fabrication-report/fabrication-report-panel";
 import { operationTitles } from "../lib/operation-titles";
@@ -26,6 +27,7 @@ import MuseRequestStatus from "./muse-request-status";
 import { useMuseLanguage } from "./muse-language-provider";
 import PhysicalProgress from "./physical-progress";
 import StabilityReportPanel from "./stability-report";
+import AssemblyView from "./assembly-view";
 import type {
   DesignGenerateRequest,
   DesignGenerateResult,
@@ -600,6 +602,12 @@ export default function PlanWorkbench({
           </div>
         )}
       </div>
+      <ActiveMeasurement
+        token={token}
+        project={project}
+        disabled={approvalDisabled || pending !== null || saving}
+        onSaved={onReload}
+      />
       {!project.active_version_id && (
         <DesignCandidates
           token={token}
@@ -765,6 +773,33 @@ export default function PlanWorkbench({
                 />
               )}
             </article>
+          )}
+          {current && version && (
+            <AssemblyView
+              key={`assembly:${project.id}:${version.version_id}`}
+              token={token}
+              projectId={project.id}
+              planVersionId={version.version_id}
+              inventoryRevisionId={project.revision_id}
+              refreshKey={
+                stabilityRefresh +
+                measurementRefresh +
+                (diagnosisRefreshKey ?? 0)
+              }
+              selectedOperationId={panel?.operation_id ?? null}
+              disabled={
+                approvalDisabled ||
+                pending !== null ||
+                progressPending ||
+                measurementPending
+              }
+              onSelectOperation={(operationId) => {
+                const index = version.manual.panels.findIndex(
+                  (item) => item.operation_id === operationId,
+                );
+                if (index >= 0) setStep(index);
+              }}
+            />
           )}
           {current && version && (
             <StabilityReportPanel
