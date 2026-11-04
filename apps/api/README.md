@@ -1,5 +1,11 @@
 # API and orchestration
 
+POST `/api/projects/{id}/photo-localizations` sends a selected private JPEG/PNG
+photo and one named concept to SAM only after explicit transfer consent. It returns
+unverified source-pixel boxes; exact-body receipts prevent repeat dispatch, and
+unknown outcomes block new keys. This route disables automatic transport retries
+and writes no stock or physical evidence. See the [localization handoff](../../docs/handoffs/issue-4-photo-localization.md).
+
 POST `/api/projects/{id}/construction/propose` asks MetaMuse for named geometry
 using saved materials, the goal and an optionally consented private photo. The
 engine generates steps and checks fabrication; it never activates the proposal.

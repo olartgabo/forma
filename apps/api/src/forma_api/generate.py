@@ -43,10 +43,15 @@ from forma_api.intake_runtime import (
     IntakeResult,
 )
 from forma_api.media import Media, MediaDeleteResult, MediaList, MediaResult
+from forma_api.model_gateway import Box
 from forma_api.muse_construction import (
     MuseConstructionCandidateResult,
     MuseConstructionRequest,
     MuseConstructionResult,
+)
+from forma_api.photo_localization import (
+    PhotoLocalizationRequest,
+    PhotoLocalizationResult,
 )
 from forma_api.plans import (
     ActivationResult,
@@ -147,6 +152,7 @@ from forma_domain.repair_search_contracts import (
 )
 
 API_RECORDS = (
+    Box,
     MuseConstructionRequest,
     MuseConstructionResult,
     MuseConstructionCandidateResult,
@@ -216,6 +222,8 @@ API_RECORDS = (
     IntakeObservation,
     IntakeRequest,
     IntakeResult,
+    PhotoLocalizationRequest,
+    PhotoLocalizationResult,
     InventoryUpdate,
     ManualBillItem,
     ManualDocument,
