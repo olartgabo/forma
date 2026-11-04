@@ -26,6 +26,7 @@ apps/web/next-env.d.ts
 *.sqlite3
 data/physical-tests/private/
 uploads/
+/output/pipeline-walkthrough/
 *.log
 
 # Machine-specific notes

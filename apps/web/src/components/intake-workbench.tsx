@@ -41,6 +41,7 @@ import DesignReadinessPanel from "./design-readiness-panel";
 import PlanWorkbench from "./plan-workbench";
 import ProofWorkbench from "./proof-workbench";
 import SavedProjectsPanel from "./saved-projects-panel";
+import ShoppingSourcing from "./shopping-sourcing";
 import {
   emptyRequirements,
   requirementsError,
@@ -207,6 +208,11 @@ export default function IntakeWorkbench() {
               <p className="scope-note">
                 Check physical fit and stability by hand.
               </p>
+              <p>
+                <a href="/walkthrough">
+                  Explore a filled-in project, start to finish →
+                </a>
+              </p>
             </div>
             <figure className="welcome-drawing">
               <svg viewBox="0 0 540 395" aria-hidden="true">
@@ -309,6 +315,7 @@ function ProjectWorkbench({
   disconnect: () => void;
 }) {
   const [project, setProject] = useState<Project | null>(null);
+  const [shoppingOpen, setShoppingOpen] = useState(false);
   const [goal, setGoal] = useState("");
   const [openId, setOpenId] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
@@ -726,6 +733,28 @@ function ProjectWorkbench({
         availability={museAvailability}
         onRetry={loadProviderStatus}
       />
+      <div className="session-bar">
+        <button
+          type="button"
+          className="secondary"
+          aria-expanded={shoppingOpen}
+          aria-controls="shopping-list"
+          onClick={() => setShoppingOpen((value) => !value)}
+        >
+          {shoppingOpen ? "Close shopping list" : "Shopping list"}
+        </button>
+        <p className="help">
+          Find materials and suppliers for a saved project.
+        </p>
+      </div>
+      {shoppingOpen && (
+        <ShoppingSourcing
+          key={token}
+          token={token}
+          disabled={locked}
+          onOpen={(id) => void openProject(id)}
+        />
+      )}
       <div className="status-area" aria-live="polite" aria-atomic="true">
         {notice && <p className="notice">{notice}</p>}
         {error && (

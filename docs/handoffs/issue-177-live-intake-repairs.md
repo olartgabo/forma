@@ -1,6 +1,6 @@
 # Issue #177 follow-up: live intake repairs
 
-Branch `issue/live-intake-repairs` (PR #188). Decision D068, which is one
+Branch `issue/live-intake-repairs` (PR #188). Decision D070, which is one
 implementation with D066 and D067 (#186/#187). Follows the material
 catalog (D062, `issue-177-material-catalog.md`) and the photo estimator
 (`issue-177-photo-measurement.md`).
@@ -169,4 +169,4 @@ fallback estimate, and 11,739 + 3,863 Spark tokens (3,515 reasoning).
 - The out-of-view error for missing reference lines (above) is not fixed.
 - SAM-to-estimator success has not been observed on any image.
 - The overlapping `fix/intake-failure-diagnostics` work landed on main as
-  #186/#187 and is merged here as one implementation (D068).
+  #186/#187 and is merged here as one implementation (D070).

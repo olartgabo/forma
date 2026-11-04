@@ -120,6 +120,26 @@ from forma_api.repair_runtime import (
 )
 from forma_api.repair_search_runtime import RepairSearchRequest, RepairSearchResult
 from forma_api.routes.health import ProviderStatusResponse
+from forma_api.sourcing import (
+    OfferObservation,
+    ResearchRequest,
+    ResearchRun,
+    SourcingErrorResponse,
+    SourcingNeed,
+    SourcingNeeds,
+    SourcingUsage,
+)
+from forma_api.sourcing_location import (
+    ConfirmedLocation,
+    LocationChoice,
+    LocationReverseRequest,
+    LocationReverseResponse,
+    LocationSearchRequest,
+    LocationSearchResponse,
+    NearbyPlace,
+    NearbyRequest,
+    NearbyResponse,
+)
 from forma_api.stability_measurements import (
     StabilityMeasurementRequest,
     StabilityMeasurementResponse,
@@ -180,6 +200,22 @@ from forma_domain.repair_search_contracts import (
 )
 
 API_RECORDS = (
+    OfferObservation,
+    ResearchRequest,
+    ResearchRun,
+    SourcingErrorResponse,
+    SourcingNeed,
+    SourcingNeeds,
+    SourcingUsage,
+    ConfirmedLocation,
+    LocationChoice,
+    LocationSearchRequest,
+    LocationSearchResponse,
+    LocationReverseRequest,
+    LocationReverseResponse,
+    NearbyPlace,
+    NearbyRequest,
+    NearbyResponse,
     AssemblyViewResponse,
     Box,
     MuseConstructionRequest,

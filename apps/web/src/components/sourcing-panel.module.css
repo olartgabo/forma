@@ -1,0 +1,42 @@
+.panel {
+  border: 1px solid currentColor;
+  padding: clamp(16px, 4vw, 32px);
+  margin-block: 16px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.panel :is(input, select, textarea) {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.panel :is(ul, ol) {
+  padding-inline-start: 24px;
+}
+
+.panel fieldset {
+  min-width: 0;
+}
+
+.panel a {
+  overflow-wrap: anywhere;
+}
+
+.paperButton {
+  background: var(--paper, #f8f5ed);
+  color: var(--ink, #1e2822);
+  border: 1px solid currentColor;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.paperButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.paperButton:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 3px;
+}
