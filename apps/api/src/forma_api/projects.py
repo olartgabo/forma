@@ -452,6 +452,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     from forma_api.routes.diagnosis import diagnosis_router
     from forma_api.routes.fabrication import fabrication_router
     from forma_api.routes.intake import intake_router
+    from forma_api.routes.measurement_decisions import measurement_router
     from forma_api.routes.muse_construction import muse_construction_router
     from forma_api.routes.repair_search import repair_search_router
     from forma_api.routes.repairs import repairs_router
@@ -481,4 +482,5 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     router.include_router(repair_search_router(store, authenticate))
     router.include_router(synthesis_router(store, authenticate))
     router.include_router(synthesis_muse_router(store, authenticate))
+    router.include_router(measurement_router(store, authenticate))
     return router

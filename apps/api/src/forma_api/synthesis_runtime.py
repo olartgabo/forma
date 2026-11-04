@@ -23,7 +23,7 @@ from forma_synthesizer import (
 )
 from pydantic import Field
 
-from forma_api import design_context
+from forma_api import design_context, settings_lineage
 from forma_api.adapt import RepairBase, confirmed_remaining
 from forma_api.plans import CompilePreview, PlanCompileResult, PlanService
 from forma_api.projects import Key, Project, ProjectError, ProjectStore
@@ -135,9 +135,14 @@ def resolve(store, owner, project_id, body, resolver) -> SearchInput:
         last_event_id = _last_event_id(connection, project_id)
         _require_current(project, last_event_id, body)
         measurements = _measurements(connection, project_id)
+        revisions = settings_lineage.history(connection, owner, project)
     # Manifest I/O happens outside the transaction, as in the design route;
-    # the identity is rechecked afterwards.
-    resolved = resolver(project_id, project.revision_id)
+    # the identity is rechecked afterwards. Settings reviewed for an earlier
+    # revision apply only to the same stock items (#149).
+    settings = settings_lineage.settings_for(
+        project, revisions, resolver, resolver(project_id, project.revision_id)
+    )
+    resolved = settings.resolved
     with store.transaction() as connection:
         again = store.read(connection, owner, project_id)
         _require_current(again, _last_event_id(connection, project_id), body)
@@ -156,7 +161,9 @@ def resolve(store, owner, project_id, body, resolver) -> SearchInput:
             context_fingerprint=resolved.fingerprint,
             measurement_record_ids=tuple(b.record_id for b in measurements),
         ),
-        stocks=project.stocks,
+        stocks=project.stocks
+        if settings.covered is None
+        else tuple(s for s in project.stocks if s.id in settings.covered),
         constraints=requirements.constraints if requirements else None,
         process=resolved.process,
         parameters=resolved.parameters,
@@ -166,6 +173,12 @@ def resolve(store, owner, project_id, body, resolver) -> SearchInput:
         declared_tools=tuple(requirements.tools) if requirements else None,
         measurements=measurements,
         context_blockers=blockers,
+        settings_notes=settings.notes,
+        uncovered_stock_ids=tuple(
+            s.id
+            for s in project.stocks
+            if settings.covered is not None and s.id not in settings.covered
+        ),
         allow_synthetic=ALLOW_SYNTHETIC,
     )
 

@@ -104,6 +104,11 @@ class SearchInput:
     declared_tools: tuple[str, ...] | None
     measurements: tuple[MeasurementBasis, ...] = ()
     context_blockers: tuple[m.Blocker, ...] = ()
+    # Informational notes on which design settings apply (#149). They never
+    # block; the settings fingerprint in ``identity`` already binds them.
+    settings_notes: tuple[str, ...] = ()
+    # Saved stock left out because the settings in use do not cover it.
+    uncovered_stock_ids: tuple[str, ...] = ()
     allow_synthetic: bool = False
 
 

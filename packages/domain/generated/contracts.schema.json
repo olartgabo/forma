@@ -2382,6 +2382,51 @@
       "title": "ConsumableJointArgs",
       "type": "object"
     },
+    "CurrentValue": {
+      "additionalProperties": false,
+      "description": "What is saved now. An unconfirmed value is an estimate, never a fact.",
+      "properties": {
+        "confirmed": {
+          "title": "Confirmed",
+          "type": "boolean"
+        },
+        "source": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "unit": {
+          "enum": [
+            "mm",
+            "g",
+            "deg",
+            "none"
+          ],
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "unit",
+        "source",
+        "confirmed"
+      ],
+      "title": "CurrentValue",
+      "type": "object"
+    },
     "CutRect": {
       "additionalProperties": false,
       "properties": {
@@ -2624,6 +2669,188 @@
       "title": "CutSlotArgs",
       "type": "object"
     },
+    "DecisionChange": {
+      "additionalProperties": false,
+      "description": "Before/after comparison of two decisions for the same project.",
+      "properties": {
+        "after": {
+          "$ref": "#/$defs/MeasurementDecision"
+        },
+        "after_decision_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "After Decision Id",
+          "type": "string"
+        },
+        "before_decision_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Before Decision Id",
+          "type": "string"
+        },
+        "changed_facts": {
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 328,
+          "title": "Changed Facts",
+          "type": "array"
+        },
+        "decision_changed": {
+          "title": "Decision Changed",
+          "type": "boolean"
+        },
+        "explanation": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Explanation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "before_decision_id",
+        "after_decision_id",
+        "changed_facts",
+        "decision_changed",
+        "explanation",
+        "after"
+      ],
+      "title": "DecisionChange",
+      "type": "object"
+    },
+    "DecisionIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "active_version_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Active Version Id"
+        },
+        "context_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Context Fingerprint",
+          "type": "string"
+        },
+        "declined_target_keys": {
+          "items": {
+            "pattern": "^[a-z_]+:[A-Za-z0-9_-]{1,96}:[a-z_]+$",
+            "type": "string"
+          },
+          "maxItems": 160,
+          "title": "Declined Target Keys",
+          "type": "array"
+        },
+        "inventory_revision_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Inventory Revision Id",
+          "type": "string"
+        },
+        "last_event_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Event Id"
+        },
+        "measurement_record_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Measurement Record Ids",
+          "type": "array"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "rule_version": {
+          "const": "measurement-decision-v1",
+          "default": "measurement-decision-v1",
+          "title": "Rule Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "inventory_revision_id",
+        "active_version_id",
+        "last_event_id",
+        "context_fingerprint",
+        "measurement_record_ids",
+        "declined_target_keys"
+      ],
+      "title": "DecisionIdentity",
+      "type": "object"
+    },
+    "DecisionThreshold": {
+      "additionalProperties": false,
+      "description": "The governing predicate, computed by the compiler or a cited rule.",
+      "properties": {
+        "basis": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Basis",
+          "type": "string"
+        },
+        "comparison": {
+          "enum": [
+            "at_least",
+            "within"
+          ],
+          "title": "Comparison",
+          "type": "string"
+        },
+        "lower": {
+          "title": "Lower",
+          "type": "number"
+        },
+        "unit": {
+          "enum": [
+            "mm",
+            "g",
+            "deg",
+            "m"
+          ],
+          "title": "Unit",
+          "type": "string"
+        },
+        "upper": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upper"
+        }
+      },
+      "required": [
+        "comparison",
+        "lower",
+        "unit",
+        "basis"
+      ],
+      "title": "DecisionThreshold",
+      "type": "object"
+    },
     "DesignCandidate": {
       "additionalProperties": false,
       "properties": {
@@ -2731,6 +2958,50 @@
         "questions"
       ],
       "title": "DesignProposals",
+      "type": "object"
+    },
+    "DesignSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Candidate Ids",
+          "type": "array"
+        },
+        "nodes_evaluated": {
+          "minimum": 0,
+          "title": "Nodes Evaluated",
+          "type": "integer"
+        },
+        "nodes_total": {
+          "minimum": 0,
+          "title": "Nodes Total",
+          "type": "integer"
+        },
+        "search_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Search Id",
+          "type": "string"
+        },
+        "status": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "search_id",
+        "status",
+        "candidate_ids",
+        "nodes_evaluated",
+        "nodes_total"
+      ],
+      "title": "DesignSummary",
       "type": "object"
     },
     "Detach": {
@@ -5199,6 +5470,338 @@
       "title": "Measurement",
       "type": "object"
     },
+    "MeasurementDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "decision_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Decision Id",
+          "type": "string"
+        },
+        "design": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DesignSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "facts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SavedFact"
+          },
+          "maxItems": 160,
+          "title": "Facts",
+          "type": "array"
+        },
+        "identity": {
+          "$ref": "#/$defs/DecisionIdentity"
+        },
+        "invalidated": {
+          "default": [],
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Invalidated",
+          "type": "array"
+        },
+        "missing_capabilities": {
+          "default": [],
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Missing Capabilities",
+          "type": "array"
+        },
+        "outcome": {
+          "enum": [
+            "question",
+            "none_needed",
+            "no_feasible_candidate",
+            "unsupported",
+            "physical_test_required",
+            "budget_exhausted"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "pending_questions": {
+          "minimum": 0,
+          "title": "Pending Questions",
+          "type": "integer"
+        },
+        "physical_verification": {
+          "const": "not_attempted",
+          "default": "not_attempted",
+          "title": "Physical Verification",
+          "type": "string"
+        },
+        "question": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MeasurementQuestion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reasons": {
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Reasons",
+          "type": "array"
+        },
+        "selection_rule": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Selection Rule",
+          "type": "string"
+        },
+        "settings": {
+          "default": [],
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 48,
+          "title": "Settings",
+          "type": "array"
+        },
+        "stability": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StabilitySummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "decision_id",
+        "identity",
+        "outcome",
+        "pending_questions",
+        "reasons",
+        "selection_rule"
+      ],
+      "title": "MeasurementDecision",
+      "type": "object"
+    },
+    "MeasurementQuestion": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_candidate_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Affected Candidate Ids",
+          "type": "array"
+        },
+        "affected_case_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Affected Case Ids",
+          "type": "array"
+        },
+        "capture": {
+          "enum": [
+            "inventory",
+            "requirements",
+            "stability_measurements"
+          ],
+          "title": "Capture",
+          "type": "string"
+        },
+        "current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CurrentValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "method": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Method",
+          "type": "string"
+        },
+        "precision_basis": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Precision Basis",
+          "type": "string"
+        },
+        "question_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Question Id",
+          "type": "string"
+        },
+        "required_precision": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required Precision"
+        },
+        "target": {
+          "$ref": "#/$defs/MeasurementTarget"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionThreshold"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "unit": {
+          "enum": [
+            "mm",
+            "g",
+            "deg",
+            "batch"
+          ],
+          "title": "Unit",
+          "type": "string"
+        },
+        "where": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Where",
+          "type": "string"
+        },
+        "why": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "question_id",
+        "target",
+        "unit",
+        "method",
+        "where",
+        "precision_basis",
+        "why",
+        "capture"
+      ],
+      "title": "MeasurementQuestion",
+      "type": "object"
+    },
+    "MeasurementTarget": {
+      "additionalProperties": false,
+      "description": "Exactly what to measure. ``key`` is stable across inventory revisions.",
+      "properties": {
+        "key": {
+          "pattern": "^[a-z_]+:[A-Za-z0-9_-]{1,96}:[a-z_]+$",
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "stock",
+            "requirement",
+            "assembled_stand"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "pieces": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PieceReference"
+          },
+          "maxItems": 8,
+          "title": "Pieces",
+          "type": "array"
+        },
+        "property": {
+          "enum": [
+            "width_mm",
+            "height_mm",
+            "thickness_mm",
+            "remaining_length_mm",
+            "usable_region",
+            "device_mass_g",
+            "support_angle_deg",
+            "max_footprint_width_mm",
+            "max_footprint_height_mm",
+            "assembled_stand"
+          ],
+          "title": "Property",
+          "type": "string"
+        },
+        "stock_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stock Id"
+        }
+      },
+      "required": [
+        "key",
+        "kind",
+        "property",
+        "label"
+      ],
+      "title": "MeasurementTarget",
+      "type": "object"
+    },
     "MechanicalSnapshot": {
       "additionalProperties": false,
       "description": "Mechanical consumer projection, supplied by the canonical pose producer.\n\nThis is not a scene/pose producer. Nominal and observed are declarations,\nnever inferred evidence. Contacts and rigid-body applicability are explicit.",
@@ -6601,6 +7204,39 @@
       "title": "RigidTransform",
       "type": "object"
     },
+    "SavedFact": {
+      "additionalProperties": false,
+      "description": "A saved input the decision depends on, for showing what changed.",
+      "properties": {
+        "confirmed": {
+          "title": "Confirmed",
+          "type": "boolean"
+        },
+        "key": {
+          "pattern": "^[a-z_]+:[A-Za-z0-9_-]{1,96}:[a-z_]+$",
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "key",
+        "confirmed"
+      ],
+      "title": "SavedFact",
+      "type": "object"
+    },
     "SearchBudget": {
       "additionalProperties": false,
       "description": "Node budget is deterministic; the time budget is a guard reported apart.",
@@ -7127,6 +7763,67 @@
         "coverage"
       ],
       "title": "StabilityReport",
+      "type": "object"
+    },
+    "StabilitySummary": {
+      "additionalProperties": false,
+      "properties": {
+        "analysis_status": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Analysis Status",
+          "type": "string"
+        },
+        "case_margins_m": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+                "type": "string"
+              },
+              {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            ],
+            "type": "array"
+          },
+          "maxItems": 8,
+          "title": "Case Margins M",
+          "type": "array"
+        },
+        "plan_version_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Plan Version Id",
+          "type": "string"
+        },
+        "required_margin_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required Margin M"
+        }
+      },
+      "required": [
+        "plan_version_id",
+        "analysis_status",
+        "case_margins_m"
+      ],
+      "title": "StabilitySummary",
       "type": "object"
     },
     "StageAnalysisResult": {

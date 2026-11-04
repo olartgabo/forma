@@ -2,7 +2,7 @@
 // exact body and key so a completed request replays on the server instead of
 // saving a second preview or dispatching MetaMuse again. Scoped to a SHA-256
 // digest of the owner credential and the project.
-const MAX_LENGTH = 16384;
+const MAX_LENGTH = 262144;
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,95}$/;
 
 function object(v: unknown): v is Record<string, unknown> {
@@ -16,6 +16,12 @@ export type Receipts<T> = {
     storage?: Storage,
   ): Promise<T | null>;
   retain(
+    token: string,
+    projectId: string,
+    body: T,
+    storage?: Storage,
+  ): Promise<void>;
+  replace(
     token: string,
     projectId: string,
     body: T,
@@ -97,6 +103,22 @@ export function receipts<T>(
       const prior = read(key, projectId, storage);
       if (prior && JSON.stringify(prior) === JSON.stringify(body))
         storage.removeItem(key);
+    },
+    async replace(token, projectId, body, storage = local()) {
+      if (!valid(body))
+        throw new Error(`The ${what} cannot be safely retained.`);
+      const key = await storageKey(token, projectId);
+      // Validate any existing record, then replace it in one storage write.
+      // A failed setItem leaves the previous comparison point available.
+      read(key, projectId, storage);
+      const serialized = JSON.stringify({
+        version: 1,
+        project_id: projectId,
+        body,
+      });
+      storage.setItem(key, serialized);
+      if (storage.getItem(key) !== serialized)
+        throw new Error(`The browser could not update the ${what}.`);
     },
     async discard(token, projectId, storage = local()) {
       storage.removeItem(await storageKey(token, projectId));

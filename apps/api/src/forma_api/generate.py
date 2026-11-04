@@ -42,6 +42,11 @@ from forma_api.intake_runtime import (
     IntakeRequest,
     IntakeResult,
 )
+from forma_api.measurement_runtime import (
+    DecisionRequest,
+    RecalculateRequest,
+    UnavailableRequest,
+)
 from forma_api.media import Media, MediaDeleteResult, MediaList, MediaResult
 from forma_api.model_gateway import Box
 from forma_api.muse_construction import (
@@ -263,6 +268,9 @@ API_RECORDS = (
     SynthesisMuseRequest,
     SynthesisMuseResult,
     SynthesisProbeRequest,
+    DecisionRequest,
+    RecalculateRequest,
+    UnavailableRequest,
     SynthesisSearchRequest,
     SynthesisSelectRequest,
 )
