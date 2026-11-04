@@ -8,9 +8,9 @@ The official [structured output recipe](https://dev.meta.ai/docs/cookbook/struct
 
 [Image understanding](https://dev.meta.ai/docs/image-understanding) documents inline base64 images. The [tool recipe](https://dev.meta.ai/docs/cookbook/tool-function-calling) requires replaying the assistant tool call before its matching tool result. The spike forces one deterministic measurement check, validates its arguments/result, then requests typed final observations.
 
-[SAM overview](https://dev.meta.ai/docs/sam/overview) documents `sam-3.1` at `POST https://api.meta.ai/v1/responses`, including nonstreaming responses. [Segmentation prompts](https://dev.meta.ai/docs/sam/segmenting) describes single-concept prompts and inclusive pixel box tokens. The spike extracts validated boxes only; mask decoding and overlays are not implemented.
+[SAM overview](https://dev.meta.ai/docs/sam/overview) documents `sam-3.1` at `POST https://api.meta.ai/v1/responses`, including nonstreaming responses. [Segmentation prompts](https://dev.meta.ai/docs/sam/segmenting) describes single-concept prompts and inclusive pixel box tokens. The gateway extracts validated boxes only. The November 4 connected photo-localization panel overlays source-pixel boxes with manual correction; mask decoding remains unimplemented.
 
-These facts were read on October 30, 2026 and have not been re-verified since.
+These facts were read on October 30, 2026. The SAM overview was rechecked November 4, 2026; other protocol claims above were not rechecked in that task.
 
 ## Actual evidence
 
@@ -64,7 +64,7 @@ A second, separate set. It is not merged into the table above; its counts are no
 | Latency, usage and billed cost                        | Four samples (two per route)   | Not a distribution; no billed cost recorded                                                                       |
 | Design, repair and replanning with a live model       | Not requested                  | Receipts cover intake and diagnosis only                                                                          |
 | Manual box/label fallback primitive                   | Offline tested                 | Box validates label and inclusive image bounds without key/network                                                |
-| SAM masks/overlay UI                                  | Not implemented                | Caller must implement image review/correction                                                                     |
+| SAM box overlay/manual correction                    | Offline API/browser tested     | [Localization handoff](handoffs/issue-4-photo-localization.md); masks and live SAM remain unverified              |
 | Physical success                                      | Not tested                     | Gateway has no physical-state authority                                                                           |
 
 Intake and diagnosis output is untrusted proposal data. The receipts do not establish measured dimensions, stock, part identity, failure cause or any physical pass. Mocked responses in tests remain synthetic protocol cases. No guessed privacy-mode field is sent. Confirm Standard account privacy/retention settings and permitted region before private media use.
@@ -88,7 +88,7 @@ Keep the photo outside git. PNG/JPEG input is limited to 5 MB with signature che
 
 ## Bounds and handoff
 
-The server-only adapter adds no route or state commits. Defaults, copied from `apps/api/src/forma_api/model_gateway.py`: four model rounds (configurable downward), 20-second per-call timeout (maximum 30), 60-second job budget (maximum 120), 2 MB response, `max_completion_tokens` 2,048, one tool execution and 32 SAM boxes.
+The server-only adapter itself adds no state commits. The separate connected photo-localization route records only request receipts and never physical state. Defaults, copied from `apps/api/src/forma_api/model_gateway.py`: four model rounds (configurable downward), 20-second per-call timeout (maximum 30), 60-second job budget (maximum 120), 2 MB response, `max_completion_tokens` 2,048, one tool execution and 32 SAM boxes.
 
 **Retries.** `MetaGateway` retries each call at most `max_retries` times: default 1, allowed 0 to 2. Only HTTP 429, 500, 502, 503 and 504 are retryable. The wait is the valid `Retry-After` delta-seconds, otherwise 1.0 second, never more than 3.0 seconds. A retry happens only if at least 2.0 seconds of the job budget would remain after the wait; otherwise the original error is raised without sleeping. Retries do not consume model rounds and each attempt records its own trace. Never retried: timeout, network error, invalid or oversized response, authentication (401), access denied (403), budget exhausted and round limit. Refusals, malformed or truncated JSON and invalid tools also stop the proposal. When a failed attempt reports no usage, the aggregate usage is unknown, not zero. Tests: `test_retryable_rate_limit_once_then_success`, `test_retry_delay_uses_retry_after_capped`, `test_non_retryable_errors_never_retried`, `test_at_most_max_retries_per_call` and `test_no_sleep_when_remaining_after_wait_under_two_seconds`.
 

@@ -63,6 +63,17 @@ export type AssemblyViewResponse = {
   readonly "overlay_coverage"?: "unavailable";
 };
 
+export type Box = {
+  readonly "label": string;
+  readonly "x1": number;
+  readonly "y1": number;
+  readonly "x2": number;
+  readonly "y2": number;
+  readonly "width": number;
+  readonly "height": number;
+  readonly "source"?: "manual" | "sam";
+};
+
 export type BuildRequirements = {
   readonly "tools": ReadonlyArray<string>;
   readonly "device_description"?: (string | null);
@@ -450,6 +461,27 @@ export type PanelDiff = {
   readonly "changed_from": ReadonlyArray<number>;
   readonly "added": ReadonlyArray<number>;
   readonly "removed": ReadonlyArray<number>;
+};
+
+export type PhotoLocalizationRequest = {
+  readonly "media_id": string;
+  readonly "expected_revision_id": string;
+  readonly "idempotency_key": string;
+  readonly "concept": string;
+  readonly "provider_transfer_consented"?: boolean;
+};
+
+export type PhotoLocalizationResult = {
+  readonly "project_id": string;
+  readonly "revision_id": string;
+  readonly "media_id": string;
+  readonly "width_px": number;
+  readonly "height_px": number;
+  readonly "boxes": ReadonlyArray<Box>;
+  readonly "model": string;
+  readonly "usage": ProviderUsage;
+  readonly "physical_status"?: "unverified_photo_annotation";
+  readonly "replayed"?: boolean;
 };
 
 export type PlanActivation = {

@@ -775,6 +775,25 @@ only this repository's `production` environment, which accepts deployments from
 `main` only. Deploys run one at a time and never move the host to an older
 commit. See [hosted deployment](deploy.md).
 
+## D058 - Hosted SAM photo localization; no generated 3D physics (November 4, 2026)
+
+Connect the existing SAM 3.1 gateway to explicitly consented, private JPEG/PNG
+photo localization. Source-pixel boxes and a manually adjustable fallback produce
+an unverified, locally reviewed named photo reference. They never create stock,
+measure millimeters, infer density/COM, alter canonical geometry or record evidence.
+Exact-body browser recovery receipts and server pending/terminal receipts prevent
+silent repeated paid requests; unknown outcomes require operator reconciliation.
+
+The official [model catalog](https://dev.meta.ai/docs/models) lists hosted SAM 3.1;
+[SAM documentation](https://dev.meta.ai/docs/sam/overview) defines source-pixel
+boxes and valid empty matches. This slice consumes boxes only, not masks.
+[SAM 3D Objects setup](https://github.com/facebookresearch/sam-3d-objects/blob/main/doc/setup.md)
+requires Linux and at least 32 GB GPU memory; the inspected local GTX 1660 Ti has
+6144 MiB. Reconstructed hidden surfaces would be proposals, not measured material
+or center-of-mass evidence. No 3D hosting or dependency is added. Future calibrated
+multi-view reconstruction needs a separate evidence contract before physical use.
+No live SAM inference or physical acceptance is claimed by this implementation.
+
 ## D059: Inspect canonical assembly geometry in the manual, November 3, 2026
 
 The user requested issue #152 after the canonical geometry baseline merged.

@@ -59,9 +59,9 @@ The inventory form also saves available tools, a device description, confirmed
 device mass/viewing angle/footprint limits and willingness to get more material.
 Blank measurements stay unknown; editing a value or its source clears confirmation.
 Requirements and stock share one revision and retry payload. Photos do not produce
-measurements or physical evidence. Segmentation boxes,
-live proposals, repair revision screens and full cross-version Proof remain
-pending. See the [intake handoff](../../docs/handoffs/issue-7-intake.md).
+measurements or physical evidence. SAM source-pixel boxes and a numeric manual-box fallback now support local
+unverified photo-region review; see the [localization handoff](../../docs/handoffs/issue-4-photo-localization.md).
+Live SAM acceptance remains pending. See the [intake handoff](../../docs/handoffs/issue-7-intake.md).
 The [requirements handoff](../../docs/handoffs/issue-7-requirements.md) documents
 the persisted planning inputs and consumer boundary.
 
