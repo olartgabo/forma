@@ -40,6 +40,13 @@ export default function Diagram({ panel }: { panel: ManualPanel }) {
           {enlarged ? "Fit diagram to screen" : "Enlarge diagram"}
         </button>
       </div>
+      {enlarged && (
+        <p className="diagram-pan-cue" id={`${panel.operation_id}-pan-cue`}>
+          The full drawing is wider than the screen. Swipe or scroll sideways to
+          see every dimension; with a keyboard, focus the drawing and use the
+          arrow keys.
+        </p>
+      )}
       <div
         className={`manual-diagram-frame${enlarged ? " enlarged" : ""}${blueprint ? " blueprint" : ""}`}
         tabIndex={enlarged ? 0 : undefined}
@@ -48,6 +55,9 @@ export default function Diagram({ panel }: { panel: ManualPanel }) {
           enlarged
             ? "Full-size diagram; scroll to inspect dimensions"
             : undefined
+        }
+        aria-describedby={
+          enlarged ? `${panel.operation_id}-pan-cue` : undefined
         }
       >
         <img
