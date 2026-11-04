@@ -740,10 +740,16 @@ export default function GuidedIntake({
   function referenceCorners(mediaId: string): Point[] {
     const drawn = reference[mediaId];
     if (drawn?.kind === "rectangle") return drawn.corners;
+    // Only complete geometry for the same reference type: all sixteen card
+    // corners, or four for a single marker. A partly found card is unknown.
+    const kind = (reference[mediaId] ?? (mediaId === photoId ? draft : null))
+      ?.kind;
     const earlier = records.find(
       (r) =>
         r.estimate.input.media_id === mediaId &&
-        r.estimate.reference_corners_px?.length,
+        r.estimate.input.reference.kind === kind &&
+        (r.estimate.reference_corners_px?.length ?? 0) ===
+          (kind === "forma_card" ? 16 : 4),
     );
     return (earlier?.estimate.reference_corners_px ?? []).map((p) => ({
       ...p,

@@ -131,6 +131,13 @@ a label-only answer validated as success.
   drawn rectangle or after an earlier estimate of the same photo. The
   estimator's own check still blocks a reference outline.
 - SAM-to-estimator success has not been observed on any image.
+- **Active builds:** a contradiction saved before this change in a project
+  with an active build is held at startup, and confirmation is withdrawn.
+  New contradictions are refused during a build. Repair search, repair
+  commit and fabrication reports for that active build do not yet check
+  confirmation (they check plan version and events), so they are not
+  blocked. Gating them belongs to the repair and fabrication engines
+  (@olartgabo); found in the final review.
 - An uncommitted `fix/intake-failure-diagnostics` branch in another worktree
   overlaps the failure diagnostics here (it adds validation-issue paths and
   is D066 there). The two need one canonical implementation when both land.
