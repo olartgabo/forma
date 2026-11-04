@@ -1,12 +1,15 @@
 "use client";
 // Guided photo-first intake (#177): photograph, review named cards, save,
 // then answer the one next measurement question that can change the result.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// Stock values live in the workbench's rows (one draft shared with Details);
+// this component keeps only display state such as names, boxes and outlines.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { requestIntakeObservation } from "../../lib/api";
 import {
   localizationReceipts,
   localizePhoto,
   LocalizationError,
+  validLocalizationRequest,
 } from "../../lib/photo-localization";
 import {
   EstimateRequestError,
@@ -15,19 +18,26 @@ import {
 } from "../../lib/photo-estimates";
 import type { MuseAvailability } from "../../lib/muse-provider";
 import type {
+  InventoryUpdate,
   Media,
   PhotoEstimateRecord,
   PhotoEstimateRequest,
   PhotoLocalizationRequest,
   Project,
+  UnavailableRequest,
 } from "../../lib/generated/api-contracts";
 import type { OutlineInput, Stock } from "../../lib/generated/contracts";
 import {
   answerBody,
+  answerReceipts,
   measurementApi,
   MeasurementRequestError,
+  unavailableReceipts,
   type Decision,
 } from "../active-measurement/client";
+// prettier-ignore
+// @ts-expect-error -- Node tests import TypeScript directly.
+import { receipts } from "../design-candidates/pending.ts";
 import PhotoCanvas, { type Mode } from "./photo-canvas";
 import {
   boxOutline,
@@ -53,8 +63,7 @@ import {
   type SizeField,
 } from "./model";
 
-type Card = {
-  stock: Stock;
+type Extra = {
   name: string;
   mediaId: string | null;
   materialGuessed: boolean;
@@ -62,59 +71,73 @@ type Card = {
   boxSource: "sam_box" | "manual_box";
   polygon: Point[] | null;
 };
+type Card = Extra & { stock: Stock };
+
+// Which material a retained SAM request was for, so a recovered result can
+// only attach to that material.
+type SamTarget = { request: PhotoLocalizationRequest; stock_id: string };
+const samTargets = receipts<SamTarget>(
+  "forma-guided-sam-target-v1:",
+  (v: unknown): v is SamTarget =>
+    !!v &&
+    typeof v === "object" &&
+    typeof (v as SamTarget).stock_id === "string" &&
+    validLocalizationRequest((v as SamTarget).request),
+  "SAM material",
+);
 
 const FIELD_LABEL: Record<SizeField, string> = {
   width_mm: "Longer side",
   height_mm: "Shorter side",
 };
 
-function cardsFor(
-  stocks: readonly Stock[],
+function extraFor(
+  stock: Stock,
   records: readonly PhotoEstimateRecord[],
-): Card[] {
-  return stocks.map((stock) => {
-    const record = latestRecord(records, stock.id);
-    const outline = record?.estimate.input.outline;
-    return {
-      stock,
-      name: nameFromId(stock.id),
-      mediaId: record?.estimate.input.media_id ?? stock.image_ids?.[0] ?? null,
-      materialGuessed: false,
-      box:
-        outline && outline.source !== "user_polygon"
-          ? {
-              x1: outline.x1!,
-              y1: outline.y1!,
-              x2: outline.x2!,
-              y2: outline.y2!,
-            }
-          : null,
-      boxSource: outline?.source === "sam_box" ? "sam_box" : "manual_box",
-      polygon:
-        outline?.source === "user_polygon"
-          ? (outline.polygon_px ?? []).map((p) => ({ ...p }))
-          : null,
-    };
-  });
+): Extra {
+  const record = latestRecord(records, stock.id);
+  const outline = record?.estimate.input.outline;
+  return {
+    name: nameFromId(stock.id),
+    mediaId: record?.estimate.input.media_id ?? stock.image_ids?.[0] ?? null,
+    materialGuessed: false,
+    box:
+      outline && outline.source !== "user_polygon"
+        ? { x1: outline.x1!, y1: outline.y1!, x2: outline.x2!, y2: outline.y2! }
+        : null,
+    boxSource: outline?.source === "sam_box" ? "sam_box" : "manual_box",
+    polygon:
+      outline?.source === "user_polygon"
+        ? (outline.polygon_px ?? []).map((p) => ({ ...p }))
+        : null,
+  };
 }
 
 export default function GuidedIntake({
   token,
   project,
   photos,
+  stocks,
+  dirty,
   disabled,
   inventoryStale,
   museAvailability,
+  onStocks,
   onSave,
   onProject,
 }: {
   token: string;
   project: Project;
   photos: Media[];
+  // The shared unsaved draft (the workbench rows) and whether it differs
+  // from the saved inventory.
+  stocks: readonly Stock[];
+  dirty: boolean;
   disabled: boolean;
   inventoryStale: boolean;
   museAvailability?: MuseAvailability;
-  onSave: (stocks: Stock[]) => void;
+  onStocks: (stocks: Stock[]) => void;
+  onSave: () => void;
   onProject: (project: Project) => void;
 }) {
   const api = useMemo(
@@ -122,9 +145,8 @@ export default function GuidedIntake({
     [token, project.id],
   );
   const [records, setRecords] = useState<PhotoEstimateRecord[]>([]);
-  const [cards, setCards] = useState<Card[]>(() =>
-    cardsFor(project.stocks ?? [], []),
-  );
+  const [extras, setExtras] = useState<Record<string, Extra>>({});
+  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const [photoId, setPhotoId] = useState("");
   const [reference, setReference] = useState<Record<string, ReferenceDraft>>(
     {},
@@ -138,6 +160,7 @@ export default function GuidedIntake({
   const [samPending, setSamPending] = useState<PhotoLocalizationRequest | null>(
     null,
   );
+  const [samTarget, setSamTarget] = useState<string | null>(null);
   const [drawing, setDrawing] = useState<{
     card: string;
     what: "box" | "reference";
@@ -155,25 +178,43 @@ export default function GuidedIntake({
     };
   }, []);
 
-  // Saved state wins on every new inventory revision; history stays in records.
-  const reload = useCallback(async () => {
-    try {
-      const list = await api.list();
-      if (!alive.current) return;
-      setRecords(list);
-      setCards(cardsFor(project.stocks ?? [], list));
-    } catch (failure) {
-      if (alive.current) setError((failure as Error).message);
-    }
-  }, [api, project.stocks]);
+  // Estimate history for this project only; a late answer for an earlier
+  // project or revision is discarded. The parent also keys this component by
+  // project, so switching projects starts a fresh instance.
+  const [listAttempt, setListAttempt] = useState(0);
   useEffect(() => {
-    void reload();
-  }, [reload, project.revision_id]);
+    const controller = new AbortController();
+    api
+      .list(controller.signal)
+      .then((list) => {
+        if (!controller.signal.aborted) setRecords(list);
+      })
+      .catch((failure) => {
+        if (!controller.signal.aborted) setError((failure as Error).message);
+      });
+    return () => controller.abort();
+  }, [api, project.revision_id, listAttempt]);
   useEffect(() => {
-    void localizationReceipts
-      .pending(token, project.id)
-      .then((body) => alive.current && setSamPending(body))
-      .catch(() => alive.current && setSamPending(null));
+    let live = true;
+    Promise.all([
+      localizationReceipts.pending(token, project.id),
+      samTargets.pending(token, project.id),
+    ])
+      .then(([body, target]) => {
+        if (!live) return;
+        setSamPending(body);
+        setSamTarget(
+          body &&
+            target &&
+            target.request.idempotency_key === body.idempotency_key
+            ? target.stock_id
+            : null,
+        );
+      })
+      .catch(() => live && setSamPending(null));
+    return () => {
+      live = false;
+    };
   }, [token, project.id]);
   useEffect(() => {
     if (!photoId && photos.length) setPhotoId(photos[photos.length - 1].id);
@@ -181,6 +222,11 @@ export default function GuidedIntake({
       setPhotoId(photos[0]?.id ?? "");
   }, [photos, photoId]);
 
+  const cards: Card[] = stocks.map((stock) => ({
+    ...extraFor(stock, records),
+    ...extras[stock.id],
+    stock,
+  }));
   const photo = photos.find((p) => p.id === photoId);
   const draft: ReferenceDraft = reference[photoId] ?? {
     kind: "forma_card",
@@ -188,28 +234,34 @@ export default function GuidedIntake({
     lineB: "",
   };
   const locked = disabled || busy !== "" || Boolean(project.active_version_id);
-  const savedJson = JSON.stringify(project.stocks ?? []);
-  const unsaved = JSON.stringify(cards.map((c) => c.stock)) !== savedJson;
   const museReady = museAvailability?.enabled !== false;
 
   function patch(
     id: string,
     change: Partial<Card> | ((card: Card) => Partial<Card>),
   ) {
-    setCards((current) =>
-      current.map((card) =>
-        card.stock.id === id
-          ? {
-              ...card,
-              ...(typeof change === "function" ? change(card) : change),
-            }
-          : card,
-      ),
-    );
+    const card = cards.find((c) => c.stock.id === id);
+    if (!card) return;
+    const next = {
+      ...card,
+      ...(typeof change === "function" ? change(card) : change),
+    };
+    const { stock, ...extra } = next;
+    setExtras((current) => {
+      const copy = { ...current };
+      delete copy[id];
+      copy[stock.id] = extra;
+      return copy;
+    });
+    if (stock !== card.stock)
+      onStocks(stocks.map((s) => (s.id === id ? stock : s)));
     setNotice("");
   }
-  function addCard(label: string | null, mediaId: string | null) {
-    setCards((current) => {
+  function addCard(labels: (string | null)[], mediaId: string | null) {
+    const taken = cards.map((c) => c.name);
+    const added: Stock[] = [];
+    const newExtras: Record<string, Extra> = {};
+    for (const label of labels) {
       const suggestion = label
         ? suggestFromLabel(label)
         : {
@@ -217,41 +269,54 @@ export default function GuidedIntake({
             material: "cardboard" as const,
             materialGuessed: true,
           };
-      const name = defaultName(
-        suggestion,
-        current.map((c) => c.name),
-      );
+      const name = defaultName(suggestion, taken);
+      taken.push(name);
       const id = stockIdFor(name, crypto.randomUUID());
-      return [
-        ...current,
-        {
-          stock: newStock(id, suggestion, mediaId),
-          name,
-          mediaId,
-          materialGuessed: suggestion.materialGuessed,
-          box: null,
-          boxSource: "manual_box",
-          polygon: null,
-        },
-      ];
-    });
+      added.push(newStock(id, suggestion, mediaId));
+      newExtras[id] = {
+        name,
+        mediaId,
+        materialGuessed: suggestion.materialGuessed,
+        box: null,
+        boxSource: "manual_box",
+        polygon: null,
+      };
+    }
+    setExtras((current) => ({ ...current, ...newExtras }));
+    onStocks([...stocks, ...added]);
   }
-  function rename(card: Card, name: string) {
+  function remove(card: Card) {
+    onStocks(stocks.filter((s) => s.id !== card.stock.id));
+  }
+  function commitName(card: Card) {
+    const name = nameDrafts[card.stock.id];
+    setNameDrafts((drafts) => {
+      const copy = { ...drafts };
+      delete copy[card.stock.id];
+      return copy;
+    });
+    if (name === undefined || name.trim() === card.name) return;
     // The ID carries the name; a renamed material is a new identity, so its
-    // estimates no longer apply until it is measured again.
-    const id = stockIdFor(name || "Material", crypto.randomUUID());
+    // photo estimates no longer apply until it is measured again.
+    const id = stockIdFor(name.trim() || "Material", crypto.randomUUID());
+    const unknownSize = {
+      value: null,
+      unit: "mm" as const,
+      source: "unknown" as const,
+      confirmed: false,
+    };
     patch(card.stock.id, {
-      name,
+      name: name.trim() || "Material",
       stock: {
         ...card.stock,
         id,
         width_mm:
           card.stock.width_mm.source === "photo_estimate"
-            ? { value: null, unit: "mm", source: "unknown", confirmed: false }
+            ? unknownSize
             : card.stock.width_mm,
         height_mm:
           card.stock.height_mm.source === "photo_estimate"
-            ? { value: null, unit: "mm", source: "unknown", confirmed: false }
+            ? unknownSize
             : card.stock.height_mm,
       },
     });
@@ -270,7 +335,7 @@ export default function GuidedIntake({
       );
       if (!alive.current) return;
       const labels = result.observation.labels.filter((label) => label.trim());
-      for (const label of labels) addCard(label, photo.id);
+      if (labels.length) addCard(labels, photo.id);
       setNotice(
         labels.length
           ? `Muse suggested ${labels.length} material${labels.length === 1 ? "" : "s"}. Correct anything that is wrong; names and types are only suggestions.`
@@ -286,35 +351,50 @@ export default function GuidedIntake({
     }
   }
 
-  async function locate(card: Card, body?: PhotoLocalizationRequest) {
+  async function locate(card: Card | null, body?: PhotoLocalizationRequest) {
     const target = photos.find(
-      (p) => p.id === (body?.media_id ?? card.mediaId ?? photoId),
+      (p) => p.id === (body?.media_id ?? card?.mediaId ?? photoId),
     );
-    if (locked || !target) return;
+    if (locked || !target || (!card && !body)) return;
     const request: PhotoLocalizationRequest = body ?? {
       media_id: target.id,
       expected_revision_id: project.revision_id,
       idempotency_key: crypto.randomUUID(),
       concept:
-        card.name
+        card!.name
           .replace(/[^\p{L}\p{N}_ -]/gu, " ")
           .replace(/ and /gi, " ")
           .trim()
           .slice(0, 80) || "material",
       provider_transfer_consented: true,
     };
-    setBusy("sam:" + card.stock.id);
+    setBusy("sam:" + (card?.stock.id ?? ""));
     setError("");
     try {
-      await localizationReceipts.retain(token, project.id, request);
+      if (!body) {
+        await samTargets.retain(token, project.id, {
+          request,
+          stock_id: card!.stock.id,
+        });
+        await localizationReceipts.retain(token, project.id, request);
+        setSamTarget(card!.stock.id);
+      }
       setSamPending(request);
       const result = await localizePhoto(token, project.id, target, request);
       await localizationReceipts.clear(token, project.id, request);
+      await samTargets.discard(token, project.id).catch(() => undefined);
       if (!alive.current) return;
       setSamPending(null);
+      setSamTarget(null);
       const best = [...result.boxes].sort(
         (a, b) => (b.x2 - b.x1) * (b.y2 - b.y1) - (a.x2 - a.x1) * (a.y2 - a.y1),
       )[0];
+      if (!card) {
+        setNotice(
+          "The earlier SAM request finished, but the material it was for is no longer here. Draw a box instead.",
+        );
+        return;
+      }
       if (!best) {
         setNotice(
           "SAM found nothing for this name. Draw a box around the material instead.",
@@ -350,7 +430,9 @@ export default function GuidedIntake({
         await localizationReceipts
           .clear(token, project.id, request)
           .catch(() => undefined);
+        await samTargets.discard(token, project.id).catch(() => undefined);
         setSamPending(null);
+        setSamTarget(null);
       }
       setError((failure as Error).message);
     } finally {
@@ -405,9 +487,7 @@ export default function GuidedIntake({
     try {
       const record = await api.create(body);
       if (!alive.current) return;
-      const list = await api.list();
-      if (!alive.current) return;
-      setRecords(list);
+      setListAttempt((value) => value + 1);
       patch(card.stock.id, (c) => ({
         stock: c.stock.image_ids?.includes(body.media_id)
           ? c.stock
@@ -436,13 +516,35 @@ export default function GuidedIntake({
   const [decisionError, setDecisionError] = useState("");
   const [answer, setAnswer] = useState("");
   const [asked, setAsked] = useState(0);
+  // Exact requests whose outcome is unknown; retried unchanged, never rebuilt.
+  const [pendingAnswer, setPendingAnswer] = useState<InventoryUpdate | null>(
+    null,
+  );
+  const [pendingUnavailable, setPendingUnavailable] =
+    useState<UnavailableRequest | null>(null);
   const measurement = useMemo(
     () => measurementApi(token, project.id),
     [token, project.id],
   );
+  useEffect(() => {
+    let live = true;
+    Promise.all([
+      answerReceipts.pending(token, project.id),
+      unavailableReceipts.pending(token, project.id),
+    ])
+      .then(([a, u]) => {
+        if (!live) return;
+        setPendingAnswer(a);
+        setPendingUnavailable(u);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [token, project.id]);
   const ready =
     project.inventory_confirmed &&
-    !unsaved &&
+    !dirty &&
     !inventoryStale &&
     !project.active_version_id;
   useEffect(() => {
@@ -480,43 +582,92 @@ export default function GuidedIntake({
     asked,
   ]);
 
-  async function answerQuestion(value: number | null) {
-    const question = decision?.question;
-    if (!question || locked) return;
+  async function sendAnswer(body: InventoryUpdate) {
     setBusy("answer");
     setDecisionError("");
     try {
-      if (value === null) {
-        await measurement.unavailable(
-          {
-            expected_inventory_revision_id: project.revision_id,
-            expected_active_version_id: project.active_version_id ?? null,
-            expected_last_event_id: null,
-            question_id: question.question_id,
-            target_key: question.target.key,
-            idempotency_key: crypto.randomUUID(),
-            user_confirmed: true,
-          },
-          new AbortController().signal,
-        );
-        if (!alive.current) return;
-        setNotice("Noted as unknown. FORMA will not ask for it again.");
-        setAsked((value) => value + 1);
-      } else {
-        const body = answerBody(project, question, value, crypto.randomUUID());
-        const result = await measurement.saveInventory(
-          body,
-          new AbortController().signal,
-        );
-        if (!alive.current) return;
-        setAnswer("");
-        onProject(result.project);
-        setNotice("Measurement saved. Checking whether anything else matters…");
-      }
+      await answerReceipts.retain(token, project.id, body);
+      setPendingAnswer(body);
+      const result = await measurement.saveInventory(
+        body,
+        new AbortController().signal,
+      );
+      await answerReceipts
+        .clear(token, project.id, body)
+        .catch(() => undefined);
+      if (!alive.current) return;
+      setPendingAnswer(null);
+      setAnswer("");
+      onProject(result.project);
+      setNotice("Measurement saved. Checking whether anything else matters…");
     } catch (failure) {
-      if (alive.current) setDecisionError((failure as Error).message);
+      if (!alive.current) return;
+      if (!(failure instanceof MeasurementRequestError && failure.retry)) {
+        await answerReceipts
+          .clear(token, project.id, body)
+          .catch(() => undefined);
+        setPendingAnswer(null);
+        setDecisionError(
+          `The measurement was not saved. ${(failure as Error).message}`,
+        );
+      } else setDecisionError((failure as Error).message);
     } finally {
       if (alive.current) setBusy("");
+    }
+  }
+  async function sendUnavailable(body: UnavailableRequest) {
+    setBusy("answer");
+    setDecisionError("");
+    try {
+      await unavailableReceipts.retain(token, project.id, body);
+      setPendingUnavailable(body);
+      await measurement.unavailable(body, new AbortController().signal);
+      await unavailableReceipts
+        .clear(token, project.id, body)
+        .catch(() => undefined);
+      if (!alive.current) return;
+      setPendingUnavailable(null);
+      setNotice("Noted as unknown. FORMA will not ask for it again.");
+      setAsked((value) => value + 1);
+    } catch (failure) {
+      if (!alive.current) return;
+      if (!(failure instanceof MeasurementRequestError && failure.retry)) {
+        await unavailableReceipts
+          .clear(token, project.id, body)
+          .catch(() => undefined);
+        setPendingUnavailable(null);
+      }
+      setDecisionError((failure as Error).message);
+    } finally {
+      if (alive.current) setBusy("");
+    }
+  }
+  function answerQuestion(value: number | null) {
+    const question = decision?.question;
+    if (!question || locked) return;
+    if (pendingAnswer || pendingUnavailable) {
+      setDecisionError(
+        "An earlier answer has an unknown outcome. Retry it first.",
+      );
+      return;
+    }
+    try {
+      if (value === null)
+        void sendUnavailable({
+          expected_inventory_revision_id: project.revision_id,
+          expected_active_version_id: project.active_version_id ?? null,
+          expected_last_event_id: null,
+          question_id: question.question_id,
+          target_key: question.target.key,
+          idempotency_key: crypto.randomUUID(),
+          user_confirmed: true,
+        });
+      else
+        void sendAnswer(
+          answerBody(project, question, value, crypto.randomUUID()),
+        );
+    } catch (failure) {
+      setDecisionError((failure as Error).message);
     }
   }
 
@@ -811,7 +962,7 @@ export default function GuidedIntake({
             type="button"
             className={photo && museReady ? "quiet" : "secondary"}
             disabled={locked}
-            onClick={() => addCard(null, photo?.id ?? null)}
+            onClick={() => addCard([null], photo?.id ?? null)}
           >
             Add a material by hand
           </button>
@@ -829,8 +980,10 @@ export default function GuidedIntake({
             className="secondary"
             disabled={locked}
             onClick={() => {
-              const card = cards[0];
-              if (card) void locate(card, samPending);
+              void locate(
+                cards.find((c) => c.stock.id === samTarget) ?? null,
+                samPending,
+              );
             }}
           >
             Check the earlier SAM request
@@ -867,9 +1020,18 @@ export default function GuidedIntake({
                 <label className="material-name">
                   <span className="visually-hidden">Name</span>
                   <input
-                    value={card.name}
+                    value={nameDrafts[card.stock.id] ?? card.name}
                     disabled={locked}
-                    onChange={(e) => rename(card, e.target.value)}
+                    onChange={(e) =>
+                      setNameDrafts((d) => ({
+                        ...d,
+                        [card.stock.id]: e.target.value,
+                      }))
+                    }
+                    onBlur={() => commitName(card)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitName(card);
+                    }}
                     aria-label="Material name"
                   />
                 </label>
@@ -877,11 +1039,7 @@ export default function GuidedIntake({
                   type="button"
                   className="quiet danger"
                   disabled={locked}
-                  onClick={() =>
-                    setCards((cs) =>
-                      cs.filter((c) => c.stock.id !== card.stock.id),
-                    )
-                  }
+                  onClick={() => remove(card)}
                 >
                   Remove
                 </button>
@@ -1252,20 +1410,20 @@ export default function GuidedIntake({
             type="button"
             className="quiet"
             disabled={locked}
-            onClick={() => addCard(null, photo?.id ?? null)}
+            onClick={() => addCard([null], photo?.id ?? null)}
           >
             Add another material
           </button>
           <button
             type="button"
             className="primary"
-            disabled={locked || inventoryStale || !unsaved}
-            onClick={() => onSave(cards.map((c) => c.stock))}
+            disabled={locked || inventoryStale || !dirty}
+            onClick={() => onSave()}
           >
             Save materials
           </button>
           <span className="help">
-            {unsaved
+            {dirty
               ? "Unsaved changes. Unknown sizes stay unknown; photo estimates stay estimates."
               : project.inventory_confirmed
                 ? "Materials saved."
@@ -1280,6 +1438,27 @@ export default function GuidedIntake({
           aria-labelledby="next-question-title"
         >
           <h3 id="next-question-title">Next useful question</h3>
+          {(pendingAnswer || pendingUnavailable) && (
+            <aside className="retry-panel">
+              <p>
+                An earlier answer may not have been saved. Retry it exactly
+                before answering again.
+              </p>
+              <button
+                type="button"
+                className="secondary"
+                disabled={locked}
+                onClick={() =>
+                  pendingAnswer
+                    ? void sendAnswer(pendingAnswer)
+                    : pendingUnavailable &&
+                      void sendUnavailable(pendingUnavailable)
+                }
+              >
+                Retry the earlier answer
+              </button>
+            </aside>
+          )}
           {decisionError && <p className="error">{decisionError}</p>}
           {!decision && !decisionError && (
             <p className="help">Checking which measurement matters…</p>

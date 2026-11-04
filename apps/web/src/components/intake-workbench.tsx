@@ -634,9 +634,18 @@ function ProjectWorkbench({
   }
   // Guided intake saves through the same validated path; its Save button is
   // the user's explicit confirmation.
-  function saveGuided(next: Stock[]) {
-    setRows(next.map((stock) => ({ key: stock.id, stock, saved: false })));
-    submitInventory(next);
+  // Guided cards edit the same rows as Details, so one draft and one dirty
+  // state cover both editors and every downstream control.
+  function changeGuided(next: Stock[]) {
+    setRows((current) =>
+      next.map((stock) => ({
+        key: current.find((row) => row.stock.id === stock.id)?.key ?? stock.id,
+        stock,
+        saved: current.some((row) => row.stock.id === stock.id && row.saved),
+      })),
+    );
+    setChecked(false);
+    setNotice("");
   }
   function submitInventory(stocks: Stock[]) {
     if (!project || locked) return;
@@ -980,13 +989,17 @@ function ProjectWorkbench({
               aria-labelledby="materials-title"
             >
               <GuidedIntake
+                key={`${token}:${project.id}`}
                 token={token}
                 project={project}
                 photos={photos}
+                stocks={stocks}
+                dirty={dirty}
                 disabled={locked}
                 inventoryStale={stale}
                 museAvailability={museAvailability}
-                onSave={saveGuided}
+                onStocks={changeGuided}
+                onSave={() => submitInventory(stocks)}
                 onProject={install}
               />
               <details className="manual-intake">

@@ -557,3 +557,37 @@ def test_evaluation_scores_only_the_evaluation_split(tmp_path):
     assert report["beyond_tolerance"] <= report["accepted"]
     assert report["worst_abs_error_mm"] < 5
     assert 0 <= report["rejection_rate"] <= 1
+
+
+def test_notched_rectangle_is_not_stock_size():
+    image, h, _ = scene()
+    notched_mm = [
+        (200, 60),
+        (330, 60),
+        (330, 75),
+        (350, 75),
+        (350, 60),
+        (480, 60),
+        (480, 250),
+        (200, 250),
+    ]
+    outline = OutlineInput(
+        source="user_polygon", polygon_px=points(project(h, notched_mm))
+    )
+    result = estimate(image, make_input(image, outline))
+    assert result.outcome != "estimate"
+    assert all(d.stock_field is None for d in result.dimensions)
+
+
+def test_drawn_outline_outside_the_photo_is_refused():
+    image, h, _ = scene()
+    corners = project(h, SHEET)
+    corners[1] = (image.shape[1] + 40, corners[1][1])
+    result = estimate(
+        image,
+        make_input(
+            image, OutlineInput(source="user_polygon", polygon_px=points(corners))
+        ),
+    )
+    assert result.outcome == "needs_better_photo"
+    assert "cut off at the photo edge" in result.request

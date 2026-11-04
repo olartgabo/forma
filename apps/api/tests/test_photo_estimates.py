@@ -341,7 +341,7 @@ def test_removing_a_stock_retires_its_estimates_for_good(client, scene_png):
     records = client.get(
         f"/api/projects/{p['id']}/photo-estimates", headers=AUTH
     ).json()["records"]
-    assert records[0]["removed"] is True and records[0]["status"] == "stale"
+    assert records[0]["retired"] and records[0]["status"] == "stale"
 
 
 def test_failed_retry_does_not_supersede_a_usable_estimate(client, scene_png):
@@ -358,3 +358,46 @@ def test_failed_retry_does_not_supersede_a_usable_estimate(client, scene_png):
         f"/api/projects/{p['id']}/photo-estimates", headers=AUTH
     ).json()["records"]
     assert records[0]["status"] == "current"
+
+
+def test_type_change_or_unlinking_retires_estimates_permanently(client, scene_png):
+    data, outline = scene_png
+    p = project(client)
+    photo = upload(client, p, data, "upload-0001")
+    record = estimate(client, p, body(p, photo, outline)).json()
+    width = dims(record)["width_mm"]["display_value"]
+    as_strip = save(
+        client,
+        p,
+        [stock(photo["id"], measurement(), measurement(), kind="strip")],
+        "save-0001",
+    )
+    assert as_strip.status_code == 200
+    p = as_strip.json()["project"]
+    # Restoring the original type and old photo value is rejected.
+    restored = save(
+        client,
+        p,
+        [stock(photo["id"], measurement(width, "photo_estimate"), measurement())],
+        "save-0002",
+    )
+    assert restored.status_code == 422
+
+    q = project(client, key="project-002")
+    photo = upload(client, q, data, "upload-0002")
+    record = estimate(client, q, body(q, photo, outline, key="estimate-0009")).json()
+    width = dims(record)["width_mm"]["display_value"]
+    unlinked = stock(photo["id"], measurement(), measurement())
+    unlinked["image_ids"] = []
+    q = save(client, q, [unlinked], "save-0003").json()["project"]
+    relinked = save(
+        client,
+        q,
+        [stock(photo["id"], measurement(width, "photo_estimate"), measurement())],
+        "save-0004",
+    )
+    assert relinked.status_code == 422
+    records = client.get(
+        f"/api/projects/{q['id']}/photo-estimates", headers=AUTH
+    ).json()["records"]
+    assert records[0]["retired"] == "The photo is no longer linked to this material."

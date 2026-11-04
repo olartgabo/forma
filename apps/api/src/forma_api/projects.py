@@ -387,9 +387,9 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 "UPDATE projects SET body=? WHERE id=? AND owner=?",
                 (updated.model_dump_json(), project_id, owner),
             )
-            from forma_api.photo_measurement_runtime import retire_removed
+            from forma_api.photo_measurement_runtime import retire_changed
 
-            retire_removed(connection, project_id, body.stocks)
+            retire_changed(connection, project_id, body.stocks)
             result = ProjectResult(project=updated).model_dump(mode="json")
             store.remember(
                 connection, owner, scope, body.idempotency_key, digest, result

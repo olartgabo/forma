@@ -9,7 +9,8 @@ import json
 
 import cv2
 import numpy as np
-from shapely.geometry import Polygon
+import shapely
+from shapely.geometry import LinearRing, Polygon
 
 from forma_domain.photo_measurement_contracts import (
     CARD_HEIGHT_MM,
@@ -49,7 +50,8 @@ RULES = {
     "opposite_edge_mm": 2.0,
     "opposite_edge_ratio": 0.02,
     "rectangularity": 0.97,
-    "edge_residual_px": 2.0,  # RMS scatter of a traced straight edge
+    "edge_residual_px": 2.0,
+    "edge_deviation_px": 3.0,  # largest traced point distance from the quad  # RMS scatter of a traced straight edge
 }
 
 REQUESTS = {
@@ -542,6 +544,19 @@ def estimate(image: np.ndarray, data: EstimateInput) -> PhotoEstimate:
     outline_in = data.outline
     sigma = OUTLINE_SIGMA_PX[outline_in.source]
     if outline_in.source == "user_polygon":
+        drawn = [
+            *outline_in.polygon_px,
+            *(p for hole in outline_in.holes_px for p in hole),
+        ]
+        if any(
+            p.x < -0.5
+            or p.y < -0.5
+            or p.x > data.image_width_px - 0.5
+            or p.y > data.image_height_px - 0.5
+            for p in drawn
+        ):
+            builder.note("outline_clipped", "blocking", REQUESTS["outline_clipped"])
+            return builder.result("needs_better_photo", REQUESTS["outline_clipped"])
         outline: Outline = from_polygon(
             [(p.x, p.y) for p in outline_in.polygon_px],
             [[(p.x, p.y) for p in hole] for hole in outline_in.holes_px],
@@ -639,6 +654,18 @@ def estimate(image: np.ndarray, data: EstimateInput) -> PhotoEstimate:
     if quad is not None:
         try:
             nominal, sides, mm = _quad_dims(h, quad.corners())
+            # Every traced point must lie on the fitted four-sided boundary;
+            # a notch or bite is a concavity, not a rectangle.
+            ring = LinearRing(quad.corners())
+            deviation = float(np.max(shapely.distance(ring, shapely.points(dense))))
+            if deviation > max(RULES["edge_deviation_px"], 3 * outline_sigma):
+                builder.note(
+                    "irregular_outline",
+                    "info",
+                    "Part of the outline leaves the straight edges (a notch or bite); only enclosing size is given.",
+                    deviation,
+                )
+                raise g.Degenerate("not a clean quad")
             angles = []
             for i in range(4):
                 u, v = mm[i - 1] - mm[i], mm[(i + 1) % 4] - mm[i]

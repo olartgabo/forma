@@ -49,8 +49,8 @@ class PhotoEstimateRecord(Record):
     project_id: ID
     created_revision_id: ID
     estimate: PhotoEstimate
-    # Set once a saved inventory drops this stock; never cleared.
-    removed: bool = False
+    # Why a saved inventory change permanently invalidated this estimate.
+    retired: Text | None = None
     status: Literal["current", "stale"] = "current"
     stale_reasons: tuple[Text, ...] = ()
     replayed: bool = False
@@ -185,8 +185,8 @@ def assess(connection, project, stocks: tuple[Stock, ...] | None = None):
             data.stock_material,
         ):
             reasons.append("The material type changed.")
-        if record.removed:
-            reasons.append("The material was removed from the saved inventory.")
+        if record.retired:
+            reasons.append(record.retired)
         elif (
             stock is None
             and project.revision_id != record.created_revision_id
@@ -240,17 +240,29 @@ def inventory_problems(connection, project, stocks: tuple[Stock, ...]) -> list[s
     return problems
 
 
-def retire_removed(connection, project_id: str, stocks: tuple[Stock, ...]) -> None:
-    """After an inventory save, permanently mark estimates of dropped stock."""
+def retire_changed(connection, project_id: str, stocks: tuple[Stock, ...]) -> None:
+    """After an inventory save, permanently retire estimates whose stock was
+    removed, changed type or material, or no longer links the source photo.
+    Restoring the old values later cannot make them current again."""
 
-    kept = {stock.id for stock in stocks}
+    by_id = {stock.id: stock for stock in stocks}
     for record in _records(connection, project_id):
-        if record.removed or record.estimate.input.stock_id in kept:
+        data = record.estimate.input
+        stock = by_id.get(data.stock_id)
+        if record.retired:
+            continue
+        if stock is None:
+            reason = "The material was removed from the saved inventory."
+        elif (stock.kind, stock.material) != (data.stock_kind, data.stock_material):
+            reason = "The material type changed."
+        elif data.media_id not in stock.image_ids:
+            reason = "The photo is no longer linked to this material."
+        else:
             continue
         connection.execute(
             "UPDATE photo_estimates SET body=? WHERE id=?",
             (
-                record.model_copy(update={"removed": True}).model_dump_json(),
+                record.model_copy(update={"retired": reason}).model_dump_json(),
                 record.estimate_id,
             ),
         )

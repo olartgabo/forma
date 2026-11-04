@@ -477,7 +477,7 @@ export type PhotoEstimateRecord = {
   readonly "project_id": string;
   readonly "created_revision_id": string;
   readonly "estimate": PhotoEstimate;
-  readonly "removed"?: boolean;
+  readonly "retired"?: (string | null);
   readonly "status"?: "current" | "stale";
   readonly "stale_reasons"?: ReadonlyArray<string>;
   readonly "replayed"?: boolean;

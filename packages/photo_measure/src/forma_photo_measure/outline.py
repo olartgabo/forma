@@ -6,6 +6,11 @@ import cv2
 import numpy as np
 from shapely.geometry import Polygon
 
+# Estimates must be identical for identical inputs. Multithreaded OpenCV
+# kernels (GrabCut clustering among them) can reorder floating-point work
+# under load, so this package runs OpenCV on one thread.
+cv2.setNumThreads(1)
+
 # Upper bound on the region GrabCut processes; larger crops are downscaled and
 # their outline uncertainty grows by the same factor.
 MAX_REFINE_PIXELS = 1_500_000
