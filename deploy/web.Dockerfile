@@ -8,6 +8,7 @@ COPY package.json package-lock.json .npmrc ./
 COPY apps/web/package.json apps/web/
 RUN npm ci
 COPY apps/web apps/web
+COPY packages/assembly_view packages/assembly_view
 RUN npm run build -w @forma/web
 
 USER node
