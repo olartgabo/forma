@@ -7,6 +7,7 @@ import {
   loadPlan,
 } from "../lib/api";
 import AdaptWorkbench from "./adapt-workbench";
+import DesignCandidates from "./design-candidates";
 import FabricationReportPanel from "./fabrication-report/fabrication-report-panel";
 import { operationTitles } from "../lib/operation-titles";
 import type { RepairHandoff } from "../lib/repair-handoff";
@@ -599,6 +600,23 @@ export default function PlanWorkbench({
           </div>
         )}
       </div>
+      {!project.active_version_id && (
+        <DesignCandidates
+          token={token}
+          context={{
+            projectId: project.id,
+            inventoryRevisionId: project.revision_id,
+            activeVersionId: null,
+            lastEventId: null,
+          }}
+          disabled={approvalDisabled || pending !== null || saving}
+          museEnabled={museAvailability?.enabled !== false}
+          onSelected={(versionId) => {
+            setSelected(versionId);
+            setAttempt((value) => value + 1);
+          }}
+        />
+      )}
       {!loading && !listError && plans.length === 0 && (
         <p className="empty-note" lang={locale}>
           {copy.design.noPlan}

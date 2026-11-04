@@ -1085,3 +1085,33 @@ figcaption span {
 .panel-compare h5 {
   margin: 0 0 0.5rem;
 }
+.design-candidates {
+  margin-top: 1.5rem;
+}
+.design-candidate-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+.design-candidate {
+  border: 1px solid var(--line);
+  padding: 0.8rem;
+  overflow-wrap: anywhere;
+}
+.design-candidate-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.2rem 0.8rem;
+}
+.design-candidate-facts > div {
+  display: contents;
+}
+.design-candidate-facts dd {
+  margin: 0;
+}
+.design-candidate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}

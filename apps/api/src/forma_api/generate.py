@@ -117,6 +117,17 @@ from forma_api.stability_runtime import (
     StabilityContext,
 )
 from forma_api.stability_stages import StageAnalysisRequest, StageAnalysisResponse
+from forma_api.synthesis_muse import (
+    CandidateNote,
+    DesignMuseExplanation,
+    SynthesisMuseRequest,
+    SynthesisMuseResult,
+)
+from forma_api.synthesis_runtime import (
+    SynthesisProbeRequest,
+    SynthesisSearchRequest,
+    SynthesisSelectRequest,
+)
 from forma_domain import (
     models,
 )
@@ -237,6 +248,13 @@ API_RECORDS = (
     SavedProjectList,
     SavedProjectSummary,
     SimulationResult,
+    CandidateNote,
+    DesignMuseExplanation,
+    SynthesisMuseRequest,
+    SynthesisMuseResult,
+    SynthesisProbeRequest,
+    SynthesisSearchRequest,
+    SynthesisSelectRequest,
 )
 OUTPUT = "apps/web/src/lib/generated/api-contracts.ts"
 

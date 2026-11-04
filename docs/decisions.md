@@ -739,7 +739,32 @@ cancellations and blocked results clear the cube. Reduced motion shows a static
 cube during the wait and skips the solve. The animation reports no percentage
 and does not indicate physical acceptance.
 
-## D050: Deploy main automatically, November 3, 2026
+## D055: Bounded stock-feasible stand search, November 3, 2026
+
+Design search (#148) enumerates a finite step-aligned grid of panel width,
+support length and base depth for each saved single-region sheet, tape stock and
+reviewed tape/fold profile pair. Grid bounds come from confirmed device sizes,
+the sheet's usable region and the footprint limits; the support angle is the
+user's requirement and the lip comes from the confirmed stand parameters. Every
+grid point is compiled by `compile_stand` and the independent validator. A node
+budget (deterministic) and a time guard bound the search; running out is
+reported apart from infeasibility. At most two acceptable designs are proposed,
+ordered by consumed sheet area, then panel area, then their values; the second
+prefers another sheet or base depth. Stability, retention and joint strength
+for an unbuilt geometry stay missing, incompatible or unsupported. Measurements
+of another assembled stand never transfer. Search and probe write nothing.
+Selecting a design saves an ordinary preview through the existing plan
+transaction; activation remains the separate approval. An active build changes
+only through the existing repair simulation.
+
+Review repair, same day: compiler requests for measurements, confirmations or
+reviewed profiles make a search `needs_input`, never `infeasible`. Candidates
+are generated lazily and the time budget covers final evaluation. MetaMuse may
+compare the proposed designs through one read-only tool, `compare_stand_designs`,
+choosing only authorized candidate IDs and one grid probe value; the probe is the
+engine's result, shown apart from the model's words.
+
+## D056: Deploy main automatically, November 3, 2026
 
 The user asked for every `main` commit to reach the hosted demo without a
 manual step. A GitHub Actions workflow runs after `Offline checks` passes on a

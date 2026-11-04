@@ -18,6 +18,7 @@ from . import (
     stability_contracts,
     stability_measurements,
     stage_mechanics,
+    synthesis_contracts,
 )
 from .fixtures import synthetic_inventory_a
 
@@ -77,6 +78,7 @@ def domain_records():
             stability_contracts,
             stability_measurements,
             stage_mechanics,
+            synthesis_contracts,
         )
         for v in vars(module).values()
         if isinstance(v, type)
