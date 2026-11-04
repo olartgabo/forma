@@ -383,6 +383,8 @@ function ProjectWorkbench({
   }, [loadProviderStatus]);
   const museAvailability = resolveMuseAvailability(providerStatus);
   const [error, setError] = useState("");
+  // Upload failures are shown beside the upload control they concern.
+  const [uploadError, setUploadError] = useState("");
   const [notice, setNotice] = useState("");
   const [stale, setStale] = useState(false);
   const controller = useRef(new AbortController());
@@ -506,6 +508,7 @@ function ProjectWorkbench({
     const signal = controller.current.signal;
     setBusy(true);
     setError("");
+    setUploadError("");
     setNotice("");
     try {
       const next = await loadProject(token, id, signal);
@@ -530,6 +533,7 @@ function ProjectWorkbench({
     setPending(request);
     setBusy(true);
     setError("");
+    setUploadError("");
     setNotice("");
     try {
       if (request.kind === "create") {
@@ -607,7 +611,8 @@ function ProjectWorkbench({
       setPending(null);
     } catch (failure) {
       if (signal.aborted || requestEpoch !== epoch.current) return;
-      setError(errorMessage(failure));
+      if (request.kind === "upload") setUploadError(errorMessage(failure));
+      else setError(errorMessage(failure));
       if (
         failure instanceof ApiError &&
         failure.status >= 400 &&
@@ -862,6 +867,7 @@ function ProjectWorkbench({
                 setRequirements(emptyRequirements());
                 setPhotos([]);
                 setError("");
+                setUploadError("");
                 setNotice("");
                 setStale(false);
                 setChecked(false);
@@ -903,11 +909,23 @@ function ProjectWorkbench({
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
                     required
+                    aria-invalid={uploadError ? true : undefined}
+                    aria-describedby={
+                      uploadError
+                        ? "photo-upload-help photo-upload-error"
+                        : "photo-upload-help"
+                    }
+                    onChange={() => setUploadError("")}
                   />
-                  <p className="help">
+                  <p className="help" id="photo-upload-help">
                     JPEG, PNG or WebP, up to 8 MiB. A photo gives size
                     estimates, not ruler measurements.
                   </p>
+                  {uploadError && (
+                    <p className="error" id="photo-upload-error" role="alert">
+                      {uploadError}
+                    </p>
+                  )}
                   <button type="submit" className="secondary">
                     Upload photo
                   </button>
