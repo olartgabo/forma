@@ -59,6 +59,17 @@ try {
       [base, fixture.project],
       [`${base}/media`, { media: [photo] }],
       [`${base}/plans`, { plans: [] }],
+      [`${base}/photo-estimates`, { records: [] }],
+      [
+        `${base}/recognized-items`,
+        {
+          project_id: fixture.project.id,
+          revision: "items-empty",
+          items: [],
+          problems: [],
+        },
+      ],
+      [`${base}/synthesis/research`, { enabled: false }],
       [
         `${base}/designs/readiness`,
         {
@@ -78,6 +89,17 @@ try {
         return route.abort();
       }
       if (!url.pathname.startsWith("/api/")) return route.continue();
+      if (
+        url.pathname === `${base}/measurement-decisions` &&
+        route.request().method() === "POST"
+      )
+        return route.fulfill({
+          status: 503,
+          json: {
+            code: "unavailable",
+            message: "Outside offline construction scenario",
+          },
+        });
       if (url.pathname === `${base}/construction/propose`) {
         const body = route.request().postDataJSON();
         requests.push(body);

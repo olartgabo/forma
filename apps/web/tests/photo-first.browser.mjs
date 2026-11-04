@@ -105,6 +105,17 @@ try {
     0,
   );
   await panel.getByLabel(/Use these estimates for my manual/).check();
+  const preparation = panel.getByRole("region", {
+    name: "Prepare the proposed pieces",
+  });
+  await preparation.waitFor();
+  assert.match(await preparation.innerText(), /200 × 240 mm/);
+  assert.ok(
+    (await preparation
+      .getByRole("img", { name: /Approximate outline/ })
+      .count()) > 0,
+  );
+
   await panel
     .getByRole("img", { name: /Proposed construction geometry/ })
     .waitFor();

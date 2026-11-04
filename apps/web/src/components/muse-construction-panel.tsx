@@ -7,7 +7,7 @@ import type {
   MuseConstructionResult,
   MuseConstructionCandidateResult,
 } from "../lib/generated/api-contracts";
-import type { ConstructionPlan } from "../lib/generated/contracts";
+import type { ConstructionPlan, Point3 } from "../lib/generated/contracts";
 import type { MuseAvailability } from "../lib/muse-provider";
 import { ApiError } from "../lib/api";
 import { proposeConstruction } from "../lib/muse-construction-client";
@@ -27,6 +27,124 @@ import {
   constructionPiecePresence,
   materialMeasurementChecklist,
 } from "../lib/muse-construction-guidance";
+
+function faceOutline(vertices: readonly Point3[]) {
+  if (vertices.length < 3) return null;
+  const origin = vertices[0];
+  const subtract = (a: Point3, b: Point3) => ({
+    x: a.x - b.x,
+    y: a.y - b.y,
+    z: a.z - b.z,
+  });
+  const dot = (a: Point3, b: Point3) => a.x * b.x + a.y * b.y + a.z * b.z;
+  const edge = subtract(vertices[1], origin);
+  const length = Math.hypot(edge.x, edge.y, edge.z);
+  if (length < 1e-9) return null;
+  const axis = { x: edge.x / length, y: edge.y / length, z: edge.z / length };
+  const offsets = vertices.map((v) => subtract(v, origin));
+  const perpendicular = offsets
+    .map((v) => {
+      const along = dot(v, axis);
+      return {
+        x: v.x - along * axis.x,
+        y: v.y - along * axis.y,
+        z: v.z - along * axis.z,
+      };
+    })
+    .find((v) => Math.hypot(v.x, v.y, v.z) > 1e-9);
+  if (!perpendicular) return null;
+  const depth = Math.hypot(perpendicular.x, perpendicular.y, perpendicular.z);
+  const secondAxis = {
+    x: perpendicular.x / depth,
+    y: perpendicular.y / depth,
+    z: perpendicular.z / depth,
+  };
+  const points = offsets.map((v) => ({
+    x: dot(v, axis) * 1000,
+    y: dot(v, secondAxis) * 1000,
+  }));
+  const minX = Math.min(...points.map((p) => p.x)),
+    maxX = Math.max(...points.map((p) => p.x));
+  const minY = Math.min(...points.map((p) => p.y)),
+    maxY = Math.max(...points.map((p) => p.y));
+  return { points, minX, minY, width: maxX - minX, height: maxY - minY };
+}
+
+function Preparation({ plan }: { plan: ConstructionPlan }) {
+  return (
+    <section aria-label="Prepare the proposed pieces">
+      <h4>Prepare the proposed pieces</h4>
+      <p>
+        Approximate model dimensions in millimeters. Check the material, size
+        and fit before cutting. These face outlines are conceptual and are not
+        cutting templates; connections and thickness still need checking.
+      </p>
+      <ol>
+        {plan.piece_catalog.map((piece) => {
+          const part = plan.request.target.assembly.parts.find(
+            (item) => item.part_id === piece.part_id,
+          );
+          return (
+            <li key={piece.part_id}>
+              <strong>{piece.display_name}</strong>
+              {piece.role ? ` · ${piece.role}` : ""}
+              {part?.facets.map((facet, index) => {
+                const outline = faceOutline(facet.vertices_local);
+                return (
+                  <div key={facet.facet_id}>
+                    {part.facets.length > 1 && (
+                      <p>
+                        Face {index + 1} (folds and connections are not
+                        specified)
+                      </p>
+                    )}
+                    {outline ? (
+                      <>
+                        <p>
+                          Approximate face bounds:{" "}
+                          {Math.round(outline.width * 10) / 10} ×{" "}
+                          {Math.round(outline.height * 10) / 10} mm
+                        </p>
+                        <svg
+                          role="img"
+                          aria-label={`Approximate outline of ${piece.display_name}${part.facets.length > 1 ? ` face ${index + 1}` : ""}`}
+                          viewBox={`${outline.minX - 10} ${outline.minY - 10} ${outline.width + 20} ${outline.height + 20}`}
+                          style={{
+                            width: "100%",
+                            maxWidth: 240,
+                            maxHeight: 160,
+                          }}
+                        >
+                          <polygon
+                            points={outline.points
+                              .map((point) => `${point.x},${point.y}`)
+                              .join(" ")}
+                            fill="#e0eafa"
+                            stroke="#245aa7"
+                            strokeWidth={
+                              Math.max(outline.width, outline.height) / 150
+                            }
+                          />
+                        </svg>
+                      </>
+                    ) : (
+                      <p>Face dimensions are unavailable.</p>
+                    )}
+                  </div>
+                );
+              })}
+              {!part && <p>Face dimensions are unavailable.</p>}
+              <details>
+                <summary>Piece reference</summary>
+                {piece.reference} · {piece.part_id}
+              </details>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
 
 function ConstructionPreview({
   plan,
@@ -107,7 +225,23 @@ function ConstructionPreview({
       </label>
       <div aria-live="polite">
         <h4>{constructionStepTitle(plan, step)}</h4>
-        <p>{step.instruction}</p>
+        {approximate ? (
+          <>
+            <p>
+              {step.action === "place"
+                ? "Position the highlighted piece as shown and check how it fits."
+                : step.action === "join"
+                  ? "Bring the highlighted pieces together as shown. The connection method and strength still need verification."
+                  : "Inspect the proposed placement and connections."}
+            </p>
+            <details>
+              <summary>Engine step details</summary>
+              {step.instruction}
+            </details>
+          </>
+        ) : (
+          <p>{step.instruction}</p>
+        )}
         {step.requires_external_support && (
           <p className="notice">
             Self-support is not established at this step. Temporary support has
@@ -240,9 +374,14 @@ function ConstructionPreview({
       <ol>
         {plan.piece_catalog.map((p) => (
           <li key={p.part_id} style={{ overflowWrap: "anywhere" }}>
-            {p.display_name} · {p.reference} ·{" "}
-            {p.geometry_class.replaceAll("_", " ")}
-            {p.role ? ` · proposed role: ${p.role}` : ""}
+            {p.display_name}
+            {!approximate && (
+              <>
+                {" "}
+                · {p.reference} · {p.geometry_class.replaceAll("_", " ")}
+                {p.role ? ` · proposed role: ${p.role}` : ""}
+              </>
+            )}
             <strong>
               {" "}
               · {constructionPiecePresence(plan, step, p.part_id)}
@@ -306,11 +445,14 @@ function Candidate({
         </div>
       )}
       {candidate.construction && (!approximate || acknowledged) && (
-        <ConstructionPreview
-          key={candidate.construction.target_hash}
-          plan={candidate.construction}
-          approximate={approximate}
-        />
+        <>
+          {approximate && <Preparation plan={candidate.construction} />}
+          <ConstructionPreview
+            key={candidate.construction.target_hash}
+            plan={candidate.construction}
+            approximate={approximate}
+          />
+        </>
       )}
       {candidate.fabrication_report && (
         <p>
@@ -828,19 +970,26 @@ function ConstructionPanel({
       )}
       {result && (
         <div aria-live="polite">
-          <p>
-            Proposal result: {result.status.replaceAll("_", " ")}. Nothing is
-            approved, cut, joined or recorded as physically tested.
-          </p>
+          {approximate ? (
+            <p>
+              Review the proposed materials and pieces. Nothing has been built
+              or physically tested.
+            </p>
+          ) : (
+            <p>
+              Proposal result: {result.status.replaceAll("_", " ")}. Nothing is
+              approved, cut, joined or recorded as physically tested.
+            </p>
+          )}
           {result.questions.length > 0 && (
-            <>
-              <h3>Questions and measurements</h3>
+            <details open={!approximate}>
+              <summary>Questions and measurements</summary>
               <ul>
                 {result.questions.map((q, i) => (
                   <li key={i}>{q}</li>
                 ))}
               </ul>
-            </>
+            </details>
           )}
           {approximate && (
             <p>
