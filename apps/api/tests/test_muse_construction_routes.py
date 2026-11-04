@@ -82,6 +82,406 @@ def receipts(directory):
         ).fetchall()
 
 
+def replacement_source(
+    directory, p, key="original-unknown", digest="b" * 64, saved=None
+):
+    saved = (
+        saved
+        or '{"pending":true,"uncertain":true,"error_code":"timeout","evidence":{"usage":null}}'
+    )
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        connection.execute(
+            "INSERT INTO requests VALUES (?, ?, ?, ?, ?)",
+            ("alice", p["id"] + ":construction-proposal", key, digest, saved),
+        )
+    return dict(
+        expected_revision_id=p["revision_id"],
+        original_idempotency_key=key,
+        original_digest=digest,
+        replacement_idempotency_key="replacement-one",
+        acknowledge_unknown=True,
+    )
+
+
+def authorize(client, p, payload, auth=AUTH):
+    return client.post(
+        f"/api/projects/{p['id']}/construction/replacement-authorizations",
+        headers=auth,
+        json=payload,
+    )
+
+
+def request_rows(directory):
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        return connection.execute(
+            "SELECT owner, scope, key, digest, response FROM requests WHERE scope LIKE '%:construction-proposal' ORDER BY rowid"
+        ).fetchall()
+
+
+def test_explicit_replacement_is_audited_one_key_only_and_preserves_original_bytes(
+    setup,
+):
+    client, p, calls, factories, directory, _ = setup
+    payload = replacement_source(directory, p)
+    original = request_rows(directory)
+    response = authorize(client, p, payload)
+    assert response.status_code == 200, response.text
+    assert response.headers["Cache-Control"] == "no-store"
+    assert not response.json()["replayed"]
+    assert request_rows(directory) == original
+    assert not calls and not factories
+    replay = authorize(client, p, payload)
+    assert replay.status_code == 200 and replay.json()["replayed"]
+    assert (
+        authorize(
+            client, p, payload | {"replacement_idempotency_key": "replacement-other"}
+        ).status_code
+        == 409
+    )
+    assert post(client, p).json()["code"] == "generation_outcome_unknown"
+    sent = post(client, p, body(p, idempotency_key="replacement-one"))
+    assert sent.status_code == 200, sent.text
+    assert len(calls) == len(factories) == 1
+    assert request_rows(directory)[0] == original[0]
+    assert post(client, p, body(p, idempotency_key="replacement-one")).json()[
+        "replayed"
+    ]
+    assert len(calls) == len(factories) == 1
+    assert (
+        post(client, p, body(p, idempotency_key="replacement-other")).status_code == 200
+    )
+    listed = client.get(
+        f"/api/projects/{p['id']}/construction/receipts", headers=AUTH
+    ).json()["receipts"]
+    by_key = {r["idempotency_key"]: r for r in listed}
+    assert by_key["original-unknown"]["state"] == "unknown"
+    assert (
+        by_key["original-unknown"]["replacement_idempotency_key"] == "replacement-one"
+    )
+    assert by_key["replacement-one"]["replaces_idempotency_key"] == "original-unknown"
+
+
+@pytest.mark.parametrize(
+    "change,status",
+    [
+        ({"acknowledge_unknown": False}, 422),
+        ({"acknowledge_unknown": "true"}, 422),
+        ({"expected_revision_id": "old-revision"}, 409),
+        ({"original_digest": "a" * 64}, 409),
+        ({"original_idempotency_key": "missing-source"}, 404),
+        ({"replacement_idempotency_key": "original-unknown"}, 422),
+    ],
+)
+def test_replacement_requires_explicit_ack_current_revision_and_exact_original(
+    setup, change, status
+):
+    client, p, calls, factories, directory, _ = setup
+    payload = replacement_source(directory, p)
+    before = request_rows(directory)
+    assert authorize(client, p, payload | change).status_code == status
+    assert request_rows(directory) == before
+    assert not calls and not factories
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert (
+            connection.execute(
+                "SELECT count(*) FROM construction_replacements"
+            ).fetchone()[0]
+            == 0
+        )
+
+
+def test_replacement_auth_owner_pending_completed_and_newer_unresolved_are_blocked(
+    setup,
+):
+    client, p, calls, factories, directory, _ = setup
+    payload = replacement_source(directory, p)
+    assert authorize(client, p, payload, {}).status_code == 401
+    assert authorize(client, p, payload, OTHER).status_code == 404
+    other = create(client, "separate-project")
+    assert (
+        authorize(
+            client, other, payload | {"expected_revision_id": other["revision_id"]}
+        ).status_code
+        == 404
+    )
+    replacement_source(directory, p, key="newer-pending", saved=route._PENDING)
+    assert authorize(client, p, payload).status_code == 409
+    pending_payload = payload | {"original_idempotency_key": "newer-pending"}
+    assert authorize(client, p, pending_payload).status_code == 409
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        connection.execute("DELETE FROM requests WHERE key='newer-pending'")
+    # An unrelated newer unknown cannot be skipped either.
+    replacement_source(directory, p, key="newer-unknown")
+    assert authorize(client, p, payload).status_code == 409
+    assert not calls and not factories
+
+
+def test_completed_source_cannot_authorize_replacement(setup):
+    client, p, _, _, directory, _ = setup
+    assert post(client, p).status_code == 200
+    original = request_rows(directory)[0]
+    payload = dict(
+        expected_revision_id=p["revision_id"],
+        original_idempotency_key=original[2],
+        original_digest=original[3],
+        replacement_idempotency_key="new-replacement",
+        acknowledge_unknown=True,
+    )
+    assert authorize(client, p, payload).status_code == 409
+
+
+def test_unknown_replacement_stops_again_and_only_explicit_child_grant_can_continue(
+    setup,
+):
+    client, p, _, factories, directory, monkeypatch = setup
+    payload = replacement_source(directory, p)
+    assert authorize(client, p, payload).status_code == 200
+
+    def timeout(*args, **kwargs):
+        raise GatewayError("timeout")
+
+    monkeypatch.setattr(muse_construction, "generate_muse_construction", timeout)
+    assert (
+        post(client, p, body(p, idempotency_key="replacement-one")).json()["code"]
+        == "generation_outcome_unknown"
+    )
+    before = request_rows(directory)
+    assert (
+        post(client, p, body(p, idempotency_key="replacement-one")).status_code == 409
+    )
+    assert (
+        post(client, p, body(p, idempotency_key="replacement-two")).status_code == 409
+    )
+    assert len(factories) == 1
+    newest = before[-1]
+    child = payload | dict(
+        original_idempotency_key=newest[2],
+        original_digest=newest[3],
+        replacement_idempotency_key="replacement-two",
+    )
+    assert authorize(client, p, child).status_code == 200
+    assert (
+        post(client, p, body(p, idempotency_key="replacement-two")).status_code == 409
+    )
+    assert len(factories) == 2
+    assert request_rows(directory)[:2] == before
+
+
+def test_replacement_authorization_race_has_only_one_winner(setup):
+    client, p, calls, factories, directory, _ = setup
+    payload = replacement_source(directory, p)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda key: (
+                    authorize(
+                        client, p, payload | {"replacement_idempotency_key": key}
+                    ).status_code
+                ),
+                ["replacement-one", "replacement-two"],
+            )
+        )
+    assert sorted(results) == [200, 409]
+    assert not calls and not factories
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert (
+            connection.execute(
+                "SELECT count(*) FROM construction_replacements"
+            ).fetchone()[0]
+            == 1
+        )
+
+
+def test_stale_unused_grant_requires_explicit_append_only_successor(setup):
+    client, p, calls, factories, directory, _ = setup
+    payload = replacement_source(directory, p)
+    original = request_rows(directory)
+    assert authorize(client, p, payload).status_code == 200
+    changed = p | {"revision_id": "inventory-new"}
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        connection.execute(
+            "UPDATE projects SET body=? WHERE id=?", (json.dumps(changed), p["id"])
+        )
+    assert (
+        post(
+            client, changed, body(changed, idempotency_key="replacement-one")
+        ).status_code
+        == 409
+    )
+    successor = payload | {
+        "expected_revision_id": changed["revision_id"],
+        "replacement_idempotency_key": "replacement-two",
+    }
+    assert authorize(client, changed, successor).status_code == 200
+    assert (
+        post(
+            client, changed, body(changed, idempotency_key="replacement-one")
+        ).status_code
+        == 409
+    )
+    assert request_rows(directory) == original
+    assert (
+        post(
+            client, changed, body(changed, idempotency_key="replacement-two")
+        ).status_code
+        == 200
+    )
+    assert len(calls) == len(factories) == 1
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert (
+            connection.execute(
+                "SELECT count(*) FROM construction_replacements"
+            ).fetchone()[0]
+            == 2
+        )
+
+
+def test_stale_reserved_grant_is_not_reclassified_as_never_used(setup):
+    client, p, _, _, directory, monkeypatch = setup
+    payload = replacement_source(directory, p)
+    assert authorize(client, p, payload).status_code == 200
+
+    def unavailable():
+        raise ValueError("configuration unavailable")
+
+    monkeypatch.setattr(muse_construction, "default_gateway_factory", unavailable)
+    assert (
+        post(client, p, body(p, idempotency_key="replacement-one")).status_code == 503
+    )
+    # The normal known-failure path removes its pending row; the separate
+    # append-only reservation still proves this key was previously reserved.
+    assert len(request_rows(directory)) == 1
+    changed = p | {"revision_id": "inventory-new"}
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        connection.execute(
+            "UPDATE projects SET body=? WHERE id=?", (json.dumps(changed), p["id"])
+        )
+    successor = payload | {
+        "expected_revision_id": changed["revision_id"],
+        "replacement_idempotency_key": "replacement-two",
+    }
+    assert authorize(client, changed, successor).status_code == 409
+
+
+@pytest.mark.parametrize("change", ["digest", "completed"])
+def test_dispatch_rechecks_original_after_authorization(setup, change):
+    client, p, calls, factories, directory, _ = setup
+    payload = replacement_source(directory, p)
+    assert authorize(client, p, payload).status_code == 200
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        if change == "digest":
+            connection.execute(
+                "UPDATE requests SET digest=? WHERE key=?",
+                ("c" * 64, payload["original_idempotency_key"]),
+            )
+        else:
+            # Reconciliation outside this feature must invalidate the grant;
+            # no replacement dispatch can keep assuming an unknown ancestor.
+            connection.execute(
+                "UPDATE requests SET response=? WHERE key=?",
+                ("{}", payload["original_idempotency_key"]),
+            )
+    before = request_rows(directory)
+    assert (
+        post(client, p, body(p, idempotency_key="replacement-one")).status_code == 409
+    )
+    assert request_rows(directory) == before
+    assert not calls and not factories
+
+
+def test_completed_replacement_allows_new_cycle_but_new_unknown_needs_own_grant(setup):
+    client, p, calls, factories, directory, monkeypatch = setup
+    payload = replacement_source(directory, p)
+    original = request_rows(directory)[0]
+    assert authorize(client, p, payload).status_code == 200
+    assert (
+        post(client, p, body(p, idempotency_key="replacement-one")).status_code == 200
+    )
+    successful_runtime = muse_construction.generate_muse_construction
+
+    def timeout(*args, **kwargs):
+        raise GatewayError("timeout")
+
+    monkeypatch.setattr(muse_construction, "generate_muse_construction", timeout)
+    assert (
+        post(client, p, body(p, idempotency_key="normal-next-cycle")).json()["code"]
+        == "generation_outcome_unknown"
+    )
+    saved = request_rows(directory)
+    assert (
+        post(client, p, body(p, idempotency_key="unrelated-new-key")).status_code == 409
+    )
+    assert len(factories) == 2
+    latest = saved[-1]
+    child = payload | dict(
+        original_idempotency_key=latest[2],
+        original_digest=latest[3],
+        replacement_idempotency_key="second-cycle-child",
+    )
+    assert authorize(client, p, child).status_code == 200
+    monkeypatch.setattr(
+        muse_construction, "generate_muse_construction", successful_runtime
+    )
+    assert (
+        post(client, p, body(p, idempotency_key="second-cycle-child")).status_code
+        == 200
+    )
+    assert (
+        post(client, p, body(p, idempotency_key="third-normal-cycle")).status_code
+        == 200
+    )
+    assert request_rows(directory)[0] == original
+    assert request_rows(directory)[2] == saved[2]
+
+
+@pytest.mark.parametrize(
+    "leaf", ["missing", "pending", "unknown", "corrupt", "foreign", "foreign_revision"]
+)
+def test_only_a_valid_completed_authorized_successor_releases_historical_block(
+    setup, leaf
+):
+    client, p, calls, factories, directory, _ = setup
+    payload = replacement_source(directory, p)
+    original = request_rows(directory)[0]
+    assert authorize(client, p, payload).status_code == 200
+    if leaf != "missing":
+        assert (
+            post(client, p, body(p, idempotency_key="replacement-one")).status_code
+            == 200
+        )
+        row = request_rows(directory)[-1]
+        if leaf == "pending":
+            saved = route._PENDING
+        elif leaf == "unknown":
+            saved = route._uncertain_marker("timeout")
+        elif leaf == "corrupt":
+            saved = "{broken"
+        elif leaf == "foreign":
+            saved = json.dumps(json.loads(row[4]) | {"project_id": "foreign-project"})
+        else:
+            saved = json.dumps(
+                json.loads(row[4]) | {"inventory_revision_id": "foreign-revision"}
+            )
+        with sqlite3.connect(directory / "projects.sqlite3") as connection:
+            connection.execute(
+                "UPDATE requests SET response=? WHERE key=?", (saved, "replacement-one")
+            )
+    before = len(factories)
+    assert (
+        post(client, p, body(p, idempotency_key="normal-unbound-key")).status_code
+        == 409
+    )
+    assert len(factories) == before
+    assert request_rows(directory)[0] == original
+    if leaf in ("corrupt", "foreign", "foreign_revision"):
+        listed = client.get(
+            f"/api/projects/{p['id']}/construction/receipts", headers=AUTH
+        ).json()["receipts"]
+        child = next(r for r in listed if r["idempotency_key"] == "replacement-one")
+        assert child["state"] == "unknown"
+        assert child["error_code"] == "result_not_confirmed"
+
+
 def test_consented_saved_context_photo_replay_and_no_physical_writes(setup):
     client, p, calls, factories, directory, _ = setup
     media = upload(client, p).json()["media"]

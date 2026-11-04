@@ -154,6 +154,32 @@ class MuseConstructionReceipt(Record):
         ]
         | None
     ) = None
+    replacement_idempotency_key: (
+        Annotated[str, Field(min_length=8, max_length=128)] | None
+    ) = Field(default=None, exclude_if=lambda v: v is None)
+    replacement_expected_revision_id: ID | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+    replaces_idempotency_key: (
+        Annotated[str, Field(min_length=8, max_length=128)] | None
+    ) = Field(default=None, exclude_if=lambda v: v is None)
+
+
+class MuseConstructionReplacementRequest(Record):
+    expected_revision_id: ID
+    original_idempotency_key: Annotated[str, Field(min_length=8, max_length=128)]
+    original_digest: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+    replacement_idempotency_key: Annotated[str, Field(min_length=8, max_length=128)]
+    acknowledge_unknown: StrictBool
+
+
+class MuseConstructionReplacementAuthorization(Record):
+    project_id: ID
+    expected_revision_id: ID
+    original_idempotency_key: Annotated[str, Field(min_length=8, max_length=128)]
+    original_digest: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+    replacement_idempotency_key: Annotated[str, Field(min_length=8, max_length=128)]
+    replayed: bool = False
 
 
 class MuseConstructionReceipts(Record):

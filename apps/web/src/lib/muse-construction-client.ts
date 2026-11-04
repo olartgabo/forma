@@ -2,10 +2,178 @@ import type {
   MuseConstructionRequest,
   MuseConstructionResult,
   MuseConstructionReceipts,
+  MuseConstructionReplacementRequest,
+  MuseConstructionReplacementAuthorization,
 } from "./generated/api-contracts";
 // prettier-ignore
 // @ts-expect-error -- Node tests import TypeScript directly.
 import { ApiError } from "./api.ts";
+// prettier-ignore
+// @ts-expect-error -- Node tests import TypeScript directly.
+import { validConstructionResult } from "./construction-result.ts";
+
+/** An authorized ancestor stays unknown; only its linked child may proceed. */
+export function blockingConstructionReceipts(
+  receipts: MuseConstructionReceipts["receipts"],
+  pendingKey?: string,
+  revisionId?: string,
+  forSavedPreview = false,
+) {
+  const linkedChild = (receipt: MuseConstructionReceipts["receipts"][number]) =>
+    receipts.find(
+      (r) =>
+        r.idempotency_key === receipt.replacement_idempotency_key &&
+        r.replaces_idempotency_key === receipt.idempotency_key,
+    );
+  const authorizesSelectedKey = (
+    receipt: MuseConstructionReceipts["receipts"][number],
+    seen = new Set<string>(),
+  ): boolean => {
+    if (seen.has(receipt.idempotency_key)) return false;
+    seen.add(receipt.idempotency_key);
+    if (
+      receipt.replacement_idempotency_key === pendingKey &&
+      receipt.replacement_expected_revision_id === revisionId
+    )
+      return true;
+    const child = linkedChild(receipt);
+    return !!child && authorizesSelectedKey(child, seen);
+  };
+  const completedSuccessor = (
+    receipt: MuseConstructionReceipts["receipts"][number],
+    seen = new Set<string>(),
+  ): boolean => {
+    if (seen.has(receipt.idempotency_key)) return false;
+    seen.add(receipt.idempotency_key);
+    const child = linkedChild(receipt);
+    return (
+      !!child &&
+      (child.state === "completed" ||
+        (child.state === "unknown" && completedSuccessor(child, seen)))
+    );
+  };
+  return receipts.filter((receipt) => {
+    if (receipt.state === "completed") return false;
+    if (receipt.state !== "unknown" || !receipt.replacement_idempotency_key)
+      return true;
+    return (
+      !completedSuccessor(receipt) &&
+      (forSavedPreview || !authorizesSelectedKey(receipt))
+    );
+  });
+}
+
+export async function authorizeConstructionReplacement(
+  token: string,
+  projectId: string,
+  body: MuseConstructionReplacementRequest,
+): Promise<MuseConstructionReplacementAuthorization> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/construction/replacement-authorizations`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
+        credentials: "omit",
+        redirect: "error",
+        signal: controller.signal,
+      },
+    );
+    if (!response.ok) throw new Error();
+    const value = await response.json();
+    if (
+      !value ||
+      value.project_id !== projectId ||
+      value.expected_revision_id !== body.expected_revision_id ||
+      value.original_idempotency_key !== body.original_idempotency_key ||
+      value.original_digest !== body.original_digest ||
+      value.replacement_idempotency_key !== body.replacement_idempotency_key ||
+      typeof value.replayed !== "boolean"
+    )
+      throw new Error();
+    return value;
+  } catch {
+    throw new ApiError(
+      0,
+      "replacement_authorization_unavailable",
+      "Replacement authorization could not be confirmed. Check request status before trying again. No model request was sent by this action.",
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Read the existing completed result. Never POST, retry or settle a receipt. */
+export async function savedConstruction(
+  token: string,
+  projectId: string,
+  revisionId: string,
+  signal?: AbortSignal,
+): Promise<MuseConstructionResult | null> {
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  if (signal?.aborted) cancel();
+  signal?.addEventListener("abort", cancel, { once: true });
+  const timeout = setTimeout(cancel, 15_000);
+  try {
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/construction/preview?expected_inventory_revision_id=${encodeURIComponent(revisionId)}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+        credentials: "omit",
+        redirect: "error",
+        signal: controller.signal,
+      },
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error();
+    // Bound the downloaded body as well as the parsed display collections.
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error();
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > 8_000_000 || controller.signal.aborted) {
+        await reader.cancel();
+        throw new Error();
+      }
+      chunks.push(value);
+    }
+    const buffer = new Uint8Array(bytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      buffer.set(chunk, offset);
+      offset += chunk.length;
+    }
+    const result: unknown = JSON.parse(new TextDecoder().decode(buffer));
+    if (
+      controller.signal.aborted ||
+      !validConstructionResult(result, projectId, revisionId)
+    )
+      throw new Error();
+    return result;
+  } catch {
+    throw new ApiError(
+      0,
+      "saved_construction_unavailable",
+      "The saved manual could not be verified for these materials. No generation was started and no unknown request was resolved.",
+    );
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", cancel);
+  }
+}
 
 const MESSAGES: Record<string, string> = {
   consent_required:
@@ -194,11 +362,41 @@ export async function constructionReceipts(
       const code = "error_code" in receipt ? receipt.error_code : null;
       if (code !== null && (typeof code !== "string" || !codes.has(code)))
         throw new Error();
+      const replacementKey =
+        "replacement_idempotency_key" in receipt
+          ? receipt.replacement_idempotency_key
+          : undefined;
+      const replacementRevision =
+        "replacement_expected_revision_id" in receipt
+          ? receipt.replacement_expected_revision_id
+          : undefined;
+      const replaces =
+        "replaces_idempotency_key" in receipt
+          ? receipt.replaces_idempotency_key
+          : undefined;
+      const validKey = (v: unknown) =>
+        typeof v === "string" && v.length >= 8 && v.length <= 128;
+      if (
+        (replacementKey != null &&
+          (!validKey(replacementKey) ||
+            typeof replacementRevision !== "string" ||
+            !/^[A-Za-z][A-Za-z0-9_-]{0,95}$/.test(replacementRevision))) ||
+        (replacementKey == null && replacementRevision != null) ||
+        (replaces != null && !validKey(replaces))
+      )
+        throw new Error();
       return {
         idempotency_key: receipt.idempotency_key,
         digest: receipt.digest,
         state: receipt.state,
         error_code: code,
+        ...(replacementKey != null
+          ? {
+              replacement_idempotency_key: replacementKey,
+              replacement_expected_revision_id: replacementRevision,
+            }
+          : {}),
+        ...(replaces != null ? { replaces_idempotency_key: replaces } : {}),
       };
     });
     return { receipts } as MuseConstructionReceipts;

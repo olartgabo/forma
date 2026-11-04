@@ -188,6 +188,55 @@ export async function clearConstruction(
       "The proposal returned, but its recovery receipt could not be cleared. Check the original request before generating another.",
     );
 }
+
+/** Keep the original exact payload before selecting a separately authorized
+ * replacement. A failed archive write never changes the active request. */
+export async function retainReplacementConstruction(
+  token: string,
+  originalKey: string,
+  replacement: PendingConstruction,
+  storage?: Storage,
+) {
+  if (
+    !validPendingConstruction(replacement) ||
+    replacement.payload.idempotency_key === originalKey
+  )
+    throw new Error(
+      "The replacement request identity is invalid. No request was sent.",
+    );
+  const key = await scope(token, replacement.project_id);
+  const target = storage ?? window.localStorage;
+  const prior = read(key, replacement.project_id, target);
+  if (prior?.payload.idempotency_key === replacement.payload.idempotency_key) {
+    // Recovery uses the retained exact payload, never newly edited notes.
+    return prior;
+  }
+  if (prior) {
+    if (prior.payload.idempotency_key !== originalKey)
+      throw new Error(
+        "Another retained request must be checked before preparing this replacement.",
+      );
+    const archiveKey = key + ":unknown:" + encodeURIComponent(originalKey);
+    const serialized = JSON.stringify(prior);
+    const archived = target.getItem(archiveKey);
+    if (archived !== null && archived !== serialized)
+      throw new Error(
+        "The original request archive differs. No request was changed.",
+      );
+    target.setItem(archiveKey, serialized);
+    if (target.getItem(archiveKey) !== serialized)
+      throw new Error(
+        "The original request could not be preserved. No replacement was selected.",
+      );
+  }
+  const serialized = JSON.stringify(replacement);
+  target.setItem(key, serialized);
+  if (target.getItem(key) !== serialized)
+    throw new Error(
+      "The replacement request could not be retained. No request was sent.",
+    );
+  return replacement;
+}
 export function constructionContextChanged(
   record: PendingConstruction,
   project: Pick<Project, "id" | "revision_id" | "goal">,

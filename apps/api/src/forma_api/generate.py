@@ -62,6 +62,8 @@ from forma_api.muse_construction import (
     MuseConstructionCandidateResult,
     MuseConstructionReceipt,
     MuseConstructionReceipts,
+    MuseConstructionReplacementAuthorization,
+    MuseConstructionReplacementRequest,
     MuseConstructionRequest,
     MuseConstructionResult,
 )
@@ -227,6 +229,8 @@ API_RECORDS = (
     MuseConstructionCandidateResult,
     MuseConstructionReceipt,
     MuseConstructionReceipts,
+    MuseConstructionReplacementRequest,
+    MuseConstructionReplacementAuthorization,
     ConstructionGenerateRequest,
     ConstructionGenerateResult,
     FabricationAssessment,

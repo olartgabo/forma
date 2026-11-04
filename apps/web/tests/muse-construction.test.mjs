@@ -84,9 +84,18 @@ test("step names and piece presence follow engine identities without implying co
 });
 import {
   proposeConstruction,
+  savedConstruction,
+  authorizeConstructionReplacement,
+  blockingConstructionReceipts,
   constructionReceipts,
   uncertainConstructionOutcome,
 } from "../src/lib/muse-construction-client.ts";
+import { validConstructionResult } from "../src/lib/construction-result.ts";
+import {
+  projectConstructionFacets,
+  fitConstructionProjection,
+  orthographicConstruction,
+} from "../src/lib/construction-projection.ts";
 
 const body = {
   expected_revision_id: "inventory-one",
@@ -191,6 +200,7 @@ import {
   pendingConstruction,
   retainConstruction,
   clearConstruction,
+  retainReplacementConstruction,
   validPendingConstruction,
   constructionContextChanged,
   constructionRequestCanRestart,
@@ -530,4 +540,478 @@ test("receipt inspection fails closed without exposing bodies or retrying", asyn
   await assert.rejects(constructionReceipts("owner", "project-one"), {
     code: "receipt_status_unavailable",
   });
+});
+
+function triangleResult() {
+  const vertices = [
+    { x: 2, y: 3, z: 4 },
+    { x: 2.3, y: 3, z: 4 },
+    { x: 2, y: 3.2, z: 4 },
+  ];
+  const snapshot = {
+    project_id: result.project_id,
+    inventory_revision: result.inventory_revision_id,
+    plan_version_id: "triangle-proposal",
+  };
+  const facet = {
+    facet_id: "triangle-face",
+    part_id: "triangle-panel",
+    vertices,
+    centroid: { x: 2.1, y: 3.0666666667, z: 4 },
+    area_fraction: 1,
+  };
+  return {
+    ...result,
+    candidates: [
+      {
+        candidate_id: "triangle-candidate",
+        title: "Triangular divider",
+        rationale: "Synthetic display check",
+        status: "needs_measurement",
+        blockers: [],
+        estimated_materials: [],
+        fabrication_plan: null,
+        fabrication_report: null,
+        construction: {
+          generator_version: "test",
+          target_hash: "a".repeat(64),
+          limitations: [],
+          request: {
+            target: {
+              assembly: {
+                project_id: result.project_id,
+                plan_version_id: snapshot.plan_version_id,
+                parts: [
+                  {
+                    part_id: facet.part_id,
+                    facets: [
+                      { facet_id: facet.facet_id, vertices_local: vertices },
+                    ],
+                  },
+                ],
+              },
+              snapshot,
+            },
+          },
+          piece_catalog: [
+            {
+              part_id: facet.part_id,
+              reference: "Piece 1",
+              display_name: "Triangular divider",
+              geometry_class: "triangle",
+            },
+          ],
+          steps: [
+            {
+              step_id: "place-triangle",
+              index: 0,
+              action: "place",
+              part_ids: [facet.part_id],
+              depends_on_step_ids: [],
+              instruction: "Position the proposed panel",
+              operation_ids: [],
+              requires_external_support: true,
+              unresolved_predicates: ["Support unknown"],
+              analysis: {
+                snapshot,
+                present_part_ids: [facet.part_id],
+                facets: [facet],
+              },
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+test("saved complete non-stand manual loads through authenticated GET only", async (t) => {
+  const saved = triangleResult();
+  assert.equal(
+    validConstructionResult(
+      saved,
+      result.project_id,
+      result.inventory_revision_id,
+    ),
+    true,
+  );
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    calls++;
+    assert.equal(
+      url,
+      "/api/projects/project-one/construction/preview?expected_inventory_revision_id=inventory-one",
+    );
+    assert.equal(init.method, undefined);
+    assert.equal(init.headers.Authorization, "Bearer owner");
+    assert.equal(init.credentials, "omit");
+    assert.equal(init.redirect, "error");
+    assert.equal(init.cache, "no-store");
+    return new Response(JSON.stringify(saved));
+  });
+  assert.deepEqual(
+    await savedConstruction(
+      "owner",
+      result.project_id,
+      result.inventory_revision_id,
+    ),
+    saved,
+  );
+  assert.equal(calls, 1);
+});
+
+test("saved manual rejects stale, foreign, malformed nested geometry and unknown responses", async (t) => {
+  const invalid = [];
+  for (const change of [
+    (v) => {
+      v.inventory_revision_id = "other";
+    },
+    (v) => {
+      v.project_id = "other";
+    },
+    (v) => {
+      v.candidates[0].construction.steps = [];
+    },
+    (v) => {
+      v.candidates[0].construction.steps[0].analysis.facets[0].vertices[0].x =
+        null;
+    },
+    (v) => {
+      v.candidates[0].construction.steps[0].analysis.facets[0].part_id =
+        "foreign";
+    },
+    (v) => {
+      v.candidates[0].construction.steps[0].analysis.snapshot.inventory_revision =
+        "other";
+    },
+    (v) => {
+      v.candidates[0].construction.piece_catalog[0].geometry_class = null;
+    },
+  ]) {
+    const value = triangleResult();
+    change(value);
+    invalid.push(value);
+  }
+  for (const value of invalid) {
+    t.mock.method(
+      globalThis,
+      "fetch",
+      async () => new Response(JSON.stringify(value)),
+    );
+    await assert.rejects(
+      savedConstruction(
+        "owner",
+        result.project_id,
+        result.inventory_revision_id,
+      ),
+      { code: "saved_construction_unavailable" },
+    );
+    t.mock.restoreAll();
+  }
+  for (const status of [401, 409, 503]) {
+    let calls = 0;
+    t.mock.method(globalThis, "fetch", async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({
+          code: "generation_outcome_unknown",
+          message: "PRIVATE",
+        }),
+        { status },
+      );
+    });
+    await assert.rejects(
+      savedConstruction(
+        "owner",
+        result.project_id,
+        result.inventory_revision_id,
+      ),
+      (e) =>
+        e.code === "saved_construction_unavailable" &&
+        !e.message.includes("PRIVATE"),
+    );
+    assert.equal(calls, 1);
+    t.mock.restoreAll();
+  }
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async () => new Response("{}", { status: 404 }),
+  );
+  assert.equal(
+    await savedConstruction(
+      "owner",
+      result.project_id,
+      result.inventory_revision_id,
+    ),
+    null,
+  );
+});
+
+test("aborted or oversized saved response cannot populate the manual", async (t) => {
+  const controller = new AbortController();
+  t.mock.method(globalThis, "fetch", async (_, init) => {
+    controller.abort();
+    assert.equal(init.signal.aborted, true);
+    return new Response(JSON.stringify(triangleResult()));
+  });
+  await assert.rejects(
+    savedConstruction(
+      "owner",
+      result.project_id,
+      result.inventory_revision_id,
+      controller.signal,
+    ),
+  );
+  t.mock.restoreAll();
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async () => new Response(" ".repeat(8_000_001)),
+  );
+  await assert.rejects(
+    savedConstruction("owner", result.project_id, result.inventory_revision_id),
+  );
+});
+
+test("camera fit is translation invariant, excludes nonfinite facets, and never includes the origin", () => {
+  const facets =
+    triangleResult().candidates[0].construction.steps[0].analysis.facets;
+  for (const angle of [0, Math.PI / 4, Math.PI]) {
+    const project = (p) => ({
+      x: p.x * Math.cos(angle) - p.y * Math.sin(angle),
+      y: p.y * Math.cos(angle) + p.x * Math.sin(angle) + p.z * 0.3,
+      depth: p.z,
+    });
+    const shifted = facets.map((f) => ({
+      ...f,
+      vertices: f.vertices.map((p) => ({
+        x: p.x + 17,
+        y: p.y - 31,
+        z: p.z + 45,
+      })),
+      centroid: {
+        x: f.centroid.x + 17,
+        y: f.centroid.y - 31,
+        z: f.centroid.z + 45,
+      },
+    }));
+    const normalized = (fs) => {
+      const projected = projectConstructionFacets(fs, project);
+      const fit = fitConstructionProjection(projected.flatMap((f) => f.points));
+      return projected.flatMap((f) =>
+        f.points.map((p) => [fit.x(p.x), fit.y(p.y)]),
+      );
+    };
+    const before = normalized(facets),
+      after = normalized(shifted);
+    before
+      .flat()
+      .forEach((n, i) => assert.ok(Math.abs(n - after.flat()[i]) < 1e-7));
+  }
+  const bad = { ...facets[0], centroid: { x: NaN, y: 0, z: 0 } };
+  assert.equal(
+    projectConstructionFacets([bad], (p) => ({ ...p, depth: p.z })).length,
+    0,
+  );
+  const fit = fitConstructionProjection([]);
+  assert.equal(fit.x(0), 200);
+});
+
+test("orthographic step diagrams keep canonical triangle identities and metre-to-mm dimensions", () => {
+  const step = triangleResult().candidates[0].construction.steps[0];
+  for (const view of ["top", "front", "side"]) {
+    const projected = orthographicConstruction(step.analysis.facets, view);
+    assert.deepEqual(
+      projected.facets.map((f) => [f.part_id, f.facet_id, f.points.length]),
+      [["triangle-panel", "triangle-face", 3]],
+    );
+    assert.equal(step.part_ids.includes(projected.facets[0].part_id), true);
+    assert.ok(
+      Math.abs(projected.fit.width * 1000 - (view === "side" ? 200 : 300)) <
+        1e-8,
+    );
+    assert.ok(
+      Math.abs(projected.fit.height * 1000 - (view === "top" ? 200 : 0)) < 1e-8,
+    );
+  }
+});
+
+test("replacement authorization is an explicit separate POST with exact binding and no generation", async (t) => {
+  const body = {
+    expected_revision_id: "inventory-one",
+    original_idempotency_key: "original-key",
+    original_digest: "a".repeat(64),
+    replacement_idempotency_key: "replacement-key",
+    acknowledge_unknown: true,
+  };
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    calls++;
+    assert.equal(
+      url,
+      "/api/projects/project-one/construction/replacement-authorizations",
+    );
+    assert.equal(init.method, "POST");
+    assert.deepEqual(JSON.parse(init.body), body);
+    return new Response(
+      JSON.stringify({ ...body, project_id: "project-one", replayed: false }),
+    );
+  });
+  assert.equal(
+    (await authorizeConstructionReplacement("owner", "project-one", body))
+      .replacement_idempotency_key,
+    "replacement-key",
+  );
+  assert.equal(calls, 1);
+  t.mock.restoreAll();
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async () =>
+      new Response(
+        JSON.stringify({ ...body, project_id: "other", replayed: false }),
+      ),
+  );
+  await assert.rejects(
+    authorizeConstructionReplacement("owner", "project-one", body),
+  );
+});
+
+test("authorized ancestry permits only its exact successor and a new unknown child blocks again", () => {
+  const original = {
+    idempotency_key: "original-key",
+    digest: "a".repeat(64),
+    state: "unknown",
+    error_code: "timeout",
+    replacement_idempotency_key: "replacement-key",
+    replacement_expected_revision_id: "inventory-one",
+  };
+  assert.equal(blockingConstructionReceipts([original]).length, 1);
+  assert.equal(
+    blockingConstructionReceipts([original], "unrelated-key", "inventory-one")
+      .length,
+    1,
+  );
+  assert.equal(
+    blockingConstructionReceipts([original], "replacement-key", "other").length,
+    1,
+  );
+  assert.equal(
+    blockingConstructionReceipts([original], "replacement-key", "inventory-one")
+      .length,
+    0,
+  );
+  const child = {
+    idempotency_key: "replacement-key",
+    digest: "b".repeat(64),
+    state: "completed",
+    replaces_idempotency_key: "original-key",
+  };
+  assert.equal(
+    blockingConstructionReceipts([child, original]).length,
+    0,
+    "completed successor leaves its ancestor historical without rewriting it",
+  );
+  assert.equal(
+    blockingConstructionReceipts([child, original], undefined, undefined, true)
+      .length,
+    0,
+  );
+  assert.equal(
+    blockingConstructionReceipts(
+      [child, original],
+      "replacement-key",
+      "inventory-one",
+    ).length,
+    0,
+  );
+  assert.deepEqual(
+    blockingConstructionReceipts(
+      [{ ...child, state: "unknown" }, original],
+      "replacement-key",
+      "inventory-one",
+    ),
+    [{ ...child, state: "unknown" }],
+  );
+  assert.equal(
+    blockingConstructionReceipts([
+      { ...child, replaces_idempotency_key: "foreign" },
+      original,
+    ]).length,
+    1,
+  );
+  assert.equal(original.state, "unknown");
+});
+
+test("replacement preserves exact original browser payload before selecting new identity", async () => {
+  const storage = recoveryStorage(),
+    original = originalRequest();
+  await retainConstruction("owner", original, storage);
+  const replacement = {
+    ...original,
+    payload: {
+      ...original.payload,
+      idempotency_key: "replacement-key",
+      user_notes: "New separate proposal",
+    },
+  };
+  await retainReplacementConstruction(
+    "owner",
+    original.payload.idempotency_key,
+    replacement,
+    storage,
+  );
+  assert.equal(storage.values.size, 2);
+  const archived = [...storage.values.entries()].find(([key]) =>
+    key.includes(":unknown:"),
+  );
+  assert.equal(archived[1], JSON.stringify(original));
+  assert.deepEqual(
+    await pendingConstruction("owner", original.project_id, storage),
+    replacement,
+  );
+  assert.deepEqual(
+    await retainReplacementConstruction(
+      "owner",
+      original.payload.idempotency_key,
+      {
+        ...replacement,
+        payload: { ...replacement.payload, user_notes: "Changed draft" },
+      },
+      storage,
+    ),
+    replacement,
+  );
+  await clearConstruction("owner", replacement, storage);
+  assert.equal(storage.getItem(archived[0]), JSON.stringify(original));
+  assert.equal(
+    await pendingConstruction("owner", original.project_id, storage),
+    null,
+  );
+});
+
+test("failed original archive never overwrites the retained unknown request", async () => {
+  const storage = recoveryStorage(),
+    original = originalRequest();
+  await retainConstruction("owner", original, storage);
+  const set = storage.setItem;
+  storage.setItem = (key, value) => {
+    if (!key.includes(":unknown:")) set(key, value);
+  };
+  await assert.rejects(
+    retainReplacementConstruction(
+      "owner",
+      original.payload.idempotency_key,
+      {
+        ...original,
+        payload: { ...original.payload, idempotency_key: "replacement-key" },
+      },
+      storage,
+    ),
+  );
+  assert.deepEqual(
+    await pendingConstruction("owner", original.project_id, storage),
+    original,
+  );
 });

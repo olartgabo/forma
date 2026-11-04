@@ -16,16 +16,51 @@ const browser = await chromium.launch({
 });
 try {
   const page = await browser.newPage({
-    viewport: { width: 390, height: 900 },
+    viewport: { width: Number(process.env.VIEWPORT_WIDTH ?? 390), height: 900 },
     reducedMotion: "reduce",
   });
   const base = `/api/projects/${fixture.project.id}`;
   let calls = 0;
+  let receiptRows = [],
+    lastKey = null,
+    authorizationCalls = 0,
+    authorizedKey = null,
+    previewReads = 0;
+  let heldPreview = null;
+  let heldMedia = null;
   const unexpectedWrites = [];
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (url.origin !== origin.origin) return route.abort();
     if (!url.pathname.startsWith("/api/")) return route.continue();
+    if (url.pathname === `${base}/media` && heldMedia) await heldMedia;
+    if (url.pathname === `${base}/construction/preview`) {
+      previewReads++;
+      assert.equal(route.request().method(), "GET");
+      assert.equal(
+        url.searchParams.get("expected_inventory_revision_id"),
+        fixture.project.revision_id,
+      );
+      const saved = structuredClone(fixture.result);
+      if (heldPreview) await heldPreview;
+      return route.fulfill({ json: saved }).catch(() => undefined);
+    }
+    if (url.pathname === `${base}/construction/replacement-authorizations`) {
+      authorizationCalls++;
+      const body = route.request().postDataJSON();
+      assert.equal(body.original_idempotency_key, lastKey);
+      assert.equal(body.original_digest, "a".repeat(64));
+      assert.equal(body.acknowledge_unknown, true);
+      authorizedKey = body.replacement_idempotency_key;
+      receiptRows[0] = {
+        ...receiptRows[0],
+        replacement_idempotency_key: authorizedKey,
+        replacement_expected_revision_id: fixture.project.revision_id,
+      };
+      return route.fulfill({
+        json: { ...body, project_id: fixture.project.id, replayed: false },
+      });
+    }
     if (url.pathname === `${base}/construction/propose`) {
       const body = route.request().postDataJSON();
       assert.equal(body.approximate, true);
@@ -34,6 +69,16 @@ try {
       assert.equal(body.provider_transfer_consented, true);
       if (calls === 1)
         assert.equal(body.user_notes, "Use 210 mm width for the cardboard.");
+      if (authorizedKey) assert.equal(body.idempotency_key, authorizedKey);
+      lastKey = body.idempotency_key;
+      if (authorizedKey)
+        receiptRows.unshift({
+          idempotency_key: authorizedKey,
+          digest: "b".repeat(64),
+          state: "completed",
+          error_code: null,
+          replaces_idempotency_key: receiptRows[0].idempotency_key,
+        });
       calls++;
       return route.fulfill({ json: fixture.result });
     }
@@ -67,7 +112,7 @@ try {
         ],
       },
       [`${base}/plans`]: { plans: [] },
-      [`${base}/construction/receipts`]: { receipts: [] },
+      [`${base}/construction/receipts`]: { receipts: receiptRows },
     };
     if (route.request().method() === "GET" && responses[url.pathname])
       return route.fulfill({ json: responses[url.pathname] });
@@ -156,8 +201,188 @@ try {
   await diagram.scrollIntoViewIfNeeded();
   assert.equal(calls, 2);
   assert.deepEqual(unexpectedWrites, []);
+  // Read-only reload restores the complete manual, retaining conservative review.
+  receiptRows = [
+    {
+      idempotency_key: lastKey,
+      digest: "a".repeat(64),
+      state: "completed",
+      error_code: null,
+    },
+  ];
+  await page.reload();
+  await page.getByLabel("Owner credential").fill("offline-owner");
+  await page.getByRole("button", { name: "Open workbench" }).click();
+  await panel
+    .getByText(/Saved proposal restored without a model request/)
+    .waitFor();
+  assert.equal(calls, 2);
+  await panel
+    .getByLabel("Review these proposed dimensions for my saved manual.")
+    .check();
+  const diagrams = panel.getByRole("region", {
+    name: "Proposed step diagrams",
+  });
+  await diagrams.waitFor();
+  assert.equal(await diagrams.getByRole("img").count(), 3);
+  const currentIds = await panel
+    .getByRole("img", { name: /Proposed construction geometry/ })
+    .locator("polygon")
+    .evaluateAll((nodes) =>
+      nodes.map((n) => n.getAttribute("data-part-id")).sort(),
+    );
+  for (const view of ["top", "front", "side"]) {
+    const ids = await diagrams
+      .getByRole("img", { name: new RegExp(`^${view} diagram`) })
+      .locator("polygon")
+      .evaluateAll((nodes) =>
+        nodes.map((n) => n.getAttribute("data-part-id")).sort(),
+      );
+    assert.deepEqual(ids, currentIds);
+  }
+  await panel.getByRole("button", { name: "Next step" }).click();
+  assert.match(await diagrams.innerText(), /proposed bounds/);
   if (process.env.SCREENSHOT_PATH)
-    await page.screenshot({ path: process.env.SCREENSHOT_PATH });
+    await diagrams.screenshot({ path: process.env.SCREENSHOT_PATH });
+  // Metadata may hydrate after an initially restored manual. It must restore
+  // again for that context rather than leave the panel permanently blank.
+  let releaseMedia;
+  heldMedia = new Promise((resolve) => {
+    releaseMedia = resolve;
+  });
+  await page.reload();
+  await page.getByLabel("Owner credential").fill("offline-owner");
+  await page.getByRole("button", { name: "Open workbench" }).click();
+  await panel
+    .getByText(/Saved proposal restored without a model request/)
+    .waitFor();
+  releaseMedia();
+  heldMedia = null;
+  await panel
+    .getByLabel("Choose a material photo")
+    .locator('option[value="photo-one"]')
+    .waitFor({ state: "attached" });
+  await panel
+    .getByText(/Saved proposal restored without a model request/)
+    .waitFor();
+  // Unknown receipt never loads an older saved result. Replacement requires an
+  // explicit authorization, then fresh consent and a separately clicked Ask.
+  receiptRows = [
+    {
+      idempotency_key: lastKey,
+      digest: "a".repeat(64),
+      state: "unknown",
+      error_code: "timeout",
+    },
+  ];
+  const readsBefore = previewReads;
+  await page.reload();
+  await page.getByLabel("Owner credential").fill("offline-owner");
+  await page.getByRole("button", { name: "Open workbench" }).click();
+  await panel.getByText(/Stored request state: unknown/).waitFor();
+  assert.equal(previewReads, readsBefore);
+  assert.equal(
+    await panel
+      .getByRole("img", { name: /Proposed construction geometry/ })
+      .count(),
+    0,
+  );
+  await panel
+    .getByRole("button", { name: "Authorize a separate paid replacement" })
+    .click();
+  await panel.getByText(/Replacement identity prepared/).waitFor();
+  assert.equal(authorizationCalls, 1);
+  assert.equal(calls, 2);
+  assert.equal(
+    await panel
+      .getByRole("button", {
+        name: "Ask MetaMuse for the authorized replacement",
+      })
+      .isDisabled(),
+    true,
+  );
+  const archives = await page.evaluate(() =>
+    Object.keys(localStorage)
+      .filter((key) => key.includes(":unknown:"))
+      .map((key) => localStorage.getItem(key)),
+  );
+  assert.equal(archives.length, 1);
+  assert.equal(
+    JSON.parse(archives[0]).payload.idempotency_key,
+    receiptRows[0].idempotency_key,
+  );
+  await panel.getByLabel(/Send the saved goal/).check();
+  await panel.getByLabel(/Also send the selected/).check();
+  await panel
+    .getByRole("button", {
+      name: "Ask MetaMuse for the authorized replacement",
+    })
+    .click();
+  await panel.getByText("Review your materials").waitFor();
+  assert.equal(calls, 3);
+  // A fresh browser restores the completed replacement; its ancestor remains
+  // unknown but no longer blocks a separately consented new request.
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.getByLabel("Owner credential").fill("offline-owner");
+  await page.getByRole("button", { name: "Open workbench" }).click();
+  await panel
+    .getByText(/Saved proposal restored without a model request/)
+    .waitFor();
+  assert.equal(
+    await panel
+      .getByRole("button", { name: "Ask MetaMuse for shapes and steps" })
+      .isDisabled(),
+    true,
+  );
+  await panel.getByLabel("Choose a material photo").selectOption("photo-one");
+  await panel.getByLabel(/Send the saved goal/).check();
+  await panel.getByLabel(/Also send the selected/).check();
+  assert.equal(
+    await panel
+      .getByRole("button", { name: "Ask MetaMuse for shapes and steps" })
+      .isDisabled(),
+    false,
+  );
+  assert.equal(calls, 3);
+  // A late restore response must not overwrite a newer explicitly generated result.
+  let releasePreview;
+  heldPreview = new Promise((resolve) => {
+    releasePreview = resolve;
+  });
+  const previewStarted = page.waitForRequest((r) =>
+    r.url().includes("/construction/preview"),
+  );
+  await page.reload();
+  await page.getByLabel("Owner credential").fill("offline-owner");
+  await page.getByRole("button", { name: "Open workbench" }).click();
+  await previewStarted;
+  authorizedKey = null;
+  fixture.result.candidates[0].title = "Newer proposed assembly";
+  await panel.getByLabel("Choose a material photo").selectOption("photo-one");
+  await panel.getByLabel(/Send the saved goal/).check();
+  await panel.getByLabel(/Also send the selected/).check();
+  await panel
+    .getByRole("button", { name: "Ask MetaMuse for shapes and steps" })
+    .click();
+  await panel
+    .getByRole("heading", { name: "Newer proposed assembly", exact: true })
+    .waitFor();
+  releasePreview();
+  heldPreview = null;
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  assert.equal(
+    await panel
+      .getByRole("heading", { name: "Newer proposed assembly", exact: true })
+      .count(),
+    1,
+  );
+  assert.equal(calls, 4);
   // A saved active build always exposes its existing manual and repair flow,
   // even when the browser previously selected photo-first entry.
   fixture.project.active_version_id = "active-fixture";
@@ -179,11 +404,11 @@ try {
   );
   assert.equal(
     calls,
-    2,
+    4,
     "opening an active manual dispatches no concept request",
   );
   console.log(
-    "Photo-first browser replay passed; two intercepted hypothetical requests, no provider calls.",
+    "Photo-first recovery, diagrams, restore race and explicit replacement replay passed; four intercepted hypothetical requests, no provider calls.",
   );
 } finally {
   await browser.close();

@@ -4,6 +4,7 @@ import hashlib
 import json
 import sqlite3
 from contextlib import closing
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
@@ -31,6 +32,49 @@ from forma_api.routes.designs import (
 from forma_domain.models import ID
 
 
+def _replacement_rows(connection, owner, project_id):
+    # Legacy read-only databases may predate the append-only authorization table.
+    if not connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='construction_replacements'"
+    ).fetchone():
+        return []
+    return connection.execute(
+        "SELECT original_key, original_digest, replacement_key, revision_id FROM construction_replacements "
+        "WHERE owner=? AND project_id=? ORDER BY rowid",
+        (owner, project_id),
+    ).fetchall()
+
+
+def _ancestors(key, rows, requests):
+    """Only the latest grant for each original may authorize a successor.
+
+    All original digests and unknown states must still match. No request is
+    edited by this traversal, including an unknown ancestor's usage evidence.
+    """
+    latest = {r[0]: r for r in rows}
+    incoming = {r[2]: r for r in rows}
+    found = set()
+    while key in incoming:
+        row = incoming[key]
+        original, digest, _, _ = row
+        saved = requests.get(original)
+        if (
+            latest.get(original) != row
+            or original in found
+            or saved is None
+            or saved[0] != digest
+            or not _is_uncertain(saved[1])
+        ):
+            raise DesignError(
+                409,
+                "blocked",
+                "Replacement authorization no longer matches its original request",
+            )
+        found.add(original)
+        key = original
+    return found
+
+
 def _current(project, revision):
     if project.revision_id != revision:
         raise DesignError(409, "stale_version", "Inventory changed; reload it")
@@ -38,6 +82,31 @@ def _current(project, revision):
         raise DesignError(
             409, "blocked", "Active builds require the fabrication and repair flow"
         )
+
+
+def _completed_ancestors(rows, requests, project_id):
+    """Exempt historical unknowns only behind a validated completed successor.
+
+    No ancestor receipt or unknown usage is changed. Pending, unknown, corrupt
+    and superseded successors cannot establish completion of the authorized chain.
+    """
+    historical = set()
+    for key, revision in {row[2]: row[3] for row in rows}.items():
+        if key not in requests:
+            continue
+        _, saved = requests[key]
+        if saved == _PENDING or _is_uncertain(saved):
+            continue
+        try:
+            result = muse_construction.MuseConstructionResult.model_validate_json(saved)
+            if (
+                result.project_id == project_id
+                and result.inventory_revision_id == revision
+            ):
+                historical.update(_ancestors(key, rows, requests))
+        except (ValueError, DesignError):
+            continue
+    return historical
 
 
 def _photo(connection, project_id, media_id):
@@ -141,6 +210,9 @@ def muse_construction_router(
                 "SELECT key, digest, response FROM requests WHERE owner=? AND scope=? ORDER BY rowid DESC LIMIT 16",
                 (owner, project_id + ":construction-proposal"),
             ).fetchall()
+            replacements = _replacement_rows(connection, owner, project_id)
+        outgoing = {r[0]: r for r in replacements}
+        incoming = {r[2]: r for r in replacements}
         receipts = []
         safe_codes = {
             "timeout",
@@ -168,7 +240,10 @@ def muse_construction_router(
                     result = muse_construction.MuseConstructionResult.model_validate(
                         value
                     )
-                    if result.project_id == project_id:
+                    if result.project_id == project_id and (
+                        key not in incoming
+                        or result.inventory_revision_id == incoming[key][3]
+                    ):
                         state, code = "completed", None
             except ValueError:
                 pass  # Corrupt response stays unknown; no raw response is exposed.
@@ -178,9 +253,144 @@ def muse_construction_router(
                     digest=digest,
                     state=state,
                     error_code=code,
+                    replacement_idempotency_key=outgoing[key][2]
+                    if key in outgoing
+                    else None,
+                    replacement_expected_revision_id=outgoing[key][3]
+                    if key in outgoing
+                    else None,
+                    replaces_idempotency_key=incoming[key][0]
+                    if key in incoming
+                    else None,
                 )
             )
         return muse_construction.MuseConstructionReceipts(receipts=tuple(receipts))
+
+    @router.post(
+        "/{project_id}/construction/replacement-authorizations",
+        response_model=muse_construction.MuseConstructionReplacementAuthorization,
+    )
+    def authorize_replacement(
+        project_id: ID,
+        body: muse_construction.MuseConstructionReplacementRequest,
+        owner: Owner,
+        response: Response,
+    ):
+        response.headers["Cache-Control"] = "no-store"
+        if (
+            not body.acknowledge_unknown
+            or body.original_idempotency_key == body.replacement_idempotency_key
+        ):
+            raise DesignError(
+                422,
+                "validation_error",
+                "Explicitly acknowledge the unknown outcome and choose a new replacement identity",
+            )
+        scope = project_id + ":construction-proposal"
+        with store.transaction() as connection:
+            project = store.read(connection, owner, project_id)
+            _current(project, body.expected_revision_id)
+            rows = connection.execute(
+                "SELECT key, digest, response FROM requests WHERE owner=? AND scope=? ORDER BY rowid",
+                (owner, scope),
+            ).fetchall()
+            requests = {key: (digest, saved) for key, digest, saved in rows}
+            original = requests.get(body.original_idempotency_key)
+            if original is None:
+                raise DesignError(
+                    404, "not_found", "Original construction request not found"
+                )
+            if original[0] != body.original_digest:
+                raise DesignError(
+                    409, "idempotency_conflict", "Original request digest changed"
+                )
+            if not _is_uncertain(original[1]):
+                raise DesignError(
+                    409,
+                    "blocked",
+                    "Only a recorded unknown outcome can authorize replacement",
+                )
+            replacements = _replacement_rows(connection, owner, project_id)
+            latest = {r[0]: r for r in replacements}.get(body.original_idempotency_key)
+            replayed = bool(
+                latest
+                and latest
+                == (
+                    body.original_idempotency_key,
+                    body.original_digest,
+                    body.replacement_idempotency_key,
+                    body.expected_revision_id,
+                )
+            )
+            # Exact retries return the immutable grant even after its child was
+            # dispatched. They grant no second key or provider retry.
+            if not replayed:
+                reserved = bool(
+                    latest
+                    and connection.execute(
+                        "SELECT 1 FROM construction_replacement_reservations WHERE owner=? AND project_id=? AND replacement_key=?",
+                        (owner, project_id, latest[2]),
+                    ).fetchone()
+                )
+                if latest and (
+                    latest[3] == body.expected_revision_id
+                    or latest[2] in requests
+                    or reserved
+                ):
+                    raise DesignError(
+                        409,
+                        "idempotency_conflict",
+                        "This unknown request already has a replacement authorization",
+                    )
+                if body.replacement_idempotency_key in requests or any(
+                    body.replacement_idempotency_key in (r[0], r[2])
+                    for r in replacements
+                ):
+                    raise DesignError(
+                        409,
+                        "idempotency_conflict",
+                        "Replacement identity is already used",
+                    )
+                allowed = _ancestors(
+                    body.original_idempotency_key, replacements, requests
+                ) | {body.original_idempotency_key}
+                historical = _completed_ancestors(replacements, requests, project_id)
+                unresolved = [
+                    key
+                    for key, _, saved in rows
+                    if key not in historical
+                    and (_is_uncertain(saved) or saved == _PENDING)
+                ]
+                if (
+                    not unresolved
+                    or unresolved[-1] != body.original_idempotency_key
+                    or any(key not in allowed for key in unresolved)
+                ):
+                    raise DesignError(
+                        409,
+                        "blocked",
+                        "Address the latest unresolved construction request before authorizing replacement",
+                    )
+                connection.execute(
+                    "INSERT INTO construction_replacements VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        owner,
+                        project_id,
+                        body.original_idempotency_key,
+                        body.original_digest,
+                        body.replacement_idempotency_key,
+                        body.expected_revision_id,
+                        datetime.now(timezone.utc).isoformat(),
+                    ),
+                )
+        return muse_construction.MuseConstructionReplacementAuthorization(
+            project_id=project_id,
+            expected_revision_id=body.expected_revision_id,
+            original_idempotency_key=body.original_idempotency_key,
+            original_digest=body.original_digest,
+            replacement_idempotency_key=body.replacement_idempotency_key,
+            replayed=replayed,
+        )
 
     @router.post(
         "/{project_id}/construction/propose",
@@ -266,16 +476,38 @@ def muse_construction_router(
                 return result.model_copy(update={"replayed": True})
             # Changing a retry key must never bypass an unresolved paid dispatch.
             outstanding = connection.execute(
-                "SELECT response FROM requests WHERE owner=? AND scope=?",
+                "SELECT key, digest, response FROM requests WHERE owner=? AND scope=?",
                 (owner, scope),
             ).fetchall()
-            if any(_is_uncertain(r[0]) for r in outstanding):
+            replacements = _replacement_rows(connection, owner, project_id)
+            saved_requests = {r[0]: (r[1], r[2]) for r in outstanding}
+            historical = _completed_ancestors(replacements, saved_requests, project_id)
+            grant = next(
+                (r for r in replacements if r[2] == body.idempotency_key), None
+            )
+            ancestors = set()
+            if grant:
+                if grant[3] != body.expected_revision_id:
+                    raise DesignError(
+                        409,
+                        "stale_version",
+                        "Replacement authorization is for an earlier inventory revision",
+                    )
+                ancestors = _ancestors(
+                    body.idempotency_key,
+                    replacements,
+                    saved_requests,
+                )
+            if any(
+                _is_uncertain(r[2]) and r[0] not in ancestors | historical
+                for r in outstanding
+            ):
                 raise DesignError(
                     409,
                     "generation_outcome_unknown",
                     "A previous provider outcome is unknown; reconcile it before another request",
                 )
-            if any(r[0] == _PENDING for r in outstanding):
+            if any(r[2] == _PENDING for r in outstanding):
                 raise DesignError(
                     409,
                     "generation_in_progress",
@@ -285,6 +517,16 @@ def muse_construction_router(
                 "INSERT INTO requests VALUES (?, ?, ?, ?, ?)",
                 (owner, scope, body.idempotency_key, digest, _PENDING),
             )
+            if grant:
+                connection.execute(
+                    "INSERT OR IGNORE INTO construction_replacement_reservations VALUES (?, ?, ?, ?)",
+                    (
+                        owner,
+                        project_id,
+                        body.idempotency_key,
+                        datetime.now(timezone.utc).isoformat(),
+                    ),
+                )
 
         def clear_pending():
             with store.transaction() as connection:

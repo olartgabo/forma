@@ -540,10 +540,30 @@ export type MuseConstructionReceipt = {
   readonly "digest": string;
   readonly "state": "pending" | "unknown" | "completed";
   readonly "error_code"?: ("timeout" | "network_error" | "budget_exhausted" | "server_error" | "result_not_confirmed" | "stale_version" | "blocked" | "not_found" | "generation_outcome_unknown" | null);
+  readonly "replacement_idempotency_key"?: (string | null);
+  readonly "replacement_expected_revision_id"?: (string | null);
+  readonly "replaces_idempotency_key"?: (string | null);
 };
 
 export type MuseConstructionReceipts = {
   readonly "receipts": ReadonlyArray<MuseConstructionReceipt>;
+};
+
+export type MuseConstructionReplacementAuthorization = {
+  readonly "project_id": string;
+  readonly "expected_revision_id": string;
+  readonly "original_idempotency_key": string;
+  readonly "original_digest": string;
+  readonly "replacement_idempotency_key": string;
+  readonly "replayed"?: boolean;
+};
+
+export type MuseConstructionReplacementRequest = {
+  readonly "expected_revision_id": string;
+  readonly "original_idempotency_key": string;
+  readonly "original_digest": string;
+  readonly "replacement_idempotency_key": string;
+  readonly "acknowledge_unknown": boolean;
 };
 
 export type MuseConstructionRequest = {

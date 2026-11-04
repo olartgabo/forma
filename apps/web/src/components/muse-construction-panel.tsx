@@ -14,18 +14,27 @@ import { ApiError } from "../lib/api";
 import {
   proposeConstruction,
   constructionReceipts,
+  savedConstruction,
+  authorizeConstructionReplacement,
+  blockingConstructionReceipts,
   uncertainConstructionOutcome,
 } from "../lib/muse-construction-client";
 import {
   pendingConstruction,
   retainConstruction,
   clearConstruction,
+  retainReplacementConstruction,
   constructionContextChanged,
   constructionRequestCanRestart,
   type PendingConstruction,
 } from "../lib/muse-construction-pending";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
 import CubeLoader from "./cube-loader";
+import ConstructionStepDiagrams from "./construction-step-diagrams";
+import {
+  projectConstructionFacets,
+  fitConstructionProjection,
+} from "../lib/construction-projection";
 import MuseRequestStatus from "./muse-request-status";
 import {
   constructionStepTitle,
@@ -180,19 +189,8 @@ function ConstructionPreview({
       depth: y * Math.cos(b) - p.z * Math.sin(b),
     };
   }
-  const facets = step.analysis.facets.map((f) => ({
-    ...f,
-    points: f.vertices.map(project),
-    center: project(f.centroid),
-  }));
-  const points = facets.flatMap((f) => f.points);
-  const minX = Math.min(0, ...points.map((p) => p.x)),
-    maxX = Math.max(0, ...points.map((p) => p.x));
-  const minY = Math.min(0, ...points.map((p) => p.y)),
-    maxY = Math.max(0, ...points.map((p) => p.y));
-  const scale = 310 / Math.max(maxX - minX, maxY - minY, 0.01);
-  const x = (v: number) => 200 + (v - (minX + maxX) / 2) * scale;
-  const y = (v: number) => 190 + (v - (minY + maxY) / 2) * scale;
+  const facets = projectConstructionFacets(step.analysis.facets, project);
+  const { x, y } = fitConstructionProjection(facets.flatMap((f) => f.points));
   return (
     <div>
       <div className="muse-actions">
@@ -378,6 +376,7 @@ function ConstructionPreview({
         Piece references for the whole proposal. This step shows only its
         present pieces.
       </p>
+      <ConstructionStepDiagrams plan={plan} step={step} />
       <ol>
         {plan.piece_catalog.map((p) => (
           <li key={p.part_id} style={{ overflowWrap: "anywhere" }}>
@@ -406,11 +405,14 @@ function ConstructionPreview({
 function Candidate({
   candidate,
   approximate,
+  restored = false,
 }: {
   candidate: MuseConstructionCandidateResult;
   approximate: boolean;
+  restored?: boolean;
 }) {
   const [acknowledged, setAcknowledged] = useState(false);
+  const reviewRequired = approximate || restored;
   return (
     <article className="muse-result" style={{ overflowWrap: "anywhere" }}>
       <h3>{candidate.title}</h3>
@@ -426,7 +428,7 @@ function Candidate({
             ))}
           </ul>
         )}
-      {approximate && (
+      {reviewRequired && (
         <div>
           <h4>Review your materials</h4>
           <p>
@@ -447,13 +449,15 @@ function Candidate({
               checked={acknowledged}
               onChange={(e) => setAcknowledged(e.target.checked)}
             />{" "}
-            Use these estimates for my manual.
+            {restored
+              ? "Review these proposed dimensions for my saved manual."
+              : "Use these estimates for my manual."}
           </label>
         </div>
       )}
-      {candidate.construction && (!approximate || acknowledged) && (
+      {candidate.construction && (!reviewRequired || acknowledged) && (
         <>
-          {approximate && <Preparation plan={candidate.construction} />}
+          {reviewRequired && <Preparation plan={candidate.construction} />}
           <ConstructionPreview
             key={candidate.construction.target_hash}
             plan={candidate.construction}
@@ -536,6 +540,7 @@ function ConstructionPanel({
   }, [busy, onBusyChange]);
   const [proposalInFlight, setProposalInFlight] = useState(false);
   const [result, setResult] = useState<MuseConstructionResult | null>(null);
+  const [restored, setRestored] = useState(false);
   useEffect(() => {
     onReadyChange?.(
       !busy &&
@@ -556,6 +561,7 @@ function ConstructionPanel({
     useState<MuseConstructionReceipts | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(true);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [savedManualError, setSavedManualError] = useState<string | null>(null);
   const [uncertainDispatch, setUncertainDispatch] = useState(false);
   const statusEpoch = useRef(0);
   const statusController = useRef<AbortController | null>(null);
@@ -563,6 +569,28 @@ function ConstructionPanel({
     serverReceipts?.receipts.filter(
       (receipt) => receipt.state !== "completed",
     ) ?? [];
+  const blockingReceipts = blockingConstructionReceipts(
+    serverReceipts?.receipts ?? [],
+    pending?.payload.idempotency_key,
+    project.revision_id,
+  );
+  const replacementSource = unresolvedReceipts.find(
+    (r) =>
+      r.state === "unknown" &&
+      !serverReceipts?.receipts.some(
+        (child) =>
+          child.idempotency_key === r.replacement_idempotency_key &&
+          child.replaces_idempotency_key === r.idempotency_key,
+      ),
+  );
+  const isReplacement =
+    !!pending &&
+    !!serverReceipts?.receipts.some(
+      (r) => r.replacement_idempotency_key === pending.payload.idempotency_key,
+    );
+  const replacementPrepared =
+    isReplacement &&
+    replacementSource?.idempotency_key !== pending?.payload.idempotency_key;
   async function checkStatus() {
     const current = ++statusEpoch.current;
     statusController.current?.abort();
@@ -603,6 +631,7 @@ function ConstructionPanel({
   }, [token, project.id]);
 
   const controller = useRef<AbortController | null>(null);
+  const manualController = useRef<AbortController | null>(null);
   const epoch = useRef(0);
   const photosKey = photos
     .map((p) => `${p.id}:${p.byte_count}:${p.content_type}`)
@@ -613,6 +642,8 @@ function ConstructionPanel({
     photosKey,
   ]);
   const currentContext = useRef(contextIdentity);
+  const manualResultContext = useRef<string | null>(null);
+  const manualViewContext = JSON.stringify([contextIdentity, approximate]);
   currentContext.current = contextIdentity;
   const stalePending =
     !!pending && constructionContextChanged(pending, project, photos);
@@ -661,7 +692,64 @@ function ConstructionPanel({
     setConsent(false);
     setPhotoConsent(false);
   }, [approximate]);
+  useEffect(() => {
+    const abort = new AbortController();
+    manualController.current?.abort();
+    manualController.current = abort;
+    const actionEpoch = epoch.current;
+    setSavedManualError(null);
+    if (
+      inventoryStale ||
+      project.active_version_id ||
+      !serverReceipts ||
+      blockingConstructionReceipts(
+        serverReceipts.receipts,
+        undefined,
+        undefined,
+        true,
+      ).length > 0
+    ) {
+      setResult(null);
+      return () => abort.abort();
+    }
+    if (
+      (!result || manualResultContext.current !== manualViewContext) &&
+      serverReceipts.receipts[0]?.state === "completed"
+    ) {
+      void savedConstruction(
+        token,
+        project.id,
+        project.revision_id,
+        abort.signal,
+      )
+        .then((saved) => {
+          if (!abort.signal.aborted && actionEpoch === epoch.current) {
+            setResult(saved);
+            setRestored(saved !== null);
+            manualResultContext.current = manualViewContext;
+          }
+        })
+        .catch((failure) => {
+          if (!abort.signal.aborted && actionEpoch === epoch.current) {
+            setResult(null);
+            setSavedManualError((failure as Error).message);
+          }
+        });
+    }
+    return () => abort.abort();
+  }, [
+    token,
+    project.id,
+    project.revision_id,
+    project.active_version_id,
+    inventoryStale,
+    serverReceipts,
+    approximate,
+    photosKey,
+    project.goal,
+  ]);
   function changed() {
+    manualController.current?.abort();
     setConsent(false);
     setPhotoConsent(false);
     setResult(null);
@@ -682,7 +770,7 @@ function ConstructionPanel({
   const unavailable =
     checkingStatus ||
     serverReceipts === null ||
-    unresolvedReceipts.length > 0 ||
+    blockingReceipts.length > 0 ||
     uncertainDispatch ||
     disabled ||
     inventoryStale ||
@@ -692,6 +780,94 @@ function ConstructionPanel({
     storageBlocked ||
     stalePending ||
     (!!pending && Boolean(pending.payload.approximate) !== approximate);
+  async function prepareReplacement() {
+    if (
+      !replacementSource ||
+      busy ||
+      checkingStatus ||
+      !serverReceipts ||
+      storageBlocked ||
+      inventoryStale ||
+      project.active_version_id ||
+      !eligible ||
+      (approximate && !photo)
+    )
+      return;
+    const current = ++epoch.current;
+    manualController.current?.abort();
+    setBusy(true);
+    setConsent(false);
+    setPhotoConsent(false);
+    setError(null);
+    try {
+      const replacementKey =
+        replacementSource.replacement_expected_revision_id ===
+        project.revision_id
+          ? (replacementSource.replacement_idempotency_key ??
+            crypto.randomUUID())
+          : crypto.randomUUID();
+      const authorization = await authorizeConstructionReplacement(
+        token,
+        project.id,
+        {
+          expected_revision_id: project.revision_id,
+          original_idempotency_key: replacementSource.idempotency_key,
+          original_digest: replacementSource.digest,
+          replacement_idempotency_key: replacementKey,
+          acknowledge_unknown: true,
+        },
+      );
+      if (
+        current !== epoch.current ||
+        currentContext.current !== contextIdentity
+      )
+        return;
+      const record: PendingConstruction = {
+        version: 1,
+        project_id: project.id,
+        goal: project.goal,
+        photo: selected
+          ? {
+              id: selected.id,
+              byte_count: selected.byte_count,
+              content_type: selected.content_type,
+            }
+          : null,
+        payload: {
+          ...(approximate ? { approximate: true } : {}),
+          expected_revision_id: project.revision_id,
+          user_notes: notes.trim() || null,
+          media_id: photo || null,
+          provider_context_consented: true,
+          provider_transfer_consented: !!photo,
+          idempotency_key: authorization.replacement_idempotency_key,
+        },
+      };
+      const retained = await retainReplacementConstruction(
+        token,
+        replacementSource.idempotency_key,
+        record,
+      );
+      if (current !== epoch.current) return;
+      setPending(retained);
+      setNotes(retained.payload.user_notes ?? "");
+      setPhoto(retained.payload.media_id ?? "");
+      setResult(null);
+      setUncertainDispatch(false);
+    } catch (failure) {
+      if (current === epoch.current)
+        setError(
+          failure instanceof ApiError
+            ? failure
+            : new ApiError(0, "recovery_storage", (failure as Error).message),
+        );
+    } finally {
+      if (current === epoch.current) {
+        setBusy(false);
+        void checkStatus();
+      }
+    }
+  }
   async function ask() {
     if (
       unavailable ||
@@ -724,6 +900,7 @@ function ConstructionPanel({
       },
     };
     const requestedContext = contextIdentity;
+    manualController.current?.abort();
     const current = ++epoch.current;
     const abort = new AbortController();
     controller.current = abort;
@@ -759,6 +936,12 @@ function ConstructionPanel({
       )
         return;
       setResult(value);
+      setRestored(false);
+      manualResultContext.current = JSON.stringify([
+        requestedContext,
+        approximate,
+      ]);
+      void checkStatus();
     } catch (failure) {
       if (current !== epoch.current) return;
       const apiError =
@@ -791,6 +974,7 @@ function ConstructionPanel({
     )
       return;
     const current = ++epoch.current;
+    manualController.current?.abort();
     setBusy(true);
     setConsent(false);
     setPhotoConsent(false);
@@ -822,6 +1006,11 @@ function ConstructionPanel({
   }
   return (
     <section className="muse-panel" aria-labelledby="muse-construction-title">
+      {savedManualError && (
+        <p className="notice" role="status">
+          {savedManualError}
+        </p>
+      )}
       <h2 id="muse-construction-title">
         {approximate
           ? "Create an illustrated concept"
@@ -984,14 +1173,15 @@ function ConstructionPanel({
         aria-label="Saved construction request status"
         aria-live="polite"
       >
-        {checkingStatus && <p>Checking saved request status�</p>}
+        {checkingStatus && <p>Checking saved request status...</p>}
         {statusError && <p role="alert">{statusError}</p>}
-        {(unresolvedReceipts.length > 0 || uncertainDispatch) && (
+        {(blockingReceipts.length > 0 || uncertainDispatch) && (
           <p className="notice">
             A prior construction request is pending or its provider outcome is
-            unknown. New generation is blocked until the original outcome is
-            reconciled. Checking status reads saved receipts only; it cannot
-            recover a missing provider result or resume provider work.
+            unknown. Generation remains blocked unless a separate replacement
+            identity is explicitly authorized below. Checking status reads saved
+            receipts only; it cannot recover a missing provider result or resume
+            provider work.
           </p>
         )}
         {unresolvedReceipts.map((receipt) => (
@@ -999,6 +1189,8 @@ function ConstructionPanel({
             <p>
               Stored request state: {receipt.state}. Stored cause:{" "}
               {receipt.error_code ?? "not recorded"}.
+              {receipt.state === "unknown" &&
+                " Its completion and usage remain unknown, including after a replacement."}
             </p>
             <details>
               <summary>Original request identity</summary>
@@ -1006,6 +1198,39 @@ function ConstructionPanel({
             </details>
           </div>
         ))}
+        {replacementSource && !replacementPrepared && (
+          <div className="notice">
+            <p>
+              A replacement is a separate paid generation. The original result
+              and usage will remain unknown. This action authorizes one
+              replacement identity; it does not send a model request. Review the
+              notes and selected photo, then give fresh sharing consent and ask
+              explicitly.
+            </p>
+            <button
+              type="button"
+              disabled={
+                busy ||
+                checkingStatus ||
+                storageBlocked ||
+                inventoryStale ||
+                !!project.active_version_id ||
+                !eligible ||
+                (approximate && !photo)
+              }
+              onClick={() => void prepareReplacement()}
+            >
+              Authorize a separate paid replacement
+            </button>
+          </div>
+        )}
+        {replacementPrepared && (
+          <p className="notice">
+            Replacement identity prepared. The original unknown request is
+            preserved. Fresh sharing consent and an explicit Ask are required;
+            no model request starts automatically.
+          </p>
+        )}
         <button
           type="button"
           disabled={checkingStatus || busy}
@@ -1028,9 +1253,11 @@ function ConstructionPanel({
           }
           onClick={() => void ask()}
         >
-          {pending
-            ? "Check original proposal request"
-            : "Ask MetaMuse for shapes and steps"}
+          {isReplacement
+            ? "Ask MetaMuse for the authorized replacement"
+            : pending
+              ? "Check original proposal request"
+              : "Ask MetaMuse for shapes and steps"}
         </button>
         {(result || constructionRequestCanRestart(error?.code)) && pending && (
           <button
@@ -1070,6 +1297,13 @@ function ConstructionPanel({
       )}
       {result && (
         <div aria-live="polite">
+          {restored && (
+            <p className="notice">
+              Saved proposal restored without a model request. Its original
+              entry mode is not recorded, so review its proposed dimensions
+              again. This does not resolve any unknown provider outcome.
+            </p>
+          )}
           {approximate ? (
             <p>
               Review the proposed materials and pieces. Nothing has been built
@@ -1103,6 +1337,7 @@ function ConstructionPanel({
               key={c.candidate_id}
               candidate={c}
               approximate={approximate}
+              restored={restored}
             />
           ))}
         </div>
