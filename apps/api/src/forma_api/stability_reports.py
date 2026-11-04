@@ -335,6 +335,23 @@ class ProjectState:
     def summary(self, saved):
         return summarize(saved, self.freshness(saved))
 
+    def current_summary(self, connection, summary):
+        """Same immutable report with freshness judged now, not at receipt time."""
+        saved = read_record(connection, self.project.id, summary.report_id)
+        if saved is None:
+            raise ProjectError(404, "not_found", "Stability report not found")
+        return self.summary(saved)
+
+
+def refresh_replay(connection, store, owner, project_id, replay):
+    """A replayed save returns its original calculation with current freshness."""
+    if replay.saved is None:
+        return replay
+    state = ProjectState(connection, store, owner, project_id)
+    return replay.model_copy(
+        update={"saved": state.current_summary(connection, replay.saved)}
+    )
+
 
 def history(connection, store, owner, project_id, plan_version_id=None, limit=None):
     state = ProjectState(connection, store, owner, project_id)

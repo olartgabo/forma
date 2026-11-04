@@ -91,7 +91,13 @@ def stability_router(store: ProjectStore, authenticate, resolver=None) -> APIRou
                 body.model_dump(mode="json"),
             )
             if replay is not None:
-                return reports.StabilityReportSaveResponse.model_validate(replay)
+                return reports.refresh_replay(
+                    connection,
+                    store,
+                    owner,
+                    project_id,
+                    reports.StabilityReportSaveResponse.model_validate(replay),
+                )
             authorized = reports.authorized_snapshot(
                 connection, store, owner, project_id, body
             )

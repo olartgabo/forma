@@ -1,6 +1,6 @@
 # Issue 147 handoff: saved stability reports and MetaMuse tools
 
-Status: implemented locally; independent Sol/Terra review pending.
+Status: review findings repaired; re-review of the repair pending.
 
 - Issue and acceptance criteria: #147. Immutable content-addressed reports,
   owner-scoped history with stale marking, bounded read-only MetaMuse tools,
@@ -39,6 +39,22 @@ Status: implemented locally; independent Sol/Terra review pending.
   an offline scripted transport. They are not a live pass. A live check needs
   the existing finite provider controls; the verification window is currently
   expired, so live acceptance is outstanding. No physical observations.
+- Review repair (first Codex review of `9f49b2b`):
+  1. A replayed save or MetaMuse answer returns its original immutable result,
+     but freshness is recomputed when it is replayed.
+  2. MetaMuse requests are retained (`muse-pending.ts`, localStorage, scoped to
+     owner and project) before sending, and retried with the exact body and key.
+     The server looks up a completed receipt before consent and stale checks, so
+     a lost response replays instead of dispatching again. Only a definite answer
+     clears the receipt. A connection failure, a cut-off body,
+     `generation_in_progress` or `generation_outcome_unknown` keeps it. A history
+     refresh failure no longer hides a saved report or answer. The cancellation
+     message no longer claims that nothing changed.
+  3. Refreshing history re-judges open detail, comparison, save and MetaMuse
+     views.
+  Regressions: backend replay-after-change and lost-response replay (both fail
+  on `9f49b2b`), web receipt, lost-response and ambiguity tests, and the browser
+  flow with a lost POST, a reload, a refresh failure and a change from another tab.
 - Pending decisions and blockers: an independent Sol/Terra review of this diff
   before publication; feature review and exact-head remote checks before merge.
 - Next concrete action and receiving owner: Codex review (user to start), then

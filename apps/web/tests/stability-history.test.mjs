@@ -2,6 +2,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  clearMuse,
+  pendingMuse,
+  retainMuse,
+} from "../src/components/stability-report/muse-pending.ts";
+import {
+  StabilityRequestError,
   stabilityApi,
   validateComparison,
   validateHistory,
@@ -264,20 +270,25 @@ test("requests bind the current context, consent and an idempotency key", async 
       idempotency_key: "stability-key-1",
     });
     assert.equal(calls[1].init.headers.Authorization, "Bearer owner");
-    await assert.rejects(
-      api.askMuse(
-        expected,
-        {
-          key: "stability-key-2",
-          reportId: id("a"),
-          question: " ",
-          consented: false,
-        },
-        signal,
-      ),
-      /Confirm sharing/,
+    const prepared = await api.prepareMuse(
+      expected,
+      {
+        key: "stability-key-2",
+        reportId: id("a"),
+        question: " ",
+        consented: false,
+      },
+      signal,
     );
+    const error = await api.sendMuse(expected, prepared, signal).then(
+      () => null,
+      (e) => e,
+    );
+    assert.ok(error instanceof StabilityRequestError);
+    assert.match(error.message, /Confirm sharing/);
+    assert.equal(error.ambiguous, false, "a refusal is a definite answer");
     const muse = JSON.parse(calls[3].init.body);
+    assert.deepEqual(muse, prepared, "the prepared body is sent unchanged");
     assert.equal(muse.mode, "explain_report");
     assert.equal(muse.report_id, id("a"));
     assert.equal(muse.question, null);
@@ -303,7 +314,164 @@ test("an aborted request does not resolve", async () => {
       controller.signal,
     );
     controller.abort();
-    await assert.rejects(pending, /aborted/);
+    await assert.rejects(pending, /stopped or timed out/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("a replayed save may be stale but must say so", () => {
+  const stale = summary("a", {
+    freshness: { current: false, stale_reasons: ["history_changed"] },
+  });
+  const replay = {
+    analysis: analysis("a"),
+    saved: stale,
+    cached: false,
+    replayed: true,
+  };
+  // The original calculation was at event-1; the project is now at event-2.
+  assert.equal(
+    validateSave(replay, expected, "event-2").saved.freshness.current,
+    false,
+  );
+  assert.throws(
+    () => validateSave({ ...replay, saved: summary("a") }, expected, "event-2"),
+    /invalid/,
+    "an old calculation cannot be labeled current",
+  );
+  assert.throws(
+    () => validateSave({ ...replay, replayed: false }, expected, "event-2"),
+    /stale/,
+  );
+});
+
+class MemoryStorage {
+  map = new Map();
+  getItem(k) {
+    return this.map.has(k) ? this.map.get(k) : null;
+  }
+  setItem(k, v) {
+    this.map.set(k, String(v));
+  }
+  removeItem(k) {
+    this.map.delete(k);
+  }
+}
+const museBody = (key = "stability-muse-0001") => ({
+  plan_version_id: "plan-a",
+  expected_inventory_revision_id: "inventory-a",
+  expected_last_event_id: "event-1",
+  idempotency_key: key,
+  mode: "analyze_current",
+  report_id: null,
+  question: null,
+  provider_context_consented: true,
+});
+
+test("a sent MetaMuse request is retained exactly until answered", async () => {
+  const storage = new MemoryStorage();
+  assert.equal(await pendingMuse("owner", "project-a", storage), null);
+  await retainMuse("owner", "project-a", museBody(), storage);
+  assert.deepEqual(
+    await pendingMuse("owner", "project-a", storage),
+    museBody(),
+  );
+  // Another owner or project never sees the receipt.
+  assert.equal(await pendingMuse("other", "project-a", storage), null);
+  assert.equal(await pendingMuse("owner", "project-b", storage), null);
+  await assert.rejects(
+    retainMuse("owner", "project-a", museBody("stability-muse-0002"), storage),
+    /unresolved/,
+  );
+  await assert.rejects(
+    retainMuse(
+      "owner",
+      "project-a",
+      { ...museBody(), provider_context_consented: false },
+      new MemoryStorage(),
+    ),
+    /cannot be safely retained/,
+  );
+  await clearMuse("owner", "project-a", museBody(), storage);
+  assert.equal(await pendingMuse("owner", "project-a", storage), null);
+  const [key] =
+    (await retainMuse("owner", "project-a", museBody(), storage),
+    [...storage.map.keys()]);
+  storage.setItem(key, storage.getItem(key).replace("event-1", "event-9!"));
+  await assert.rejects(pendingMuse("owner", "project-a", storage), /verified/);
+});
+
+test("a completed POST with a lost response is retried with the same body", async () => {
+  const calls = [];
+  const original = globalThis.fetch;
+  const answer = {
+    project_id: "project-a",
+    plan_version_id: "plan-a",
+    mode: "analyze_current",
+    tool_name: "analyze_stability",
+    report: summary("a", {
+      source: "muse_tool",
+      freshness: { current: false, stale_reasons: ["history_changed"] },
+    }),
+    explanation: { report_id: id("a"), summary: "Synthetic explanation" },
+    usage: { model_calls: 2 },
+    physical_status: "not_verified",
+    replayed: true,
+  };
+  let attempt = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push(JSON.parse(init.body));
+    attempt += 1;
+    // The server completed the first POST, but its response never arrived.
+    if (attempt === 1) throw new TypeError("Failed to fetch");
+    if (attempt === 2)
+      return new Response('{"project_id":', {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    return Response.json(answer);
+  };
+  try {
+    const api = stabilityApi("owner", "project-a");
+    const signal = new AbortController().signal;
+    const body = museBody();
+    for (const _ of [1, 2]) {
+      const error = await api.sendMuse(expected, body, signal).then(
+        () => null,
+        (e) => e,
+      );
+      assert.ok(error instanceof StabilityRequestError);
+      assert.equal(error.ambiguous, true);
+    }
+    const result = await api.sendMuse(expected, body, signal);
+    assert.equal(result.replayed, true);
+    assert.equal(result.report.freshness.current, false);
+    assert.deepEqual(calls, [body, body, body]);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("unknown-outcome and in-progress answers keep the request retained", async () => {
+  const original = globalThis.fetch;
+  try {
+    for (const [code, status, ambiguous] of [
+      ["generation_outcome_unknown", 409, true],
+      ["generation_in_progress", 409, true],
+      ["stale_version", 409, false],
+      ["invalid_response", 502, false],
+    ]) {
+      globalThis.fetch = async () =>
+        Response.json({ code, message: "x" }, { status });
+      const error = await stabilityApi("owner", "project-a")
+        .sendMuse(expected, museBody(), new AbortController().signal)
+        .then(
+          () => null,
+          (e) => e,
+        );
+      assert.equal(error.ambiguous, ambiguous, code);
+    }
   } finally {
     globalThis.fetch = original;
   }

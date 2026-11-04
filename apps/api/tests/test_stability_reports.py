@@ -385,3 +385,34 @@ def test_existing_analysis_endpoint_remains_read_only(connected):
     assert response.status_code == 200
     with sqlite3.connect(directory / "projects.sqlite3") as db:
         assert tuple(db.iterdump()) == before
+
+
+def test_replay_after_measurement_change_reports_current_staleness(connected):
+    client, url, _, directory = connected
+    body, event = measured(connected)
+    first = save(client, url, body, event, "replay-fresh-01").json()
+    stored_before = rows(directory)
+    changed = copy.deepcopy(body)
+    changed.update(expected_last_event_id=event, idempotency_key="measurements-004")
+    changed["measurements"]["stand"]["mass_kg"] = 0.12
+    moved = client.post(measurement_url(url), headers=AUTH, json=changed)
+    assert moved.status_code == 200, moved.text
+    replay = save(client, url, body, event, "replay-fresh-01")
+    assert replay.status_code == 200, replay.text
+    data = replay.json()
+    assert data["replayed"] is True
+    # The original calculation is returned unchanged ...
+    assert data["analysis"] == first["analysis"]
+    assert data["saved"]["report_id"] == first["saved"]["report_id"]
+    assert data["saved"]["created_at"] == first["saved"]["created_at"]
+    # ... but its freshness is judged now, matching the detail route.
+    assert data["saved"]["freshness"] == {
+        "current": False,
+        "stale_reasons": ["history_changed"],
+    }
+    detail = client.get(
+        reports_url(production(url)) + "/" + first["saved"]["report_id"],
+        headers=AUTH,
+    ).json()
+    assert detail["freshness"] == data["saved"]["freshness"]
+    assert rows(directory) == stored_before

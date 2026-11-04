@@ -394,3 +394,33 @@ def test_only_allowlisted_stability_tools_are_registered():
         Tool(name, AnalyzeStabilityArgs, AnalyzeStabilityResult, lambda a: a)
     with pytest.raises(ValueError):
         Tool("save_measurements", AnalyzeStabilityArgs, AnalyzeStabilityResult, id)
+
+
+def test_completed_request_with_lost_response_replays_without_dispatch(connected, muse):
+    client, url, directory, ask = muse
+    body = measured(connected)
+    first = ask(body, Scripted(), key="lost-response-1")
+    assert first.status_code == 200, first.text
+    # The browser never saw that response; meanwhile measurements changed in
+    # another tab, so the retained request identity is now stale.
+    changed = copy.deepcopy(body)
+    changed["idempotency_key"] = "measurements-010"
+    changed["measurements"]["stand"]["mass_kg"] = 0.12
+    moved = client.post(measurement_url(url), headers=AUTH, json=changed)
+    assert moved.status_code == 200, moved.text
+    transport = Scripted()
+    retry = ask(body, transport, key="lost-response-1")
+    assert retry.status_code == 200, retry.text
+    assert transport.calls == [], "a completed request is never sent again"
+    result = retry.json()
+    assert result["replayed"] is True
+    assert result["explanation"] == first.json()["explanation"]
+    assert result["report"]["report_id"] == first.json()["report"]["report_id"]
+    assert result["report"]["freshness"] == {
+        "current": False,
+        "stale_reasons": ["history_changed"],
+    }
+    assert len(saved_reports(directory)) == 1
+    # A different key for the stale identity is still refused before dispatch.
+    fresh_key = ask(body, transport, key="lost-response-2")
+    assert fresh_key.status_code == 409 and transport.calls == []
