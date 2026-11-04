@@ -1,12 +1,12 @@
 # Issue 148 handoff: stock-feasible design search and checked comparison
 
-Status: first review repairs and the MetaMuse adapter implemented; locally green;
-final independent Sol/Terra review pending.
+Status: second review repairs implemented; locally green; final independent
+Sol/Terra review pending.
 
 - Issue: #148. Owner @ResniDev; feature reviewer @olartgabo.
 - Base: `main` at `8a05546` (#147 merged as PR #168). Not stacked.
-- Branch: `issue/148-stock-feasible-search`. First candidate `20fdbb5`; the
-  repair commit follows it.
+- Branch: `issue/148-stock-feasible-search`. Candidates `20fdbb5` (first),
+  `91b28b1` (first repair); the second repair commit follows them.
 
 ## Behavior
 
@@ -69,6 +69,29 @@ See [packages/synthesizer/README.md](../../packages/synthesizer/README.md) and D
    server names the preview limit or active build.
 7. Missing MetaMuse adapter: added as above.
 
+## Second review repairs (Codex review of `91b28b1`)
+
+1. A MetaMuse answer recovered after a new search appeared under the new
+   designs with a usable changed design: it is now labelled as an earlier
+   comparison and offers no choice. Browser regression (fails without the fix).
+2. The final freshness check and the MetaMuse receipt save were separate: the
+   save transaction (BEGIN IMMEDIATE) now rechecks inventory revision, active
+   version, last event and measurement records before writing
+   (`stored_identity_matches`). Route regression changes inventory after the
+   last resolve; it fails without the fix.
+3. The preview committed before its selection receipt: a same-key retry now
+   also finds the plan service receipt for that key, checks it saved this
+   design (otherwise `idempotency_conflict`), repairs the selection receipt
+   and replays. Route regression deletes the selection receipt and changes
+   inventory; it fails without the fix.
+4. Clearing one unreadable receipt cleared both: selection and MetaMuse
+   receipts now load, block and clear independently. Browser regression with a
+   corrupt MetaMuse receipt beside a pending selection (fails without the fix).
+5. Incomplete MetaMuse engine probes passed validation and crashed rendering:
+   candidate, probe and explanation validators now check every rendered field
+   before a receipt is released; a malformed answer keeps it for retry. Web
+   unit regressions.
+
 ## Files
 
 - Owned: `packages/synthesizer/**`;
@@ -97,17 +120,18 @@ See [packages/synthesizer/README.md](../../packages/synthesizer/README.md) and D
 
 ## Checks actually run (Windows, Node 22.21.0, npm 11.16.0, Python 3.12)
 
-- `npm run check`: exit 0. Python 1722 passed; web 168 pass; devloop 18 pass;
+- `npm run check`: exit 0. Python 1724 passed; web 169 pass; devloop 18 pass;
   production build compiled; formatting, Ruff and contract freshness clean.
 - Feature tests: `packages/synthesizer/tests/test_search.py` (18),
-  `apps/api/tests/test_synthesis_routes.py` (8),
-  `apps/api/tests/test_synthesis_muse.py` (11),
-  `apps/web/tests/design-candidates.test.mjs` (9).
+  `apps/api/tests/test_synthesis_routes.py` (9),
+  `apps/api/tests/test_synthesis_muse.py` (12),
+  `apps/web/tests/design-candidates.test.mjs` (10).
 - Browser, local Edge via Playwright, `next dev` at 127.0.0.1:3024: `PASS 390px`
   and `PASS 1280px` — search/compare two named designs, probe race ignored and
   regenerated brace shown, consented MetaMuse comparison with engine probe,
-  lost selection recovered after reload with one key, separate explicit
-  approval; no horizontal overflow; replayed responses only. Reproduce with
+  recovered earlier answer shown as history without actions, lost selection
+  recovered after reload with one key while a corrupt MetaMuse receipt is
+  cleared alone, separate explicit approval; no horizontal overflow; replayed responses only. Reproduce with
   `uv run --locked python apps/web/tests/design-candidates-fixture.py <out.json>`
   then `node apps/web/tests/design-candidates.browser.mjs <playwright index.mjs> http://127.0.0.1:3024 <out.json>`.
 

@@ -213,6 +213,12 @@ def synthesis_muse_router(store: ProjectStore, authenticate, gateway_factory=Non
                     raise
                 stale = True
             with store.transaction() as connection:
+                # The write lock is held from here: an inventory or history
+                # change can no longer slip between this check and the save.
+                if not stale:
+                    stale = not runtime.stored_identity_matches(
+                        connection, store, owner, project_id, current.identity
+                    )
                 if stale:
                     connection.execute(
                         "UPDATE requests SET response=? WHERE owner=? AND scope=? AND key=? AND digest=? AND response=?",

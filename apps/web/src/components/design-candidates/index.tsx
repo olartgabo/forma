@@ -181,7 +181,10 @@ export default function DesignCandidates({
   const [pendingMuse, setPendingMuse] = useState<SynthesisMuseRequest | null>(
     null,
   );
-  const [receiptError, setReceiptError] = useState("");
+  // Each receipt kind loads and clears on its own: an unreadable one never
+  // erases or blocks the other.
+  const [selectReceiptError, setSelectReceiptError] = useState("");
+  const [museReceiptError, setMuseReceiptError] = useState("");
   const [saved, setSaved] = useState("");
   const [question, setQuestion] = useState("");
   const [consented, setConsented] = useState(false);
@@ -198,19 +201,28 @@ export default function DesignCandidates({
     setMuse(null);
     setConsented(false);
     let live = true;
-    Promise.all([
-      selectionReceipts.pending(token, context.projectId),
-      museReceipts.pending(token, context.projectId),
-    ])
-      .then(([select, ask]) => {
+    setPendingSelect(null);
+    setPendingMuse(null);
+    selectionReceipts.pending(token, context.projectId).then(
+      (body) => {
         if (!live) return;
-        setPendingSelect(select);
-        setPendingMuse(ask);
-        setReceiptError("");
-      })
-      .catch((failure: unknown) => {
-        if (live) setReceiptError(message(failure));
-      });
+        setPendingSelect(body);
+        setSelectReceiptError("");
+      },
+      (failure: unknown) => {
+        if (live) setSelectReceiptError(message(failure));
+      },
+    );
+    museReceipts.pending(token, context.projectId).then(
+      (body) => {
+        if (!live) return;
+        setPendingMuse(body);
+        setMuseReceiptError("");
+      },
+      (failure: unknown) => {
+        if (live) setMuseReceiptError(message(failure));
+      },
+    );
     return () => {
       live = false;
     };
@@ -376,12 +388,16 @@ export default function DesignCandidates({
     );
   }
 
-  async function discardReceipts() {
+  async function discardSelectReceipt() {
     await selectionReceipts.discard(token, context.projectId);
-    await museReceipts.discard(token, context.projectId);
     setPendingSelect(null);
+    setSelectReceiptError("");
+  }
+
+  async function discardMuseReceipt() {
+    await museReceipts.discard(token, context.projectId);
     setPendingMuse(null);
-    setReceiptError("");
+    setMuseReceiptError("");
   }
 
   const candidates = result?.candidates ?? [];
@@ -391,7 +407,11 @@ export default function DesignCandidates({
     result && probe && probeBase
       ? domainValues(result, probeBase.design.sheet_stock_id, probe.parameter)
       : [];
-  const blocked = disabled || busy || receiptError !== "";
+  const blocked = disabled || busy || selectReceiptError !== "";
+  const museBlocked = disabled || busy || museReceiptError !== "";
+  // An answer recovered from an earlier search describes other designs: show
+  // it as history and never offer to choose from it.
+  const museCurrent = muse !== null && muse.search_id === result?.search_id;
 
   return (
     <section
@@ -417,15 +437,27 @@ export default function DesignCandidates({
             {error}
           </p>
         )}
-        {receiptError && (
+        {selectReceiptError && (
           <div className="error" role="alert">
-            <p>{receiptError}</p>
+            <p>{selectReceiptError}</p>
             <button
               type="button"
               className="secondary"
-              onClick={() => void discardReceipts()}
+              onClick={() => void discardSelectReceipt()}
             >
-              Clear the unverifiable record
+              Clear the unverifiable design choice
+            </button>
+          </div>
+        )}
+        {museReceiptError && (
+          <div className="error" role="alert">
+            <p>{museReceiptError}</p>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => void discardMuseReceipt()}
+            >
+              Clear the unverifiable MetaMuse request
             </button>
           </div>
         )}
@@ -588,7 +620,7 @@ export default function DesignCandidates({
               </label>
               <button
                 type="button"
-                disabled={blocked || !consented || pendingMuse !== null}
+                disabled={museBlocked || !consented || pendingMuse !== null}
                 onClick={ask}
               >
                 Ask MetaMuse
@@ -596,7 +628,7 @@ export default function DesignCandidates({
               {pendingMuse && (
                 <button
                   type="button"
-                  disabled={blocked}
+                  disabled={museBlocked}
                   onClick={() => void sendMuse(pendingMuse)}
                 >
                   Retry the unresolved MetaMuse request
@@ -605,8 +637,20 @@ export default function DesignCandidates({
               {muse && (
                 <article
                   className="design-muse-answer"
-                  aria-label="MetaMuse comparison"
+                  aria-label={
+                    museCurrent
+                      ? "MetaMuse comparison"
+                      : "Earlier MetaMuse comparison"
+                  }
                 >
+                  {!museCurrent && (
+                    <p className="notice">
+                      This answer is about an earlier search. The designs it
+                      discusses may no longer match your saved stock, so it
+                      cannot be used to choose a design. Search again and ask
+                      again if you need a current comparison.
+                    </p>
+                  )}
                   <p>{muse.explanation.summary}</p>
                   <ul>
                     {(muse.explanation.candidate_notes ?? []).map((note) => (
@@ -626,7 +670,7 @@ export default function DesignCandidates({
                       outcome={muse.engine_probe}
                       label="Engine check requested by MetaMuse"
                       disabled={blocked}
-                      onChoose={choose}
+                      onChoose={museCurrent ? choose : undefined}
                     />
                   )}
                   <p className="help">
@@ -662,7 +706,7 @@ function ProbeOutcome({
   outcome: Probe;
   label: string;
   disabled: boolean;
-  onChoose: (design: StandDesign) => void;
+  onChoose?: (design: StandDesign) => void;
 }) {
   const report = outcome.report;
   return (
@@ -678,7 +722,7 @@ function ProbeOutcome({
       {outcome.status === "evaluated" && report && (
         <>
           <CandidateColumn report={report} label={label} />
-          {report.status === "acceptable" && (
+          {report.status === "acceptable" && onChoose && (
             <button
               type="button"
               disabled={disabled}

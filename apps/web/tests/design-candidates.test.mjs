@@ -48,8 +48,37 @@ function candidate(overrides = {}) {
     candidate_id: "cand-0123456789abcdef",
     design,
     status: "acceptable",
-    pieces: [],
-    material: null,
+    pieces: [
+      {
+        piece: {
+          part_id: "stand-brace",
+          reference: "P-0123456789AB",
+          display_name: "Rear brace",
+          geometry_class: "rectangle",
+          role: "SYNTHETIC",
+        },
+        source_stock_id: "sheet-a",
+        source_region_id: "sheet-a-region",
+        width_mm: 70,
+        height_mm: 86.75,
+        x_mm: 4,
+        y_mm: 200,
+        dependent: true,
+        derivation: "SYNTHETIC derived",
+      },
+    ],
+    material: {
+      sheet_stock_id: "sheet-a",
+      region_id: "sheet-a-region",
+      region_area_mm2: 110000,
+      part_area_mm2: 17972,
+      unallocated_area_mm2: 92028,
+      tape_stock_id: "tape-a",
+      tape_length_mm: 210,
+      tape_remaining_before_mm: 500,
+      tape_remaining_after_mm: 290,
+      note: "SYNTHETIC",
+    },
     checks: [
       {
         check_id: "compiler",
@@ -67,7 +96,15 @@ function candidate(overrides = {}) {
         blocker_codes: [],
       },
     ],
-    construction: [],
+    construction: [
+      {
+        operation_id: "stand-cut-panels",
+        operation_type: "cut_rect",
+        title: "Cut the panels",
+        instruction: "SYNTHETIC",
+        part_ids: ["stand-brace"],
+      },
+    ],
     unresolved: ["stability-tip-portrait: missing input"],
     blockers: [],
     ...overrides,
@@ -394,5 +431,76 @@ test("MetaMuse answers must match the request and keep engine checks valid", () 
       "project-a",
       request,
     ),
+  );
+});
+
+test("incomplete candidates and MetaMuse probes are rejected before rendering", () => {
+  const { material: _m, ...noMaterial } = candidate();
+  assert.throws(() =>
+    validateSearch(result({ candidates: [noMaterial] }), context),
+  );
+  const brokenPiece = candidate({
+    pieces: [{ piece: { part_id: "stand-brace" }, dependent: true }],
+  });
+  assert.throws(() =>
+    validateSearch(result({ candidates: [brokenPiece] }), context),
+  );
+  const request = {
+    expected_inventory_revision_id: "inventory-a",
+    expected_active_version_id: null,
+    expected_last_event_id: null,
+    search_id: searchId,
+    idempotency_key: "muse-0000001",
+    question: null,
+    provider_context_consented: true,
+  };
+  const answer = {
+    project_id: "project-a",
+    search_id: searchId,
+    tool_name: "compare_stand_designs",
+    prompt_version: "design-comparison-v1",
+    explanation: { search_id: searchId, summary: "SYNTHETIC" },
+    usage: { input_tokens: 1, output_tokens: 1 },
+    physical_status: "not_verified",
+  };
+  // Incomplete engine probe: no changed pieces, blockers or value.
+  assert.throws(
+    () =>
+      validateMuse(
+        {
+          ...answer,
+          engine_probe: { status: "evaluated", report: candidate() },
+        },
+        "project-a",
+        request,
+      ),
+    (e) => e.retry === true,
+  );
+  assert.throws(() =>
+    validateMuse(
+      {
+        ...answer,
+        explanation: {
+          ...answer.explanation,
+          candidate_notes: [{ candidate_id: 3 }],
+        },
+      },
+      "project-a",
+      request,
+    ),
+  );
+  const probe = {
+    status: "evaluated",
+    parameter: "footprint_depth_mm",
+    value_mm: 90,
+    report: candidate(),
+    changed_piece_ids: ["stand-base"],
+    blockers: [],
+    physical_verification: "not_attempted",
+  };
+  assert.equal(
+    validateMuse({ ...answer, engine_probe: probe }, "project-a", request)
+      .engine_probe.value_mm,
+    90,
   );
 });

@@ -341,3 +341,39 @@ def test_preview_limit_is_named_not_reported_as_an_active_build(setup):
     assert "Two proposed designs are already saved" in message
     assert "active" not in message
     assert plan_count(directory) == 2
+
+
+def test_selection_recovers_when_its_receipt_was_interrupted(setup):
+    client, project, directory, _ = setup
+    result = search(client, project)
+    body = select_body(
+        project, result, result["candidates"][0]["design"], "select-interrupt-1"
+    )
+    first = post(client, project, "select", body).json()
+    assert first["status"] == "accepted"
+    # The preview committed but the selection receipt did not.
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        connection.execute("DELETE FROM requests WHERE scope LIKE '%:synthesis-select'")
+    changed = client.put(
+        f"/api/projects/{project['id']}/inventory",
+        headers=AUTH,
+        json={
+            "expected_revision_id": project["revision_id"],
+            "idempotency_key": "inventory-after-interrupt",
+            "stocks": project["stocks"],
+            "user_confirmed": True,
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    other = body | {"design": result["candidates"][1]["design"]}
+    conflict = post(client, project, "select", other)
+    assert conflict.status_code == 409 and "idempotency_conflict" in conflict.text
+    retry = post(client, project, "select", body)
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["replayed"] and retry.json()["version"] == first["version"]
+    assert plan_count(directory) == 1
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        restored = connection.execute(
+            "SELECT COUNT(*) FROM requests WHERE scope LIKE '%:synthesis-select'"
+        ).fetchone()[0]
+    assert restored == 1

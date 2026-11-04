@@ -9,6 +9,7 @@ from typing import Literal
 from forma_synthesizer import (
     MeasurementBasis,
     SearchInput,
+    candidate_id,
     check_design,
     design_candidate,
     domain_values,
@@ -98,6 +99,23 @@ def _measurements(connection, project_id: str) -> tuple[MeasurementBasis, ...]:
             geometry_basis_hash=r.geometry_basis_hash,
         )
         for r in reversed(records)
+    )
+
+
+def stored_identity_matches(
+    connection, store, owner, project_id, identity: SearchIdentity
+) -> bool:
+    """Recheck every database-held part of a search identity in the caller's
+    write transaction, so a check and the write that depends on it are atomic.
+    The server context fingerprint comes from a manifest outside the database
+    and is rechecked by the caller just before."""
+    project = store.read(connection, owner, project_id)
+    return (
+        project.revision_id == identity.inventory_revision_id
+        and project.active_version_id == identity.active_version_id
+        and _last_event_id(connection, project_id) == identity.last_event_id
+        and tuple(b.record_id for b in _measurements(connection, project_id))
+        == identity.measurement_record_ids
     )
 
 
@@ -274,6 +292,18 @@ def run_select(
         digest, replay = store.replay(
             connection, owner, scope, body.idempotency_key, payload
         )
+        if replay is None:
+            replay = _saved_preview(connection, owner, project_id, body)
+            if replay is not None:
+                # The preview committed but this receipt did not; repair it.
+                store.remember(
+                    connection,
+                    owner,
+                    scope,
+                    body.idempotency_key,
+                    digest,
+                    {**replay, "replayed": False},
+                )
     if replay is not None:
         return PlanCompileResult.model_validate(replay)
     data = resolve(store, owner, project_id, body, resolver)
@@ -342,6 +372,32 @@ def run_select(
                     result.model_dump(mode="json"),
                 )
     return result
+
+
+def _saved_preview(connection, owner, project_id, body) -> dict | None:
+    """The plan service's own receipt for this key, if it saved this design.
+
+    The preview and the selection receipt commit in separate transactions. If
+    an interruption lands between them, the preview receipt still identifies
+    the saved plan, so a same-key retry recovers it instead of going stale.
+    """
+    row = connection.execute(
+        "SELECT response FROM requests WHERE owner=? AND scope=? AND key=?",
+        (owner, project_id + ":plan-preview", body.idempotency_key),
+    ).fetchone()
+    if row is None:
+        return None
+    saved = PlanCompileResult.model_validate_json(row[0])
+    if (
+        saved.status != "accepted"
+        or saved.version is None
+        or saved.version.candidate_id != candidate_id(body.design)
+        or saved.version.project_id != project_id
+    ):
+        raise ProjectError(
+            409, "idempotency_conflict", "Key already used for another request"
+        )
+    return {**saved.model_dump(mode="json"), "replayed": True}
 
 
 def _blocked(message: str) -> PlanCompileResult:

@@ -265,3 +265,36 @@ def test_compare_tool_is_allowlisted_and_strict():
     with pytest.raises(ValueError):
         Tool("propose_geometry", CompareDesignsArgs, CompareDesignsResult, id)
     assert CompareDesignsArgs.model_config["extra"] == "forbid"
+
+
+def test_change_after_the_last_resolve_still_saves_a_stale_receipt(muse, monkeypatch):
+    client, project, directory, result, ask, transport = muse
+    from forma_api import synthesis_runtime
+
+    original = synthesis_runtime.resolve
+    calls = []
+
+    def resolve_then_change(*args, **kwargs):
+        resolved = original(*args, **kwargs)
+        calls.append(1)
+        if len(calls) == 2:
+            # Lands after the final freshness read, before the save.
+            updated = client.put(
+                f"/api/projects/{project['id']}/inventory",
+                headers={"Authorization": "Bearer " + "a" * 40},
+                json={
+                    "expected_revision_id": project["revision_id"],
+                    "idempotency_key": "inventory-after-resolve",
+                    "stocks": project["stocks"],
+                    "user_confirmed": True,
+                },
+            )
+            assert updated.status_code == 200, updated.text
+        return resolved
+
+    monkeypatch.setattr(synthesis_runtime, "resolve", resolve_then_change)
+    response = ask()
+    assert len(calls) == 2
+    assert response.status_code == 409 and response.json()["code"] == "stale_version"
+    [(_, saved)] = receipts(directory)
+    assert json.loads(saved)["error_code"] == "stale_version"

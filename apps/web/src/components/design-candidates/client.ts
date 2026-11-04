@@ -94,11 +94,29 @@ function matchesContext(identity: unknown, expected: SearchContext) {
   );
 }
 
+function text(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+function texts(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(text);
+}
+function list(value: unknown, item: (entry: unknown) => boolean) {
+  return Array.isArray(value) && value.every(item);
+}
+function nullableNumber(value: unknown) {
+  return value === null || value === undefined || finite(value);
+}
+function blocker(value: unknown) {
+  return object(value) && text(value.code) && text(value.message);
+}
+
 function validDesign(value: unknown): value is StandDesign {
   return (
     object(value) &&
-    typeof value.sheet_stock_id === "string" &&
-    typeof value.tape_stock_id === "string" &&
+    text(value.sheet_stock_id) &&
+    text(value.tape_stock_id) &&
+    text(value.tape_profile_id) &&
+    text(value.fold_profile_id) &&
     PARAMETERS.every(
       (name) => finite(value[name]) && Number(value[name]) > 0,
     ) &&
@@ -106,34 +124,100 @@ function validDesign(value: unknown): value is StandDesign {
     finite(value.support_angle_deg)
   );
 }
+function piece(value: unknown) {
+  return (
+    object(value) &&
+    object(value.piece) &&
+    text(value.piece.part_id) &&
+    text(value.piece.reference) &&
+    text(value.piece.display_name) &&
+    text(value.source_stock_id) &&
+    finite(value.width_mm) &&
+    finite(value.height_mm) &&
+    typeof value.dependent === "boolean" &&
+    text(value.derivation)
+  );
+}
+function material(value: unknown) {
+  return (
+    object(value) &&
+    text(value.sheet_stock_id) &&
+    text(value.tape_stock_id) &&
+    finite(value.region_area_mm2) &&
+    finite(value.part_area_mm2) &&
+    finite(value.unallocated_area_mm2) &&
+    finite(value.tape_length_mm) &&
+    nullableNumber(value.tape_remaining_after_mm)
+  );
+}
+function step(value: unknown) {
+  return (
+    object(value) &&
+    text(value.operation_id) &&
+    text(value.operation_type) &&
+    text(value.title) &&
+    text(value.instruction) &&
+    texts(value.part_ids)
+  );
+}
+function check(value: unknown) {
+  return (
+    object(value) &&
+    text(value.check_id) &&
+    checkStatuses.has(String(value.status)) &&
+    text(value.detail)
+  );
+}
 
-export function validateCandidate(value: unknown): CandidateReport {
+/** Every field the comparison renders; nothing is trusted unchecked. */
+export function validateCandidate(value: unknown): Candidate {
   if (
     !object(value) ||
-    typeof value.candidate_id !== "string" ||
+    !text(value.candidate_id) ||
     !validDesign(value.design) ||
     !["acceptable", "rejected"].includes(String(value.status)) ||
-    !Array.isArray(value.checks) ||
-    !value.checks.every(
-      (c) =>
-        object(c) &&
-        typeof c.check_id === "string" &&
-        checkStatuses.has(String(c.status)) &&
-        typeof c.detail === "string",
-    ) ||
-    !Array.isArray(value.pieces) ||
-    !Array.isArray(value.construction) ||
-    !Array.isArray(value.unresolved) ||
-    !Array.isArray(value.blockers)
+    !list(value.checks, check) ||
+    !list(value.pieces, piece) ||
+    !list(value.construction, step) ||
+    !texts(value.unresolved) ||
+    !list(value.blockers, blocker) ||
+    !(value.material == null || material(value.material)) ||
+    !(value.cut_layout_svg == null || typeof value.cut_layout_svg === "string")
   )
     invalid("design candidate");
-  const failed = value.checks.some(
-    (c) => object(c) && c.status === "modeled_failure",
-  );
-  // A modeled failure can never be presented as an acceptable proposal.
-  if (value.status === "acceptable" && (failed || value.blockers.length))
+  const checks = value.checks as Record<string, unknown>[];
+  const failed = checks.some((c) => c.status === "modeled_failure");
+  // A modeled failure can never be presented as an acceptable proposal, and
+  // an acceptable one carries everything the comparison shows.
+  if (
+    value.status === "acceptable" &&
+    (failed ||
+      (value.blockers as unknown[]).length ||
+      !material(value.material) ||
+      !(value.pieces as unknown[]).some(
+        (p) => object(p) && p.dependent === true,
+      ))
+  )
     invalid("design candidate");
   return value as unknown as Candidate;
+}
+
+/** A probe outcome without request identity; shared with MetaMuse answers. */
+function validProbeBody(value: unknown): value is Probe {
+  if (
+    !object(value) ||
+    !probeStatuses.has(String(value.status)) ||
+    !PARAMETERS.includes(value.parameter as SearchParameter) ||
+    !finite(value.value_mm) ||
+    !texts(value.changed_piece_ids) ||
+    !list(value.blockers, blocker) ||
+    value.physical_verification !== "not_attempted"
+  )
+    return false;
+  if (value.status === "evaluated") validateCandidate(value.report);
+  else if (value.report != null) return false;
+  if (value.status === "requires_repair" && !object(value.repair)) return false;
+  return true;
 }
 
 export function validateSearch(
@@ -150,9 +234,21 @@ export function validateSearch(
     !Number.isInteger(value.nodes_total) ||
     !Array.isArray(value.candidates) ||
     value.candidates.length > 2 ||
-    !Array.isArray(value.domains) ||
-    !Array.isArray(value.blockers) ||
+    !list(
+      value.domains,
+      (d) =>
+        object(d) &&
+        text(d.sheet_stock_id) &&
+        PARAMETERS.includes(d.parameter as SearchParameter) &&
+        finite(d.lower_mm) &&
+        finite(d.step_mm) &&
+        Number.isInteger(d.count),
+    ) ||
+    !list(value.blockers, blocker) ||
     !Array.isArray(value.rejections) ||
+    !text(value.ranking) ||
+    !texts(value.limitations) ||
+    !(value.exhausted == null || text(value.exhausted)) ||
     value.physical_verification !== "not_attempted"
   )
     invalid("design search");
@@ -175,15 +271,8 @@ export function validateProbe(
     !object(value) ||
     value.search_id !== searchId ||
     !matchesContext(value.identity, expected) ||
-    !probeStatuses.has(String(value.status)) ||
-    !PARAMETERS.includes(value.parameter as SearchParameter) ||
-    !Array.isArray(value.changed_piece_ids) ||
-    !Array.isArray(value.blockers) ||
-    value.physical_verification !== "not_attempted"
+    !validProbeBody(value)
   )
-    invalid("design probe");
-  if (value.status === "evaluated") validateCandidate(value.report);
-  if (value.status === "requires_repair" && !object(value.repair))
     invalid("design probe");
   return value as unknown as Probe;
 }
@@ -437,24 +526,21 @@ export function validateMuse(
     value.tool_name !== "compare_stand_designs" ||
     value.physical_status !== "not_verified" ||
     !object(value.usage) ||
+    !nullableNumber(value.usage.input_tokens) ||
+    !nullableNumber(value.usage.output_tokens) ||
     !object(explanation) ||
     explanation.search_id !== body.search_id ||
-    typeof explanation.summary !== "string" ||
-    !Array.isArray(explanation.candidate_notes ?? []) ||
-    !Array.isArray(explanation.unresolved ?? []) ||
-    !Array.isArray(explanation.questions ?? [])
+    !text(explanation.summary) ||
+    !list(
+      explanation.candidate_notes ?? [],
+      (n) => object(n) && text(n.candidate_id) && text(n.note),
+    ) ||
+    !texts(explanation.unresolved ?? []) ||
+    !texts(explanation.questions ?? []) ||
+    // Every field the answer renders is checked before a receipt is released.
+    !(value.engine_probe == null || validProbeBody(value.engine_probe))
   )
     invalid("MetaMuse comparison");
-  const probe = value.engine_probe;
-  if (
-    probe != null &&
-    (!object(probe) ||
-      !probeStatuses.has(String(probe.status)) ||
-      (probe.status === "evaluated" && !object(probe.report)))
-  )
-    invalid("MetaMuse comparison");
-  if (probe != null && probe.status === "evaluated")
-    validateCandidate(probe.report);
   return value as unknown as MuseResult;
 }
 
