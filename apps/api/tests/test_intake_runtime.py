@@ -398,3 +398,25 @@ def test_malformed_output_becomes_invalid_proposal_without_leak(content):
         502,
         "invalid_response",
     )
+
+
+def test_default_intake_gateway_allows_one_long_call_without_retries(monkeypatch):
+    monkeypatch.setenv("MODEL_API_KEY", "server-test-key")
+    monkeypatch.setenv("META_SPARK_MODEL", "muse-spark-1.3")
+    gateway = intake_runtime.default_gateway_factory()
+    fake = Fake(final(INTAKE_JSON))
+    gateway.transport = fake
+    intake_runtime.observe_photo(
+        gateway, project_goal="stand", image_data=PNG, content_type="image/png"
+    )
+    assert 119 < fake.calls[0][2] <= 120
+    assert gateway.budget == 120
+    assert gateway.max_rounds == 1
+    assert gateway.max_retries == 0
+    failing = Fake(GatewayError("rate_limit", retryable=True))
+    gateway.transport = failing
+    with pytest.raises(GatewayError, match="rate_limit"):
+        intake_runtime.observe_photo(
+            gateway, project_goal="stand", image_data=PNG, content_type="image/png"
+        )
+    assert len(failing.calls) == 1

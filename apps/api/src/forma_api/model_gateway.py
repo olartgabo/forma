@@ -19,7 +19,7 @@ DEFAULT_SPARK_MODEL = "muse-spark-1.3"
 DEFAULT_SAM_MODEL = "sam-3.1"
 MODEL_ID_RE = re.compile(r"[a-z0-9.-]{1,80}")
 MAX_RESPONSE = 2_000_000
-MAX_TIMEOUT_SECONDS = 30.0
+MAX_TIMEOUT_SECONDS = 120.0
 # Short grace for a worker that can cooperatively clean up after expiry.
 WORKER_GRACE_SECONDS = 0.2
 RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
@@ -405,7 +405,11 @@ class MetaGateway:
         max_retries: int = 1,
         sleep: Callable[[float], None] = time.sleep,
     ):
-        if not (0 < timeout <= 30 and 0 < budget <= 120 and 1 <= max_rounds <= 4):
+        if not (
+            0 < timeout <= MAX_TIMEOUT_SECONDS
+            and 0 < budget <= 120
+            and 1 <= max_rounds <= 4
+        ):
             raise ValueError("invalid gateway bounds")
         if (
             isinstance(max_retries, bool)
@@ -422,11 +426,15 @@ class MetaGateway:
         self.traces: list[Trace] = []
 
     @classmethod
-    def from_env(cls):
+    def from_env(cls, *, timeout=20, budget=60, max_rounds=4, max_retries=1):
         return cls(
             MetaHTTP(os.environ.get("MODEL_API_KEY", "")),
             spark=os.environ.get("META_SPARK_MODEL", DEFAULT_SPARK_MODEL),
             sam=os.environ.get("META_SAM_MODEL", DEFAULT_SAM_MODEL),
+            timeout=timeout,
+            budget=budget,
+            max_rounds=max_rounds,
+            max_retries=max_retries,
         )
 
     def _post(self, path, payload, deadline, trace_sink=None):

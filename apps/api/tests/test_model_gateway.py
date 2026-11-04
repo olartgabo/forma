@@ -859,7 +859,7 @@ def test_http_stalled_connect_no_sock_times_out_and_never_dispatches(monkeypatch
     assert conn.sock is not None and conn.sock.closed
 
 
-@pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf"), 31, "1", None])
+@pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf"), 121, "1", None])
 def test_http_invalid_timeout_rejected_before_connection(monkeypatch, timeout):
     def forbidden(*args, **kwargs):
         pytest.fail("connection must not be created for an invalid timeout")
@@ -1316,3 +1316,27 @@ def test_traces_keep_finish_reason_and_reported_reasoning_on_failure():
     png = b"\x89PNG\r\n\x1a\n" + b"0" * 32
     assert gateway.segment(ImageInput(png, "image/png", True), "brown sheet") == []
     assert gateway.traces[-1].finish_reason == "completed"
+
+
+def test_extended_gateway_timeout_respects_shared_budget():
+    fake = Fake(final())
+    gateway = MetaGateway(fake, timeout=120, budget=120)
+    gateway.propose("Question", Proposal)
+    assert 119 < fake.calls[0][2] <= 120
+    with pytest.raises(ValueError, match="gateway bounds"):
+        MetaGateway(fake, timeout=121)
+    ordinary = MetaGateway(fake)
+    assert ordinary.timeout == 20
+    assert ordinary.budget == 60
+
+
+def test_http_accepts_extended_timeout_without_real_network(monkeypatch):
+    observed = []
+
+    def post_once(self, path, body, timeout, expired, shared):
+        observed.append(timeout)
+        return {"ok": True}
+
+    monkeypatch.setattr(MetaHTTP, "_post_once", post_once)
+    assert MetaHTTP("secret").post("/chat/completions", {}, 120) == {"ok": True}
+    assert observed == [120]

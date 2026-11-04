@@ -14,6 +14,14 @@ type Entry = {
   tool?: boolean;
 };
 
+// Visual anchors for the supplied narrow tool cutouts, not measured geometry.
+function leaderEndpoint(entry: Entry, compact: boolean) {
+  if (entry.art?.label === "Scissors") return compact ? 100 : 70;
+  if (entry.art?.label === "Utility knife") return compact ? 90 : 75;
+  if (entry.art?.label === "Duct tape") return 22;
+  return 43;
+}
+
 function Cutout({ entry }: { entry: Entry }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [entry.art?.src]);
@@ -179,11 +187,15 @@ export default function MaterialBoard({
               aria-label={`Review ${entry.name}`}
             >
               <Cutout entry={entry} />
-              <span className={styles.label}>
-                {entry.tool && <small>Tool · </small>}
-                {entry.name}
-                <span aria-hidden="true"> ↗</span>
-              </span>
+              <svg
+                className={styles.leader}
+                viewBox="0 0 100 100"
+                aria-hidden="true"
+              >
+                <path d={`M8 8 H64 L${leaderEndpoint(entry, compact)} 83`} />
+                <circle cx={leaderEndpoint(entry, compact)} cy="83" r="3" />
+              </svg>
+              <span className={styles.label}>{entry.name}</span>
             </button>
           ))}
         </div>

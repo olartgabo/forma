@@ -107,7 +107,7 @@ class IntakeResult(Record):
 def default_gateway_factory() -> MetaGateway:
     """Construct the real provider gateway per request; never at import time."""
 
-    return MetaGateway.from_env()
+    return MetaGateway.from_env(timeout=120, budget=120, max_rounds=1, max_retries=0)
 
 
 def gateway_error_details(code: str) -> tuple[int, str, str]:
