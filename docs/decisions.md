@@ -729,7 +729,17 @@ arguments select server-authorized identities and cases only. A report is
 modeled evidence of nothing physical, and MetaMuse cannot add measurements,
 confirm inputs or approve plans.
 
-## D054: Bounded stock-feasible stand search, November 3, 2026
+## D054. Use the cube for long construction requests, November 3, 2026
+
+The construction proposal shows its text status and Cancel on dispatch. After
+10 seconds waiting for the proposal response, a blueprint-blue Rubik's Cube
+appears below the request controls. It reverses three quarter turns when a
+rotatable construction preview is ready. Results display immediately. Errors,
+cancellations and blocked results clear the cube. Reduced motion shows a static
+cube during the wait and skips the solve. The animation reports no percentage
+and does not indicate physical acceptance.
+
+## D055: Bounded stock-feasible stand search, November 3, 2026
 
 Design search (#148) enumerates a finite step-aligned grid of panel width,
 support length and base depth for each saved single-region sheet, tape stock and

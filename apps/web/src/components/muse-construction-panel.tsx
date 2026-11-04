@@ -20,6 +20,7 @@ import {
   type PendingConstruction,
 } from "../lib/muse-construction-pending";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
+import CubeLoader from "./cube-loader";
 import MuseRequestStatus from "./muse-request-status";
 import {
   constructionStepTitle,
@@ -328,6 +329,7 @@ function ConstructionPanel({
   const [consent, setConsent] = useState(false);
   const [photoConsent, setPhotoConsent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [proposalInFlight, setProposalInFlight] = useState(false);
   const [result, setResult] = useState<MuseConstructionResult | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [pending, setPending] = useState<PendingConstruction | null>(null);
@@ -358,6 +360,7 @@ function ConstructionPanel({
     const current = ++epoch.current;
     controller.current?.abort();
     setBusy(false);
+    setProposalInFlight(false);
     setResult(null);
     setConsent(false);
     setPhotoConsent(false);
@@ -464,6 +467,7 @@ function ConstructionPanel({
         currentContext.current !== requestedContext
       )
         return;
+      setProposalInFlight(true);
       const value = await proposeConstruction(
         token,
         project.id,
@@ -491,6 +495,7 @@ function ConstructionPanel({
       if (current === epoch.current) {
         controller.current = null;
         setBusy(false);
+        setProposalInFlight(false);
       }
     }
   }
@@ -522,6 +527,7 @@ function ConstructionPanel({
     epoch.current++;
     controller.current?.abort();
     setBusy(false);
+    setProposalInFlight(false);
     setError(
       new ApiError(
         0,
@@ -706,6 +712,15 @@ function ConstructionPanel({
         errorMessage={error?.message}
         diagnostics={
           result ? museDiagnosticsFromResult(result.diagnostics) : null
+        }
+      />
+      <CubeLoader
+        busy={proposalInFlight && !unavailable}
+        succeeded={
+          !unavailable &&
+          result !== null &&
+          result.status !== "blocked" &&
+          result.candidates.some((candidate) => candidate.construction !== null)
         }
       />
       {pending && !busy && (

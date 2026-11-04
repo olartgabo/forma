@@ -10,7 +10,7 @@ Sol/Terra review pending.
 
 ## Behavior
 
-See [packages/synthesizer/README.md](../../packages/synthesizer/README.md) and D054.
+See [packages/synthesizer/README.md](../../packages/synthesizer/README.md) and D055.
 
 - `POST /api/projects/{id}/synthesis/search` with the expected inventory
   revision, active version (null) and last event ID. Read-only. Returns at most
@@ -110,7 +110,7 @@ See [packages/synthesizer/README.md](../../packages/synthesizer/README.md) and D
   regenerated `packages/domain/generated/*` and `apps/web/src/lib/generated/*`,
   `apps/web/src/components/plan-workbench.tsx` (mount and MetaMuse availability),
   `apps/web/src/app/globals.css` (layout block at the end), `package.json`
-  (`test:web` entry), `docs/decisions.md` (D054), `docs/handoffs/README.md`.
+  (`test:web` entry), `docs/decisions.md` (D055), `docs/handoffs/README.md`.
 - Consumed unchanged: `compile_stand`, `validate_plan`, `render_manual`,
   `project_nominal_geometry`, `piece_reference`, `fabrication_report`,
   `RepairBase`/`confirmed_remaining`, `PlanService.compile_preview`, the design
