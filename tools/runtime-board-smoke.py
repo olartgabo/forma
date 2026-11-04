@@ -95,7 +95,12 @@ class ReservedTransport:
         self.calls += 1
         start = time.monotonic()
         try:
-            result = self.transport.post(path, payload, min(timeout, 30.0))
+            remaining = (
+                datetime.fromisoformat(self.authorization["expires_at"]) - now()
+            ).total_seconds()
+            if remaining <= 0:
+                raise GatewayError("runtime_window_expired")
+            result = self.transport.post(path, payload, min(timeout, 120.0, remaining))
             usage = result.get("usage", {})
             values = [usage.get("prompt_tokens"), usage.get("completion_tokens")]
             if any(type(value) is not int or value < 0 for value in values):
@@ -196,7 +201,7 @@ def main():
     append(args.output / "ledger.jsonl", {"event": "authorization", **authorization})
     transport = ReservedTransport(MetaHTTP(key), args.output, authorization)
     gateway = MetaGateway(
-        transport, spark=MODEL, max_rounds=1, max_retries=0, timeout=30
+        transport, spark=MODEL, max_rounds=1, max_retries=0, timeout=120, budget=120
     )
     try:
         observation, diagnostics = observe_photo(

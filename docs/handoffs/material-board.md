@@ -9,7 +9,10 @@ The board groups repeated recognized categories without inventing counts. Six
 objects appear on desktop and three on phones; the complete editable records stay
 in the review section. The objects sit together in one outward-facing fan, with
 the left and right edges leaning away from the center. Hover and keyboard focus
-lift and slightly enlarge the image with a white silhouette outline. Clicking
+lift and slightly enlarge the image with a faint, soft white glow. White italic
+names sit directly on the blueprint above horizontal/angled annotation leaders
+ending in small circles on the object area. Labels stay transparent on selection.
+Keyboard focus retains a visible outline around the control. Clicking
 keeps a visible selection marker, opens the review section and focuses its existing
 control. Tool cutouts open the existing tool editor. Corrections and saves continue
 through Claude's recognized-item persistence; this board adds no persistence API
@@ -93,3 +96,9 @@ does not establish real-photo recognition coverage or physical validation.
 The harness now records only allowlisted gateway failure codes for future runs,
 with no exception text or response bodies. Ten offline control checks pass;
 the existing unknown receipt remains unchanged and unresolved.
+
+### Follow-up reconciliation and timeout correction
+
+The old local invocation is no longer running. Its original receipt lacks a provider response identifier, failure code and usage; provider completion and billing remain unknown. An append-only reconciliation event records that distinction. The documented stored Responses retrieval route cannot recover this unidentified Chat Completions call. No old request was replayed.
+
+Photo intake now receives one attempt with a 120-second timeout and total budget, with zero retries. Other gateway defaults remain unchanged. The separate smoke harness also respects its fixed authorization end time. A new deployed browser test must have its own reservation; historical unknowns remain preserved.

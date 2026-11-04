@@ -18,9 +18,11 @@ class Provider:
     def __init__(self, directory, result=None, error=None):
         self.directory, self.result, self.error = directory, result, error
         self.calls = 0
+        self.timeouts = []
 
     def post(self, path, payload, timeout):
         self.calls += 1
+        self.timeouts.append(timeout)
         events = [
             json.loads(line)
             for line in (self.directory / "ledger.jsonl").read_text().splitlines()
@@ -114,3 +116,35 @@ def test_invalid_dispatch_never_contacts_provider(tmp_path, change):
         transport.post(path, data, 20)
     assert provider.calls == 0
     assert not (tmp_path / "ledger.jsonl").exists()
+
+
+@pytest.mark.parametrize(
+    "remaining,requested,expected", [(3600, 120, 120), (45, 120, 45), (3600, 20, 20)]
+)
+def test_dispatch_timeout_respects_window_and_caller(
+    tmp_path, monkeypatch, remaining, requested, expected
+):
+    fixed = smoke.now()
+    monkeypatch.setattr(smoke, "now", lambda: fixed)
+    provider, transport = wrapped(
+        tmp_path, result={"usage": {"prompt_tokens": 21, "completion_tokens": 7}}
+    )
+    transport.authorization["expires_at"] = (
+        fixed + timedelta(seconds=remaining)
+    ).isoformat()
+    transport.post("/chat/completions", payload(), requested)
+    assert provider.timeouts == [expected]
+
+
+def test_window_expiring_during_reservation_never_dispatches(tmp_path, monkeypatch):
+    fixed = smoke.now()
+    provider, transport = wrapped(tmp_path)
+    transport.authorization["expires_at"] = (fixed + timedelta(seconds=1)).isoformat()
+    clock = iter(
+        [fixed, fixed, fixed + timedelta(seconds=2), fixed + timedelta(seconds=2)]
+    )
+    monkeypatch.setattr(smoke, "now", lambda: next(clock))
+    with pytest.raises(smoke.GatewayError, match="runtime_outcome_unknown"):
+        transport.post("/chat/completions", payload(), 120)
+    assert provider.calls == 0
+    assert transport.halted
