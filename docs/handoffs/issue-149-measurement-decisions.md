@@ -1,6 +1,6 @@
 # Issue 149 handoff: useful measurements and checked recalculation
 
-Status: review repairs for a8ceb93 applied and locally green; final review pending.
+Status: review repairs and design settings across measurement updates applied and locally green; final review pending.
 
 - Issue: #149. Owner @ResniDev; feature reviewer @olartgabo.
 - Base: `main` at `34a2c5f` (#148 merged as PR #171).
@@ -67,6 +67,44 @@ See [packages/measurement/README.md](../../packages/measurement/README.md) and D
    prerequisite. The browser fixture and a route test use the production file
    resolver with an explicit operator step instead of rebinding.
 
+## Design settings across measurement updates
+
+`apps/api/src/forma_api/settings_lineage.py`, used by
+`synthesis_runtime.resolve`, so the #148 search, selection and #149
+decisions all see the same settings.
+
+- A revision's own manifest entry always wins.
+- Otherwise the newest earlier revision with an entry is used. The history is
+  the inventory route's existing receipts (newest first, up to 64), which hold
+  each saved project. They are only read. The chain must start at the current
+  revision; an unreadable receipt or an invalid earlier entry stops it, and the
+  operator prerequisite is shown instead.
+- Covered stock: the same stable stock ID, kind and material in every revision
+  since. Names are never compared. Measured values, usable areas, condition and
+  photos may differ; the search, compiler and Gabo's `fabrication_report`
+  recheck them unchanged.
+- Needs attention, named in `MeasurementDecision.settings` and left out of the
+  search: stock added since, removed and added again, or changed in kind or
+  material. Removed stock is named; the settings still apply to the rest. A
+  changed tool list drops only `tools_confirmed`. If the only remaining stock is
+  uncovered, the outcome is `unsupported`, not `no_feasible_candidate`.
+- Evidence is carried exactly as recorded. Nothing is renewed, re-dated or
+  confirmed; evidence not in a confirmed state is named, and the compiler still
+  refuses it.
+- The carried settings have their own fingerprint (source revision, source
+  fingerprint, current revision, covered stock, notes, parameters), so earlier
+  searches, candidates, previews and questions are invalidated by identity.
+  Freshness checks, key replay and the identity recheck after manifest I/O are
+  unchanged.
+
+Shared edits for this part: `synthesis_runtime.resolve` (carry call, stock
+filter, two fields), `forma_synthesizer.SearchInput` (`settings_notes`,
+`uncovered_stock_ids`; informational, not part of `search_id`, which already
+binds the settings fingerprint), `MeasurementDecision.settings` (regenerated
+contracts). `design_context.py`, the inventory route, receipts and Gabo's
+fabrication modules are unchanged. The older `/designs` generation, construction
+and MetaMuse construction routes still resolve exact revisions only.
+
 ## Files
 
 - Owned: `packages/measurement/**`;
@@ -100,13 +138,22 @@ See [packages/measurement/README.md](../../packages/measurement/README.md) and D
 
 - `npm run check`: exit 0. Python 1744 passed at a8ceb93; web 175 pass; devloop 18 pass;
   production build compiled; formatting, Ruff and contract freshness clean.
+  With design settings across measurement updates: Python 1758 passed; web
+  179 pass; devloop 18 pass; build compiled; browser design and built-stand
+  flows PASS at 390px and 1280px with only the first revision configured.
+  Turning off the carry fails seven of the new route tests.
   After the review repairs: Python 1749 passed; web 178 pass; devloop 18 pass;
   build compiled. Browser: design and built-stand flows PASS at 390px and
   1280px. The carry-over regression fails if the per-question answer state is
   removed; the new decision tests fail on a8ceb93.
 - Feature tests: `packages/measurement/tests/test_decide.py` (18),
-  `apps/api/tests/test_measurement_routes.py` (7),
-  `apps/web/tests/active-measurement.test.mjs` (9).
+  `apps/api/tests/test_measurement_routes.py` (14, seven on the production file
+  resolver: measure → save → recalculate to candidates; changed material, new and
+  re-added stock; removed stock; only uncovered stock left; invalidated
+  evidence; changed tools; lost-response retry with unchanged receipts and a
+  stale identity; a revision's own settings),
+  `apps/api/tests/test_settings_lineage.py` (2),
+  `apps/web/tests/active-measurement.test.mjs` (10).
 - Browser, local Edge via Playwright, `next dev` at 127.0.0.1:3024: `PASS 390px`
   and `PASS 1280px` — question with compiler threshold, confirmed inventory
   answer recovered after a lost response and reload with one key, explicit
@@ -143,14 +190,12 @@ this slice; the deterministic flow needs no provider.
   step per approved design.
 - Conservative uncertainty: margins inside the recorded resolution are
   `unsupported`; interval propagation is not implemented.
-- Server design context is keyed by inventory revision (existing
-  `FORMA_DESIGN_CONTEXT_PATH` manifest). After a confirmed measurement the
-  operator must supply context for the new revision before the search can
-  run; until then the decision is `unsupported`, naming the revision and the
-  prerequisite. This is the main limit on the live loop. Next dependency: an
-  operator-approved policy for which settings may follow measured-value-only
-  inventory changes (same stock IDs, kinds and materials), applied in the
-  shared resolver so #148 search and #149 decisions agree.
+- Settings follow measured-value changes of the same stock (above). New,
+  re-added or re-materialed stock, changed tools, invalidated evidence and
+  histories longer than 64 saves still need the operator. Projects whose
+  earlier revisions predate their receipts cannot carry settings.
+- The older `/designs` generation and construction routes do not carry
+  settings; only the #148/#149 path does.
 - The intake form records no usable region for sheets, so app-entered sheets
   reach the search only after the explicit usable-area question here.
 - Requirement questions need saved requirements; if none exist the panel points

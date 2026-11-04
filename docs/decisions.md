@@ -781,8 +781,16 @@ Thresholds are computed per sheet material, only over reviewed tape and fold
 profile pairs for that material, and are reported in 0.1 mm steps; a confirmed
 value below a rounded threshold is decided by compiling at that exact value. A
 compiler refusal of unlimited stock for an input reason (for example missing
-profile evidence) is reported as unsupported, not as infeasible. Server design
-settings stay scoped to one inventory revision: after a confirmed measurement
-the decision states that the operator must add settings for the new revision,
-and nothing is carried forward automatically, because process and profile
-evidence were reviewed for the earlier inventory.
+profile evidence) is reported as unsupported, not as infeasible.
+
+Server design settings are reviewed for one inventory revision. When the
+current revision has none, the newest earlier revision that has them is used
+for stock that is still the same item: the same stable stock ID, kind and
+material in every saved revision since, read from the inventory route's own
+receipts. Only measured facts may differ, and the search, compiler and
+fabrication report recheck them. Stock added, removed and re-added, or changed
+in kind or material is left out of the search and named; removed stock is
+named; a changed tool list drops only the tool confirmation. Evidence is used
+exactly as recorded and never renewed or confirmed. The revision's own
+settings always win, an invalid or unreadable earlier entry is never used,
+and without a complete history the operator prerequisite stays.

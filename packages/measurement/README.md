@@ -11,7 +11,7 @@ Owner: @ResniDev. Reviewer: @olartgabo. Issue: #149. Offline; never confirms a v
 | `question` | A confirmed value could change a supported decision. |
 | `none_needed` | A built stand has a decisive modeled tipping result for every case. |
 | `no_feasible_candidate` | Confirmed stock (or the requirements themselves) rule out every design, and no remaining question could help. |
-| `unsupported` | Server design settings are missing (including for a new inventory revision), no reviewed profile pair covers the saved sheet material, the compiler needs an input no stock size can supply, the build state has no supported geometry, or a margin lies inside the recorded resolution (no interval propagation). |
+| `unsupported` | Server design settings are missing and none from an earlier revision apply, the only remaining stock is not covered by the settings in use, no reviewed profile pair covers the saved sheet material, the compiler needs an input no stock size can supply, the build state has no supported geometry, or a margin lies inside the recorded resolution (no interval propagation). |
 | `physical_test_required` | Designs fit but stability needs a built stand, or the stand is not yet built. |
 | `budget_exhausted` | The #148 search ran out of budget; no question is chosen from a partial search. |
 
@@ -30,6 +30,15 @@ use for that design and twice the confirmed overlap; the thickness range is the
 overlap of each reviewed tape/fold profile pair for the material. The
 hypothetical stock is used only to locate thresholds and never becomes a
 candidate.
+
+## Design settings across measurement updates
+
+The API adapter (`forma_api.settings_lineage`) supplies the settings. A
+revision's own settings win. Otherwise settings reviewed for an earlier revision
+cover the stock that kept its stable ID, kind and material in every revision
+since; other stock is left out (`SearchInput.uncovered_stock_ids`) and named in
+`MeasurementDecision.settings`. If nothing applicable is left because of that,
+the outcome is `unsupported`, not `no_feasible_candidate`.
 
 ## Selection rule
 

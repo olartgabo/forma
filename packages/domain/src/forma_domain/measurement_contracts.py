@@ -132,6 +132,9 @@ class MeasurementDecision(Record):
     design: DesignSummary | None = None
     stability: StabilitySummary | None = None
     invalidated: tuple[Text, ...] = Field(default=(), max_length=16)
+    # Which server design settings apply and what needs the operator's
+    # attention, for example stock the carried settings do not cover.
+    settings: tuple[Text, ...] = Field(default=(), max_length=48)
     selection_rule: Text
     physical_verification: Literal["not_attempted"] = "not_attempted"
 

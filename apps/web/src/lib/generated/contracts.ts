@@ -868,6 +868,7 @@ export type MeasurementDecision = {
   readonly "design"?: (DesignSummary | null);
   readonly "stability"?: (StabilitySummary | null);
   readonly "invalidated"?: ReadonlyArray<string>;
+  readonly "settings"?: ReadonlyArray<string>;
   readonly "selection_rule": string;
   readonly "physical_verification"?: "not_attempted";
 };

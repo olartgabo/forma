@@ -2,9 +2,9 @@
 
 SYNTHETIC stock and profile evidence in a temporary database; no provider call
 and nothing here is a physical result. Design settings come from the production
-file resolver (FORMA_DESIGN_CONTEXT_PATH): they exist only for the revisions an
-explicit operator step lists, and are never rebound to a new revision
-automatically. The browser replays these responses.
+file resolver (FORMA_DESIGN_CONTEXT_PATH). The operator configures the first
+revision only; later revisions get settings solely through the server's own
+carry rule, never by rebinding here. The browser replays these responses.
 Usage: uv run --locked python apps/web/tests/active-measurement-fixture.py <output.json>
 """
 
@@ -107,18 +107,18 @@ def design_flow(t, directory):
         )
         saved = save([a, b | {"width_mm": ruler(200)}, tape], "inventory-width")
         after = saved["project"]
-        # No settings for the new revision yet: the production prerequisite.
-        blocked = call(
+        # No operator step for the new revision: the settings follow the
+        # measured sheet through the production resolver.
+        change = call(
             "POST",
             "/measurement-decisions/recalculate",
             identity(after) | {"baseline": declined},
         )
-        assert blocked["after"]["outcome"] == "unsupported"
-        configure(after, context)
-        ready = call("POST", "/measurement-decisions", identity(after))
-        assert ready["question"]["target"]["key"] == (
+        assert change["after"]["question"]["target"]["key"] == (
             "stock:synthetic-sheet-b:height_mm"
         )
+        assert before["revision_id"] in change["after"]["settings"][0]
+        assert len(entries) == 1
         # A definite refusal: the inventory changed after the question.
         refused = client.put(
             base + "/inventory",
@@ -137,8 +137,7 @@ def design_flow(t, directory):
             saved=saved,
             first=first,
             declined=declined,
-            blocked=blocked,
-            ready=ready,
+            change=change,
             refused=refused.json(),
             readiness=call("GET", "/designs/readiness"),
         )

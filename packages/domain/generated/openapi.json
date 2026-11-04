@@ -5458,6 +5458,17 @@
             "title": "Selection Rule",
             "type": "string"
           },
+          "settings": {
+            "default": [],
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 48,
+            "title": "Settings",
+            "type": "array"
+          },
           "stability": {
             "anyOf": [
               {

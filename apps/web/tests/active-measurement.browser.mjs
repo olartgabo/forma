@@ -2,9 +2,9 @@
 // local intercepted browser. SYNTHETIC inputs; no provider and no physical pass.
 // Design flow: question → "I can't measure this" moves to another sheet with an
 // empty answer → confirmed inventory record (lost response, reload, same-key
-// retry) → recalculation stops on the missing server settings for the new
-// revision → after the operator adds them, a refused save is never shown as
-// saved. Built-stand flow: the stand question is kept as the comparison point
+// retry) → recalculation reaches the next question with the settings carried
+// by the server (only the first revision was configured) → a refused save is
+// never shown as saved. Built-stand flow: the stand question is kept as the comparison point
 // across a reload, values are recorded in the #146 form, and recalculation
 // shows the change.
 import assert from "node:assert/strict";
@@ -85,11 +85,10 @@ async function finish({ page, errors, unexpected }, width) {
 }
 
 async function designFlow(width) {
-  const { before, after, first, declined, blocked, ready } = fixture;
+  const { before, after, first, declined, change } = fixture;
   const base = `/api/projects/${before.id}`;
   const writes = [];
   let saved = false;
-  let configured = false;
   let puts = 0;
   const session = await newPage(width, (route, request, url) => {
     const method = request.method();
@@ -130,13 +129,8 @@ async function designFlow(width) {
     const body = request.postDataJSON();
     writes.push([url.pathname.split("/").pop(), body]);
     if (url.pathname === `${base}/measurement-decisions`) {
-      if (!saved) {
-        assert.equal(body.expected_inventory_revision_id, before.revision_id);
-        return route.fulfill({ json: first });
-      }
-      assert.equal(configured, true);
-      assert.equal(body.expected_inventory_revision_id, after.revision_id);
-      return route.fulfill({ json: ready });
+      assert.equal(body.expected_inventory_revision_id, before.revision_id);
+      return route.fulfill({ json: first });
     }
     if (url.pathname === `${base}/measurement-decisions/unavailable`) {
       assert.equal(body.question_id, first.question.question_id);
@@ -147,7 +141,7 @@ async function designFlow(width) {
     if (url.pathname === `${base}/measurement-decisions/recalculate`) {
       assert.equal(body.expected_inventory_revision_id, after.revision_id);
       assert.equal(body.baseline.decision_id, declined.decision_id);
-      return route.fulfill({ json: blocked });
+      return route.fulfill({ json: change });
     }
     return undefined;
   });
@@ -202,21 +196,21 @@ async function designFlow(width) {
   const changed = panel.getByRole("article", { name: "What changed" });
   await changed.waitFor();
   const changedText = await changed.innerText();
-  assert.match(changedText, /The decision changed/);
   assert.match(changedText, /synthetic-sheet-b:width_mm: unknown → 200/);
+  assert.match(changedText, /The next measurement is now: Height of sheet/);
   card = panel.getByRole("article", { name: "Measurement decision" });
   text = await card.innerText();
-  // Production behaviour: the new revision has no server settings yet.
-  assert.match(text, /A measurement here cannot settle this/);
-  assert.match(text, new RegExp(after.revision_id));
-  assert.match(text, /does not carry them forward/);
-
-  // The operator adds settings for the new revision; the builder asks again.
-  configured = true;
-  await panel
-    .getByRole("button", { name: "Find the measurement that matters" })
-    .click();
-  await card.getByText("Height of sheet synthetic-sheet-b").waitFor();
+  // The settings reviewed for the first revision followed the measured sheet.
+  assert.match(text, /Height of sheet synthetic-sheet-b/);
+  assert.match(text, /Design settings/);
+  assert.match(
+    text,
+    new RegExp(
+      `settings reviewed for inventory revision ${before.revision_id}`,
+    ),
+  );
+  assert.equal(await value().inputValue(), "");
+  assert.equal(await confirm().isChecked(), false);
   await value().fill("300");
   await confirm().check();
   await save().click();
@@ -240,7 +234,6 @@ async function designFlow(width) {
       "inventory",
       "inventory",
       "recalculate",
-      "measurement-decisions",
       "inventory",
     ],
   );
@@ -316,7 +309,7 @@ try {
   for (const width of [390, 1280]) {
     await designFlow(width);
     console.log(
-      `PASS ${width}px design: declining one sheet leaves the next sheet's answer empty, confirmed inventory answer recovered after a lost response and reload with one key, recalculation shows the missing server settings for the new revision, a refused save is not shown as saved; replayed SYNTHETIC responses only`,
+      `PASS ${width}px design: declining one sheet leaves the next sheet's answer empty, confirmed inventory answer recovered after a lost response and reload with one key, recalculation reaches the next question with server-carried settings (no operator step for the new revision), a refused save is not shown as saved; replayed SYNTHETIC responses only`,
     );
     await standFlow(width);
     console.log(

@@ -67,10 +67,9 @@ RETENTION_GAP = (
 )
 SETTINGS_GAP = (
     "Server design settings (cutting process, stand parameters and reviewed "
-    "profiles) are kept per inventory revision. After each confirmed "
-    "measurement the operator must add settings for the new revision; FORMA "
-    "does not carry them forward, because they were reviewed for the earlier "
-    "inventory."
+    "profiles) are reviewed for an inventory revision. Settings from an earlier "
+    "revision are reused only for the same stock items with only measured values "
+    "changed; here none could be reused, so the operator must add settings."
 )
 PIECES = {
     "stand-support": "Support panel",
@@ -444,8 +443,9 @@ def _context_gaps(data: SearchInput) -> list[str]:
     if _settings_missing(data):
         return [b.message for b in data.context_blockers] + [
             f"Design settings are needed for inventory revision "
-            f"{data.identity.inventory_revision_id} before the search can run. "
-            "Saved measurements are kept; recalculate once the settings exist."
+            f"{data.identity.inventory_revision_id} before the search can run, and "
+            "no earlier revision's settings apply to this stock. Saved measurements "
+            "are kept; recalculate once the settings exist."
         ]
     gaps = []
     if data.process is None or not data.process.verified(
@@ -487,7 +487,10 @@ def design_decision(
     """The next useful measurement before a build, or why there is none."""
     identity = _identity(data, declined)
     common = dict(
-        facts=_facts(data), design=_design_summary(result), invalidated=invalidated
+        facts=_facts(data),
+        design=_design_summary(result),
+        invalidated=invalidated,
+        settings=data.settings_notes,
     )
     candidate_ids = tuple(c.candidate_id for c in result.candidates)
     questions: list[MeasurementQuestion] = []
@@ -862,6 +865,22 @@ def design_decision(
             ),
             **common,
         )
+    if data.uncovered_stock_ids and not (any_sheet_possible and any_tape_possible):
+        # Saved stock exists but the settings in use do not cover it; that is
+        # the operator's review, not proof that no design can fit.
+        return _finish(
+            identity,
+            outcome="unsupported",
+            pending_questions=0,
+            reasons=(
+                tuple(data.settings_notes[1:])
+                or ("Some saved stock is not covered by the design settings in use.",)
+            )[:16],
+            missing_capabilities=(
+                "Settings that cover the named stock need the operator's review; a measurement cannot supply them.",
+            ),
+            **common,
+        )
     if result.status == "infeasible" or not (any_sheet_possible and any_tape_possible):
         if blocked and not any_sheet_possible and any_tape_possible:
             # The only sheets that could help are of a material the server
@@ -936,7 +955,9 @@ def active_decision(
         case_margins_m=tuple((c.case_id, c.signed_margin_m) for c in facts.cases),
         required_margin_m=facts.required_margin_m,
     )
-    common = dict(facts=_facts(facts.data), stability=summary)
+    common = dict(
+        facts=_facts(facts.data), stability=summary, settings=facts.data.settings_notes
+    )
     key = f"assembled_stand:{facts.plan_version_id}:assembled_stand"
     if facts.analysis_status in ("unsupported", "needs_geometry"):
         return _finish(

@@ -552,6 +552,16 @@ export default function ActiveMeasurement({
               </ul>
             </>
           )}
+          {decision.settings.length > 0 && (
+            <>
+              <h5>Design settings</h5>
+              <ul>
+                {decision.settings.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </>
+          )}
           {decision.invalidated.length > 0 && (
             <ul>
               {decision.invalidated.map((note) => (

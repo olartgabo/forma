@@ -378,3 +378,15 @@ test("a built-stand question is kept as the comparison point", () => {
   assert.equal(baselineForStand(saved, stand), saved);
   assert.equal(baselineForStand(null, decision()), null);
 });
+
+test("design settings notes are validated before they are shown", () => {
+  const notes = ["SYNTHETIC settings reviewed for inventory-a are used."];
+  assert.deepEqual(
+    validateDecision(decision({ settings: notes }), "project-a").settings,
+    notes,
+  );
+  assert.throws(
+    () => validateDecision(decision({ settings: [{ note: 1 }] }), "project-a"),
+    (e) => e.retry === true,
+  );
+});

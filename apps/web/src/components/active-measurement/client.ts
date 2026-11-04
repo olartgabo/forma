@@ -20,6 +20,7 @@ export type Decision = MeasurementDecision & {
   reasons: readonly string[];
   missing_capabilities: readonly string[];
   invalidated: readonly string[];
+  settings: readonly string[];
 };
 export type Change = Omit<DecisionChange, "after"> & { after: Decision };
 
@@ -126,6 +127,7 @@ export function validateDecision(value: unknown, projectId: string): Decision {
     !texts(value.reasons) ||
     !texts(value.missing_capabilities ?? []) ||
     !texts(value.invalidated ?? []) ||
+    !texts(value.settings ?? []) ||
     !text(value.selection_rule) ||
     value.physical_verification !== "not_attempted" ||
     (value.design != null &&
@@ -141,6 +143,7 @@ export function validateDecision(value: unknown, projectId: string): Decision {
     reasons: value.reasons as string[],
     missing_capabilities: (value.missing_capabilities ?? []) as string[],
     invalidated: (value.invalidated ?? []) as string[],
+    settings: (value.settings ?? []) as string[],
   };
 }
 
