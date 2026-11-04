@@ -995,3 +995,20 @@ USD 21.99 online catalogue observation without a pasted URL. Browser GPS is simu
 software input, not physical evidence. Exact-head checks, independent review and
 the existing deployment workflow gate release; see handoffs/local-sourcing.md.
 
+## D070: Release the saved workshop home, November 4, 2026
+
+The user expected the previously implemented workshop to appear after sign-in.
+Its local Home, My Projects, My Materials, Shopping List and Explore presentation
+had remained uncommitted while supplier sourcing was released separately. Bring
+that presentation onto current main, preserving guided photo intake, shopping,
+manual and request-recovery behavior. Existing project URLs still open their
+project; a normal sign-in opens the workshop. Navigation retains a draft and
+pending requests and confirms before discarding unsaved work.
+
+Project cards read saved owner-scoped engine geometry through revision-guarded
+GET routes, or use a frozen saved manual for an explicitly unsupported design.
+Unknown/pending construction receipts never fall back to an older proposal.
+Thumbnails are planned geometry, not evidence of physical construction. Opening
+Home or Shopping List makes no model request or purchase. Favorites remain in
+session memory; credentials are never stored in browser storage.
+

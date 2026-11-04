@@ -1328,3 +1328,9 @@ button.link {
     gap: 2px;
   }
 }
+
+.workbench-dashboard {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+}

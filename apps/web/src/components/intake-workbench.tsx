@@ -40,7 +40,7 @@ import BuildRequirementsFields from "./build-requirements-fields";
 import DesignReadinessPanel from "./design-readiness-panel";
 import PlanWorkbench from "./plan-workbench";
 import ProofWorkbench from "./proof-workbench";
-import SavedProjectsPanel from "./saved-projects-panel";
+import WorkshopDashboard from "./workshop-dashboard";
 import ShoppingSourcing from "./shopping-sourcing";
 import {
   emptyRequirements,
@@ -174,26 +174,39 @@ export default function IntakeWorkbench() {
   const [credential, setCredential] = useState("");
   const [token, setToken] = useState<string | null>(null);
   const [session, setSession] = useState(0);
+  const [dashboard, setDashboard] = useState(true);
   function connect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setToken(credential.trim());
     setCredential("");
     setSession((value) => value + 1);
+    setDashboard(true);
   }
   return (
-    <main className={token ? "workbench" : "workbench workbench-entry"}>
-      <header className="masthead">
-        <a href="/" className="wordmark" aria-label="FORMA home">
-          <FormaWordmark />
-        </a>
-        <span>Build workbench</span>
-      </header>
-      {token && <MuseLanguageControl />}
+    <main
+      className={
+        token
+          ? dashboard
+            ? "workbench workbench-dashboard"
+            : "workbench"
+          : "workbench workbench-entry"
+      }
+    >
+      {!(token && dashboard) && (
+        <header className="masthead">
+          <a href="/" className="wordmark" aria-label="FORMA home">
+            <FormaWordmark />
+          </a>
+          <span>Build workbench</span>
+        </header>
+      )}
+      {token && !dashboard && <MuseLanguageControl />}
       {token ? (
         <ProjectWorkbench
           key={session}
           token={token}
           disconnect={() => setToken(null)}
+          onDashboardChange={setDashboard}
         />
       ) : (
         <div className="welcome-layout">
@@ -310,10 +323,40 @@ export default function IntakeWorkbench() {
 function ProjectWorkbench({
   token,
   disconnect,
+  onDashboardChange,
 }: {
   token: string;
   disconnect: () => void;
+  onDashboardChange: (dashboard: boolean) => void;
 }) {
+  const [dashboard, setDashboard] = useState(true);
+  const [intent, setIntent] = useState<"idea" | "materials" | "repair">("idea");
+  const [favoriteIds, setFavoriteIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  function showDashboard(value: boolean) {
+    setDashboard(value);
+    onDashboardChange(value);
+  }
+  function toggleFavorite(id: string) {
+    if (locked) return;
+    setFavoriteIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const heading = document.querySelector<HTMLElement>(
+        dashboard ? ".workbench-dashboard h1" : "#project-title, #goal-title",
+      );
+      heading?.setAttribute("tabindex", "-1");
+      heading?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [dashboard]);
   const [project, setProject] = useState<Project | null>(null);
   const [shoppingOpen, setShoppingOpen] = useState(false);
   const [goal, setGoal] = useState("");
@@ -419,6 +462,7 @@ function ProjectWorkbench({
     controller.current = lifetime;
     const id = new URL(window.location.href).searchParams.get("project");
     if (id) {
+      showDashboard(false);
       setOpenId(id);
       if (ID_PATTERN.test(id)) void openProject(id);
       else setError("The project ID in this address is invalid.");
@@ -505,7 +549,7 @@ function ProjectWorkbench({
   async function openProject(id: string) {
     if (locked) return;
     if (
-      dirty &&
+      (dirty || (!project && goal.trim())) &&
       !window.confirm(
         "Reload this project and discard unsaved materials and requirements?",
       )
@@ -522,6 +566,7 @@ function ProjectWorkbench({
       if (signal.aborted || requestEpoch !== epoch.current) return;
       setPhotos([]);
       install(next);
+      showDashboard(false);
       setPhotoAttempt((value) => value + 1);
     } catch (failure) {
       if (!signal.aborted && requestEpoch === epoch.current)
@@ -718,7 +763,7 @@ function ProjectWorkbench({
   }
   function leave() {
     if (
-      (dirty || pending || planPending) &&
+      (dirty || (!project && goal.trim()) || pending || planPending) &&
       !window.confirm(
         "Disconnect and discard unsaved changes? An unfinished request may already have reached the server; reopen the project to check it.",
       )
@@ -726,775 +771,843 @@ function ProjectWorkbench({
       return;
     disconnect();
   }
+  function home() {
+    if (locked) return;
+    if (
+      (dirty || (!project && goal.trim())) &&
+      !window.confirm(
+        "Return to your workshop? Your unsaved draft stays here until you open or start another project.",
+      )
+    )
+      return;
+    rememberProject(null);
+    showDashboard(true);
+  }
+  function newProject(nextIntent: "idea" | "materials" | "repair" = "idea") {
+    if (locked) return;
+    if (
+      (dirty || (!project && goal.trim())) &&
+      !window.confirm("Start a new project and discard your unsaved draft?")
+    )
+      return;
+    epoch.current += 1;
+    setProject(null);
+    setRows([]);
+    setRequirements(emptyRequirements());
+    setPhotos([]);
+    setGoal("");
+    setError("");
+    setUploadError("");
+    setNotice("");
+    setStale(false);
+    setChecked(false);
+    setIntent(nextIntent);
+    rememberProject(null);
+    showDashboard(false);
+  }
   return (
     <>
-      <div className="session-bar">
-        <p>Private development workbench</p>
-        <button type="button" className="quiet" onClick={leave}>
-          Disconnect
-        </button>
-      </div>
-      <MuseProviderBanner
-        availability={museAvailability}
-        onRetry={loadProviderStatus}
-      />
-      <div className="session-bar">
-        <button
-          type="button"
-          className="secondary"
-          aria-expanded={shoppingOpen}
-          aria-controls="shopping-list"
-          onClick={() => setShoppingOpen((value) => !value)}
-        >
-          {shoppingOpen ? "Close shopping list" : "Shopping list"}
-        </button>
-        <p className="help">
-          Find materials and suppliers for a saved project.
-        </p>
-      </div>
-      {shoppingOpen && (
-        <ShoppingSourcing
-          key={token}
+      {dashboard && (
+        <WorkshopDashboard
           token={token}
           disabled={locked}
           onOpen={(id) => void openProject(id)}
+          onNewProject={newProject}
+          onDisconnect={leave}
+          favoriteIds={favoriteIds}
+          onToggleFavorite={toggleFavorite}
+          onResume={
+            project || goal.trim() || rows.length
+              ? () => {
+                  rememberProject(project?.id ?? null);
+                  showDashboard(false);
+                }
+              : undefined
+          }
+          resumeLabel={
+            project ? "Return to current project" : "Return to unsaved draft"
+          }
         />
       )}
-      <div className="status-area" aria-live="polite" aria-atomic="true">
-        {notice && <p className="notice">{notice}</p>}
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
-        {busy && <p className="help">Saving or loading your project…</p>}
-      </div>
-      {pending && !busy && (
-        <aside className="retry-panel">
-          <h2>Confirm the unfinished request</h2>
-          <p>
-            The connection ended before the result was known. Retry this same
-            request to check its outcome without creating a duplicate.
-          </p>
+      {dashboard && error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      <div hidden={dashboard}>
+        <div className="session-bar">
+          <p>Private development workbench</p>
           <button
             type="button"
-            className="primary"
-            onClick={() => void execute(pending)}
+            className="quiet"
+            onClick={home}
+            disabled={locked}
           >
-            Retry request
+            Back to workshop
           </button>
-        </aside>
-      )}
-      {!project ? (
-        <div className="start-layout">
-          <section aria-labelledby="goal-title">
-            <h1 id="goal-title">What would make your desk work better?</h1>
-            <p className="lead">
-              Start with a small tabletop stand. Describe what it should hold
-              and what you need it to do.
-            </p>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!locked && goal.trim())
-                  void execute({
-                    kind: "create",
-                    key: crypto.randomUUID(),
-                    goal: goal.trim(),
-                  });
-              }}
-            >
-              <fieldset disabled={locked}>
-                <label htmlFor="goal">Your goal, in English or Spanish</label>
-                <textarea
-                  id="goal"
-                  rows={5}
-                  maxLength={2000}
-                  required
-                  value={goal}
-                  onChange={(event) => setGoal(event.target.value)}
-                />
-                <p className="help">
-                  Include the object, the space available and what you want to
-                  improve. Exact measurements come next.
-                </p>
-                <button
-                  className="primary"
-                  type="submit"
-                  disabled={!goal.trim()}
-                >
-                  Create project
-                </button>
-              </fieldset>
-            </form>
-          </section>
-          <section className="reopen-panel" aria-labelledby="reopen-title">
-            <h2 id="reopen-title">Continue a project</h2>
-            <p>Use its saved project ID with the same owner credential.</p>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void openProject(openId.trim());
-              }}
-            >
-              <fieldset disabled={locked}>
-                <label htmlFor="open-project">Project ID</label>
-                <input
-                  id="open-project"
-                  required
-                  pattern={"[A-Za-z][A-Za-z0-9_\\-]{0,95}"}
-                  value={openId}
-                  onChange={(event) => setOpenId(event.target.value)}
-                />
-                <button type="submit" className="secondary">
-                  Open project
-                </button>
-              </fieldset>
-            </form>
-            <SavedProjectsPanel
-              token={token}
-              disabled={locked}
-              onOpen={(id) => void openProject(id)}
-            />
-          </section>
+          <button type="button" className="quiet" onClick={leave}>
+            Disconnect
+          </button>
         </div>
-      ) : (
-        <>
-          <nav className="project-rail" aria-label="Project sections">
-            <a href="#project-title">01 Project</a>
-            <a href="#photos-title">02 Inventory</a>
-            <a href="#plans-title">03 Plan &amp; manual</a>
-            <a href="#muse-diagnosis-panel">04 Diagnosis</a>
-            <a href="#project-proof">05 Proof</a>
-          </nav>
-          <section className="project-heading" aria-labelledby="project-title">
-            <div>
-              <p className="project-id">
-                Project ID <span>{project.id}</span>
-              </p>
-              <h1 id="project-title">{project.goal}</h1>
-              <p>
-                Save this page’s address to return. Your credential is never
-                included.
-              </p>
-            </div>
+        <MuseProviderBanner
+          availability={museAvailability}
+          onRetry={loadProviderStatus}
+        />
+        <div className="session-bar">
+          <button
+            type="button"
+            className="secondary"
+            aria-expanded={shoppingOpen}
+            aria-controls="shopping-list"
+            onClick={() => setShoppingOpen((value) => !value)}
+          >
+            {shoppingOpen ? "Close shopping list" : "Shopping list"}
+          </button>
+          <p className="help">
+            Find materials and suppliers for a saved project.
+          </p>
+        </div>
+        {shoppingOpen && (
+          <ShoppingSourcing
+            key={token}
+            token={token}
+            disabled={locked}
+            onOpen={(id) => void openProject(id)}
+          />
+        )}
+        <div className="status-area" aria-live="polite" aria-atomic="true">
+          {notice && <p className="notice">{notice}</p>}
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          {busy && <p className="help">Saving or loading your project…</p>}
+        </div>
+        {pending && !busy && (
+          <aside className="retry-panel">
+            <h2>Confirm the unfinished request</h2>
+            <p>
+              The connection ended before the result was known. Retry this same
+              request to check its outcome without creating a duplicate.
+            </p>
             <button
               type="button"
-              className="quiet"
-              disabled={locked}
-              onClick={() => {
-                if (
-                  dirty &&
-                  !window.confirm(
-                    "Start another project and discard unsaved materials and requirements?",
-                  )
-                )
-                  return;
-                epoch.current += 1;
-                setProject(null);
-                setRows([]);
-                setRequirements(emptyRequirements());
-                setPhotos([]);
-                setError("");
-                setUploadError("");
-                setNotice("");
-                setStale(false);
-                setChecked(false);
-                rememberProject(null);
-              }}
+              className="primary"
+              onClick={() => void execute(pending)}
             >
-              Start another project
+              Retry request
             </button>
-          </section>
-          <div className="inventory-layout">
-            <section className="photos-panel" aria-labelledby="photos-title">
-              <div className="section-title">
-                <span aria-hidden="true">1</span>
-                <h2 id="photos-title">Photograph your materials</h2>
-              </div>
-              <p>
-                Lay sheets and strips flat beside the printed FORMA reference
-                card and take the photo from above. Photos stay private in this
-                project unless you explicitly send one to Muse or SAM.
+          </aside>
+        )}
+        {!project ? (
+          <div className="start-layout">
+            <section aria-labelledby="goal-title">
+              <h1 id="goal-title">What would make your desk work better?</h1>
+              {intent === "materials" && (
+                <p>
+                  Describe what you would like to make. You can add photos and
+                  confirm your materials after creating the project.
+                </p>
+              )}
+              {intent === "repair" && (
+                <p>
+                  For a saved build, return to your workshop and open its
+                  project to keep its history. For a new repair project,
+                  describe what needs attention.
+                </p>
+              )}
+              <p className="lead">
+                Start with a small tabletop stand. Describe what it should hold
+                and what you need it to do.
               </p>
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
-                  const file = fileInput.current?.files?.[0];
-                  if (file && !locked)
+                  if (!locked && goal.trim())
                     void execute({
-                      kind: "upload",
+                      kind: "create",
                       key: crypto.randomUUID(),
-                      projectId: project.id,
-                      file,
+                      goal: goal.trim(),
                     });
                 }}
               >
                 <fieldset disabled={locked}>
-                  <label htmlFor="photo-upload">Add a photo</label>
-                  <input
-                    ref={fileInput}
-                    id="photo-upload"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
+                  <label htmlFor="goal">Your goal, in English or Spanish</label>
+                  <textarea
+                    id="goal"
+                    rows={5}
+                    maxLength={2000}
                     required
-                    aria-invalid={uploadError ? true : undefined}
-                    aria-describedby={
-                      uploadError
-                        ? "photo-upload-help photo-upload-error"
-                        : "photo-upload-help"
-                    }
-                    onChange={() => setUploadError("")}
+                    value={goal}
+                    onChange={(event) => setGoal(event.target.value)}
                   />
-                  <p className="help" id="photo-upload-help">
-                    JPEG, PNG or WebP, up to 8 MiB. A photo gives size
-                    estimates, not ruler measurements.
+                  <p className="help">
+                    Include the object, the space available and what you want to
+                    improve. Exact measurements come next.
                   </p>
-                  {uploadError && (
-                    <p className="error" id="photo-upload-error" role="alert">
-                      {uploadError}
-                    </p>
-                  )}
-                  <button type="submit" className="secondary">
-                    Upload photo
+                  <button
+                    className="primary"
+                    type="submit"
+                    disabled={!goal.trim()}
+                  >
+                    Create project
                   </button>
                 </fieldset>
               </form>
-              {photoError && (
-                <div className="error" role="alert">
-                  <p>{photoError}</p>
-                  <button
-                    type="button"
-                    onClick={() => setPhotoAttempt((value) => value + 1)}
-                  >
-                    Reload photos
-                  </button>
-                </div>
-              )}
-              {photosLoading && photos.length > 0 && (
-                <p className="help">
-                  Refreshing photo information… Delete availability still
-                  reflects the last loaded information.
-                </p>
-              )}
-              {photos.length === 0 ? (
-                <p className="empty-note">
-                  {photosLoading
-                    ? "Loading your private photos…"
-                    : "No photos loaded. You can still enter materials by hand."}
-                </p>
-              ) : (
-                <div className="photo-gallery">
-                  {photos.map((photo, index) => {
-                    const linked = rows.some((row) =>
-                      row.stock.image_ids?.includes(photo.id),
-                    );
-                    const savedLink = project.stocks?.some((stock) =>
-                      stock.image_ids?.includes(photo.id),
-                    );
-                    const deletion = photoDeletionState(photo, {
-                      materialLinked: linked || Boolean(savedLink),
-                      locked,
-                    });
-                    return (
-                      <figure key={photo.id}>
-                        <PhotoPreview
-                          token={token}
-                          projectId={project.id}
-                          photo={photo}
-                        />
-                        <figcaption>
-                          Photo {index + 1}
-                          <span>
-                            {photo.width_px} × {photo.height_px} pixels
-                          </span>
-                        </figcaption>
-                        <button
-                          type="button"
-                          className="quiet danger"
-                          disabled={deletion.disabled}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                "Delete this private photo from the project?",
-                              )
-                            )
-                              void execute({
-                                kind: "delete",
-                                key: crypto.randomUUID(),
-                                projectId: project.id,
-                                mediaId: photo.id,
-                              });
-                          }}
-                        >
-                          Delete photo {index + 1}
-                        </button>
-                        {deletion.evidenceReason && (
-                          <p className="help">{deletion.evidenceReason}</p>
-                        )}
-                        {deletion.materialReason && (
-                          <p className="help">{deletion.materialReason}</p>
-                        )}
-                      </figure>
-                    );
-                  })}
-                </div>
-              )}
             </section>
+            <section className="reopen-panel" aria-labelledby="reopen-title">
+              <h2 id="reopen-title">Continue a project</h2>
+              <p>Use its saved project ID with the same owner credential.</p>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void openProject(openId.trim());
+                }}
+              >
+                <fieldset disabled={locked}>
+                  <label htmlFor="open-project">Project ID</label>
+                  <input
+                    id="open-project"
+                    required
+                    pattern={"[A-Za-z][A-Za-z0-9_\\-]{0,95}"}
+                    value={openId}
+                    onChange={(event) => setOpenId(event.target.value)}
+                  />
+                  <button type="submit" className="secondary">
+                    Open project
+                  </button>
+                </fieldset>
+              </form>
+            </section>
+          </div>
+        ) : (
+          <>
+            <nav className="project-rail" aria-label="Project sections">
+              <a href="#project-title">01 Project</a>
+              <a href="#photos-title">02 Inventory</a>
+              <a href="#plans-title">03 Plan &amp; manual</a>
+              <a href="#muse-diagnosis-panel">04 Diagnosis</a>
+              <a href="#project-proof">05 Proof</a>
+            </nav>
             <section
-              className="materials-panel"
-              aria-labelledby="materials-title"
+              className="project-heading"
+              aria-labelledby="project-title"
             >
-              <GuidedIntake
-                key={`${token}:${project.id}`}
-                token={token}
-                project={project}
-                photos={photos}
-                stocks={stocks}
-                dirty={dirty}
-                disabled={locked}
-                inventoryStale={stale}
-                museAvailability={museAvailability}
-                tools={requirements.tools ?? []}
-                designBusy={constructionBusy}
-                designReady={constructionReady}
-                onStocks={changeGuided}
-                onBusy={setGuidedBusy}
-                onSave={(after) => submitInventory(stocks, after)}
-                onProject={install}
-              />
-              <details className="manual-intake">
-                <summary id="materials-title">
-                  Details: every material field and build requirement
-                </summary>
-                <p>
-                  Use one record per physical item. Measure in millimeters;
-                  leave a value blank when it is unknown.
+              <div>
+                <p className="project-id">
+                  Project ID <span>{project.id}</span>
                 </p>
-                <form onSubmit={save}>
-                  <fieldset
-                    disabled={locked || Boolean(project.active_version_id)}
-                  >
-                    {rows.length === 0 && (
-                      <div className="empty-note">
-                        <h3>Your materials start here</h3>
-                        <p>
-                          Add a sheet, strip, roll of tape or length of cord. No
-                          sizes are assumed.
-                        </p>
-                      </div>
+                <h1 id="project-title">{project.goal}</h1>
+                <p>
+                  Save this page’s address to return. Your credential is never
+                  included.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="quiet"
+                disabled={locked}
+                onClick={() => newProject()}
+              >
+                Start another project
+              </button>
+            </section>
+            <div className="inventory-layout">
+              <section className="photos-panel" aria-labelledby="photos-title">
+                <div className="section-title">
+                  <span aria-hidden="true">1</span>
+                  <h2 id="photos-title">Photograph your materials</h2>
+                </div>
+                <p>
+                  Lay sheets and strips flat beside the printed FORMA reference
+                  card and take the photo from above. Photos stay private in
+                  this project unless you explicitly send one to Muse or SAM.
+                </p>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const file = fileInput.current?.files?.[0];
+                    if (file && !locked)
+                      void execute({
+                        kind: "upload",
+                        key: crypto.randomUUID(),
+                        projectId: project.id,
+                        file,
+                      });
+                  }}
+                >
+                  <fieldset disabled={locked}>
+                    <label htmlFor="photo-upload">Add a photo</label>
+                    <input
+                      ref={fileInput}
+                      id="photo-upload"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      required
+                      aria-invalid={uploadError ? true : undefined}
+                      aria-describedby={
+                        uploadError
+                          ? "photo-upload-help photo-upload-error"
+                          : "photo-upload-help"
+                      }
+                      onChange={() => setUploadError("")}
+                    />
+                    <p className="help" id="photo-upload-help">
+                      JPEG, PNG or WebP, up to 8 MiB. A photo gives size
+                      estimates, not ruler measurements.
+                    </p>
+                    {uploadError && (
+                      <p className="error" id="photo-upload-error" role="alert">
+                        {uploadError}
+                      </p>
                     )}
-                    {rows.map((row, index) => {
-                      const stock = row.stock;
-                      const hasRegions = Boolean(stock.usable_regions?.length);
-                      const relevant = measurements.filter(({ field }) =>
-                        stock.kind === "tape" || stock.kind === "cord"
-                          ? field === "remaining_length_mm"
-                          : field !== "remaining_length_mm",
+                    <button type="submit" className="secondary">
+                      Upload photo
+                    </button>
+                  </fieldset>
+                </form>
+                {photoError && (
+                  <div className="error" role="alert">
+                    <p>{photoError}</p>
+                    <button
+                      type="button"
+                      onClick={() => setPhotoAttempt((value) => value + 1)}
+                    >
+                      Reload photos
+                    </button>
+                  </div>
+                )}
+                {photosLoading && photos.length > 0 && (
+                  <p className="help">
+                    Refreshing photo information… Delete availability still
+                    reflects the last loaded information.
+                  </p>
+                )}
+                {photos.length === 0 ? (
+                  <p className="empty-note">
+                    {photosLoading
+                      ? "Loading your private photos…"
+                      : "No photos loaded. You can still enter materials by hand."}
+                  </p>
+                ) : (
+                  <div className="photo-gallery">
+                    {photos.map((photo, index) => {
+                      const linked = rows.some((row) =>
+                        row.stock.image_ids?.includes(photo.id),
                       );
+                      const savedLink = project.stocks?.some((stock) =>
+                        stock.image_ids?.includes(photo.id),
+                      );
+                      const deletion = photoDeletionState(photo, {
+                        materialLinked: linked || Boolean(savedLink),
+                        locked,
+                      });
                       return (
-                        <article className="stock-record" key={row.key}>
-                          <div className="stock-heading">
-                            <h3>Material {index + 1}</h3>
-                            <button
-                              className="quiet danger"
-                              type="button"
-                              onClick={() => {
-                                setRows((current) =>
-                                  current.filter(
-                                    (item) => item.key !== row.key,
-                                  ),
+                        <figure key={photo.id}>
+                          <PhotoPreview
+                            token={token}
+                            projectId={project.id}
+                            photo={photo}
+                          />
+                          <figcaption>
+                            Photo {index + 1}
+                            <span>
+                              {photo.width_px} × {photo.height_px} pixels
+                            </span>
+                          </figcaption>
+                          <button
+                            type="button"
+                            className="quiet danger"
+                            disabled={deletion.disabled}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  "Delete this private photo from the project?",
+                                )
+                              )
+                                void execute({
+                                  kind: "delete",
+                                  key: crypto.randomUUID(),
+                                  projectId: project.id,
+                                  mediaId: photo.id,
+                                });
+                            }}
+                          >
+                            Delete photo {index + 1}
+                          </button>
+                          {deletion.evidenceReason && (
+                            <p className="help">{deletion.evidenceReason}</p>
+                          )}
+                          {deletion.materialReason && (
+                            <p className="help">{deletion.materialReason}</p>
+                          )}
+                        </figure>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+              <section
+                className="materials-panel"
+                aria-labelledby="materials-title"
+              >
+                <GuidedIntake
+                  key={`${token}:${project.id}`}
+                  token={token}
+                  project={project}
+                  photos={photos}
+                  stocks={stocks}
+                  dirty={dirty}
+                  disabled={locked}
+                  inventoryStale={stale}
+                  museAvailability={museAvailability}
+                  tools={requirements.tools ?? []}
+                  designBusy={constructionBusy}
+                  designReady={constructionReady}
+                  onStocks={changeGuided}
+                  onBusy={setGuidedBusy}
+                  onSave={(after) => submitInventory(stocks, after)}
+                  onProject={install}
+                />
+                <details className="manual-intake">
+                  <summary id="materials-title">
+                    Details: every material field and build requirement
+                  </summary>
+                  <p>
+                    Use one record per physical item. Measure in millimeters;
+                    leave a value blank when it is unknown.
+                  </p>
+                  <form onSubmit={save}>
+                    <fieldset
+                      disabled={locked || Boolean(project.active_version_id)}
+                    >
+                      {rows.length === 0 && (
+                        <div className="empty-note">
+                          <h3>Your materials start here</h3>
+                          <p>
+                            Add a sheet, strip, roll of tape or length of cord.
+                            No sizes are assumed.
+                          </p>
+                        </div>
+                      )}
+                      {rows.map((row, index) => {
+                        const stock = row.stock;
+                        const hasRegions = Boolean(
+                          stock.usable_regions?.length,
+                        );
+                        const relevant = measurements.filter(({ field }) =>
+                          stock.kind === "tape" || stock.kind === "cord"
+                            ? field === "remaining_length_mm"
+                            : field !== "remaining_length_mm",
+                        );
+                        return (
+                          <article className="stock-record" key={row.key}>
+                            <div className="stock-heading">
+                              <h3>Material {index + 1}</h3>
+                              <button
+                                className="quiet danger"
+                                type="button"
+                                onClick={() => {
+                                  setRows((current) =>
+                                    current.filter(
+                                      (item) => item.key !== row.key,
+                                    ),
+                                  );
+                                  setChecked(false);
+                                  setNotice("");
+                                }}
+                              >
+                                Remove material {index + 1}
+                              </button>
+                            </div>
+                            <div className="stock-properties">
+                              <div>
+                                <label htmlFor={`${row.key}-id`}>Item ID</label>
+                                <input
+                                  id={`${row.key}-id`}
+                                  value={stock.id}
+                                  readOnly={row.saved}
+                                  required
+                                  maxLength={96}
+                                  pattern={"[A-Za-z][A-Za-z0-9_\\-]{0,95}"}
+                                  onChange={(event) =>
+                                    changeStock(row.key, {
+                                      id: event.target.value,
+                                    })
+                                  }
+                                />
+                                <p className="help">
+                                  Label the physical item with this ID.
+                                  {row.saved
+                                    ? " Saved IDs stay fixed."
+                                    : " Letters, numbers, hyphens or underscores."}
+                                </p>
+                              </div>
+                              <div>
+                                <label htmlFor={`${row.key}-kind`}>
+                                  Item type
+                                </label>
+                                <select
+                                  id={`${row.key}-kind`}
+                                  value={stock.kind}
+                                  disabled={hasRegions}
+                                  onChange={(event) =>
+                                    changeStock(row.key, {
+                                      kind: event.target.value as Stock["kind"],
+                                    })
+                                  }
+                                >
+                                  <option value="sheet">Sheet</option>
+                                  <option value="strip">Strip</option>
+                                  <option value="tape">Tape</option>
+                                  <option value="cord">Cord</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label htmlFor={`${row.key}-material`}>
+                                  Material
+                                </label>
+                                <select
+                                  id={`${row.key}-material`}
+                                  value={stock.material}
+                                  disabled={hasRegions}
+                                  onChange={(event) =>
+                                    changeStock(row.key, {
+                                      material: event.target
+                                        .value as Stock["material"],
+                                    })
+                                  }
+                                >
+                                  <option value="cardboard">Cardboard</option>
+                                  <option value="paperboard">Paperboard</option>
+                                  <option value="other_supported">
+                                    Other material (requires review)
+                                  </option>
+                                </select>
+                              </div>
+                              <div>
+                                <label htmlFor={`${row.key}-condition`}>
+                                  Condition
+                                </label>
+                                <select
+                                  id={`${row.key}-condition`}
+                                  value={stock.condition}
+                                  onChange={(event) =>
+                                    changeStock(row.key, {
+                                      condition: event.target
+                                        .value as Stock["condition"],
+                                    })
+                                  }
+                                >
+                                  <option value="uncertain">Not checked</option>
+                                  <option value="usable">Usable</option>
+                                  <option value="damaged">Damaged</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="measurements">
+                              {relevant.map(({ field, label }) => {
+                                const measurement = stock[field];
+                                return (
+                                  <div className="measurement" key={field}>
+                                    <label htmlFor={`${row.key}-${field}`}>
+                                      {label} <span>(mm)</span>
+                                    </label>
+                                    <input
+                                      id={`${row.key}-${field}`}
+                                      type="number"
+                                      inputMode="decimal"
+                                      step="any"
+                                      min="0"
+                                      disabled={hasRegions}
+                                      value={measurement.value ?? ""}
+                                      onChange={(event) => {
+                                        const value =
+                                          event.target.value === ""
+                                            ? null
+                                            : Number(event.target.value);
+                                        changeStock(row.key, {
+                                          [field]:
+                                            value === null
+                                              ? unknown()
+                                              : {
+                                                  value,
+                                                  unit: "mm",
+                                                  source: "user_ruler",
+                                                  confirmed: false,
+                                                },
+                                        });
+                                      }}
+                                    />
+                                    <label
+                                      className="checkbox-label"
+                                      htmlFor={`${row.key}-${field}-confirmed`}
+                                    >
+                                      <input
+                                        id={`${row.key}-${field}-confirmed`}
+                                        type="checkbox"
+                                        aria-label={`${label} measured and checked`}
+                                        disabled={
+                                          measurement.value === null ||
+                                          hasRegions
+                                        }
+                                        checked={measurement.confirmed}
+                                        onChange={(event) =>
+                                          changeStock(row.key, {
+                                            [field]: {
+                                              ...measurement,
+                                              confirmed: event.target.checked,
+                                            },
+                                          })
+                                        }
+                                      />
+                                      Measured and checked
+                                    </label>
+                                    {measurement.value === null && (
+                                      <span className="unknown-note">
+                                        Unknown
+                                      </span>
+                                    )}
+                                    {measurement.value !== null &&
+                                      !measurement.confirmed && (
+                                        <span className="unknown-note">
+                                          Needs confirmation
+                                        </span>
+                                      )}
+                                  </div>
                                 );
-                                setChecked(false);
-                                setNotice("");
-                              }}
-                            >
-                              Remove material {index + 1}
-                            </button>
-                          </div>
-                          <div className="stock-properties">
-                            <div>
-                              <label htmlFor={`${row.key}-id`}>Item ID</label>
-                              <input
-                                id={`${row.key}-id`}
-                                value={stock.id}
-                                readOnly={row.saved}
-                                required
-                                maxLength={96}
-                                pattern={"[A-Za-z][A-Za-z0-9_\\-]{0,95}"}
-                                onChange={(event) =>
-                                  changeStock(row.key, {
-                                    id: event.target.value,
-                                  })
-                                }
-                              />
+                              })}
+                            </div>
+                            {hasRegions && (
                               <p className="help">
-                                Label the physical item with this ID.
-                                {row.saved
-                                  ? " Saved IDs stay fixed."
-                                  : " Letters, numbers, hyphens or underscores."}
+                                Existing usable-region geometry is retained.
+                                Dimension changes need a separate revision
+                                workflow.
                               </p>
-                            </div>
-                            <div>
-                              <label htmlFor={`${row.key}-kind`}>
-                                Item type
-                              </label>
-                              <select
-                                id={`${row.key}-kind`}
-                                value={stock.kind}
-                                disabled={hasRegions}
-                                onChange={(event) =>
-                                  changeStock(row.key, {
-                                    kind: event.target.value as Stock["kind"],
-                                  })
-                                }
-                              >
-                                <option value="sheet">Sheet</option>
-                                <option value="strip">Strip</option>
-                                <option value="tape">Tape</option>
-                                <option value="cord">Cord</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label htmlFor={`${row.key}-material`}>
-                                Material
-                              </label>
-                              <select
-                                id={`${row.key}-material`}
-                                value={stock.material}
-                                disabled={hasRegions}
-                                onChange={(event) =>
-                                  changeStock(row.key, {
-                                    material: event.target
-                                      .value as Stock["material"],
-                                  })
-                                }
-                              >
-                                <option value="cardboard">Cardboard</option>
-                                <option value="paperboard">Paperboard</option>
-                                <option value="other_supported">
-                                  Other material (requires review)
-                                </option>
-                              </select>
-                            </div>
-                            <div>
-                              <label htmlFor={`${row.key}-condition`}>
-                                Condition
-                              </label>
-                              <select
-                                id={`${row.key}-condition`}
-                                value={stock.condition}
-                                onChange={(event) =>
-                                  changeStock(row.key, {
-                                    condition: event.target
-                                      .value as Stock["condition"],
-                                  })
-                                }
-                              >
-                                <option value="uncertain">Not checked</option>
-                                <option value="usable">Usable</option>
-                                <option value="damaged">Damaged</option>
-                              </select>
-                            </div>
-                          </div>
-                          <div className="measurements">
-                            {relevant.map(({ field, label }) => {
-                              const measurement = stock[field];
-                              return (
-                                <div className="measurement" key={field}>
-                                  <label htmlFor={`${row.key}-${field}`}>
-                                    {label} <span>(mm)</span>
-                                  </label>
-                                  <input
-                                    id={`${row.key}-${field}`}
-                                    type="number"
-                                    inputMode="decimal"
-                                    step="any"
-                                    min="0"
-                                    disabled={hasRegions}
-                                    value={measurement.value ?? ""}
-                                    onChange={(event) => {
-                                      const value =
-                                        event.target.value === ""
-                                          ? null
-                                          : Number(event.target.value);
-                                      changeStock(row.key, {
-                                        [field]:
-                                          value === null
-                                            ? unknown()
-                                            : {
-                                                value,
-                                                unit: "mm",
-                                                source: "user_ruler",
-                                                confirmed: false,
-                                              },
-                                      });
-                                    }}
-                                  />
+                            )}
+                            {photos.length > 0 && (
+                              <fieldset className="photo-links">
+                                <legend>Matching photos</legend>
+                                {photos.map((photo, photoIndex) => (
                                   <label
                                     className="checkbox-label"
-                                    htmlFor={`${row.key}-${field}-confirmed`}
+                                    key={photo.id}
                                   >
                                     <input
-                                      id={`${row.key}-${field}-confirmed`}
                                       type="checkbox"
-                                      aria-label={`${label} measured and checked`}
-                                      disabled={
-                                        measurement.value === null || hasRegions
+                                      checked={
+                                        stock.image_ids?.includes(photo.id) ??
+                                        false
                                       }
-                                      checked={measurement.confirmed}
                                       onChange={(event) =>
                                         changeStock(row.key, {
-                                          [field]: {
-                                            ...measurement,
-                                            confirmed: event.target.checked,
-                                          },
+                                          image_ids: event.target.checked
+                                            ? [
+                                                ...(stock.image_ids ?? []),
+                                                photo.id,
+                                              ]
+                                            : stock.image_ids?.filter(
+                                                (id) => id !== photo.id,
+                                              ),
                                         })
                                       }
                                     />
-                                    Measured and checked
+                                    Photo {photoIndex + 1}
                                   </label>
-                                  {measurement.value === null && (
-                                    <span className="unknown-note">
-                                      Unknown
-                                    </span>
-                                  )}
-                                  {measurement.value !== null &&
-                                    !measurement.confirmed && (
-                                      <span className="unknown-note">
-                                        Needs confirmation
-                                      </span>
-                                    )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                          {hasRegions && (
-                            <p className="help">
-                              Existing usable-region geometry is retained.
-                              Dimension changes need a separate revision
-                              workflow.
-                            </p>
-                          )}
-                          {photos.length > 0 && (
-                            <fieldset className="photo-links">
-                              <legend>Matching photos</legend>
-                              {photos.map((photo, photoIndex) => (
-                                <label
-                                  className="checkbox-label"
-                                  key={photo.id}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={
-                                      stock.image_ids?.includes(photo.id) ??
-                                      false
-                                    }
-                                    onChange={(event) =>
-                                      changeStock(row.key, {
-                                        image_ids: event.target.checked
-                                          ? [
-                                              ...(stock.image_ids ?? []),
-                                              photo.id,
-                                            ]
-                                          : stock.image_ids?.filter(
-                                              (id) => id !== photo.id,
-                                            ),
-                                      })
-                                    }
-                                  />
-                                  Photo {photoIndex + 1}
-                                </label>
-                              ))}
-                            </fieldset>
-                          )}
-                        </article>
-                      );
-                    })}
+                                ))}
+                              </fieldset>
+                            )}
+                          </article>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        className="secondary add-material"
+                        disabled={rows.length >= 32}
+                        onClick={() => {
+                          setRows((current) => [...current, newRow()]);
+                          setChecked(false);
+                          setNotice("");
+                        }}
+                      >
+                        Add a material
+                      </button>
+                      {rows.length >= 32 && (
+                        <p className="help">
+                          This project supports up to 32 material records.
+                        </p>
+                      )}
+                      <BuildRequirementsFields
+                        value={requirements}
+                        onChange={(next) => {
+                          setRequirements(next);
+                          setChecked(false);
+                          setNotice("");
+                        }}
+                      />
+                      <div className="save-inventory">
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) =>
+                              setChecked(event.target.checked)
+                            }
+                          />
+                          I checked these materials, tools and requirements.
+                          Blank measurements are still unknown.
+                        </label>
+                        <div className="save-row">
+                          <button
+                            type="submit"
+                            className="primary"
+                            disabled={!checked || rows.length === 0 || stale}
+                          >
+                            Save materials and requirements
+                          </button>
+                          <span className="help">
+                            {dirty
+                              ? "Unsaved changes"
+                              : project.inventory_confirmed
+                                ? "Inventory saved"
+                                : "Inventory not confirmed"}
+                          </span>
+                        </div>
+                      </div>
+                    </fieldset>
+                  </form>
+                </details>
+                {project.active_version_id && (
+                  <p className="error">
+                    This project already has an active plan. Inventory edits
+                    require a plan revision.
+                  </p>
+                )}
+                {stale && (
+                  <aside className="retry-panel">
+                    <h3>The saved materials or requirements changed</h3>
+                    <p>
+                      Reload the latest materials and requirements before saving
+                      again. Reloading replaces your unsaved edits.
+                    </p>
                     <button
                       type="button"
-                      className="secondary add-material"
-                      disabled={rows.length >= 32}
-                      onClick={() => {
-                        setRows((current) => [...current, newRow()]);
-                        setChecked(false);
-                        setNotice("");
-                      }}
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => void openProject(project.id)}
                     >
-                      Add a material
+                      Reload latest materials and requirements
                     </button>
-                    {rows.length >= 32 && (
-                      <p className="help">
-                        This project supports up to 32 material records.
-                      </p>
-                    )}
-                    <BuildRequirementsFields
-                      value={requirements}
-                      onChange={(next) => {
-                        setRequirements(next);
-                        setChecked(false);
-                        setNotice("");
-                      }}
-                    />
-                    <div className="save-inventory">
-                      <label className="checkbox-label">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(event) => setChecked(event.target.checked)}
-                        />
-                        I checked these materials, tools and requirements. Blank
-                        measurements are still unknown.
-                      </label>
-                      <div className="save-row">
-                        <button
-                          type="submit"
-                          className="primary"
-                          disabled={!checked || rows.length === 0 || stale}
-                        >
-                          Save materials and requirements
-                        </button>
-                        <span className="help">
-                          {dirty
-                            ? "Unsaved changes"
-                            : project.inventory_confirmed
-                              ? "Inventory saved"
-                              : "Inventory not confirmed"}
-                        </span>
-                      </div>
-                    </div>
-                  </fieldset>
-                </form>
-              </details>
-              {project.active_version_id && (
-                <p className="error">
-                  This project already has an active plan. Inventory edits
-                  require a plan revision.
-                </p>
-              )}
-              {stale && (
-                <aside className="retry-panel">
-                  <h3>The saved materials or requirements changed</h3>
-                  <p>
-                    Reload the latest materials and requirements before saving
-                    again. Reloading replaces your unsaved edits.
-                  </p>
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => void openProject(project.id)}
-                  >
-                    Reload latest materials and requirements
-                  </button>
-                </aside>
-              )}
-            </section>
-          </div>
-          <PhotoLocalizationPanel
-            token={token}
-            project={project}
-            photos={photos}
-            inventoryStale={stale || dirty}
-            disabled={locked}
-          />
-          <MuseIntakePanel
-            token={token}
-            project={project}
-            photos={photos}
-            inventoryStale={stale || dirty}
-            disabled={locked}
-            museAvailability={museAvailability}
-          />
-          <MuseConstructionPanel
-            onBusyChange={setConstructionBusy}
-            onReadyChange={setConstructionReady}
-            token={token}
-            project={project}
-            photos={photos}
-            inventoryStale={stale || dirty}
-            disabled={locked}
-            museAvailability={museAvailability}
-          />
-          <MuseDiagnosisPanel
-            token={token}
-            project={project}
-            photos={photos}
-            inventoryStale={stale || dirty}
-            disabled={locked}
-            prefill={diagnosisFocus}
-            museAvailability={museAvailability}
-            onDiagnosisSaved={() => {
-              setDiagnosisSavedRevision((value) => value + 1);
-              physicalProgressChanged();
-            }}
-            onDiagnosisOutcome={(outcome) => {
-              setDiagnosisHistory((previous) => ({
-                ...previous,
-                [project.id]: {
-                  pending: outcome === "pending",
-                  uncertain:
-                    outcome === "uncertain" ||
-                    Boolean(previous[project.id]?.uncertain),
-                },
-              }));
-              setProofRevision((value) => value + 1);
-            }}
-            onRepairHandoff={(handoff, targetId) =>
-              setPendingRepair({ handoff, targetId })
-            }
-          />
-          <DesignReadinessPanel
-            token={token}
-            project={project}
-            inventoryStale={stale || dirty}
-          />
-          <PlanWorkbench
-            key={project.id}
-            token={token}
-            project={project}
-            approvalDisabled={intakeLocked || dirty}
-            onLockChange={setPlanPending}
-            onActivated={(next) => {
-              install(next);
-              setNotice(
-                "Plan approved. Review its instructions and required checks before building.",
-              );
-            }}
-            onReload={() => void openProject(project.id)}
-            photos={photos}
-            onProgressChange={physicalProgressChanged}
-            repairHandoff={pendingRepair}
-            onDiagnoseFailure={setDiagnosisFocus}
-            museAvailability={museAvailability}
-            diagnosisRefreshKey={diagnosisSavedRevision}
-          />
-          <ProofWorkbench
-            key={`proof-${project.id}`}
-            token={token}
-            project={project}
-            revision={proofRevision}
-            diagnosisPending={diagnosisHistory[project.id]?.pending ?? false}
-            diagnosisUncertain={
-              diagnosisHistory[project.id]?.uncertain ?? false
-            }
-            disabled={locked}
-          />
-          <aside className="next-step-note">
-            <h2>What comes next</h2>
-            <p>
-              Asking Muse returns a read-only observation; it does not change
-              your saved materials. Saved plan previews can be reviewed above,
-              and active plans support explicit physical reports. A repair is
-              simulated and reviewed first, and takes effect only after you
-              approve it and confirm your current physical stock; a diagnosis
-              alone never changes your plan, materials or recorded physical
-              work. Saving inventory records materials and requirements; it does
-              not validate a design or authorize a cut.
-            </p>
-          </aside>
-        </>
-      )}
+                  </aside>
+                )}
+              </section>
+            </div>
+            <PhotoLocalizationPanel
+              token={token}
+              project={project}
+              photos={photos}
+              inventoryStale={stale || dirty}
+              disabled={locked}
+            />
+            <MuseIntakePanel
+              token={token}
+              project={project}
+              photos={photos}
+              inventoryStale={stale || dirty}
+              disabled={locked}
+              museAvailability={museAvailability}
+            />
+            <MuseConstructionPanel
+              onBusyChange={setConstructionBusy}
+              onReadyChange={setConstructionReady}
+              token={token}
+              project={project}
+              photos={photos}
+              inventoryStale={stale || dirty}
+              disabled={locked}
+              museAvailability={museAvailability}
+            />
+            <MuseDiagnosisPanel
+              token={token}
+              project={project}
+              photos={photos}
+              inventoryStale={stale || dirty}
+              disabled={locked}
+              prefill={diagnosisFocus}
+              museAvailability={museAvailability}
+              onDiagnosisSaved={() => {
+                setDiagnosisSavedRevision((value) => value + 1);
+                physicalProgressChanged();
+              }}
+              onDiagnosisOutcome={(outcome) => {
+                setDiagnosisHistory((previous) => ({
+                  ...previous,
+                  [project.id]: {
+                    pending: outcome === "pending",
+                    uncertain:
+                      outcome === "uncertain" ||
+                      Boolean(previous[project.id]?.uncertain),
+                  },
+                }));
+                setProofRevision((value) => value + 1);
+              }}
+              onRepairHandoff={(handoff, targetId) =>
+                setPendingRepair({ handoff, targetId })
+              }
+            />
+            <DesignReadinessPanel
+              token={token}
+              project={project}
+              inventoryStale={stale || dirty}
+            />
+            <PlanWorkbench
+              key={project.id}
+              token={token}
+              project={project}
+              approvalDisabled={intakeLocked || dirty}
+              onLockChange={setPlanPending}
+              onActivated={(next) => {
+                install(next);
+                setNotice(
+                  "Plan approved. Review its instructions and required checks before building.",
+                );
+              }}
+              onReload={() => void openProject(project.id)}
+              photos={photos}
+              onProgressChange={physicalProgressChanged}
+              repairHandoff={pendingRepair}
+              onDiagnoseFailure={setDiagnosisFocus}
+              museAvailability={museAvailability}
+              diagnosisRefreshKey={diagnosisSavedRevision}
+            />
+            <ProofWorkbench
+              key={`proof-${project.id}`}
+              token={token}
+              project={project}
+              revision={proofRevision}
+              diagnosisPending={diagnosisHistory[project.id]?.pending ?? false}
+              diagnosisUncertain={
+                diagnosisHistory[project.id]?.uncertain ?? false
+              }
+              disabled={locked}
+            />
+            <aside className="next-step-note">
+              <h2>What comes next</h2>
+              <p>
+                Asking Muse returns a read-only observation; it does not change
+                your saved materials. Saved plan previews can be reviewed above,
+                and active plans support explicit physical reports. A repair is
+                simulated and reviewed first, and takes effect only after you
+                approve it and confirm your current physical stock; a diagnosis
+                alone never changes your plan, materials or recorded physical
+                work. Saving inventory records materials and requirements; it
+                does not validate a design or authorize a cut.
+              </p>
+            </aside>
+          </>
+        )}
+      </div>
     </>
   );
 }
