@@ -945,3 +945,9 @@ A stale inventory or unsupported essential requirement clears those choices.
 When the engine identifies a missing measurement, the research result opens
 the existing measurement form and fetches a decision for the current inventory.
 The builder still has to enter and confirm the measured value before saving.
+
+## D065 — Photo recognition deadline and board annotations (November 4, 2026)
+
+Give photo intake one provider attempt with a 120-second total budget and timeout; retain the ordinary gateway defaults for other operations and the longer browser/proxy deadlines. A timeout does not prove provider cancellation or zero usage. Preserve unknown receipts and reconcile them without inventing billing outcomes.
+
+Selected and hovered representative cutouts use a faint alpha-derived white glow. Italic labels and angled leader lines evoke blueprint annotations; selection still opens the existing material correction controls.

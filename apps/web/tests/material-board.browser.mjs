@@ -474,8 +474,49 @@ try {
       filter: getComputedStyle(img).filter,
       scale: getComputedStyle(img).getPropertyValue("--scale"),
     }));
-    assert.match(hoverStyle.filter, /255, 255, 255/);
+    assert.match(hoverStyle.filter, /rgba\(255, 255, 255, 0\.28\) 0px 0px 8px/);
+    assert.doesNotMatch(hoverStyle.filter, /rgb\(255, 255, 255\) 2px/);
     assert.equal(hoverStyle.scale.trim(), "1.06");
+    assert.equal(
+      await cutouts.locator("svg path").count(),
+      await cutouts.count(),
+    );
+    assert.equal(
+      await cutouts.locator("svg circle").count(),
+      await cutouts.count(),
+    );
+    const annotations = await cutouts.evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const label = button.querySelector("span:last-child");
+        const style = getComputedStyle(label);
+        const rect = label.getBoundingClientRect();
+        const board = button.closest("section").getBoundingClientRect();
+        return {
+          background: style.backgroundColor,
+          italic: style.fontStyle,
+          inside: rect.left >= board.left && rect.right <= board.right,
+          rect: {
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+          },
+        };
+      }),
+    );
+    for (const annotation of annotations) {
+      assert.equal(annotation.background, "rgba(0, 0, 0, 0)");
+      assert.equal(annotation.italic, "italic");
+      assert.ok(annotation.inside, `Annotation cropped at ${width}px`);
+    }
+    for (let i = 1; i < annotations.length; i++) {
+      const a = annotations[i - 1].rect,
+        b = annotations[i].rect;
+      assert.ok(
+        a.right <= b.left || a.bottom <= b.top || b.bottom <= a.top,
+        `Annotations overlap at ${width}px`,
+      );
+    }
     await board.screenshot({
       path: path.join(output, `board-hover-${width}.png`),
     });
