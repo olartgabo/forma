@@ -1,5 +1,6 @@
 """Provider dispatch boundary tests: generated images and injected runtime only."""
 
+import hashlib
 import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
@@ -317,6 +318,110 @@ def test_legacy_unknown_receipt_stays_byte_identical(setup):
         assert post(client, p, body(p, idempotency_key=key)).status_code == 409
     assert receipts(directory) == [(legacy,)]
     assert len(factories) == 1
+
+
+@pytest.mark.parametrize("unknown", [False, True])
+def test_pre_approximate_schema_receipts_preserve_identity_and_replay(setup, unknown):
+    client, p, calls, factories, directory, _ = setup
+    media_id = upload(client, p).json()["media"]["id"]
+    # Construct the old wire shape explicitly, without today's request model
+    # or digest helper. The deployed schema had no approximate field.
+    legacy_request = {
+        "expected_revision_id": p["revision_id"],
+        "user_notes": None,
+        "media_id": media_id,
+        "provider_context_consented": True,
+        "provider_transfer_consented": True,
+        "idempotency_key": "legacy-construction-001",
+    }
+    if unknown:
+        saved = '{"pending": true, "uncertain": true, "error_code": "timeout"}'
+    else:
+        saved = json.dumps(
+            {
+                "project_id": p["id"],
+                "inventory_revision_id": p["revision_id"],
+                "status": "blocked",
+                "questions": [],
+                "replayed": False,
+                "candidates": [
+                    {
+                        "candidate_id": "legacy-option",
+                        "title": "Hypothetical panel",
+                        "rationale": "Measurements remain unknown.",
+                        "status": "blocked",
+                        "construction": None,
+                        "fabrication_plan": None,
+                        "fabrication_report": None,
+                        "blockers": ["Measurements required."],
+                    }
+                ],
+                "diagnostics": {
+                    "status": "ok",
+                    "model": "muse-spark-1.3",
+                    "elapsed_ms": 1,
+                    "model_rounds": 1,
+                    "tool_executions": 0,
+                },
+            }
+        )
+    scope = p["id"] + ":construction-proposal"
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        owner = connection.execute(
+            "SELECT owner FROM projects WHERE id=?", (p["id"],)
+        ).fetchone()[0]
+        mime, photo_bytes = connection.execute(
+            "SELECT content_type,body FROM media WHERE id=?", (media_id,)
+        ).fetchone()
+        legacy_digest = hashlib.sha256(
+            json.dumps(
+                {
+                    "request": legacy_request,
+                    "project_id": p["id"],
+                    "context_fingerprint": StaticDesignContextResolver(None)(
+                        p["id"], p["revision_id"]
+                    ).fingerprint,
+                    "photo_hash": hashlib.sha256(
+                        mime.encode() + photo_bytes
+                    ).hexdigest(),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        original_row = (
+            owner,
+            scope,
+            legacy_request["idempotency_key"],
+            legacy_digest,
+            saved,
+        )
+        connection.execute("INSERT INTO requests VALUES (?,?,?,?,?)", original_row)
+    for payload in (legacy_request, legacy_request | {"approximate": False}):
+        result = post(client, p, payload)
+        if unknown:
+            assert result.status_code == 409
+            assert result.json()["code"] == "generation_outcome_unknown"
+        else:
+            assert result.status_code == 200
+            assert result.json()["replayed"] is True
+            assert result.json()["candidates"][0]["estimated_materials"] == []
+    if unknown:
+        assert (
+            post(
+                client, p, legacy_request | {"idempotency_key": "another-legacy-key"}
+            ).json()["code"]
+            == "generation_outcome_unknown"
+        )
+    for change in ({"user_notes": "Changed goal"}, {"approximate": True}):
+        result = post(client, p, legacy_request | change)
+        assert result.status_code == 409
+        assert result.json()["code"] == "idempotency_conflict"
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert connection.execute(
+            "SELECT * FROM requests WHERE scope=?", (scope,)
+        ).fetchall() == [original_row]
+    assert not calls and not factories
 
 
 def test_receipt_read_is_owner_scoped_read_only_and_excludes_raw_payload(setup):
