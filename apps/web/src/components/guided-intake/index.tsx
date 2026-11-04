@@ -79,10 +79,12 @@ import {
   estimateSummary,
   latestRecord,
   displayName,
+  needsReferenceValues,
   newStock,
   polygonOutline,
   recordRuler,
   referenceInput,
+  refusalReasons,
   sizeFieldsFor,
   sizeState,
   stalePhotoValues,
@@ -213,6 +215,18 @@ export default function GuidedIntake({
   const [reference, setReference] = useState<Record<string, ReferenceDraft>>(
     {},
   );
+  // A reference problem is shown beside the reference fields and only while
+  // the draft it was found in is unchanged.
+  const [referenceProblem, setReferenceProblem] = useState<{
+    photoId: string;
+    draft: ReferenceDraft | undefined;
+    messages: string[];
+  } | null>(null);
+  const referenceSection = useRef<HTMLDetailsElement>(null);
+  // "empty" focuses the missing value; "first" the value to re-measure.
+  const [focusReference, setFocusReference] = useState<
+    "empty" | "first" | null
+  >(null);
   const [error, setErrorValue] = useState("");
   const [successDiagnostics, setSuccessDiagnostics] =
     useState<MuseDiagnosticsSummary | null>(null);
@@ -464,12 +478,34 @@ export default function GuidedIntake({
     lineA: "",
     lineB: "",
   };
+  const referenceMessages =
+    referenceProblem?.photoId === photoId &&
+    referenceProblem.draft === reference[photoId]
+      ? referenceProblem.messages
+      : [];
   const locked = disabled || busy !== "" || Boolean(project.active_version_id);
   const museReady = museAvailability?.enabled !== false;
   useEffect(() => {
     onBusy(busy !== "");
   }, [busy, onBusy]);
   useEffect(() => () => onBusy(false), [onBusy]);
+  // Disabled fields cannot take focus, so wait until the measurement ends.
+  useEffect(() => {
+    if (!focusReference || locked) return;
+    setFocusReference(null);
+    const inputs = [
+      ...(referenceSection.current?.querySelectorAll("fieldset input") ?? []),
+    ].filter(
+      (input): input is HTMLInputElement => input instanceof HTMLInputElement,
+    );
+    (
+      (focusReference === "empty" &&
+        inputs.find((input) => !input.value.trim())) ||
+      inputs[0]
+    )?.focus({
+      preventScroll: true,
+    });
+  }, [focusReference, locked]);
 
   function patch(
     id: string,
@@ -739,6 +775,20 @@ export default function GuidedIntake({
     }
   }
 
+  /** Open the reference fields; focus follows once they are unlocked. */
+  function showReferenceProblem(messages: string[], focus: "empty" | "first") {
+    setReferenceProblem({ photoId, draft: reference[photoId], messages });
+    setFocusReference(focus);
+    const section = referenceSection.current;
+    if (!section) return;
+    let parent: HTMLElement | null = section;
+    while (parent) {
+      if (parent instanceof HTMLDetailsElement) parent.open = true;
+      parent = parent.parentElement;
+    }
+    section.scrollIntoView({ block: "start" });
+  }
+
   async function measure(
     card: Card,
     outlineOverride?: OutlineInput,
@@ -746,6 +796,7 @@ export default function GuidedIntake({
   ) {
     if (locked) return;
     setError("");
+    setReferenceProblem(null);
     let body: PhotoEstimateRequest;
     try {
       if (exact) body = exact;
@@ -766,6 +817,15 @@ export default function GuidedIntake({
           throw new Error(
             "Mark the material first: let SAM find it or draw a box.",
           );
+        let referenceValue: ReturnType<typeof referenceInput>;
+        try {
+          referenceValue = referenceInput(reference[mediaId] ?? draft);
+        } catch (failure) {
+          // The reference fields edit the selected photo only.
+          if (mediaId !== photoId) throw failure;
+          showReferenceProblem([(failure as Error).message], "empty");
+          return;
+        }
         body = {
           media_id: mediaId,
           expected_revision_id: project.revision_id,
@@ -773,7 +833,7 @@ export default function GuidedIntake({
           stock_id: card.stock.id,
           stock_kind: card.stock.kind,
           stock_material: card.stock.material,
-          reference: referenceInput(reference[mediaId] ?? draft),
+          reference: referenceValue,
           outline,
           capture: { shape: "flat", same_surface_as_reference: true },
         };
@@ -801,6 +861,14 @@ export default function GuidedIntake({
           ? `Photo estimate ready for ${card.name}. It stays an estimate until you measure with a ruler.`
           : (record.estimate.request ?? "The photo could not support a size."),
       );
+      if (needsReferenceValues(record.estimate) && body.media_id === photoId)
+        showReferenceProblem(
+          [
+            ...refusalReasons(record.estimate),
+            ...(record.estimate.request ? [record.estimate.request] : []),
+          ],
+          "first",
+        );
     } catch (failure) {
       if (!alive.current) return;
       if (failure instanceof EstimateRequestError && failure.retryExact)
@@ -1070,7 +1138,7 @@ export default function GuidedIntake({
         open={items.length === 0 && cards.length === 0}
       >
         <summary>Review and edit every material</summary>
-        <details className="guided-reference">
+        <details className="guided-reference" ref={referenceSection}>
           <summary>
             Size reference for this photo:{" "}
             {draft.kind === "forma_card"
@@ -1090,7 +1158,19 @@ export default function GuidedIntake({
             at 100 % (Actual size), then measure its printed lines with a ruler.
             Printer scaling would otherwise change every size.
           </p>
-          <fieldset disabled={locked}>
+          {referenceMessages.length > 0 && (
+            <div className="error" role="alert" id="reference-problem">
+              {referenceMessages.map((message) => (
+                <p key={message}>{message}</p>
+              ))}
+            </div>
+          )}
+          <fieldset
+            disabled={locked}
+            aria-describedby={
+              referenceMessages.length > 0 ? "reference-problem" : undefined
+            }
+          >
             <label>
               Reference
               <select
@@ -1616,7 +1696,27 @@ export default function GuidedIntake({
                         <strong>Photo estimate:</strong> {summary}
                       </p>
                     ) : (
-                      <p className="warning">{current.estimate.request}</p>
+                      <div className="warning">
+                        {refusalReasons(current.estimate).map((reason) => (
+                          <p key={reason}>{reason}</p>
+                        ))}
+                        <p>{current.estimate.request}</p>
+                        {needsReferenceValues(current.estimate) &&
+                          current.estimate.input.media_id === photoId && (
+                            <button
+                              type="button"
+                              className="secondary"
+                              onClick={() =>
+                                showReferenceProblem(
+                                  refusalReasons(current.estimate),
+                                  "first",
+                                )
+                              }
+                            >
+                              Check the size reference
+                            </button>
+                          )}
+                      </div>
                     )}
                     {current.estimate.outcome === "enclosing_only" && (
                       <p className="help">{current.estimate.request}</p>
