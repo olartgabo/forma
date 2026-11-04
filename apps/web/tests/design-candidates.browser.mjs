@@ -324,7 +324,7 @@ try {
       name: "Research and check ideas",
     });
     const consent = research.getByLabel(
-      "Share this brief with MetaMuse for web research",
+      "Share this brief and option comparisons with MetaMuse",
     );
     const clearance = research.getByLabel("Plug clearance is essential");
     assert.equal(await start.isDisabled(), true);

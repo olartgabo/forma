@@ -25,7 +25,9 @@ const copy = {
     reading: "Reading stand",
     clearance: "Plug clearance is essential",
     brief: "Public brief sent to MetaMuse",
-    consent: "Share this brief with MetaMuse for web research",
+    transfer:
+      "MetaMuse may also see whether a checked option uses a different sheet or base, or less tape. Photos and exact measurements stay in FORMA.",
+    consent: "Share this brief and option comparisons with MetaMuse",
     start: "Research and check ideas",
     retry: "Retry the same research request",
     review: "Review checked designs",
@@ -67,7 +69,9 @@ const copy = {
     reading: "Atril de lectura",
     clearance: "El espacio para el conector es imprescindible",
     brief: "Descripción pública que recibirá MetaMuse",
-    consent: "Compartir esta descripción con MetaMuse para buscar en internet",
+    transfer:
+      "MetaMuse también puede recibir si una opción comprobada usa otra lámina, otra base o menos cinta. Las fotos y las medidas exactas se quedan en FORMA.",
+    consent: "Compartir esta descripción y las comparaciones con MetaMuse",
     start: "Buscar y comprobar ideas",
     retry: "Reintentar la misma solicitud",
     review: "Revisar diseños comprobados",
@@ -305,6 +309,7 @@ export default function ResearchPanel({
         <strong>{labels.brief}</strong>
       </p>
       <p lang="en">{brief}</p>
+      <p className="help">{labels.transfer}</p>
       <label className="checkbox-label">
         <input
           type="checkbox"

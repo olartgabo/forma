@@ -9,7 +9,8 @@ browser types.
 
 The initial release covers the existing triangular tape stand family. The
 builder chooses a generic phone stand or reading stand brief and explicitly
-consents to the visible public text. The builder can flag essential plug
+consents to sharing the visible public text and limited option comparisons.
+The builder can flag essential plug
 clearance, which this workflow reports as unsupported. The ordinary stock
 search remains available.
 
