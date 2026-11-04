@@ -185,7 +185,8 @@ numpy/shapely/GEOS versions, and the evidence IDs the input cites. Its ID is
 `stability-report-` plus the engine cache hash. That hash already covers the
 complete input, cases, policy and dependency versions, so an identical
 calculation returns the first record (`cached: true`). Request keys replay
-exactly. A response with no report saves nothing. `/analyses` stays read-only.
+exactly, with freshness recomputed at replay. A response with no report saves
+nothing. `/analyses` stays read-only.
 
 `GET /stability/reports` (newest first, at most 50) and
 `GET /stability/reports/{id}` return records across plan versions. Each carries
@@ -210,7 +211,9 @@ measurements or confirmations. The explanation must cite the tool's report and
 cases. The route uses the existing pending/unknown-outcome receipts. A history
 change during dispatch stores a terminal stale receipt and saves nothing. The
 analyzed report is stored with `source: "muse_tool"` only after the identity is
-rechecked. Provider-reported usage is returned.
+rechecked. A completed request replays (with current freshness) before any
+consent or stale check, and the browser retains the exact request body and key
+until a definite answer. Provider-reported usage is returned.
 
 Reproduce the browser check with
 `uv run --locked python apps/web/tests/stability-history-fixture.py <output.json>`

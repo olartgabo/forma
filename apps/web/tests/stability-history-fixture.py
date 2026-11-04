@@ -150,6 +150,35 @@ def main(output):
             assert muse.status_code == 200, muse.text
             fixture["muse"] = muse.json()
             assert fixture["muse"]["report"]["report_id"] == new_id
+            fixture["new_detail"] = get(f"/stability/reports/{new_id}")
+            # Another tab records changed measurements after the explanation.
+            third = copy.deepcopy(changed)
+            third.update(
+                expected_last_event_id=second_event,
+                idempotency_key="fixture-measurement-3",
+            )
+            third["measurements"]["stand"]["mass_kg"] = 0.12
+            post("/stability/measurements", third)
+            fixture["history_after_change"] = get("/stability/reports")
+            assert not any(
+                r["freshness"]["current"]
+                for r in fixture["history_after_change"]["reports"]
+            )
+            # Retrying the completed request replays it without a provider call.
+            replay = client.post(
+                f"/scripted/{project['id']}/stability/muse-explanations",
+                headers=t.AUTH,
+                json=identity
+                | dict(
+                    idempotency_key="fixture-muse-1",
+                    mode="analyze_current",
+                    provider_context_consented=True,
+                ),
+            )
+            assert replay.status_code == 200, replay.text
+            fixture["muse_replay"] = replay.json()
+            assert fixture["muse_replay"]["replayed"] is True
+            assert fixture["muse_replay"]["report"]["freshness"]["current"] is False
         Path(output).write_text(json.dumps(fixture), encoding="utf-8")
     print("wrote labeled synthetic saved-report fixture from actual API responses")
 

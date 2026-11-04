@@ -34,7 +34,10 @@ try {
     const errors = [];
     const unexpected = [];
     const writes = [];
+    const musePosts = [];
     let holdHistory = true;
+    let failNextHistory = false;
+    let historyAfterChange = false;
     page.on("pageerror", (e) => errors.push(e.message));
     const replay = new Map([
       ["/api/provider/status", { configured: true }],
@@ -46,6 +49,7 @@ try {
       [`${base}/versions/${version.version_id}`, version],
       [`${base}/versions/${version.version_id}/progress`, progress],
       [`${base}/stability/reports/${old.report_id}`, fixture.old_detail],
+      [`${base}/stability/reports/${current.report_id}`, fixture.new_detail],
     ]);
     await page.context().route("**/*", async (route) => {
       const request = route.request();
@@ -73,7 +77,16 @@ try {
           await new Promise((resolve) => setTimeout(resolve, 5000));
           return route.abort().catch(() => {});
         }
-        return route.fulfill({ json: history });
+        if (failNextHistory) {
+          failNextHistory = false;
+          return route.fulfill({
+            status: 503,
+            json: { code: "unavailable", message: "Synthetic outage" },
+          });
+        }
+        return route.fulfill({
+          json: historyAfterChange ? fixture.history_after_change : history,
+        });
       }
       if (
         method === "GET" &&
@@ -101,7 +114,10 @@ try {
         assert.equal(body.mode, "analyze_current");
         assert.equal(body.report_id, null);
         assert.equal("measurements" in body, false);
-        return route.fulfill({ json: fixture.muse });
+        musePosts.push(body);
+        // The server completes the first POST, but its response is lost.
+        if (musePosts.length === 1) return route.abort("connectionreset");
+        return route.fulfill({ json: fixture.muse_replay });
       }
       if (method === "GET" && replay.has(url.pathname))
         return route.fulfill({ json: replay.get(url.pathname) });
@@ -179,19 +195,82 @@ try {
       .getByLabel("Share this stability report (no photos) with MetaMuse")
       .check();
     await ask.click();
+    await panel
+      .getByText("The connection failed before a response arrived", {
+        exact: false,
+      })
+      .waitFor();
+    const retry = panel.getByRole("button", {
+      name: "Retry the same MetaMuse request",
+    });
+    await retry.waitFor();
+    assert.equal(await ask.count(), 0, "a new request cannot be started");
+
+    // The retained request survives a reload of the page.
+    await page.reload();
+    const credential = page.getByLabel("Owner credential");
+    if (await credential.count()) {
+      await credential.fill("synthetic-browser-owner");
+      await page.getByRole("button", { name: "Open workbench" }).click();
+    }
+    await panel.waitFor();
+    await retry.waitFor();
+    await panel
+      .getByRole("button", { name: "Load report history", exact: true })
+      .click();
+    await list.waitFor();
+    await panel
+      .getByRole("button", { name: `View report ${short(current.report_id)}` })
+      .click();
+    await detail
+      .getByText("Current for this plan, inventory and history.", {
+        exact: true,
+      })
+      .waitFor();
+
+    // Another tab changes measurements; the history refresh after the
+    // answer then fails once.
+    historyAfterChange = true;
+    failNextHistory = true;
+    await retry.click();
     const answer = panel.getByRole("article", {
       name: "MetaMuse stability explanation",
     });
     await answer
-      .getByText("physical stability is not verified", { exact: false })
+      .getByText(fixture.muse_replay.explanation.summary, { exact: true })
       .waitFor();
     await answer
-      .getByText(fixture.muse.explanation.summary, { exact: true })
+      .getByText("Stale — build history or measurements changed", {
+        exact: false,
+      })
       .waitFor();
-    await answer.getByText("Provider calls: 2.", { exact: false }).waitFor();
+    await panel
+      .getByText("Your result is kept below", { exact: false })
+      .waitFor();
+    assert.equal(musePosts.length, 2);
+    assert.deepEqual(musePosts[1], musePosts[0], "the exact request is resent");
+    await panel
+      .getByRole("button", { name: "Ask MetaMuse to explain" })
+      .waitFor();
+
+    // Reloading history re-judges every open view.
+    assert.equal(
+      await detail.getByText("Current for this plan", { exact: false }).count(),
+      1,
+    );
+    await panel
+      .getByRole("button", { name: "Load report history", exact: true })
+      .click();
+    await detail
+      .getByText("Historical report — stale because build history", {
+        exact: false,
+      })
+      .waitFor();
+    assert.equal(await list.getByText("Current", { exact: true }).count(), 0);
+    await answer.getByText("Stale —", { exact: false }).waitFor();
     assert.deepEqual(
       writes.map(([kind]) => kind),
-      ["save", "muse"],
+      ["save", "muse", "muse"],
     );
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth + 1,
@@ -200,7 +279,7 @@ try {
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
     console.log(
-      `PASS ${width}px saved report, history with stale entry, read-only detail, check-by-check comparison, consented MetaMuse tool explanation, stopped request`,
+      `PASS ${width}px saved report, history with stale entry, read-only detail, check-by-check comparison, lost MetaMuse response retried with the same request after reload, kept answer on refresh failure, open views re-judged after another tab's measurement change, stopped request`,
     );
     await page.context().close();
   }

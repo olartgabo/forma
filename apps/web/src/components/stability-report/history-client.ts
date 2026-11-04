@@ -1,4 +1,5 @@
 import type {
+  StabilityMuseRequest,
   StabilityMuseResult,
   StabilityReportComparison,
   StabilityReportDetail,
@@ -75,7 +76,14 @@ export function validateSave(
 ): SaveResult {
   if (!object(value) || typeof value.cached !== "boolean")
     invalid("save result");
-  const analysis = validateAnalysis(value.analysis, expected, cursor);
+  // A replay returns the original calculation, which may predate the current
+  // history; its freshness must then say so.
+  const replayed = value.replayed === true;
+  const original =
+    replayed && object(value.analysis)
+      ? ((value.analysis.last_event_id ?? null) as string | null)
+      : cursor;
+  const analysis = validateAnalysis(value.analysis, expected, original);
   if (value.saved == null) {
     if (analysis.report) invalid("save result");
     return value as SaveResult;
@@ -84,8 +92,9 @@ export function validateSave(
   if (
     !analysis.report ||
     saved.report_id !== `stability-report-${analysis.report.cache_hash}` ||
-    saved.history_cursor !== cursor ||
-    !saved.freshness.current
+    saved.history_cursor !== original ||
+    (!replayed && !saved.freshness.current) ||
+    (original !== cursor && saved.freshness.current)
   )
     invalid("save result");
   return value as SaveResult;
@@ -184,6 +193,19 @@ export function validateMuse(
   return value as StabilityMuseResult;
 }
 
+/** A failed request; `ambiguous` means the server may have completed it. */
+export class StabilityRequestError extends Error {
+  readonly ambiguous: boolean;
+  constructor(message: string, ambiguous: boolean) {
+    super(message);
+    this.ambiguous = ambiguous;
+  }
+}
+// Codes whose request may still have run (or is running) on the server.
+const ambiguousCodes = new Set([
+  "generation_in_progress",
+  "generation_outcome_unknown",
+]);
 const messages: Record<string, string> = {
   consent_required:
     "Confirm sharing this stability report with MetaMuse first.",
@@ -202,26 +224,45 @@ export function stabilityApi(token: string, projectId: string) {
     signal: AbortSignal,
     init: RequestInit = {},
   ) {
-    const response = await fetch(url, {
-      ...init,
-      signal,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...init,
+        signal,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      });
+    } catch {
+      // No response: a sent request may still have completed on the server.
+      throw new StabilityRequestError(
+        signal.aborted
+          ? "Request stopped or timed out."
+          : "The connection failed before a response arrived.",
+        true,
+      );
+    }
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as unknown;
       const code = object(body) ? String(body.code) : "";
-      throw new Error(
+      throw new StabilityRequestError(
         messages[code] ??
           (response.status === 409
             ? "The project changed. Reload before trying again."
             : "Saved stability reports are unavailable. Try again when ready."),
+        ambiguousCodes.has(code) || !code,
       );
     }
-    return response.json() as Promise<unknown>;
+    try {
+      return (await response.json()) as unknown;
+    } catch {
+      throw new StabilityRequestError(
+        "The response was cut off before it could be read.",
+        true,
+      );
+    }
   }
   async function context(expected: ExpectedContext, signal: AbortSignal) {
     return validateContext(
@@ -278,7 +319,8 @@ export function stabilityApi(token: string, projectId: string) {
         second,
       );
     },
-    async askMuse(
+    /** The exact request body; retain it before sending. */
+    async prepareMuse(
       expected: ExpectedContext,
       request: {
         key: string;
@@ -287,19 +329,27 @@ export function stabilityApi(token: string, projectId: string) {
         consented: boolean;
       },
       signal: AbortSignal,
-    ) {
+    ): Promise<StabilityMuseRequest> {
       const current = await context(expected, signal);
+      return {
+        ...identity(expected, current.last_event_id),
+        idempotency_key: request.key,
+        mode: request.reportId ? "explain_report" : "analyze_current",
+        report_id: request.reportId,
+        question: request.question.trim() || null,
+        provider_context_consented: request.consented,
+      };
+    },
+    /** Send a prepared body unchanged; a retry replays a completed request. */
+    async sendMuse(
+      expected: ExpectedContext,
+      body: StabilityMuseRequest,
+      signal: AbortSignal,
+    ) {
       return validateMuse(
         await json(`${root}/muse-explanations`, signal, {
           method: "POST",
-          body: JSON.stringify({
-            ...identity(expected, current.last_event_id),
-            idempotency_key: request.key,
-            mode: request.reportId ? "explain_report" : "analyze_current",
-            report_id: request.reportId,
-            question: request.question.trim() || null,
-            provider_context_consented: request.consented,
-          }),
+          body: JSON.stringify(body),
         }),
         expected,
       );

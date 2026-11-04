@@ -58,8 +58,55 @@ def stability_muse_router(
         response: Response,
     ):
         response.headers["Cache-Control"] = "no-store"
+        scope = project_id + ":stability-muse"
+        digest = _digest(
+            dict(
+                request=body.model_dump(mode="json"),
+                project_id=project_id,
+                prompt_version=muse.PROMPT_VERSION,
+            )
+        )
+
+        def receipt(connection):
+            """Settled answer for this exact request, with freshness judged now."""
+            row = connection.execute(
+                "SELECT digest, response FROM requests WHERE owner=? AND scope=? AND key=?",
+                (owner, scope, body.idempotency_key),
+            ).fetchone()
+            if row is None:
+                return None
+            if row[0] != digest:
+                raise DesignError(
+                    409, "idempotency_conflict", "Key already used for another request"
+                )
+            if _is_uncertain(row[1]):
+                raise _unknown(
+                    "The prior provider outcome is unknown; reconcile it before another request"
+                )
+            if row[1] == _PENDING:
+                raise DesignError(
+                    409,
+                    "generation_in_progress",
+                    "A stability explanation is already in progress",
+                )
+            if row[1] == _STALE:
+                raise _stale()
+            result = muse.StabilityMuseResult.model_validate_json(row[1])
+            state = reports.ProjectState(connection, store, owner, project_id)
+            return result.model_copy(
+                update={
+                    "replayed": True,
+                    "report": state.current_summary(connection, result.report),
+                }
+            )
+
         with store.transaction() as connection:
             store.read(connection, owner, project_id)
+            # A completed request replays even after the project moved on, so
+            # a lost response never turns a retry into a second paid dispatch.
+            prior = receipt(connection)
+            if prior is not None:
+                return prior
             if not body.provider_context_consented:
                 raise DesignError(
                     422,
@@ -105,42 +152,11 @@ def stability_muse_router(
                     report_is_current=fresh.current,
                     stale_reasons=list(fresh.stale_reasons),
                 )
-        digest = _digest(
-            dict(
-                request=body.model_dump(mode="json"),
-                project_id=project_id,
-                report_id=expected,
-                prompt_version=muse.PROMPT_VERSION,
-            )
-        )
-        scope = project_id + ":stability-muse"
         with store.transaction() as connection:
             reports.authorized_snapshot(connection, store, owner, project_id, body)
-            row = connection.execute(
-                "SELECT digest, response FROM requests WHERE owner=? AND scope=? AND key=?",
-                (owner, scope, body.idempotency_key),
-            ).fetchone()
-            if row is not None:
-                if row[0] != digest:
-                    raise DesignError(
-                        409,
-                        "idempotency_conflict",
-                        "Key already used for another request",
-                    )
-                if _is_uncertain(row[1]):
-                    raise _unknown(
-                        "The prior provider outcome is unknown; reconcile it before another request"
-                    )
-                if row[1] == _PENDING:
-                    raise DesignError(
-                        409,
-                        "generation_in_progress",
-                        "A stability explanation is already in progress",
-                    )
-                if row[1] == _STALE:
-                    raise _stale()
-                result = muse.StabilityMuseResult.model_validate_json(row[1])
-                return result.model_copy(update={"replayed": True})
+            prior = receipt(connection)
+            if prior is not None:
+                return prior
             # Changing a retry key must never bypass an unresolved paid dispatch.
             outstanding = connection.execute(
                 "SELECT response FROM requests WHERE owner=? AND scope=?",

@@ -2,13 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import type {
+  StabilityMuseRequest,
   StabilityMuseResult,
   StabilityReportComparison,
   StabilityReportDetail,
   StabilityReportSummary,
 } from "../../lib/generated/api-contracts";
 import type { ExpectedContext } from "./client";
-import { stabilityApi, type SaveResult } from "./history-client";
+import {
+  StabilityRequestError,
+  stabilityApi,
+  type SaveResult,
+} from "./history-client";
+import {
+  clearMuse,
+  discardMuse,
+  pendingMuse,
+  retainMuse,
+} from "./muse-pending";
 
 const label = (value: string) => value.replaceAll("_", " ");
 const number = (value: number) => Number(value.toPrecision(5)).toString();
@@ -52,17 +63,33 @@ export default function ReportHistory({
   const [consent, setConsent] = useState(false);
   const [question, setQuestion] = useState("");
   const [muse, setMuse] = useState<StabilityMuseResult | null>(null);
+  const [museUnchecked, setMuseUnchecked] = useState(false);
+  // The exact sent request whose answer is not confirmed yet.
+  const [pending, setPending] = useState<StabilityMuseRequest | null>(null);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
   useEffect(() => {
     mounted.current = true;
+    pendingMuse(token, expected.projectId)
+      .then((body) => mounted.current && setPending(body))
+      .catch(
+        (e) =>
+          mounted.current &&
+          setReceiptError(
+            e instanceof Error
+              ? e.message
+              : "Browser storage is unavailable, so MetaMuse requests are blocked.",
+          ),
+      );
     return () => {
       mounted.current = false;
       controller.current?.abort();
     };
-  }, []);
+  }, [token, expected.projectId]);
 
   async function run<T>(
     name: string,
     work: (signal: AbortSignal) => Promise<T>,
+    failurePrefix = "",
   ) {
     controller.current?.abort();
     const own = new AbortController();
@@ -76,17 +103,40 @@ export default function ReportHistory({
     } catch (e) {
       if (mounted.current)
         setError(
-          own.signal.aborted
-            ? "Request stopped or timed out. Nothing was changed by this page."
-            : e instanceof Error
-              ? e.message
-              : "Request failed.",
+          failurePrefix +
+            (own.signal.aborted
+              ? "Request stopped or timed out. A request that already reached the server may still complete; reload history or retry the same request to check."
+              : e instanceof Error
+                ? e.message
+                : "Request failed."),
         );
       return null;
     } finally {
       clearTimeout(timeout);
       if (mounted.current && controller.current === own) setBusy(null);
     }
+  }
+  /** Re-judge every open view against the latest server freshness. */
+  function reconcile(list: readonly StabilityReportSummary[]) {
+    const byId = new Map(list.map((r) => [r.report_id, r]));
+    setDetail((d) => {
+      const latest = d && byId.get(d.saved.report_id);
+      return d && latest ? { ...d, freshness: latest.freshness } : null;
+    });
+    setComparison((c) => {
+      const first = c && byId.get(c.first.report_id);
+      const second = c && byId.get(c.second.report_id);
+      return c && first && second ? { ...c, first, second } : null;
+    });
+    setLastSave((saved) => {
+      const latest = saved?.saved && byId.get(saved.saved.report_id);
+      return saved && latest ? { ...saved, saved: latest } : saved;
+    });
+    setMuse((answer) => {
+      const latest = answer && byId.get(answer.report.report_id);
+      setMuseUnchecked(!!answer && !latest);
+      return answer && latest ? { ...answer, report: latest } : answer;
+    });
   }
   async function refresh(signal: AbortSignal) {
     const history = await api.history(expected, signal);
@@ -96,15 +146,18 @@ export default function ReportHistory({
       setSelected((ids) =>
         ids.filter((id) => history.reports.some((r) => r.report_id === id)),
       );
+      reconcile(history.reports);
     }
   }
+  const refreshAfter =
+    "Your result is kept below, but the report history could not be refreshed: ";
   async function save() {
-    const result = await run("save", async (signal) => {
-      const saved = await api.save(expected, newKey(), signal);
-      await refresh(signal);
-      return saved;
-    });
-    if (result) setLastSave(result);
+    const result = await run("save", (signal) =>
+      api.save(expected, newKey(), signal),
+    );
+    if (!result) return;
+    setLastSave(result);
+    await run("history", refresh, refreshAfter);
   }
   async function view(id: string) {
     const result = await run("view", (signal) =>
@@ -126,17 +179,37 @@ export default function ReportHistory({
     }
   }
   async function askMuse() {
+    if (receiptError) return;
     const reportId = selected.length === 1 ? selected[0] : null;
     const result = await run("muse", async (signal) => {
-      const answer = await api.askMuse(
-        expected,
-        { key: newKey(), reportId, question, consented: consent },
-        signal,
-      );
-      await refresh(signal);
+      let body = pending;
+      if (!body) {
+        body = await api.prepareMuse(
+          expected,
+          { key: newKey(), reportId, question, consented: consent },
+          signal,
+        );
+        // Retain before sending so a lost response is retried, not re-asked.
+        await retainMuse(token, expected.projectId, body);
+        setPending(body);
+      }
+      let answer: StabilityMuseResult;
+      try {
+        answer = await api.sendMuse(expected, body, signal);
+      } catch (e) {
+        if (!(e instanceof StabilityRequestError && e.ambiguous)) {
+          await clearMuse(token, expected.projectId, body);
+          setPending(null);
+        }
+        throw e;
+      }
+      setMuse(answer);
+      setMuseUnchecked(false);
+      await clearMuse(token, expected.projectId, body);
+      setPending(null);
       return answer;
     });
-    if (result) setMuse(result);
+    if (result) await run("history", refresh, refreshAfter);
   }
   function toggle(id: string) {
     setSelected((ids) =>
@@ -307,13 +380,51 @@ export default function ReportHistory({
             onChange={(e) => setQuestion(e.target.value)}
           />
         </label>
-        <button
-          type="button"
-          disabled={locked || !consent || selected.length > 1}
-          onClick={askMuse}
-        >
-          {busy === "muse" ? "Asking MetaMuse…" : "Ask MetaMuse to explain"}
-        </button>
+        {pending ? (
+          <>
+            <p role="status">
+              An earlier MetaMuse request has no confirmed answer. Retrying
+              sends that same request; if it already finished, its saved answer
+              comes back without a new provider call.
+            </p>
+            <button type="button" disabled={locked} onClick={askMuse}>
+              {busy === "muse"
+                ? "Checking MetaMuse request…"
+                : "Retry the same MetaMuse request"}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            disabled={
+              locked || !consent || selected.length > 1 || !!receiptError
+            }
+            onClick={askMuse}
+          >
+            {busy === "muse" ? "Asking MetaMuse…" : "Ask MetaMuse to explain"}
+          </button>
+        )}
+        {receiptError && (
+          <>
+            <p role="alert">{receiptError}</p>
+            <button
+              type="button"
+              disabled={locked}
+              onClick={() =>
+                discardMuse(token, expected.projectId).then(
+                  () => mounted.current && setReceiptError(null),
+                  () =>
+                    mounted.current &&
+                    setReceiptError(
+                      "Browser storage could not clear the receipt. Nothing was sent.",
+                    ),
+                )
+              }
+            >
+              Discard the unreadable MetaMuse receipt
+            </button>
+          </>
+        )}
       </fieldset>
       {muse && (
         <article aria-label="MetaMuse stability explanation">
@@ -322,7 +433,10 @@ export default function ReportHistory({
           </h5>
           <p>
             Model explanation of a modeled result; physical stability is not
-            verified. {freshness(muse.report)}.
+            verified.{" "}
+            {museUnchecked
+              ? "Its report is no longer in the latest history, so freshness was not rechecked."
+              : `${freshness(muse.report)}.`}
           </p>
           <p>{muse.explanation.summary}</p>
           <ul>
