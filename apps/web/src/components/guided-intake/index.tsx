@@ -609,12 +609,33 @@ export default function GuidedIntake({
               i.stock_id === card.stock.id && i.media_id === request.media_id,
           )
         : undefined;
-      // Never the whole photo or the marked reference.
+      if (!card) {
+        setNotice(
+          "The earlier SAM request finished, but the material it was for is no longer here. Draw a box instead.",
+        );
+        return;
+      }
+      // Never the whole photo or the reference. Where the reference is must
+      // be known before a SAM box is selected automatically.
+      let corners = referenceCorners(request.media_id);
+      if (!corners.length && result.boxes.length) {
+        const located = await locateReference(target, card);
+        if (!alive.current) return;
+        if (!located) {
+          setSamMissed((m) => ({
+            ...m,
+            [card.stock.id]:
+              `SAM marked ${result.boxes.length} region${result.boxes.length === 1 ? "" : "s"} for \u201c${request.concept}\u201d, but the reference in this photo could not be located, so none was selected in case it is the reference.`,
+          }));
+          return;
+        }
+        corners = located;
+      }
       const { usable, rejected } = usableSamBoxes(
         result.boxes,
         result.width_px,
         result.height_px,
-        referenceCorners(request.media_id),
+        corners,
       );
       const scaled = usable.map((b) =>
         normalise(b, result.width_px, result.height_px),
@@ -628,12 +649,6 @@ export default function GuidedIntake({
               (a, b) =>
                 (b.x2 - b.x1) * (b.y2 - b.y1) - (a.x2 - a.x1) * (a.y2 - a.y1),
             )[0];
-      if (!card) {
-        setNotice(
-          "The earlier SAM request finished, but the material it was for is no longer here. Draw a box instead.",
-        );
-        return;
-      }
       if (!best) {
         setSamMissed((m) => ({
           ...m,
@@ -692,6 +707,34 @@ export default function GuidedIntake({
     }
   }
 
+  // The reference set up for this photo only; never another photo's draft.
+  function photoReference(mediaId: string): ReferenceDraft {
+    const own = reference[mediaId] ?? (mediaId === photoId ? draft : null);
+    if (!own)
+      throw new Error(
+        "Set up the reference for this photo first: select the photo and describe its reference.",
+      );
+    return own;
+  }
+
+  // Where the whole reference is, found locally (no provider call), or null
+  // when it cannot be located.
+  async function locateReference(target: Media, card: Card) {
+    try {
+      const found = await suggestOutline(token, project.id, target, {
+        media_id: target.id,
+        expected_revision_id: project.revision_id,
+        stock_kind: card.stock.kind,
+        reference: referenceInput(photoReference(target.id)),
+      });
+      return found.reference_corners_px.length >= 4
+        ? found.reference_corners_px
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
   // Where the reference is in a photo: drawn corners, or the corners the
   // estimator found in an earlier estimate of the same photo.
   function referenceCorners(mediaId: string): Point[] {
@@ -712,11 +755,9 @@ export default function GuidedIntake({
     if (locked || !target) return;
     let referenceBody;
     try {
-      referenceBody = referenceInput(reference[target.id] ?? draft);
+      referenceBody = referenceInput(photoReference(target.id));
     } catch (failure) {
-      setError(
-        `Set up the reference in this photo first. ${(failure as Error).message}`,
-      );
+      setError((failure as Error).message);
       return;
     }
     setBusy("outline:" + card.stock.id);
@@ -790,7 +831,7 @@ export default function GuidedIntake({
           stock_id: card.stock.id,
           stock_kind: card.stock.kind,
           stock_material: card.stock.material,
-          reference: referenceInput(reference[mediaId] ?? draft),
+          reference: referenceInput(photoReference(mediaId)),
           outline,
           capture: { shape: "flat", same_surface_as_reference: true },
         };

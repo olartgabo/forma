@@ -441,3 +441,59 @@ def test_contradictions_saved_before_reconciliation_are_held_at_startup(
         ).json()
         back = put(restarted, p, [cardboard], "items-0702", reread["revision"])
         assert back.json()["inventory_confirmed"] is True
+
+
+def test_deleting_or_unlinking_the_card_does_not_release_the_material(client):
+    p, cardboard, revision = linked_cardboard(client)
+    body = put(client, p, [bottle(cardboard)], "items-0802", revision).json()
+    gone = put(client, p, [], "items-0803", body["revision"])
+    assert gone.status_code == 200, gone.text
+    assert gone.json()["inventory_confirmed"] is False
+    [hold] = gone.json()["conflicts"]
+    assert hold["stock_id"] == "sheet-a" and hold["item_id"] is None
+    assert "Remove it or change its type" in hold["message"]
+    # Re-saving the same material does not release it either.
+    current = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+    assert (
+        save_stocks(client, current, [stock("sheet-a")], "save-0803")[
+            "inventory_confirmed"
+        ]
+        is False
+    )
+    # Retyping the material is an explicit reconciliation.
+    current = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+    retyped = save_stocks(
+        client, current, [stock("sheet-a", material="paperboard")], "save-0804"
+    )
+    assert retyped["inventory_confirmed"] is True
+
+
+def test_earlier_contradictions_in_an_active_build_are_held_at_startup(
+    client, data_dir
+):
+    p, cardboard, revision = linked_cardboard(client)
+    with sqlite3.connect(data_dir / "projects.sqlite3") as connection:
+        (items_body,) = connection.execute(
+            "SELECT body FROM recognized_items WHERE project_id=?", (p["id"],)
+        ).fetchone()
+        stored = json.loads(items_body)
+        stored["items"] = [bottle(cardboard)]
+        connection.execute(
+            "UPDATE recognized_items SET body=? WHERE project_id=?",
+            (json.dumps(stored), p["id"]),
+        )
+        (body,) = connection.execute(
+            "SELECT body FROM projects WHERE id=?", (p["id"],)
+        ).fetchone()
+        connection.execute(
+            "UPDATE projects SET body=? WHERE id=?",
+            (
+                json.dumps({**json.loads(body), "active_version_id": "version-1"}),
+                p["id"],
+            ),
+        )
+    with TestClient(create_app(data_dir, TOKENS)) as restarted:
+        now = restarted.get(f"/api/projects/{p['id']}", headers=AUTH).json()
+        # The build stays active; its stock is no longer confirmed for repair.
+        assert now["active_version_id"] == "version-1"
+        assert now["inventory_confirmed"] is False

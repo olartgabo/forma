@@ -92,7 +92,32 @@ a label-only answer validated as success.
 
 ## Live acceptance
 
-See "Live acceptance results" below.
+- **Setup:**
+  - Bounded run on head cf315d3 with the same three synthetic images.
+  - Ran through the API routes in process, with item cards built by the web
+    client's own rules in Node. Not a browser run.
+  - Report: `output/claude-live-intake-repair-20261104/REPORT.txt`, ledger
+    alongside it.
+- **Limits:** authorization recorded first; at most 3 Spark calls and 1 SAM
+  call, no retries, fixed end time, reserved before dispatch.
+
+| Image              | Before            | Now                                                                                     |
+| ------------------ | ----------------- | --------------------------------------------------------------------------------------- |
+| Cardboard          | `items=[]`        | 1 item, `corrugated_cardboard`, a group with no count; card linked to a cardboard sheet |
+| Plastic bottle     | truncated at 2048 | 1 item, `plastic_bottle`; card says build rules are not available, no stock             |
+| Notched sheet      | `items=[]`        | 1 item, `corrugated_cardboard` with three alternatives; card linked                     |
+| SAM, notched sheet | 0 boxes           | 0 boxes again (concept "Corrugated cardboard")                                          |
+
+- **Calls:** all four finished normally; no unknown outcome and no retry.
+- **Spark usage:** 11739 input and 3863 output tokens, 3515 of them reasoning
+  (earlier: 11367 + 5514 with one truncation). No dollar charge was reported.
+- **SAM:** 1 image processed with zero token counts, which does not prove a
+  zero charge.
+- **Region to estimator (fallback):** SAM found nothing, so the local outline
+  suggestion supplied the region. The estimator returned `enclosing_only`
+  280.0 x 190.0 mm (truth 280 x 190) and kept `irregular_outline`. This is the
+  suggested-region fallback, **not automatic localization**. Why SAM returns
+  no box for this scene is still unknown.
 
 ## Not done / limits
 
@@ -105,6 +130,7 @@ See "Live acceptance results" below.
 - The reference corners for the client-side SAM filter are known only for a
   drawn rectangle or after an earlier estimate of the same photo. The
   estimator's own check still blocks a reference outline.
+- SAM-to-estimator success has not been observed on any image.
 - An uncommitted `fix/intake-failure-diagnostics` branch in another worktree
   overlaps the failure diagnostics here (it adds validation-issue paths and
   is D066 there). The two need one canonical implementation when both land.

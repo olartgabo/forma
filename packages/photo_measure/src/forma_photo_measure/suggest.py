@@ -42,13 +42,16 @@ class Suggestion:
 
 
 def reference_points(gray: np.ndarray, reference: ReferenceInput) -> np.ndarray:
-    """Pixel points spanning the reference, or an empty array if not found."""
+    """Pixel points spanning the whole reference, or an empty array when it
+    is not completely located (a partly found card cannot be excluded)."""
 
     if reference.corners_px:
         return np.array([(p.x, p.y) for p in reference.corners_px], np.float64)
     markers = detect_markers(gray)
     if reference.kind == "forma_card":
         found = [markers[i] for i in CARD_MARKER_IDS if i in markers]
+        if len(found) < len(CARD_MARKER_IDS):
+            found = []
     elif reference.kind == "aruco_marker" and reference.aruco_id in markers:
         found = [markers[reference.aruco_id]]
     else:

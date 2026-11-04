@@ -154,6 +154,8 @@ export type OutlineSuggestionResult = {
     | "outline_not_confirmed"
     | "unsupported_shape";
   box: { x1: number; y1: number; x2: number; y2: number } | null;
+  // Where the whole reference was found; empty when not located.
+  reference_corners_px: { x: number; y: number }[];
   message: string;
 };
 
@@ -223,9 +225,23 @@ export async function suggestOutline(
       ))
   )
     throw new Error("No outline could be suggested. Draw a box instead.");
+  const corners = Array.isArray(value.reference_corners_px)
+    ? value.reference_corners_px
+    : [];
   return {
     status: value.status,
     box: box ? { x1: box.x1, y1: box.y1, x2: box.x2, y2: box.y2 } : null,
+    reference_corners_px: corners.every(
+      (p) =>
+        Number.isFinite(p?.x) &&
+        Number.isFinite(p?.y) &&
+        p.x >= 0 &&
+        p.y >= 0 &&
+        p.x < photo.width_px &&
+        p.y < photo.height_px,
+    )
+      ? corners.slice(0, 16).map((p) => ({ x: p.x, y: p.y }))
+      : [],
     message: value.message,
   };
 }

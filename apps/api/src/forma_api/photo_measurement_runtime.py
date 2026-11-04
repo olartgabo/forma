@@ -25,6 +25,7 @@ from forma_domain.photo_measurement_contracts import (
     EstimateInput,
     OutlineInput,
     PhotoEstimate,
+    PixelPoint,
     ReferenceInput,
 )
 
@@ -316,6 +317,9 @@ class OutlineSuggestion(Record):
     ]
     box: OutlineInput | None = None
     candidates: int = Field(default=0, ge=0)
+    # Where the whole reference was found, so a client can tell a SAM box on
+    # the reference from one on the material. Empty when not located.
+    reference_corners_px: tuple[PixelPoint, ...] = Field(default=(), max_length=16)
     message: Text
 
 
@@ -347,8 +351,11 @@ def suggest(store, owner: str, project_id: str, body: OutlineSuggestionRequest):
         raise ProjectError(404, "not_found", "Photo not found")
     content_type, width, height, data = row[0], row[1], row[2], bytes(row[3])
 
+    corners: tuple = ()
+
     def answer(status, box=None, candidates=0):
         return OutlineSuggestion(
+            reference_corners_px=corners,
             project_id=project_id,
             revision_id=body.expected_revision_id,
             media_id=body.media_id,
@@ -374,7 +381,9 @@ def suggest(store, owner: str, project_id: str, body: OutlineSuggestionRequest):
                 422, "validation_error", "Stored photo could not be decoded"
             )
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        found = suggest_region(image, reference_points(gray, body.reference))
+        located = reference_points(gray, body.reference)
+        corners = tuple(PixelPoint(x=float(x), y=float(y)) for x, y in located[:16])
+        found = suggest_region(image, located)
     finally:
         _SLOTS.release()
     box = None

@@ -375,19 +375,11 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                     "Photo estimates must match a current estimate for the same "
                     "material and photo: " + ", ".join(unmatched),
                 )
-            from forma_api.recognized_items_runtime import stored_conflicts
+            from forma_api.recognized_items_runtime import inventory_holds
 
-            # A saved item that contradicts a material keeps the inventory
-            # unconfirmed (and held) until the user reconciles them.
-            contradicted = stored_conflicts(connection, project_id, body.stocks)
-            if contradicted:
-                connection.execute(
-                    "INSERT OR IGNORE INTO inventory_holds VALUES (?)", (project_id,)
-                )
-            else:
-                connection.execute(
-                    "DELETE FROM inventory_holds WHERE project_id=?", (project_id,)
-                )
+            # A held material keeps the inventory unconfirmed until the user
+            # removes it, retypes it or links an item that fits it.
+            contradicted = inventory_holds(connection, project_id, body.stocks)
             updated = Project(
                 **{
                     **project.model_dump(),

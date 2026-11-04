@@ -713,3 +713,17 @@ def test_a_frame_around_the_reference_is_still_material():
     )
     result = estimate(image, make_input(image, outline))
     assert "outline_is_reference" not in [d.code for d in result.diagnostics]
+
+
+def test_a_partly_found_card_gives_no_suggestion():
+    # One visible marker cannot exclude the rest of the card.
+    from forma_photo_measure.detect import detect_markers
+
+    image, _, _ = scene()
+    markers = detect_markers(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
+    for quad in list(markers.values())[1:]:
+        x1, y1 = quad.min(axis=0).astype(int) - 6
+        x2, y2 = quad.max(axis=0).astype(int) + 6
+        cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), (90, 90, 90), -1)
+    found = suggest(image)
+    assert (found.reason, found.box) == ("reference_not_found", None)
