@@ -123,6 +123,7 @@ export default function GuidedIntake({
   inventoryStale,
   museAvailability,
   onStocks,
+  onBusy,
   onSave,
   onProject,
 }: {
@@ -136,7 +137,10 @@ export default function GuidedIntake({
   disabled: boolean;
   inventoryStale: boolean;
   museAvailability?: MuseAvailability;
-  onStocks: (stocks: Stock[]) => void;
+  // Applied to the latest shared draft, never to a stale snapshot.
+  onStocks: (update: (current: readonly Stock[]) => Stock[]) => void;
+  // True while a guided request runs; the workbench locks Details meanwhile.
+  onBusy: (busy: boolean) => void;
   onSave: () => void;
   onProject: (project: Project) => void;
 }) {
@@ -235,6 +239,10 @@ export default function GuidedIntake({
   };
   const locked = disabled || busy !== "" || Boolean(project.active_version_id);
   const museReady = museAvailability?.enabled !== false;
+  useEffect(() => {
+    onBusy(busy !== "");
+  }, [busy, onBusy]);
+  useEffect(() => () => onBusy(false), [onBusy]);
 
   function patch(
     id: string,
@@ -254,7 +262,7 @@ export default function GuidedIntake({
       return copy;
     });
     if (stock !== card.stock)
-      onStocks(stocks.map((s) => (s.id === id ? stock : s)));
+      onStocks((current) => current.map((s) => (s.id === id ? stock : s)));
     setNotice("");
   }
   function addCard(labels: (string | null)[], mediaId: string | null) {
@@ -283,10 +291,10 @@ export default function GuidedIntake({
       };
     }
     setExtras((current) => ({ ...current, ...newExtras }));
-    onStocks([...stocks, ...added]);
+    onStocks((current) => [...current, ...added]);
   }
   function remove(card: Card) {
-    onStocks(stocks.filter((s) => s.id !== card.stock.id));
+    onStocks((current) => current.filter((s) => s.id !== card.stock.id));
   }
   function commitName(card: Card) {
     const name = nameDrafts[card.stock.id];

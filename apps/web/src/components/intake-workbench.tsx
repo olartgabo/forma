@@ -398,7 +398,8 @@ function ProjectWorkbench({
       JSON.stringify(requirements) !==
         JSON.stringify(project.requirements ?? emptyRequirements()));
   const intakeLocked = busy || pending !== null;
-  const locked = intakeLocked || planPending;
+  const [guidedBusy, setGuidedBusy] = useState(false);
+  const locked = intakeLocked || planPending || guidedBusy;
 
   useEffect(() => {
     const lifetime = new AbortController();
@@ -636,17 +637,17 @@ function ProjectWorkbench({
   // the user's explicit confirmation.
   // Guided cards edit the same rows as Details, so one draft and one dirty
   // state cover both editors and every downstream control.
-  function changeGuided(next: Stock[]) {
+  function changeGuided(update: (current: readonly Stock[]) => Stock[]) {
     setRows((current) =>
-      next.map((stock) => ({
-        key: current.find((row) => row.stock.id === stock.id)?.key ?? stock.id,
-        stock,
-        saved: current.some((row) => row.stock.id === stock.id && row.saved),
-      })),
+      update(current.map((row) => row.stock)).map((stock) => {
+        const row = current.find((item) => item.stock.id === stock.id);
+        return { key: row?.key ?? stock.id, stock, saved: row?.saved ?? false };
+      }),
     );
     setChecked(false);
     setNotice("");
   }
+
   function submitInventory(stocks: Stock[]) {
     if (!project || locked) return;
     const confirmedRequirements: BuildRequirements = {
@@ -999,6 +1000,7 @@ function ProjectWorkbench({
                 inventoryStale={stale}
                 museAvailability={museAvailability}
                 onStocks={changeGuided}
+                onBusy={setGuidedBusy}
                 onSave={() => submitInventory(stocks)}
                 onProject={install}
               />

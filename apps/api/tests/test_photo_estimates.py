@@ -1,5 +1,6 @@
 """Photo estimate routes: provenance, retries, staleness and inventory gates."""
 
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -401,3 +402,34 @@ def test_type_change_or_unlinking_retires_estimates_permanently(client, scene_pn
         f"/api/projects/{q['id']}/photo-estimates", headers=AUTH
     ).json()["records"]
     assert records[0]["retired"] == "The photo is no longer linked to this material."
+
+
+def test_records_from_development_builds_still_load(client, scene_png, tmp_path):
+    data, outline = scene_png
+    p = project(client)
+    photo = upload(client, p, data, "upload-0001")
+    payload = body(p, photo, outline)
+    created = estimate(client, p, payload).json()
+    with sqlite3.connect(tmp_path / "projects.sqlite3") as c:
+        row = c.execute("SELECT body FROM photo_estimates").fetchone()
+        old = json.loads(row[0])
+        old.pop("retired", None)
+        old["removed"] = True
+        c.execute("UPDATE photo_estimates SET body=?", (json.dumps(old),))
+        receipt = c.execute(
+            "SELECT response FROM requests WHERE scope LIKE '%photo-estimate'"
+        ).fetchone()
+        cached = json.loads(receipt[0])
+        cached.pop("retired", None)
+        cached["removed"] = False
+        c.execute(
+            "UPDATE requests SET response=? WHERE scope LIKE '%photo-estimate'",
+            (json.dumps(cached),),
+        )
+    listed = client.get(f"/api/projects/{p['id']}/photo-estimates", headers=AUTH)
+    assert listed.status_code == 200
+    record = listed.json()["records"][0]
+    assert record["status"] == "stale" and record["retired"]
+    retried = estimate(client, p, payload)
+    assert retried.status_code == 200
+    assert retried.json()["estimate_id"] == created["estimate_id"]

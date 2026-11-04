@@ -7,6 +7,7 @@ estimate's displayed value for that stock and field; it is never confirmed.
 """
 
 import hashlib
+import json
 import threading
 from typing import Literal
 from uuid import uuid4
@@ -78,7 +79,7 @@ def create(store, owner: str, project_id: str, body: PhotoEstimateRequest):
             connection, owner, scope, body.idempotency_key, body.model_dump(mode="json")
         )
         if replay:
-            return replay
+            return _record(json.dumps(replay))
         if project.revision_id != body.expected_revision_id:
             raise ProjectError(409, "stale_version", "Inventory changed; reload it")
         row = connection.execute(
@@ -126,7 +127,7 @@ def create(store, owner: str, project_id: str, body: PhotoEstimateRequest):
             connection, owner, scope, body.idempotency_key, body.model_dump(mode="json")
         )
         if replay:
-            return replay
+            return _record(json.dumps(replay))
         current = store.read(connection, owner, project_id)
         if current.revision_id != body.expected_revision_id:
             raise ProjectError(
@@ -153,7 +154,17 @@ def _records(connection, project_id) -> list[PhotoEstimateRecord]:
         "SELECT body FROM photo_estimates WHERE project_id=? ORDER BY rowid",
         (project_id,),
     ).fetchall()
-    return [PhotoEstimateRecord.model_validate_json(r[0]) for r in rows]
+    return [_record(r[0]) for r in rows]
+
+
+def _record(body: str) -> PhotoEstimateRecord:
+    data = json.loads(body)
+    # Unpublished development builds of #177 stored a boolean `removed`.
+    if "removed" in data:
+        removed = data.pop("removed")
+        if removed and not data.get("retired"):
+            data["retired"] = "The material was removed from the saved inventory."
+    return PhotoEstimateRecord.model_validate(data)
 
 
 def assess(connection, project, stocks: tuple[Stock, ...] | None = None):
