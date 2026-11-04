@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   museCopyFor,
   normalizeMuseLocale,
@@ -14,6 +20,8 @@ type MuseLanguageValue = {
   copy: MuseCopy;
 };
 
+const LANGUAGE_KEY = "forma-language";
+
 const MuseLanguageContext = createContext<MuseLanguageValue>({
   locale: "en",
   setLocale: () => {},
@@ -25,35 +33,29 @@ export function useMuseLanguage(): MuseLanguageValue {
 }
 
 export function MuseLanguageControl() {
-  const { locale, setLocale, copy } = useMuseLanguage();
+  const { locale, setLocale } = useMuseLanguage();
   return (
-    <div className="workbench-language" lang={locale}>
-      <p className="help">{copy.language.label}</p>
-      <div
-        className="muse-actions"
-        role="group"
-        aria-label={copy.language.label}
+    <div
+      className="workbench-language"
+      role="group"
+      aria-label={locale === "es" ? "Idioma" : "Language"}
+    >
+      <button
+        type="button"
+        lang="en"
+        aria-pressed={locale === "en"}
+        onClick={() => setLocale("en")}
       >
-        <button
-          type="button"
-          className="secondary"
-          lang="en"
-          aria-pressed={locale === "en"}
-          onClick={() => setLocale("en")}
-        >
-          {copy.language.english} · {copy.language.englishName}
-        </button>
-        <button
-          type="button"
-          className="secondary"
-          lang="es"
-          aria-pressed={locale === "es"}
-          onClick={() => setLocale("es")}
-        >
-          {copy.language.spanish} · {copy.language.spanishName}
-        </button>
-      </div>
-      <p className="help">{copy.language.note}</p>
+        English
+      </button>
+      <button
+        type="button"
+        lang="es"
+        aria-pressed={locale === "es"}
+        onClick={() => setLocale("es")}
+      >
+        Español
+      </button>
     </div>
   );
 }
@@ -64,9 +66,30 @@ export default function MuseLanguageProvider({
   children: ReactNode;
 }) {
   const [locale, setLocaleState] = useState<MuseLocale>("en");
+  useEffect(() => {
+    try {
+      setLocaleState(
+        normalizeMuseLocale(window.localStorage.getItem(LANGUAGE_KEY)),
+      );
+    } catch {
+      // The switch still works for this page when storage is blocked.
+    }
+  }, []);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+
   const value: MuseLanguageValue = {
     locale,
-    setLocale: (next: unknown) => setLocaleState(normalizeMuseLocale(next)),
+    setLocale: (next: unknown) => {
+      const selected = normalizeMuseLocale(next);
+      setLocaleState(selected);
+      try {
+        window.localStorage.setItem(LANGUAGE_KEY, selected);
+      } catch {
+        // Keep the active choice even when storage is blocked.
+      }
+    },
     copy: museCopyFor(locale),
   };
   return (

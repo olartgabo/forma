@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, listSavedProjects } from "../lib/api";
 import type { SavedProjectSummary } from "../lib/generated/api-contracts";
+import { workbenchCopy } from "../lib/workbench-language";
+import { useMuseLanguage } from "./muse-language-provider";
+import styles from "./saved-projects-panel.module.css";
 
 const PAGE_SIZE = 20;
 
@@ -21,6 +24,8 @@ export default function SavedProjectsPanel({
   disabled: boolean;
   onOpen: (id: string) => void;
 }) {
+  const { locale } = useMuseLanguage();
+  const copy = workbenchCopy[locale];
   const [projects, setProjects] = useState<readonly SavedProjectSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,30 +99,36 @@ export default function SavedProjectsPanel({
 
   return (
     <div>
-      <h3>Saved projects for this credential</h3>
-      <p className="help">
-        Listed by project ID, not by recency. Opening a project replaces this
-        start view; unsaved work elsewhere is not affected by listing.
-      </p>
+      <h3>{copy.saved}</h3>
       <div aria-live="polite">
-        {loading && <p className="help">Loading saved projects…</p>}
+        {loading && (
+          <>
+            <p className="help">{copy.loadingSaved}</p>
+            <ul className={styles.skeleton} aria-hidden="true">
+              {[1, 2].map((row) => (
+                <li key={row}>
+                  <span />
+                  <span />
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         {error && (
           <div className="error" role="alert">
-            <p>{error}</p>
+            <p lang="en">{error}</p>
             <button
               type="button"
               className="secondary"
               onClick={() => setAttempt((value) => value + 1)}
             >
-              Reload saved projects
+              {copy.reloadSaved}
             </button>
           </div>
         )}
       </div>
       {!loading && !error && projects.length === 0 && (
-        <p className="empty-note">
-          No saved projects found for this credential yet.
-        </p>
+        <p className="empty-note">{copy.emptySaved}</p>
       )}
       {projects.length > 0 && (
         <ul>
@@ -127,14 +138,14 @@ export default function SavedProjectsPanel({
                 <strong>{project.goal}</strong>
                 <br />
                 <span className="help">
-                  Project ID {project.id} · Inventory revision{" "}
+                  {copy.projectId} {project.id} · {copy.revision}{" "}
                   {project.revision_id} ·{" "}
                   {project.inventory_confirmed
-                    ? "Inventory confirmed"
-                    : "Inventory not confirmed"}
+                    ? copy.confirmed
+                    : copy.unconfirmed}
                   {project.active_version_id
-                    ? ` · Active plan ${project.active_version_id}`
-                    : " · No active plan"}
+                    ? ` · ${copy.active} ${project.active_version_id}`
+                    : ` · ${copy.noActive}`}
                 </span>
               </p>
               <button
@@ -143,7 +154,7 @@ export default function SavedProjectsPanel({
                 disabled={disabled}
                 onClick={() => onOpen(project.id)}
               >
-                Open {project.id}
+                {copy.openSaved(project.id)}
               </button>
             </li>
           ))}
@@ -156,7 +167,7 @@ export default function SavedProjectsPanel({
           disabled={disabled || loadingMore}
           onClick={() => void loadMore()}
         >
-          {loadingMore ? "Loading more…" : "Load more"}
+          {loadingMore ? copy.loadingMore : copy.more}
         </button>
       )}
     </div>

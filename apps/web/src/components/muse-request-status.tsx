@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { ProviderUsage } from "../lib/generated/api-contracts";
 import { museCopyFor } from "../lib/muse-language";
 import {
@@ -5,6 +6,8 @@ import {
   formatProviderUsage,
   museRequestStatus,
 } from "../lib/provider-usage";
+import CubeLoader from "./cube-loader";
+import styles from "./cube-loader.module.css";
 import { useMuseLanguage } from "./muse-language-provider";
 
 export type MuseDiagnostics = {
@@ -18,7 +21,7 @@ export type MuseDiagnostics = {
 
 export default function MuseRequestStatus({
   busy = false,
-  pendingMessage,
+  succeeded,
   onCancel,
   cancelledMessage,
   errorCode,
@@ -27,7 +30,7 @@ export default function MuseRequestStatus({
   locale,
 }: {
   busy?: boolean;
-  pendingMessage?: string;
+  succeeded: boolean;
   onCancel?: () => void;
   cancelledMessage?: string;
   errorCode?: string;
@@ -36,6 +39,7 @@ export default function MuseRequestStatus({
   locale?: unknown;
 }) {
   const context = useMuseLanguage();
+  const pendingHelpId = useId();
   const effectiveLocale = locale ?? context.locale;
   const copy = museCopyFor(effectiveLocale);
   const failure = errorMessage
@@ -43,19 +47,30 @@ export default function MuseRequestStatus({
     : null;
   return (
     <div lang={effectiveLocale === "es" ? "es" : "en"}>
-      {busy && (
-        <>
-          <p className="help" aria-live="polite">
-            {pendingMessage}
-          </p>
-          {onCancel && (
-            <div className="muse-actions">
-              <button type="button" className="secondary" onClick={onCancel}>
+      <div className={styles.status}>
+        <CubeLoader busy={busy} succeeded={succeeded} />
+        {busy && (
+          <div>
+            <p className={styles.statusLabel} role="status">
+              {copy.status.pending}
+            </p>
+            {onCancel && (
+              <button
+                type="button"
+                className="secondary"
+                aria-describedby={pendingHelpId}
+                onClick={onCancel}
+              >
                 {copy.actions.cancel}
               </button>
-            </div>
-          )}
-        </>
+            )}
+          </div>
+        )}
+      </div>
+      {busy && (
+        <p className="help" id={pendingHelpId}>
+          {copy.status.pendingHelp}
+        </p>
       )}
       {cancelledMessage && (
         <p className="notice" aria-live="polite">

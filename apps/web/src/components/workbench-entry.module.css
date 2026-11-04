@@ -1,0 +1,145 @@
+.entry {
+  display: grid;
+  align-content: center;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
+  grid-template-areas:
+    "welcome preview"
+    "access preview";
+  gap: 1.6rem clamp(1.5rem, 5vw, 5rem);
+  flex: 1;
+  width: min(100%, 88rem);
+  margin-inline: auto;
+  padding: clamp(1.5rem, 5vw, 5rem) var(--entry-inset);
+}
+
+.welcome {
+  grid-area: welcome;
+  align-self: end;
+  color: #fff6e4;
+}
+
+.welcome h1 {
+  max-width: 12ch;
+  margin: 0 0 0.9rem;
+  font-size: clamp(2.75rem, 5.6vw, 5.8rem);
+  line-height: 0.97;
+  letter-spacing: -0.063em;
+  text-wrap: balance;
+}
+
+.lead {
+  max-width: 37ch;
+  margin-bottom: 0.55rem;
+  color: #f2f7ff;
+  font-size: clamp(1rem, 1.45vw, 1.22rem);
+  line-height: 1.45;
+}
+
+.scope {
+  margin-bottom: 0;
+  color: #e1edff;
+  font-size: 0.85rem;
+}
+
+.showcase {
+  grid-area: preview;
+  align-self: center;
+  min-width: 0;
+}
+
+.access {
+  grid-area: access;
+  width: 100%;
+  max-width: 34rem;
+  padding: clamp(1rem, 2vw, 1.4rem);
+  border: 1px solid #fff6e4;
+  border-radius: 12px;
+  background: #fff8ea;
+  box-shadow: 5px 6px 0 #092f68;
+}
+
+.access h2 {
+  margin-bottom: 0.25rem;
+}
+
+.access p {
+  margin-bottom: 0.8rem;
+  color: var(--muted);
+  font-size: 0.87rem;
+  line-height: 1.4;
+}
+
+.fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.fields input {
+  flex: 1 1 9rem;
+  min-width: 0;
+  border-color: #818da5;
+}
+
+.fields button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding-inline: 0.75rem;
+}
+
+.fields svg {
+  flex: 0 0 1.4rem;
+  width: 1.4rem;
+  fill: currentColor;
+}
+
+.fields svg path:last-child {
+  opacity: 0;
+}
+
+.fields button:not(:disabled):is(:hover, :focus-visible) svg path:last-child {
+  opacity: 1;
+  animation: spark 280ms cubic-bezier(0.2, 0.75, 0.32, 1.45);
+}
+
+.access .feedback,
+.access .error {
+  margin: 0.65rem 0 0;
+}
+
+.access .feedback:empty {
+  margin: 0;
+}
+
+.access .error {
+  color: #932f29;
+}
+
+@keyframes spark {
+  from {
+    opacity: 0;
+    transform: translate(-4px, 2px) scale(0.8);
+  }
+}
+
+@media (max-width: 720px) {
+  .entry {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "welcome" "access" "preview";
+  }
+}
+
+@media (max-width: 480px) {
+  .fields button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fields button:not(:disabled):is(:hover, :focus-visible) svg path:last-child {
+    animation: none;
+  }
+}

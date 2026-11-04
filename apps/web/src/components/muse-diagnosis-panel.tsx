@@ -438,7 +438,7 @@ export default function MuseDiagnosisPanel({
           </div>
           <MuseRequestStatus
             busy={busy}
-            pendingMessage={copy.diagnosis.pending}
+            succeeded={result !== null}
             onCancel={cancel}
             cancelledMessage={museNoticeText(cancelledNotice, locale)}
             errorCode={failure?.code}

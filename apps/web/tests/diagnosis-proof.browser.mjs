@@ -122,8 +122,16 @@ async function scenario({
   pendingExport = false,
   repairCase = null,
   lostDiagnosis = null,
+  reducedMotion = false,
 } = {}) {
-  const context = await browser.newContext({ serviceWorkers: "block" });
+  const checkCube =
+    lostDiagnosis === "cancel" ||
+    lostDiagnosis === "network" ||
+    (!lostDiagnosis && !repairCase);
+  const context = await browser.newContext({
+    serviceWorkers: "block",
+    reducedMotion: reducedMotion ? "reduce" : "no-preference",
+  });
   const page = await context.newPage();
   page.setDefaultTimeout(30_000);
   const errors = [];
@@ -138,6 +146,11 @@ async function scenario({
   let releaseDiagnosis;
   const diagnosisReleased = new Promise((resolve) => {
     releaseDiagnosis = resolve;
+  });
+  let holdProjectList = false;
+  let releaseProjectList;
+  const projectListReleased = new Promise((resolve) => {
+    releaseProjectList = resolve;
   });
   let historyCursor = "event-a";
   const simulations = [];
@@ -160,9 +173,10 @@ async function scenario({
     let body;
     if (path === "/api/provider/status")
       body = { configured: true, model: "synthetic-browser-model" };
-    else if (path === "/api/projects")
+    else if (path === "/api/projects") {
+      if (holdProjectList) await projectListReleased;
       body = { projects: [], next_cursor: null };
-    else if (
+    } else if (
       path === `/api/projects/${project.id}` ||
       path === "/api/projects/project-b"
     )
@@ -279,8 +293,8 @@ async function scenario({
       assert.equal(input.current_operation_id, "inspect-a");
       saved = lostDiagnosis !== "late";
       diagnosisStarted();
+      if (checkCube) await diagnosisReleased;
       if (lostDiagnosis && diagnosisCalls === 1) {
-        if (lostDiagnosis === "cancel") await diagnosisReleased;
         await route.abort("failed").catch(() => {});
         return;
       }
@@ -520,18 +534,37 @@ async function scenario({
     await page
       .getByRole("button", { name: "Ask Muse what went wrong" })
       .click();
+    const cube = page.locator("[data-cube-state]");
+    if (checkCube) {
+      await diagnosisDispatched;
+      await cube.waitFor({ state: "visible" });
+      assert.equal(await cube.getAttribute("data-cube-state"), "waiting");
+      assert.equal(await cube.locator("[data-sticker]").count(), 54);
+      assert.equal(
+        await cube.evaluate(
+          (element) => element.getAnimations({ subtree: true }).length,
+        ),
+        reducedMotion ? 0 : 1,
+      );
+    }
     if (lostDiagnosis) {
       await diagnosisDispatched;
-      if (lostDiagnosis === "cancel")
+      if (lostDiagnosis === "cancel") {
         await page
           .locator("#muse-diagnosis-panel")
           .getByRole("button", { name: "Cancel", exact: true })
           .click();
-      if (lostDiagnosis !== "cancel")
+        await cube.waitFor({ state: "detached" });
+        releaseDiagnosis();
+      }
+      if (lostDiagnosis !== "cancel") {
+        releaseDiagnosis();
         await page
           .locator("#muse-diagnosis-panel")
           .getByRole("alert")
           .waitFor();
+        await cube.waitFor({ state: "detached" });
+      }
       releaseExport();
       await proofPanel
         .getByText("Preparing a fresh report…", { exact: true })
@@ -608,12 +641,31 @@ async function scenario({
           await page
             .getByRole("button", { name: "Start another project" })
             .click();
+          if (holdProjectList) {
+            const loading = page.getByText("Loading saved projects…", {
+              exact: true,
+            });
+            await loading.waitFor();
+            const skeletonRows = page
+              .getByRole("heading", {
+                name: "Saved projects",
+              })
+              .locator("..")
+              .locator('ul[aria-hidden="true"] li');
+            assert.equal(await skeletonRows.count(), 2);
+            releaseProjectList();
+            holdProjectList = false;
+            await page.getByText("No saved projects yet.").waitFor();
+            assert.equal(await skeletonRows.count(), 0);
+            console.log("PASS: saved-project skeleton clears on response");
+          }
           await page.getByLabel("Project ID", { exact: true }).fill(id);
           await page
             .getByRole("button", { name: "Open project", exact: true })
             .click();
           await page.locator("#diagnosis-photo").waitFor();
         }
+        holdProjectList = true;
         await switchProject("project-b");
         await proofPanel.locator(":scope > summary").click();
         await proofPanel
@@ -686,7 +738,39 @@ async function scenario({
       );
       return;
     }
-    await page.getByText("SYNTHETIC observation", { exact: true }).waitFor();
+    if (!reducedMotion) {
+      // Capture the solve as soon as it starts, while the response is visible.
+      const solving = page.locator('[data-cube-state="solving"]');
+      const solvedGeometry = solving.evaluate((element) => {
+        const cubies = [...element.querySelectorAll("[style]")];
+        return (
+          cubies.length === 26 &&
+          cubies.every((cubie) => {
+            const [animation] = cubie.getAnimations();
+            animation.pause();
+            animation.currentTime = animation.effect.getTiming().duration * 0.8;
+            const reference = document.createElement("div");
+            reference.style.transform =
+              cubie.style.getPropertyValue("--solved");
+            element.append(reference);
+            const solved = getComputedStyle(reference).transform;
+            reference.remove();
+            return getComputedStyle(cubie).transform === solved;
+          })
+        );
+      });
+      releaseDiagnosis();
+      await page.getByText("SYNTHETIC observation", { exact: true }).waitFor();
+      assert.equal(await solvedGeometry, true);
+    } else {
+      releaseDiagnosis();
+      await page.getByText("SYNTHETIC observation", { exact: true }).waitFor();
+      assert.equal(await cube.isVisible(), false);
+    }
+    await cube.waitFor({ state: "detached" });
+    console.log(
+      `PASS: diagnosis cube ${reducedMotion ? "respects reduced motion" : "solves after the result arrives"}`,
+    );
     await proofPanel
       .getByText("Evidence provenance (1)", { exact: true })
       .waitFor({ timeout: 5000 });
@@ -717,6 +801,7 @@ async function scenario({
   } finally {
     releaseExport();
     releaseDiagnosis();
+    releaseProjectList();
     await context.close();
   }
 }
@@ -726,7 +811,7 @@ try {
   await scenario({ pendingExport: true, lostDiagnosis: "late" });
   await scenario({ pendingExport: true, lostDiagnosis: "cross-project" });
   await scenario();
-  await scenario({ pendingExport: true });
+  await scenario({ pendingExport: true, reducedMotion: true });
   for (const repairCase of ["edit", "reload", "uncheck", "retry", "approval"])
     await scenario({ repairCase });
 } finally {

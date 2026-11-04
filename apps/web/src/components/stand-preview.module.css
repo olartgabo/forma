@@ -1,0 +1,221 @@
+.preview {
+  container-type: inline-size;
+  display: grid;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #a9daff;
+  border-radius: 3px;
+  color: #f5fbff;
+  background: var(--grid), linear-gradient(160deg, #087fd6, #125ec7);
+  box-shadow: 0 12px 32px #0b3b8070;
+}
+
+.caption {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.3rem 0.7rem;
+  margin: 0 clamp(0.8rem, 3cqw, 1.4rem);
+  padding: 1rem 0 0.7rem;
+  border-bottom: 1px solid #c3e8ffad;
+}
+
+.caption span {
+  color: #e1f3ff;
+  font:
+    650 0.72rem/1.4 ui-monospace,
+    monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.caption strong {
+  font-size: clamp(1rem, 4cqw, 1.5rem);
+}
+
+.viewport {
+  position: relative;
+  height: 62cqw;
+  perspective: 175cqw;
+}
+
+.guides,
+.callouts {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: #d9f1ff;
+  stroke-width: 0.22;
+}
+
+.callouts text,
+.callouts circle {
+  fill: #f5fbff;
+  stroke: none;
+}
+
+.callouts text {
+  font:
+    700 2.6px ui-monospace,
+    monospace;
+}
+
+.turntable {
+  position: absolute;
+  inset: 0;
+  transform: rotateX(-16deg) rotateY(-35deg);
+  transform-style: preserve-3d;
+  transition: transform 560ms cubic-bezier(0.22, 0.72, 0.25, 1);
+}
+
+.turntable[data-back="true"] {
+  transform: rotateX(-16deg) rotateY(145deg);
+}
+
+.panel {
+  --width: 47cqw;
+  --edge: 1.25cqw;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--width);
+  height: var(--length);
+  transform-origin: center top;
+  transform-style: preserve-3d;
+}
+
+/* All four prisms meet at the same front, rear and apex lines. The lip
+   continues the support at the front fold. Units are only for the preview. */
+.panel[data-panel="base"] {
+  --length: 48cqw;
+  --surface: #207bc9;
+  transform: translate3d(-50%, 17cqw, 24cqw) rotateX(-90deg);
+}
+
+.panel[data-panel="support"] {
+  --length: 44.2cqw;
+  --surface: #55a8ed;
+  transform: translate3d(-50%, -18cqw, -3cqw) rotateX(37.65deg);
+}
+
+.panel[data-panel="brace"] {
+  --length: 40.8cqw;
+  --surface: #388bd8;
+  transform: translate3d(-50%, -18cqw, -3cqw) rotateX(-30.96deg);
+}
+
+.panel[data-panel="lip"] {
+  --length: 5cqw;
+  --surface: #73bcf6;
+  transform: translate3d(-50%, 17cqw, 24cqw) rotateX(151deg);
+}
+
+.panel span {
+  position: absolute;
+  display: block;
+}
+
+.panel :is([data-face="front"], [data-face="rear"]) {
+  inset: 0;
+  border: 1px solid #e7f7ff;
+  background:
+    linear-gradient(135deg, #d4f4ff24, transparent 64%), var(--surface);
+}
+
+.panel [data-face="front"] {
+  transform: translateZ(calc(var(--edge) / 2));
+}
+
+.panel [data-face="rear"] {
+  transform: translateZ(calc(var(--edge) / -2));
+  background-color: color-mix(in srgb, var(--surface), #06489c 38%);
+}
+
+.panel :is([data-face="top"], [data-face="bottom"]) {
+  width: 100%;
+  height: var(--edge);
+  background: repeating-linear-gradient(90deg, #c1e9ff 0 1px, #358fdb 1px 3px);
+}
+
+.panel [data-face="top"] {
+  top: 0;
+  transform: translateY(-50%) rotateX(90deg);
+}
+
+.panel [data-face="bottom"] {
+  bottom: 0;
+  transform: translateY(50%) rotateX(90deg);
+}
+
+.panel :is([data-face="left"], [data-face="right"]) {
+  width: var(--edge);
+  height: 100%;
+  background: repeating-linear-gradient(#c1e9ff 0 1px, #358fdb 1px 3px);
+}
+
+.panel [data-face="left"] {
+  left: 0;
+  transform: translateX(-50%) rotateY(90deg);
+}
+
+.panel [data-face="right"] {
+  right: 0;
+  transform: translateX(50%) rotateY(90deg);
+}
+
+.views {
+  z-index: 1;
+  display: flex;
+  justify-self: center;
+  gap: 0.35rem;
+  margin: 0 0 0.65rem;
+}
+
+.views button {
+  min-width: 4.8rem;
+  border-color: transparent;
+  border-radius: 999px;
+  color: #fff;
+  background: transparent;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.84rem;
+}
+
+.views button[aria-pressed="true"],
+.views button:not(:disabled):hover {
+  border-color: #c9e9ff;
+  background: #064a9c;
+}
+
+.views button:focus-visible {
+  outline-color: white;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin: 0 clamp(0.8rem, 3cqw, 1.4rem);
+  padding: 0.75rem 0 1rem;
+  border-top: 1px solid #c3e8ffad;
+  list-style: none;
+  font:
+    600 0.73rem/1.4 ui-monospace,
+    monospace;
+}
+
+.legend span {
+  margin-right: 0.2rem;
+  color: #d0ebff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turntable {
+    transition: none;
+  }
+}

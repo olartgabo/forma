@@ -157,3 +157,11 @@ node apps/web/tests/manual-mobile.browser.mjs /absolute/path/to/playwright/index
 The runner blocks service workers, unexpected APIs, writes and non-local network,
 and fails on page errors. It is a software browser replay only, not a provider,
 physical or hosted pass, and is not part of `npm run check`.
+
+The entry smoke test uses the same Playwright setup and local app. It checks
+language persistence, the two 3D views, and credential rejection and retry with
+intercepted API responses.
+
+```sh
+node apps/web/tests/workbench-entry.browser.mjs /absolute/path/to/playwright/index.mjs http://127.0.0.1:3007
+```

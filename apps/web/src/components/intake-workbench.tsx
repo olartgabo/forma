@@ -25,7 +25,9 @@ import {
 import FormaWordmark from "./forma-wordmark";
 import MuseIntakePanel from "./muse-intake-panel";
 import MuseDiagnosisPanel from "./muse-diagnosis-panel";
-import { MuseLanguageControl } from "./muse-language-provider";
+import { MuseLanguageControl, useMuseLanguage } from "./muse-language-provider";
+import { workbenchCopy } from "../lib/workbench-language";
+import WorkbenchEntry from "./workbench-entry";
 import MuseProviderBanner from "./muse-provider-banner";
 import type {
   BuildRequirements,
@@ -167,133 +169,22 @@ function PhotoPreview({
 }
 
 export default function IntakeWorkbench() {
-  const [credential, setCredential] = useState("");
   const [token, setToken] = useState<string | null>(null);
-  const [session, setSession] = useState(0);
-  function connect(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setToken(credential.trim());
-    setCredential("");
-    setSession((value) => value + 1);
-  }
+  const { locale } = useMuseLanguage();
+  const copy = workbenchCopy[locale];
   return (
     <main className={token ? "workbench" : "workbench workbench-entry"}>
       <header className="masthead">
-        <a href="/" className="wordmark" aria-label="FORMA home">
+        <a href="/" className="wordmark" aria-label={copy.home}>
           <FormaWordmark />
         </a>
-        <span>Build workbench</span>
+        <MuseLanguageControl />
       </header>
-      {token && <MuseLanguageControl />}
       {token ? (
-        <ProjectWorkbench
-          key={session}
-          token={token}
-          disconnect={() => setToken(null)}
-        />
+        <ProjectWorkbench token={token} disconnect={() => setToken(null)} />
       ) : (
-        <div className="welcome-layout">
-          <section className="welcome" aria-labelledby="welcome-title">
-            <div className="welcome-copy">
-              <p className="sheet-label">FORMA / Build desk</p>
-              <h1 id="welcome-title">Start with what you have.</h1>
-              <p className="lead">
-                Photograph your materials, confirm the measurements, and turn
-                them into a plan for a small tabletop fixture.
-              </p>
-              <p className="scope-note">
-                Check physical fit and stability by hand.
-              </p>
-            </div>
-            <figure className="welcome-drawing">
-              <svg viewBox="0 0 540 395" aria-hidden="true">
-                <g fill="none" stroke="currentColor">
-                  <path
-                    d="M20 65h500M20 320h500M92 22v345M454 22v345M26 61v8m20-8v8m20-8v8m20-8v8m374 0v-8m20 0v8m20 0v-8"
-                    opacity=".35"
-                  />
-                  <path
-                    d="M55 300l255 80 189-103M122 265l190 60 136-74M226 113l163-70m-68 172 151-82"
-                    strokeDasharray="5 7"
-                    opacity=".65"
-                  />
-                </g>
-                <g stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
-                  <path d="M113 255l193 63 135-75-191-57z" fill="#246bc9" />
-                  <path
-                    d="M113 255v8l193 64 135-76v-8l-135 75z"
-                    fill="#124a9e"
-                  />
-                  <path d="M260 120l127-64 54 187-130 73z" fill="#1856ad" />
-                  <path d="M151 249l121-67 99-135-126 64z" fill="#4384da" />
-                  <path d="M151 249l20 7 124-68-23-6z" fill="#80adea" />
-                  <path d="M171 256l124-68v10l-124 69z" fill="#124a9e" />
-                </g>
-                <g
-                  fill="none"
-                  stroke="currentColor"
-                  strokeDasharray="5 6"
-                  opacity=".8"
-                >
-                  <path d="M189 216l124-67m-92 23 124-66M387 56l-16-9M306 318v9" />
-                </g>
-                <g fill="none" stroke="currentColor">
-                  <path d="M248 156 210 102H43m340 59 39-44h86M222 292l-35 46H52" />
-                  <path d="M23 82V72h10m475 0h10v10M23 306v10h10m475 0h10v-10" />
-                </g>
-                <g fill="currentColor">
-                  <circle cx="248" cy="156" r="3" />
-                  <circle cx="383" cy="161" r="3" />
-                  <circle cx="222" cy="292" r="3" />
-                </g>
-                <g fill="currentColor" fontFamily="monospace" fontSize="17">
-                  <text x="43" y="94">
-                    01 / Support
-                  </text>
-                  <text x="508" y="109" textAnchor="end">
-                    02 / Brace
-                  </text>
-                  <text x="52" y="360">
-                    03 / Base
-                  </text>
-                </g>
-              </svg>
-              <figcaption className="sheet-label">
-                Fig. 01 <span>Stand study · illustration</span>
-              </figcaption>
-            </figure>
-          </section>
-          <section className="access-panel" aria-labelledby="access-title">
-            <div>
-              <h2 id="access-title">Open your workbench</h2>
-              <p className="help" id="owner-credential-help">
-                Use your project owner credential. Never enter a model-provider
-                API key.
-              </p>
-            </div>
-            <form onSubmit={connect}>
-              <label htmlFor="owner-credential">Owner credential</label>
-              <input
-                id="owner-credential"
-                aria-describedby="owner-credential-help"
-                type="password"
-                autoComplete="off"
-                required
-                value={credential}
-                onChange={(event) => setCredential(event.target.value)}
-              />
-              <button
-                className="primary"
-                type="submit"
-                disabled={!credential.trim()}
-              >
-                Open workbench
-              </button>
-            </form>
-          </section>
-        </div>
+        <WorkbenchEntry onOpen={setToken} />
       )}
-      {!token && <MuseLanguageControl />}
     </main>
   );
 }
@@ -305,6 +196,12 @@ function ProjectWorkbench({
   token: string;
   disconnect: () => void;
 }) {
+  const { locale } = useMuseLanguage();
+  const copy = workbenchCopy[locale];
+  const sessionLabel = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    sessionLabel.current?.focus();
+  }, []);
   const [project, setProject] = useState<Project | null>(null);
   const [goal, setGoal] = useState("");
   const [openId, setOpenId] = useState("");
@@ -685,16 +582,34 @@ function ProjectWorkbench({
   return (
     <>
       <div className="session-bar">
-        <p>Private development workbench</p>
+        <p ref={sessionLabel} tabIndex={-1}>
+          <span className="session-register" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          {copy.private}
+        </p>
         <button type="button" className="quiet" onClick={leave}>
-          Disconnect
+          {copy.disconnect}
         </button>
       </div>
+      {locale === "es" && (
+        <p className="help">
+          Algunas pantallas de construcción siguen en inglés. El contenido
+          guardado conserva su idioma original.
+        </p>
+      )}
       <MuseProviderBanner
         availability={museAvailability}
         onRetry={loadProviderStatus}
       />
-      <div className="status-area" aria-live="polite" aria-atomic="true">
+      <div
+        className="status-area"
+        lang="en"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         {notice && <p className="notice">{notice}</p>}
         {error && (
           <p className="error" role="alert">
@@ -704,7 +619,7 @@ function ProjectWorkbench({
         {busy && <p className="help">Saving or loading your project…</p>}
       </div>
       {pending && !busy && (
-        <aside className="retry-panel">
+        <aside className="retry-panel" lang="en">
           <h2>Confirm the unfinished request</h2>
           <p>
             The connection ended before the result was known. Retry this same
@@ -722,11 +637,8 @@ function ProjectWorkbench({
       {!project ? (
         <div className="start-layout">
           <section aria-labelledby="goal-title">
-            <h1 id="goal-title">What would make your desk work better?</h1>
-            <p className="lead">
-              Start with a small tabletop stand. Describe what it should hold
-              and what you need it to do.
-            </p>
+            <h1 id="goal-title">{copy.goalTitle}</h1>
+            <p className="lead">{copy.goalLead}</p>
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -739,7 +651,7 @@ function ProjectWorkbench({
               }}
             >
               <fieldset disabled={locked}>
-                <label htmlFor="goal">Your goal, in English or Spanish</label>
+                <label htmlFor="goal">{copy.goal}</label>
                 <textarea
                   id="goal"
                   rows={5}
@@ -748,23 +660,20 @@ function ProjectWorkbench({
                   value={goal}
                   onChange={(event) => setGoal(event.target.value)}
                 />
-                <p className="help">
-                  Include the object, the space available and what you want to
-                  improve. Exact measurements come next.
-                </p>
+                <p className="help">{copy.goalHelp}</p>
                 <button
                   className="primary"
                   type="submit"
                   disabled={!goal.trim()}
                 >
-                  Create project
+                  {copy.create}
                 </button>
               </fieldset>
             </form>
           </section>
           <section className="reopen-panel" aria-labelledby="reopen-title">
-            <h2 id="reopen-title">Continue a project</h2>
-            <p>Use its saved project ID with the same owner credential.</p>
+            <h2 id="reopen-title">{copy.continue}</h2>
+            <p>{copy.continueHelp}</p>
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -772,7 +681,7 @@ function ProjectWorkbench({
               }}
             >
               <fieldset disabled={locked}>
-                <label htmlFor="open-project">Project ID</label>
+                <label htmlFor="open-project">{copy.projectId}</label>
                 <input
                   id="open-project"
                   required
@@ -781,7 +690,7 @@ function ProjectWorkbench({
                   onChange={(event) => setOpenId(event.target.value)}
                 />
                 <button type="submit" className="secondary">
-                  Open project
+                  {copy.openProject}
                 </button>
               </fieldset>
             </form>
@@ -793,13 +702,23 @@ function ProjectWorkbench({
           </section>
         </div>
       ) : (
-        <>
+        <div lang="en">
           <nav className="project-rail" aria-label="Project sections">
-            <a href="#project-title">01 Project</a>
-            <a href="#photos-title">02 Inventory</a>
-            <a href="#plans-title">03 Plan &amp; manual</a>
-            <a href="#muse-diagnosis-panel">04 Diagnosis</a>
-            <a href="#project-proof">05 Proof</a>
+            <a href="#project-title">
+              <span aria-hidden="true">01</span> Project
+            </a>
+            <a href="#photos-title">
+              <span aria-hidden="true">02</span> Inventory
+            </a>
+            <a href="#plans-title">
+              <span aria-hidden="true">03</span> Plan &amp; manual
+            </a>
+            <a href="#muse-diagnosis-panel">
+              <span aria-hidden="true">04</span> Diagnosis
+            </a>
+            <a href="#project-proof">
+              <span aria-hidden="true">05</span> Proof
+            </a>
           </nav>
           <section className="project-heading" aria-labelledby="project-title">
             <div>
@@ -1361,7 +1280,7 @@ function ProjectWorkbench({
               not validate a design or authorize a cut.
             </p>
           </aside>
-        </>
+        </div>
       )}
     </>
   );

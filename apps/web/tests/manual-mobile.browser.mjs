@@ -181,6 +181,18 @@ async function scenario(width, failed, extra = null) {
         exact: false,
       })
       .waitFor();
+    if (!failed && !extra) {
+      const rail = page.getByRole("navigation", { name: "Project sections" });
+      await rail.getByRole("link", { name: "Proof" }).press("Enter");
+      await page.waitForFunction(() => location.hash === "#project-proof");
+      const pinned = await rail.boundingBox();
+      assert(pinned && Math.abs(pinned.y) <= 1, "rail stays pinned at Proof");
+      await rail.getByRole("link", { name: "Plan & manual" }).press("Enter");
+      await page.waitForFunction(() => location.hash === "#plans-title");
+      const title = await page.locator("#plans-title").boundingBox();
+      assert(title && title.y >= pinned.height, "rail clears the plan heading");
+      assert.deepEqual(writes, [], "switching sections writes nothing");
+    }
     if (material) {
       const record = manual.locator(".material-report");
       await record.locator("summary").click();

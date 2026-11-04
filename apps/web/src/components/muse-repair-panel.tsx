@@ -268,7 +268,7 @@ export default function MuseRepairPanel({
       </div>
       <MuseRequestStatus
         busy={busy}
-        pendingMessage={copy.repair.pending}
+        succeeded={Boolean(result?.candidates.length)}
         onCancel={cancel}
         cancelledMessage={museNoticeText(cancelledNotice, locale)}
         errorCode={failure?.code}

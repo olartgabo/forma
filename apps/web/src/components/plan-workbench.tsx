@@ -479,7 +479,7 @@ export default function PlanWorkbench({
         </div>
         <MuseRequestStatus
           busy={designBusy}
-          pendingMessage={copy.design.pending}
+          succeeded={designResult?.status === "proposed"}
           onCancel={cancelDesign}
           cancelledMessage={museNoticeText(designNotice, locale)}
           errorCode={designFailure?.code}

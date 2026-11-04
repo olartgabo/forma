@@ -530,6 +530,8 @@ not establish a bench pass. See the [handoff](handoffs/issue-151-attached-base.m
 The project workbench uses a blueprint grid and a section rail. Saved manuals
 index drawings by operation and show planned parts with their source stock and
 dimensions. Blueprint colors are a browser presentation of the compiled SVG.
+The project rail stays visible while scrolling. On narrow screens, it becomes
+a horizontal strip so builders can switch sections without returning to the top.
 Builders can switch to the original colors and download the original SVG.
 The entry screen uses a full-width drafting surface with a labeled stand
 illustration and a separate credential strip. The illustration has no
@@ -538,3 +540,29 @@ The opening animation plays once per document load. Reduced-motion visitors
 see a static wordmark until the workbench hydrates.
 The manual uses the current compiled views. A rotatable assembly view remains
 subject to the physical P0 gate.
+
+## D041. Loading feedback for generation, November 3, 2026
+
+Photo review, design generation, diagnosis and repair suggestions show a
+blue Rubik's Cube when a request takes longer than 450 ms. The scrambled cube
+tilts while waiting, then reverses three quarter-turns on a successful result
+while the result is already available. The requests expose no intermediate
+progress. Errors, cancellations and blocked designs dismiss the cube. Reduced
+motion keeps the waiting cube still and skips the solve. Saved project reads
+show static skeleton rows while the first page loads.
+The short status and Cancel sit beside the cube. The explanation of
+cancellation and retries uses the full width below.
+
+## D042. Workbench entry, November 3, 2026
+
+The header remembers the selected language in this browser. The entry,
+project picker and Muse controls switch together. Detailed build screens
+still include English copy and saved content keeps its original language.
+The entry checks the owner credential with a read-only project list
+request and opens the private workbench after the server accepts it.
+The credential stays in memory.
+
+The welcome screen shows a 3D cardboard stand example styled as a blueprint.
+The front and rear views identify parts without giving build dimensions.
+Project instructions use the compiled SVGs. Logo-inspired accents acknowledge
+entry and skip animation when the browser requests reduced motion.

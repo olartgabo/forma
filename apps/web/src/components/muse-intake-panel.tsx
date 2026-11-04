@@ -256,7 +256,7 @@ export default function MuseIntakePanel({
           </div>
           <MuseRequestStatus
             busy={busy}
-            pendingMessage={copy.intake.pending}
+            succeeded={result !== null}
             onCancel={cancel}
             cancelledMessage={museNoticeText(cancelledNotice, locale)}
             errorCode={failure?.code}

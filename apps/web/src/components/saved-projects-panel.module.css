@@ -1,0 +1,27 @@
+.skeleton {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skeleton li {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.875rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.skeleton span {
+  width: min(12rem, 70%);
+  height: 0.875rem;
+  border-radius: 4px;
+  background: var(--mint);
+}
+
+.skeleton span + span {
+  width: min(19rem, 90%);
+  height: 0.625rem;
+}
