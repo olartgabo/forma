@@ -215,8 +215,8 @@ export default function IntakeWorkbench() {
               <p className="sheet-label">FORMA / Build desk</p>
               <h1 id="welcome-title">Start with what you have.</h1>
               <p className="lead">
-                Photograph your materials, confirm the measurements, and turn
-                them into a plan for a small tabletop fixture.
+                Photograph your materials and explore an illustrated concept for
+                your project.
               </p>
               <p className="scope-note">
                 Check physical fit and stability by hand.
@@ -359,6 +359,27 @@ function ProjectWorkbench({
   }, [dashboard]);
   const [project, setProject] = useState<Project | null>(null);
   const [shoppingOpen, setShoppingOpen] = useState(false);
+  const [entryMode, setEntryMode] = useState<"photo" | "detailed">("photo");
+  const photoEntry = entryMode === "photo" && !project?.active_version_id;
+  const [entryModeStorageUnavailable, setEntryModeStorageUnavailable] =
+    useState(false);
+  useEffect(() => {
+    try {
+      if (window.sessionStorage.getItem("forma-entry-mode") === "detailed")
+        setEntryMode("detailed");
+    } catch {
+      setEntryModeStorageUnavailable(true);
+    }
+  }, []);
+  function chooseEntryMode(mode: "photo" | "detailed") {
+    setEntryMode(mode);
+    try {
+      window.sessionStorage.setItem("forma-entry-mode", mode);
+      setEntryModeStorageUnavailable(false);
+    } catch {
+      setEntryModeStorageUnavailable(true);
+    }
+  }
   const [goal, setGoal] = useState("");
   const [openId, setOpenId] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
@@ -983,13 +1004,15 @@ function ProjectWorkbench({
           </div>
         ) : (
           <>
-            <nav className="project-rail" aria-label="Project sections">
-              <a href="#project-title">01 Project</a>
-              <a href="#photos-title">02 Inventory</a>
-              <a href="#plans-title">03 Plan &amp; manual</a>
-              <a href="#muse-diagnosis-panel">04 Diagnosis</a>
-              <a href="#project-proof">05 Proof</a>
-            </nav>
+            {!photoEntry && (
+              <nav className="project-rail" aria-label="Project sections">
+                <a href="#project-title">01 Project</a>
+                <a href="#photos-title">02 Inventory</a>
+                <a href="#plans-title">03 Plan &amp; manual</a>
+                <a href="#muse-diagnosis-panel">04 Diagnosis</a>
+                <a href="#project-proof">05 Proof</a>
+              </nav>
+            )}
             <section
               className="project-heading"
               aria-labelledby="project-title"
@@ -1013,16 +1036,49 @@ function ProjectWorkbench({
                 Start another project
               </button>
             </section>
-            <div className="inventory-layout">
+            <div className="muse-actions" role="group" aria-label="Entry mode">
+              <button
+                type="button"
+                aria-pressed={photoEntry}
+                disabled={constructionBusy || !!project.active_version_id}
+                onClick={() => chooseEntryMode("photo")}
+              >
+                Photo first
+              </button>
+              <button
+                type="button"
+                aria-pressed={!photoEntry}
+                disabled={constructionBusy}
+                onClick={() => chooseEntryMode("detailed")}
+              >
+                Detailed entry
+              </button>
+            </div>
+            {entryModeStorageUnavailable && (
+              <p className="notice">
+                Entry mode cannot be remembered in this browser. Choose it again
+                after reloading.
+              </p>
+            )}
+            <div
+              className="inventory-layout"
+              style={
+                photoEntry
+                  ? { gridTemplateColumns: "minmax(0, 1fr)" }
+                  : undefined
+              }
+            >
               <section className="photos-panel" aria-labelledby="photos-title">
                 <div className="section-title">
                   <span aria-hidden="true">1</span>
                   <h2 id="photos-title">Photograph your materials</h2>
                 </div>
                 <p>
-                  Lay sheets and strips flat beside the printed FORMA reference
-                  card and take the photo from above. Photos stay private in
-                  this project unless you explicitly send one to Muse or SAM.
+                  {photoEntry
+                    ? "Show your materials together in good light. A familiar object for scale can improve estimates, but is optional."
+                    : "Lay sheets and strips flat beside the printed FORMA reference card and take the photo from above."}{" "}
+                  Photos stay private in this project unless you explicitly send
+                  one to Muse or SAM.
                 </p>
                 <form
                   onSubmit={(event) => {
@@ -1150,6 +1206,7 @@ function ProjectWorkbench({
               </section>
               <section
                 className="materials-panel"
+                hidden={photoEntry}
                 aria-labelledby="materials-title"
               >
                 <GuidedIntake
@@ -1503,22 +1560,25 @@ function ProjectWorkbench({
                 )}
               </section>
             </div>
-            <PhotoLocalizationPanel
-              token={token}
-              project={project}
-              photos={photos}
-              inventoryStale={stale || dirty}
-              disabled={locked}
-            />
-            <MuseIntakePanel
-              token={token}
-              project={project}
-              photos={photos}
-              inventoryStale={stale || dirty}
-              disabled={locked}
-              museAvailability={museAvailability}
-            />
+            <div hidden={photoEntry}>
+              <PhotoLocalizationPanel
+                token={token}
+                project={project}
+                photos={photos}
+                inventoryStale={stale || dirty}
+                disabled={locked}
+              />
+              <MuseIntakePanel
+                token={token}
+                project={project}
+                photos={photos}
+                inventoryStale={stale || dirty}
+                disabled={locked}
+                museAvailability={museAvailability}
+              />
+            </div>
             <MuseConstructionPanel
+              approximate={photoEntry}
               onBusyChange={setConstructionBusy}
               onReadyChange={setConstructionReady}
               token={token}
@@ -1528,83 +1588,88 @@ function ProjectWorkbench({
               disabled={locked}
               museAvailability={museAvailability}
             />
-            <MuseDiagnosisPanel
-              token={token}
-              project={project}
-              photos={photos}
-              inventoryStale={stale || dirty}
-              disabled={locked}
-              prefill={diagnosisFocus}
-              museAvailability={museAvailability}
-              onDiagnosisSaved={() => {
-                setDiagnosisSavedRevision((value) => value + 1);
-                physicalProgressChanged();
-              }}
-              onDiagnosisOutcome={(outcome) => {
-                setDiagnosisHistory((previous) => ({
-                  ...previous,
-                  [project.id]: {
-                    pending: outcome === "pending",
-                    uncertain:
-                      outcome === "uncertain" ||
-                      Boolean(previous[project.id]?.uncertain),
-                  },
-                }));
-                setProofRevision((value) => value + 1);
-              }}
-              onRepairHandoff={(handoff, targetId) =>
-                setPendingRepair({ handoff, targetId })
-              }
-            />
-            <DesignReadinessPanel
-              token={token}
-              project={project}
-              inventoryStale={stale || dirty}
-            />
-            <PlanWorkbench
-              key={project.id}
-              token={token}
-              project={project}
-              approvalDisabled={intakeLocked || dirty}
-              onLockChange={setPlanPending}
-              onActivated={(next) => {
-                install(next);
-                setNotice(
-                  "Plan approved. Review its instructions and required checks before building.",
-                );
-              }}
-              onReload={() => void openProject(project.id)}
-              photos={photos}
-              onProgressChange={physicalProgressChanged}
-              repairHandoff={pendingRepair}
-              onDiagnoseFailure={setDiagnosisFocus}
-              museAvailability={museAvailability}
-              diagnosisRefreshKey={diagnosisSavedRevision}
-            />
-            <ProofWorkbench
-              key={`proof-${project.id}`}
-              token={token}
-              project={project}
-              revision={proofRevision}
-              diagnosisPending={diagnosisHistory[project.id]?.pending ?? false}
-              diagnosisUncertain={
-                diagnosisHistory[project.id]?.uncertain ?? false
-              }
-              disabled={locked}
-            />
-            <aside className="next-step-note">
-              <h2>What comes next</h2>
-              <p>
-                Asking Muse returns a read-only observation; it does not change
-                your saved materials. Saved plan previews can be reviewed above,
-                and active plans support explicit physical reports. A repair is
-                simulated and reviewed first, and takes effect only after you
-                approve it and confirm your current physical stock; a diagnosis
-                alone never changes your plan, materials or recorded physical
-                work. Saving inventory records materials and requirements; it
-                does not validate a design or authorize a cut.
-              </p>
-            </aside>
+            <div hidden={photoEntry}>
+              <MuseDiagnosisPanel
+                token={token}
+                project={project}
+                photos={photos}
+                inventoryStale={stale || dirty}
+                disabled={locked}
+                prefill={diagnosisFocus}
+                museAvailability={museAvailability}
+                onDiagnosisSaved={() => {
+                  setDiagnosisSavedRevision((value) => value + 1);
+                  physicalProgressChanged();
+                }}
+                onDiagnosisOutcome={(outcome) => {
+                  setDiagnosisHistory((previous) => ({
+                    ...previous,
+                    [project.id]: {
+                      pending: outcome === "pending",
+                      uncertain:
+                        outcome === "uncertain" ||
+                        Boolean(previous[project.id]?.uncertain),
+                    },
+                  }));
+                  setProofRevision((value) => value + 1);
+                }}
+                onRepairHandoff={(handoff, targetId) =>
+                  setPendingRepair({ handoff, targetId })
+                }
+              />
+              <DesignReadinessPanel
+                token={token}
+                project={project}
+                inventoryStale={stale || dirty}
+              />
+              <PlanWorkbench
+                key={project.id}
+                token={token}
+                project={project}
+                approvalDisabled={intakeLocked || dirty}
+                onLockChange={setPlanPending}
+                onActivated={(next) => {
+                  install(next);
+                  setNotice(
+                    "Plan approved. Review its instructions and required checks before building.",
+                  );
+                }}
+                onReload={() => void openProject(project.id)}
+                photos={photos}
+                onProgressChange={physicalProgressChanged}
+                repairHandoff={pendingRepair}
+                onDiagnoseFailure={setDiagnosisFocus}
+                museAvailability={museAvailability}
+                diagnosisRefreshKey={diagnosisSavedRevision}
+              />
+              <ProofWorkbench
+                key={`proof-${project.id}`}
+                token={token}
+                project={project}
+                revision={proofRevision}
+                diagnosisPending={
+                  diagnosisHistory[project.id]?.pending ?? false
+                }
+                diagnosisUncertain={
+                  diagnosisHistory[project.id]?.uncertain ?? false
+                }
+                disabled={locked}
+              />
+              <aside className="next-step-note">
+                <h2>What comes next</h2>
+                <p>
+                  Asking Muse returns a read-only observation; it does not
+                  change your saved materials. Saved plan previews can be
+                  reviewed above, and active plans support explicit physical
+                  reports. A repair is simulated and reviewed first, and takes
+                  effect only after you approve it and confirm your current
+                  physical stock; a diagnosis alone never changes your plan,
+                  materials or recorded physical work. Saving inventory records
+                  materials and requirements; it does not validate a design or
+                  authorize a cut.
+                </p>
+              </aside>
+            </div>
           </>
         )}
       </div>

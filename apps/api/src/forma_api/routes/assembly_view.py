@@ -32,6 +32,7 @@ def assembly_view_router(store: ProjectStore, authenticate) -> APIRouter:
         expected_last_event_id: str,
         owner: Owner,
         response: Response,
+        selected_operation_id: ID | None = None,
     ):
         response.headers["Cache-Control"] = "no-store"
         with store.transaction() as connection:
@@ -82,7 +83,7 @@ def assembly_view_router(store: ProjectStore, authenticate) -> APIRouter:
                 typed_evidence_ids(connection, project_id, plan_version_id),
             )
             try:
-                result = assembly_view(authorized)
+                result = assembly_view(authorized, selected_operation_id)
                 geometry = result.geometry
                 measurement = authorized.measurements
                 if geometry is None or measurement is None:

@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
-from .assembly_geometry_contracts import CanonicalGeometryPreview
+from .assembly_geometry_contracts import CanonicalFacet, CanonicalGeometryPreview
 from .models import ID, Record, Text
 from .stability_contracts import StabilityReport
 
@@ -12,6 +12,16 @@ from .stability_contracts import StabilityReport
 class AssemblyOperationParts(Record):
     operation_id: ID
     part_ids: tuple[ID, ...] = Field(max_length=16)
+
+
+class PlannedOperationIllustration(Record):
+    """Display-only target-position reference, independent of physical history."""
+
+    operation_id: ID
+    present_part_ids: tuple[ID, ...] = Field(max_length=16)
+    planned_joint_ids: tuple[ID, ...] = Field(max_length=32)
+    facets: tuple[CanonicalFacet, ...] = Field(max_length=32)
+    notes: tuple[Text, ...] = Field(min_length=1, max_length=8)
 
 
 class AssemblyViewResponse(Record):
@@ -22,6 +32,7 @@ class AssemblyViewResponse(Record):
     evidence_revision: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
     status: Literal["ready", "unsupported"]
     geometry: CanonicalGeometryPreview | None = None
+    planned_illustration: PlannedOperationIllustration | None = None
     operation_parts: tuple[AssemblyOperationParts, ...] = Field(max_length=64)
     blockers: tuple[Text, ...] = ()
     overlay_coverage: Literal["unavailable", "available"] = "unavailable"

@@ -4,6 +4,7 @@ import hashlib
 import json
 
 from forma_stability.geometry import UnsupportedGeometry
+from forma_stability.planned_illustration import planned_operation_illustration
 
 from forma_api.stability_geometry import preview_geometry
 from forma_api.stability_runtime import StabilitySnapshot
@@ -13,7 +14,9 @@ from forma_domain.assembly_view_contracts import (
 )
 
 
-def assembly_view(snapshot: StabilitySnapshot) -> AssemblyViewResponse:
+def assembly_view(
+    snapshot: StabilitySnapshot, selected_operation_id: str | None = None
+) -> AssemblyViewResponse:
     evidence = {
         "evidence": [
             item.model_dump(mode="json") for item in snapshot.history_evidence
@@ -35,6 +38,17 @@ def assembly_view(snapshot: StabilitySnapshot) -> AssemblyViewResponse:
         last_event_id=snapshot.last_event_id,
         evidence_revision=revision,
     )
+    if selected_operation_id is not None and selected_operation_id not in {
+        op.id for op in snapshot.version.plan.operations
+    }:
+        raise ValueError("Selected operation is not in this plan")
+    if selected_operation_id is not None:
+        try:
+            fields["planned_illustration"] = planned_operation_illustration(
+                snapshot.version.plan, selected_operation_id
+            )
+        except UnsupportedGeometry:
+            pass
     try:
         geometry = preview_geometry(snapshot)
     except UnsupportedGeometry as error:

@@ -89,6 +89,7 @@ export type AssemblyViewResponse = {
   readonly "evidence_revision": string;
   readonly "status": "ready" | "unsupported";
   readonly "geometry"?: (CanonicalGeometryPreview | null);
+  readonly "planned_illustration"?: (PlannedOperationIllustration | null);
   readonly "operation_parts": ReadonlyArray<AssemblyOperationParts>;
   readonly "blockers"?: ReadonlyArray<string>;
   readonly "overlay_coverage"?: "unavailable" | "available";
@@ -1125,6 +1126,14 @@ export type PieceReference = {
 export type PixelPoint = {
   readonly "x": number;
   readonly "y": number;
+};
+
+export type PlannedOperationIllustration = {
+  readonly "operation_id": string;
+  readonly "present_part_ids": ReadonlyArray<string>;
+  readonly "planned_joint_ids": ReadonlyArray<string>;
+  readonly "facets": ReadonlyArray<CanonicalFacet>;
+  readonly "notes": ReadonlyArray<string>;
 };
 
 export type Point3 = {

@@ -45,7 +45,7 @@ def setup(tmp_path, monkeypatch):
             ),
         )
 
-    monkeypatch.setattr(design_runtime, "default_gateway_factory", factory)
+    monkeypatch.setattr(muse_construction, "default_gateway_factory", factory)
     monkeypatch.setattr(muse_construction, "generate_muse_construction", run)
     monkeypatch.setattr(
         route.design_context,
@@ -142,6 +142,49 @@ def test_auth_foreign_photo_and_photo_consent(setup):
         == "consent_required"
     )
     assert not calls and not factories
+
+
+def test_approximate_requires_owned_consented_photo_before_dispatch(setup):
+    client, p, calls, factories, directory, _ = setup
+    assert post(client, p, body(p, approximate=True)).status_code == 422
+    other = create(client, "project-other")
+    foreign = upload(client, other).json()["media"]
+    assert (
+        post(
+            client,
+            p,
+            body(
+                p,
+                approximate=True,
+                media_id=foreign["id"],
+                provider_transfer_consented=True,
+            ),
+        ).status_code
+        == 404
+    )
+    photo_record = upload(client, p).json()["media"]
+    assert (
+        post(
+            client, p, body(p, approximate=True, media_id=photo_record["id"])
+        ).status_code
+        == 422
+    )
+    assert not calls and not factories and not receipts(directory)
+    assert (
+        post(
+            client,
+            p,
+            body(
+                p,
+                approximate=True,
+                media_id=photo_record["id"],
+                provider_transfer_consented=True,
+            ),
+        ).status_code
+        == 200
+    )
+    assert calls[0]["approximate"] is True
+    assert calls[0]["request_budget"].max_rounds == 1
 
 
 def test_media_type_and_size_before_dispatch(setup):
@@ -276,13 +319,87 @@ def test_legacy_unknown_receipt_stays_byte_identical(setup):
     assert len(factories) == 1
 
 
+def test_receipt_read_is_owner_scoped_read_only_and_excludes_raw_payload(setup):
+    client, p, _, factories, directory, monkeypatch = setup
+    assert post(client, p).status_code == 200
+    completed = receipts(directory)[0][0]
+    legacy = '{"pending":true,"uncertain":true,"error_code":"timeout","evidence":{"SECRET":"raw"}}'
+    malformed = '{"SECRET":"raw response", "error_code":"SECRET"}'
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        owner, scope = connection.execute(
+            "SELECT owner,scope FROM requests WHERE scope LIKE '%:construction-proposal'"
+        ).fetchone()
+        connection.executemany(
+            "INSERT INTO requests VALUES (?,?,?,?,?)",
+            [
+                (owner, scope, "legacy-unknown", "a" * 64, legacy),
+                (owner, scope, "pending-original", "b" * 64, route._PENDING),
+                (owner, scope, "corrupt-response", "c" * 64, malformed),
+                (owner, scope + "-unrelated", "different-scope", "d" * 64, legacy),
+            ],
+        )
+        before = connection.execute("SELECT * FROM requests ORDER BY rowid").fetchall()
+
+    def forbidden(*args, **kwargs):
+        pytest.fail(
+            "Receipt inspection must not construct a gateway or resolve context"
+        )
+
+    monkeypatch.setattr(muse_construction, "default_gateway_factory", forbidden)
+    monkeypatch.setattr(route.design_context, "default_context_resolver", forbidden)
+    url = f"/api/projects/{p['id']}/construction/receipts"
+    assert client.get(url).status_code == 401
+    assert client.get(url, headers=OTHER).status_code == 404
+    response = client.get(url, headers=AUTH)
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    by_key = {r["idempotency_key"]: r for r in response.json()["receipts"]}
+    assert len(by_key) == 4
+    assert by_key["construction-001"]["state"] == "completed"
+    assert by_key["legacy-unknown"] == dict(
+        idempotency_key="legacy-unknown",
+        digest="a" * 64,
+        state="unknown",
+        error_code="timeout",
+    )
+    assert by_key["pending-original"]["state"] == "pending"
+    assert by_key["corrupt-response"]["state"] == "unknown"
+    assert "SECRET" not in response.text
+    assert "candidates" not in response.text and completed not in response.text
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert (
+            connection.execute("SELECT * FROM requests ORDER BY rowid").fetchall()
+            == before
+        )
+    assert len(factories) == 1
+
+
+def test_receipt_read_returns_at_most_sixteen(setup):
+    client, p, _, factories, directory, _ = setup
+    assert post(client, p).status_code == 200
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        owner, scope = connection.execute(
+            "SELECT owner,scope FROM requests WHERE scope LIKE '%:construction-proposal'"
+        ).fetchone()
+        connection.executemany(
+            "INSERT INTO requests VALUES (?,?,?,?,?)",
+            [
+                (owner, scope, f"pending-{i:03}", "a" * 64, route._PENDING)
+                for i in range(20)
+            ],
+        )
+    result = client.get(f"/api/projects/{p['id']}/construction/receipts", headers=AUTH)
+    assert len(result.json()["receipts"]) == 16
+    assert len(factories) == 1
+
+
 def test_pre_dispatch_configuration_failure_releases_claim(setup):
     client, p, _, _, directory, monkeypatch = setup
 
     def bad_factory():
         raise ValueError("SECRET api key")
 
-    monkeypatch.setattr(design_runtime, "default_gateway_factory", bad_factory)
+    monkeypatch.setattr(muse_construction, "default_gateway_factory", bad_factory)
     result = post(client, p)
     assert result.status_code == 503
     assert "SECRET" not in result.text

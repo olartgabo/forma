@@ -964,6 +964,18 @@ The deployed structured-item request exhausted 8,192 output tokens. Meta documen
 
 A low-effort local call returned correct labels in 10.4 seconds with 665 output tokens, but omitted optional item records. Require the items field in the model-facing photo schema while retaining compatibility for stored/legacy observations. Items are primary output and labels are summaries; an image without visible objects can still return an empty list. These remain reviewable suggestions, never physical evidence.
 
+## D072 — Photo-first illustrated manuals (November 4, 2026)
+
+The user requests a hackathon flow that starts from a photo, proposes visible
+materials and approximate dimensions, asks for one editable review, and produces
+an illustrated manual without requiring millimeter measurements first. Keep a
+detailed-entry mode for measured inputs.
+
+Accepting a photo estimate approves a planning assumption. It does not record a
+ruler measurement, establish material strength, confirm a joint test, or complete
+physical work. Estimated dimensions and proposed geometry stay visibly approximate.
+Use the existing typed construction engine and diagrams for the manual preview;
+retain measured fabrication and physical-report checks for actual build records.
 ## D068 — Saved synthetic pipeline walkthrough (November 4, 2026)
 
 Provide `/walkthrough` as a filled-in recipe-card stand for interaction review, with direct stage links, previous/next navigation, retained model/engine replies, the real generated manual, shared assembly projection and browser-local review notes. The committed bundle contains only labeled synthetic typed results. Its generator runs current deterministic services in an isolated store; hypothetical operation prefixes remain in memory, and the store retains no physical reports or passes. A returned response is not an engine or physical pass.
@@ -1012,3 +1024,24 @@ Thumbnails are planned geometry, not evidence of physical construction. Opening
 Home or Shopping List makes no model request or purchase. Favorites remain in
 session memory; credentials are never stored in browser storage.
 
+
+## D073 — Retain construction previews and separate planned step illustrations (November 4, 2026)
+
+The user requests reproducible repairs to missing generated diagrams and stepwise
+3D output. Keep geometrically valid model proposals visible when fabrication
+measurements or reviewed joint evidence are missing. A known unusable correction
+must not erase an earlier checked proposal; genuine transport uncertainty retains
+the original request identity and blocks redispatch. Safe receipt metadata and an
+owner-scoped read-only inspection route support diagnosis without settling an
+unknown provider outcome.
+
+Integrate the existing photo-first illustrated preview with the workshop home.
+An active build retains its saved manual and diagnosis. Highlight the actual
+pieces referenced by each generated step, and derive preparation outlines and
+proposed dimensions from the returned geometry rather than a preset design.
+
+The compiled-plan viewer adds a distinct planned-operation illustration derived
+from immutable plan effects. It is a target-position reference, not an observed
+intermediate pose or a stability result. Physical geometry and evidence checks
+remain separate, and report overlays cannot be applied to planned illustrations.
+No navigation, preview or regression test records work in a user's project.

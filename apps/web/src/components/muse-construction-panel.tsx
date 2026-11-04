@@ -7,7 +7,7 @@ import type {
   MuseConstructionResult,
   MuseConstructionCandidateResult,
 } from "../lib/generated/api-contracts";
-import type { ConstructionPlan } from "../lib/generated/contracts";
+import type { ConstructionPlan, Point3 } from "../lib/generated/contracts";
 import type { MuseAvailability } from "../lib/muse-provider";
 import { ApiError } from "../lib/api";
 import { proposeConstruction } from "../lib/muse-construction-client";
@@ -28,7 +28,131 @@ import {
   materialMeasurementChecklist,
 } from "../lib/muse-construction-guidance";
 
-function ConstructionPreview({ plan }: { plan: ConstructionPlan }) {
+function faceOutline(vertices: readonly Point3[]) {
+  if (vertices.length < 3) return null;
+  const origin = vertices[0];
+  const subtract = (a: Point3, b: Point3) => ({
+    x: a.x - b.x,
+    y: a.y - b.y,
+    z: a.z - b.z,
+  });
+  const dot = (a: Point3, b: Point3) => a.x * b.x + a.y * b.y + a.z * b.z;
+  const edge = subtract(vertices[1], origin);
+  const length = Math.hypot(edge.x, edge.y, edge.z);
+  if (length < 1e-9) return null;
+  const axis = { x: edge.x / length, y: edge.y / length, z: edge.z / length };
+  const offsets = vertices.map((v) => subtract(v, origin));
+  const perpendicular = offsets
+    .map((v) => {
+      const along = dot(v, axis);
+      return {
+        x: v.x - along * axis.x,
+        y: v.y - along * axis.y,
+        z: v.z - along * axis.z,
+      };
+    })
+    .find((v) => Math.hypot(v.x, v.y, v.z) > 1e-9);
+  if (!perpendicular) return null;
+  const depth = Math.hypot(perpendicular.x, perpendicular.y, perpendicular.z);
+  const secondAxis = {
+    x: perpendicular.x / depth,
+    y: perpendicular.y / depth,
+    z: perpendicular.z / depth,
+  };
+  const points = offsets.map((v) => ({
+    x: dot(v, axis) * 1000,
+    y: dot(v, secondAxis) * 1000,
+  }));
+  const minX = Math.min(...points.map((p) => p.x)),
+    maxX = Math.max(...points.map((p) => p.x));
+  const minY = Math.min(...points.map((p) => p.y)),
+    maxY = Math.max(...points.map((p) => p.y));
+  return { points, minX, minY, width: maxX - minX, height: maxY - minY };
+}
+
+function Preparation({ plan }: { plan: ConstructionPlan }) {
+  return (
+    <section aria-label="Prepare the proposed pieces">
+      <h4>Prepare the proposed pieces</h4>
+      <p>
+        Approximate model dimensions in millimeters. Check the material, size
+        and fit before cutting. These face outlines are conceptual and are not
+        cutting templates; connections and thickness still need checking.
+      </p>
+      <ol>
+        {plan.piece_catalog.map((piece) => {
+          const part = plan.request.target.assembly.parts.find(
+            (item) => item.part_id === piece.part_id,
+          );
+          return (
+            <li key={piece.part_id}>
+              <strong>{piece.display_name}</strong>
+              {piece.role ? ` · ${piece.role}` : ""}
+              {part?.facets.map((facet, index) => {
+                const outline = faceOutline(facet.vertices_local);
+                return (
+                  <div key={facet.facet_id}>
+                    {part.facets.length > 1 && (
+                      <p>
+                        Face {index + 1} (folds and connections are not
+                        specified)
+                      </p>
+                    )}
+                    {outline ? (
+                      <>
+                        <p>
+                          Approximate face bounds:{" "}
+                          {Math.round(outline.width * 10) / 10} ×{" "}
+                          {Math.round(outline.height * 10) / 10} mm
+                        </p>
+                        <svg
+                          role="img"
+                          aria-label={`Approximate outline of ${piece.display_name}${part.facets.length > 1 ? ` face ${index + 1}` : ""}`}
+                          viewBox={`${outline.minX - 10} ${outline.minY - 10} ${outline.width + 20} ${outline.height + 20}`}
+                          style={{
+                            width: "100%",
+                            maxWidth: 240,
+                            maxHeight: 160,
+                          }}
+                        >
+                          <polygon
+                            points={outline.points
+                              .map((point) => `${point.x},${point.y}`)
+                              .join(" ")}
+                            fill="#e0eafa"
+                            stroke="#245aa7"
+                            strokeWidth={
+                              Math.max(outline.width, outline.height) / 150
+                            }
+                          />
+                        </svg>
+                      </>
+                    ) : (
+                      <p>Face dimensions are unavailable.</p>
+                    )}
+                  </div>
+                );
+              })}
+              {!part && <p>Face dimensions are unavailable.</p>}
+              <details>
+                <summary>Piece reference</summary>
+                {piece.reference} · {piece.part_id}
+              </details>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+function ConstructionPreview({
+  plan,
+  approximate,
+}: {
+  plan: ConstructionPlan;
+  approximate: boolean;
+}) {
   const [index, setIndex] = useState(0);
   const [yaw, setYaw] = useState(315);
   const [pitch, setPitch] = useState(25);
@@ -101,7 +225,23 @@ function ConstructionPreview({ plan }: { plan: ConstructionPlan }) {
       </label>
       <div aria-live="polite">
         <h4>{constructionStepTitle(plan, step)}</h4>
-        <p>{step.instruction}</p>
+        {approximate ? (
+          <>
+            <p>
+              {step.action === "place"
+                ? "Position the highlighted piece as shown and check how it fits."
+                : step.action === "join"
+                  ? "Bring the highlighted pieces together as shown. The connection method and strength still need verification."
+                  : "Inspect the proposed placement and connections."}
+            </p>
+            <details>
+              <summary>Engine step details</summary>
+              {step.instruction}
+            </details>
+          </>
+        ) : (
+          <p>{step.instruction}</p>
+        )}
         {step.requires_external_support && (
           <p className="notice">
             Self-support is not established at this step. Temporary support has
@@ -109,18 +249,23 @@ function ConstructionPreview({ plan }: { plan: ConstructionPlan }) {
           </p>
         )}
         {step.unresolved_predicates.length > 0 && (
-          <div
+          <details
+            open={!approximate}
             className="notice"
             role="note"
             aria-label="Unresolved checks for this step"
           >
-            <strong>Unresolved checks for this step</strong>
+            <summary>
+              {approximate
+                ? "Checks to review before building"
+                : "Unresolved checks for this step"}
+            </summary>
             <ul>
               {step.unresolved_predicates.map((v, i) => (
                 <li key={i}>{v}</li>
               ))}
             </ul>
-          </div>
+          </details>
         )}
       </div>
       <svg
@@ -160,8 +305,10 @@ function ConstructionPreview({ plan }: { plan: ConstructionPlan }) {
               key={f.facet_id}
               points={f.points.map((p) => `${x(p.x)},${y(p.y)}`).join(" ")}
               fill={`hsl(${(numbers.get(f.part_id) ?? 0) * 63} 30% 76%)`}
-              stroke="#35584a"
-              strokeWidth="1.5"
+              data-part-id={f.part_id}
+              data-step-focus={step.part_ids.includes(f.part_id)}
+              stroke={step.part_ids.includes(f.part_id) ? "#102c21" : "#718579"}
+              strokeWidth={step.part_ids.includes(f.part_id) ? 4 : 1.5}
             />
           ))}
         {facets.map((f) => (
@@ -197,8 +344,8 @@ function ConstructionPreview({ plan }: { plan: ConstructionPlan }) {
         ))}
       </svg>
       <p className="help">
-        Drag to turn the proposed model. Camera changes do not change its
-        physics.
+        Drag to turn the proposed model. A thick outline marks the pieces
+        involved in this step. Camera changes do not change its physics.
       </p>
       <label>
         View angle: {Math.round(yaw)}°
@@ -229,9 +376,14 @@ function ConstructionPreview({ plan }: { plan: ConstructionPlan }) {
       <ol>
         {plan.piece_catalog.map((p) => (
           <li key={p.part_id} style={{ overflowWrap: "anywhere" }}>
-            {p.display_name} · {p.reference} ·{" "}
-            {p.geometry_class.replaceAll("_", " ")}
-            {p.role ? ` · proposed role: ${p.role}` : ""}
+            {p.display_name}
+            {!approximate && (
+              <>
+                {" "}
+                · {p.reference} · {p.geometry_class.replaceAll("_", " ")}
+                {p.role ? ` · proposed role: ${p.role}` : ""}
+              </>
+            )}
             <strong>
               {" "}
               · {constructionPiecePresence(plan, step, p.part_id)}
@@ -248,26 +400,61 @@ function ConstructionPreview({ plan }: { plan: ConstructionPlan }) {
 
 function Candidate({
   candidate,
+  approximate,
 }: {
   candidate: MuseConstructionCandidateResult;
+  approximate: boolean;
 }) {
+  const [acknowledged, setAcknowledged] = useState(false);
   return (
     <article className="muse-result" style={{ overflowWrap: "anywhere" }}>
       <h3>{candidate.title}</h3>
       <p>{candidate.rationale}</p>
-      <p>Engine result: {candidate.status.replaceAll("_", " ")}</p>
-      {candidate.blockers.length > 0 && (
-        <ul>
-          {candidate.blockers.map((b, i) => (
-            <li key={i}>{b}</li>
-          ))}
-        </ul>
+      {(!approximate || !candidate.construction) && (
+        <p>Engine result: {candidate.status.replaceAll("_", " ")}</p>
       )}
-      {candidate.construction && (
-        <ConstructionPreview
-          key={candidate.construction.target_hash}
-          plan={candidate.construction}
-        />
+      {(!approximate || !candidate.construction) &&
+        candidate.blockers.length > 0 && (
+          <ul>
+            {candidate.blockers.map((b, i) => (
+              <li key={i}>{b}</li>
+            ))}
+          </ul>
+        )}
+      {approximate && (
+        <div>
+          <h4>Review your materials</h4>
+          <p>
+            These sizes are approximate. Adjust them in the notes if needed, and
+            check actual materials before building.
+          </p>
+          <ul>
+            {(candidate.estimated_materials ?? []).map((m, i) => (
+              <li key={i}>
+                {m.label}: {m.width_mm ?? "unknown"} x{" "}
+                {m.height_mm ?? "unknown"} x {m.thickness_mm ?? "unknown"} mm
+              </li>
+            ))}
+          </ul>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+            />{" "}
+            Use these estimates for my manual.
+          </label>
+        </div>
+      )}
+      {candidate.construction && (!approximate || acknowledged) && (
+        <>
+          {approximate && <Preparation plan={candidate.construction} />}
+          <ConstructionPreview
+            key={candidate.construction.target_hash}
+            plan={candidate.construction}
+            approximate={approximate}
+          />
+        </>
       )}
       {candidate.fabrication_report && (
         <p>
@@ -294,6 +481,7 @@ function Candidate({
 }
 
 export default function MuseConstructionPanel(props: {
+  approximate?: boolean;
   onBusyChange?: (busy: boolean) => void;
   onReadyChange?: (ready: boolean) => void;
   token: string;
@@ -312,6 +500,7 @@ export default function MuseConstructionPanel(props: {
 }
 
 function ConstructionPanel({
+  approximate = false,
   onBusyChange,
   onReadyChange,
   token,
@@ -321,6 +510,7 @@ function ConstructionPanel({
   disabled,
   museAvailability,
 }: {
+  approximate?: boolean;
   onBusyChange?: (busy: boolean) => void;
   onReadyChange?: (ready: boolean) => void;
   token: string;
@@ -411,6 +601,11 @@ function ConstructionPanel({
     },
     [],
   );
+  useEffect(() => {
+    setResult(null);
+    setConsent(false);
+    setPhotoConsent(false);
+  }, [approximate]);
   function changed() {
     setConsent(false);
     setPhotoConsent(false);
@@ -436,14 +631,16 @@ function ConstructionPanel({
     museAvailability?.enabled === false ||
     recoveryContext !== contextIdentity ||
     storageBlocked ||
-    stalePending;
+    stalePending ||
+    (!!pending && Boolean(pending.payload.approximate) !== approximate);
   async function ask() {
     if (
       unavailable ||
       busy ||
       !consent ||
       (!!photo && !photoConsent) ||
-      !eligible
+      !eligible ||
+      (approximate && !photo)
     )
       return;
     const record: PendingConstruction = pending ?? {
@@ -458,6 +655,7 @@ function ConstructionPanel({
           }
         : null,
       payload: {
+        ...(approximate ? { approximate: true } : {}),
         expected_revision_id: project.revision_id,
         user_notes: notes.trim() || null,
         media_id: photo || null,
@@ -560,61 +758,69 @@ function ConstructionPanel({
   }
   return (
     <section className="muse-panel" aria-labelledby="muse-construction-title">
-      <h2 id="muse-construction-title">Invent with my materials</h2>
+      <h2 id="muse-construction-title">
+        {approximate
+          ? "Create an illustrated concept"
+          : "Invent with my materials"}
+      </h2>
       <p>
-        Show MetaMuse a saved photo and describe what you want. It proposes
-        named pieces; the engine generates steps and checks the saved materials
-        with the fabrication engine.
+        {approximate
+          ? "MetaMuse proposes approximate dimensions and named pieces from your photo. Review them before viewing the illustrated concept."
+          : "Show MetaMuse a saved photo and describe what you want. It proposes named pieces; the engine generates steps and checks saved materials with the fabrication engine."}
       </p>
       <p>
         <strong>Saved goal:</strong> {project.goal}
       </p>
-      <div aria-label="Saved material measurements" role="group">
-        <h3>Saved material measurements</h3>
-        <p className="help">
-          Review each physical item in the inventory above. Enter missing
-          measurements, confirm values you have checked, then save the
-          inventory. These are saved records; photos and proposed geometry do
-          not fill in measurements.
-        </p>
-        {!project.inventory_confirmed && (
-          <p className="notice">The saved inventory has not been confirmed.</p>
-        )}
-        {(project.stocks ?? []).length === 0 && (
-          <p className="notice">
-            No saved materials yet. Add your physical materials in the inventory
-            above and save them.
+      {!approximate && (
+        <div aria-label="Saved material measurements" role="group">
+          <h3>Saved material measurements</h3>
+          <p className="help">
+            Review each physical item in the inventory above. Enter missing
+            measurements, confirm values you have checked, then save the
+            inventory. These are saved records; photos and proposed geometry do
+            not fill in measurements.
           </p>
-        )}
-        <ul>
-          {(project.stocks ?? []).map((stock, stockIndex) => (
-            <li key={stock.id} style={{ overflowWrap: "anywhere" }}>
-              <strong>
-                Material {stockIndex + 1} · {stock.id}
-              </strong>{" "}
-              · {stock.material} {stock.kind} · saved condition:{" "}
-              {stock.condition}
-              <ul>
-                {materialMeasurementChecklist(stock).map((m) => (
-                  <li key={m.field}>
-                    {m.label}:{" "}
-                    {m.value === null
-                      ? "missing — measure this item"
-                      : `${m.value} ${m.unit} — ${m.status} (source: ${m.source.replaceAll("_", " ")})`}
-                    {m.status === "unconfirmed"
-                      ? "; check and confirm in inventory"
-                      : ""}
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
-        <p className="help">
-          Confirmation alone does not establish fabrication readiness. The
-          engine also checks material allocation, process and joint evidence.
-        </p>
-      </div>
+          {!project.inventory_confirmed && (
+            <p className="notice">
+              The saved inventory has not been confirmed.
+            </p>
+          )}
+          {(project.stocks ?? []).length === 0 && (
+            <p className="notice">
+              No saved materials yet. Add your physical materials in the
+              inventory above and save them.
+            </p>
+          )}
+          <ul>
+            {(project.stocks ?? []).map((stock, stockIndex) => (
+              <li key={stock.id} style={{ overflowWrap: "anywhere" }}>
+                <strong>
+                  Material {stockIndex + 1} · {stock.id}
+                </strong>{" "}
+                · {stock.material} {stock.kind} · saved condition:{" "}
+                {stock.condition}
+                <ul>
+                  {materialMeasurementChecklist(stock).map((m) => (
+                    <li key={m.field}>
+                      {m.label}:{" "}
+                      {m.value === null
+                        ? "missing — measure this item"
+                        : `${m.value} ${m.unit} — ${m.status} (source: ${m.source.replaceAll("_", " ")})`}
+                      {m.status === "unconfirmed"
+                        ? "; check and confirm in inventory"
+                        : ""}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+          <p className="help">
+            Confirmation alone does not establish fabrication readiness. The
+            engine also checks material allocation, process and joint evidence.
+          </p>
+        </div>
+      )}
       <label htmlFor="construction-notes">What should the design do?</label>
       <textarea
         id="construction-notes"
@@ -627,7 +833,9 @@ function ConstructionPanel({
         }}
         placeholder="For example: hold my phone upright while leaving room for its cable."
       />
-      <label htmlFor="construction-photo">Material photo (optional)</label>
+      <label htmlFor="construction-photo">
+        {approximate ? "Choose a material photo" : "Material photo (optional)"}
+      </label>
       <select
         id="construction-photo"
         value={photo}
@@ -637,7 +845,11 @@ function ConstructionPanel({
           changed();
         }}
       >
-        <option value="">Use saved materials without a photo</option>
+        <option value="">
+          {approximate
+            ? "Select a photo"
+            : "Use saved materials without a photo"}
+        </option>
         {photos.map((p, i) => (
           <option
             key={p.id}
@@ -652,9 +864,8 @@ function ConstructionPanel({
         ))}
       </select>
       <p className="help">
-        A photo can suggest shapes and labels. It cannot confirm dimensions,
-        available quantities or joint strength. Save measured materials above;
-        missing facts remain questions or blockers.
+        A photo can suggest shapes and approximate dimensions. It cannot confirm
+        measurements, available quantities, safety or joint strength.
       </p>
       <label className="checkbox-label">
         <input
@@ -691,6 +902,12 @@ function ConstructionPanel({
       {museAvailability?.enabled === false && (
         <p className="notice">{museAvailability.reason}</p>
       )}
+      {pending && Boolean(pending.payload.approximate) !== approximate && (
+        <p className="notice">
+          An earlier request belongs to the other entry mode. Switch modes to
+          check its outcome.
+        </p>
+      )}
       {stalePending && (
         <p className="notice" role="alert">
           The retained request belongs to an earlier inventory, goal or selected
@@ -708,7 +925,8 @@ function ConstructionPanel({
             busy ||
             !consent ||
             (!!photo && !photoConsent) ||
-            !eligible
+            !eligible ||
+            (approximate && !photo)
           }
           onClick={() => void ask()}
         >
@@ -754,22 +972,40 @@ function ConstructionPanel({
       )}
       {result && (
         <div aria-live="polite">
-          <p>
-            Proposal result: {result.status.replaceAll("_", " ")}. Nothing is
-            approved, cut, joined or recorded as physically tested.
-          </p>
+          {approximate ? (
+            <p>
+              Review the proposed materials and pieces. Nothing has been built
+              or physically tested.
+            </p>
+          ) : (
+            <p>
+              Proposal result: {result.status.replaceAll("_", " ")}. Nothing is
+              approved, cut, joined or recorded as physically tested.
+            </p>
+          )}
           {result.questions.length > 0 && (
-            <>
-              <h3>Questions and measurements</h3>
+            <details open={!approximate}>
+              <summary>Questions and measurements</summary>
               <ul>
                 {result.questions.map((q, i) => (
                   <li key={i}>{q}</li>
                 ))}
               </ul>
-            </>
+            </details>
+          )}
+          {approximate && (
+            <p>
+              To correct an estimate, choose Start another proposal and add your
+              corrections to the design notes before asking again. The revised
+              request will generate a new concept.
+            </p>
           )}
           {result.candidates.map((c) => (
-            <Candidate key={c.candidate_id} candidate={c} />
+            <Candidate
+              key={c.candidate_id}
+              candidate={c}
+              approximate={approximate}
+            />
           ))}
         </div>
       )}

@@ -58,7 +58,10 @@ from forma_api.measurement_runtime import (
 from forma_api.media import Media, MediaDeleteResult, MediaList, MediaResult
 from forma_api.model_gateway import Box
 from forma_api.muse_construction import (
+    EstimatedMaterial,
     MuseConstructionCandidateResult,
+    MuseConstructionReceipt,
+    MuseConstructionReceipts,
     MuseConstructionRequest,
     MuseConstructionResult,
 )
@@ -215,9 +218,12 @@ API_RECORDS = (
     NearbyResponse,
     AssemblyViewResponse,
     Box,
+    EstimatedMaterial,
     MuseConstructionRequest,
     MuseConstructionResult,
     MuseConstructionCandidateResult,
+    MuseConstructionReceipt,
+    MuseConstructionReceipts,
     ConstructionGenerateRequest,
     ConstructionGenerateResult,
     FabricationAssessment,

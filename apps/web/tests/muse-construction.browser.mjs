@@ -59,6 +59,17 @@ try {
       [base, fixture.project],
       [`${base}/media`, { media: [photo] }],
       [`${base}/plans`, { plans: [] }],
+      [`${base}/photo-estimates`, { records: [] }],
+      [
+        `${base}/recognized-items`,
+        {
+          project_id: fixture.project.id,
+          revision: "items-empty",
+          items: [],
+          problems: [],
+        },
+      ],
+      [`${base}/synthesis/research`, { enabled: false }],
       [
         `${base}/designs/readiness`,
         {
@@ -78,6 +89,17 @@ try {
         return route.abort();
       }
       if (!url.pathname.startsWith("/api/")) return route.continue();
+      if (
+        url.pathname === `${base}/measurement-decisions` &&
+        route.request().method() === "POST"
+      )
+        return route.fulfill({
+          status: 503,
+          json: {
+            code: "unavailable",
+            message: "Outside offline construction scenario",
+          },
+        });
       if (url.pathname === `${base}/construction/propose`) {
         const body = route.request().postDataJSON();
         requests.push(body);
@@ -147,6 +169,7 @@ try {
     await page.goto(`${origin.origin}/?project=${fixture.project.id}`);
     await page.getByLabel("Owner credential").fill("offline-owner");
     await page.getByRole("button", { name: "Open workbench" }).click();
+    await page.getByRole("button", { name: "Detailed entry" }).click();
     const panel = page.getByRole("region", {
       name: "Invent with my materials",
     });
@@ -215,6 +238,21 @@ try {
       assert.equal(await notes.isVisible(), true);
       assert.ok((await notes.innerText()).includes(predicate));
     }
+    const focusIds = await panel
+      .locator("polygon[data-step-focus=true]")
+      .evaluateAll((nodes) => [
+        ...new Set(nodes.map((node) => node.getAttribute("data-part-id"))),
+      ]);
+    assert.deepEqual(
+      focusIds.sort(),
+      [...construction.steps[0].part_ids]
+        .filter((id) =>
+          construction.steps[0].analysis.facets.some(
+            (facet) => facet.part_id === id,
+          ),
+        )
+        .sort(),
+    );
     await panel.getByRole("button", { name: "Next step" }).click();
     const stepSelect = panel.getByLabel("Choose a proposed step");
     assert.equal(await stepSelect.inputValue(), "1");
@@ -262,6 +300,10 @@ try {
       name: "Check original proposal request",
     });
     await retry.waitFor();
+    await panel
+      .getByLabel("Material photo (optional)")
+      .locator('option[value="photo-one"]')
+      .waitFor({ state: "attached" });
     assert.equal(requests.length, 2, "reload must not dispatch automatically");
     assert.equal(
       await panel.getByLabel("What should the design do?").inputValue(),

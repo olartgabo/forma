@@ -50,6 +50,17 @@ try {
       ["/api/projects", { projects: [], next_cursor: null }],
       [base, project],
       [`${base}/media`, { media: [] }],
+      [`${base}/photo-estimates`, { records: [] }],
+      [
+        `${base}/recognized-items`,
+        {
+          project_id: project.id,
+          revision: null,
+          catalog_version: "material-catalog-v1",
+          items: [],
+          problems: [],
+        },
+      ],
       [`${base}/designs/readiness`, readiness],
       [`${base}/plans`, { plans: [version] }],
       [`${base}/versions/${version.version_id}`, version],
@@ -142,19 +153,26 @@ try {
             if (!/closed|cancel|handled/i.test(error.message)) throw error;
           });
         }
+        const selected = url.searchParams.get("selected_operation_id");
+        const selectedView =
+          mode === "foreign"
+            ? { ...fixture.view, project_id: "foreign" }
+            : mode === "partial"
+              ? fixture.partial_view
+              : mode === "overlay"
+                ? fixture.overlay_view
+                : mode === "measured"
+                  ? fixture.measured_view
+                  : mode === "assembled"
+                    ? fixture.assembled_view
+                    : fixture.view;
         return route.fulfill({
-          json:
-            mode === "foreign"
-              ? { ...fixture.view, project_id: "foreign" }
-              : mode === "partial"
-                ? fixture.partial_view
-                : mode === "overlay"
-                  ? fixture.overlay_view
-                  : mode === "measured"
-                    ? fixture.measured_view
-                    : mode === "assembled"
-                      ? fixture.assembled_view
-                      : fixture.view,
+          json: {
+            ...selectedView,
+            planned_illustration: selected
+              ? fixture.planned_illustrations[selected]
+              : null,
+          },
         });
       }
       if (!replay.has(url.pathname)) {
@@ -176,11 +194,30 @@ try {
       name: "Rotatable nominal assembly",
     });
     await canvas.waitFor();
+    for (let index = 0; index < version.manual.panels.length; index++) {
+      const operationId = version.manual.panels[index].operation_id;
+      await page
+        .getByRole("button", { name: `Open drawing for step ${index + 1}` })
+        .click();
+      const planned = viewer.getByRole("region", {
+        name: "Planned operation illustration",
+      });
+      await viewer.locator(`[data-operation-id="${operationId}"]`).waitFor();
+      assert.equal(
+        await planned.locator("polygon").count(),
+        fixture.planned_illustrations[operationId].facets.length,
+      );
+    }
+    await page.getByRole("button", { name: "Open drawing for step 1" }).click();
+    await viewer
+      .locator(`[data-operation-id="${version.manual.panels[0].operation_id}"]`)
+      .waitFor();
+    const initialViewCount = viewRequests.length;
     assert.equal(
       await canvas.locator("polygon").count(),
       fixture.view.geometry.facets.length,
     );
-    assert.equal(viewRequests.length, 1);
+    assert.ok(initialViewCount >= 1);
     const points = await canvas
       .locator("polygon")
       .first()
@@ -258,7 +295,7 @@ try {
     }
     assert.equal(
       viewRequests.length,
-      1,
+      initialViewCount,
       "display controls do not request analyses or geometry",
     );
     const part = fixture.view.geometry.active_part_ids[0];
@@ -319,6 +356,18 @@ try {
               ? "Analysis context changed"
               : "The assembly view is unavailable";
       await viewer.getByRole("status").filter({ hasText: expected }).waitFor();
+      if (bad === "partial") {
+        const planned = viewer.getByRole("region", {
+          name: "Planned operation illustration",
+        });
+        const polygon = planned.locator("polygon").first();
+        await polygon.waitFor();
+        const before = await polygon.getAttribute("points");
+        await planned
+          .getByRole("button", { name: "Rotate planned illustration left" })
+          .click();
+        assert.notEqual(await polygon.getAttribute("points"), before);
+      }
       assert.equal(
         await canvas.count(),
         0,

@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import sqlite3
+from contextlib import closing
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
@@ -119,6 +121,67 @@ def muse_construction_router(
     Owner = Annotated[str, Depends(authenticate)]
     router = APIRouter(tags=["construction-proposals"], route_class=DesignRoute)
 
+    @router.get(
+        "/{project_id}/construction/receipts",
+        response_model=muse_construction.MuseConstructionReceipts,
+    )
+    def receipt_list(project_id: ID, owner: Owner, response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        database = (store.directory / "projects.sqlite3").resolve()
+        if not database.is_file():
+            raise DesignError(404, "not_found", "Project not found")
+        # Opening SQLite read-only also prevents receipt inspection from
+        # initializing tables or changing unknown legacy records.
+        with closing(
+            sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
+        ) as connection:
+            connection.execute("BEGIN")
+            store.read(connection, owner, project_id)
+            rows = connection.execute(
+                "SELECT key, digest, response FROM requests WHERE owner=? AND scope=? ORDER BY rowid DESC LIMIT 16",
+                (owner, project_id + ":construction-proposal"),
+            ).fetchall()
+        receipts = []
+        safe_codes = {
+            "timeout",
+            "network_error",
+            "budget_exhausted",
+            "server_error",
+            "result_not_confirmed",
+            "stale_version",
+            "blocked",
+            "not_found",
+            "generation_outcome_unknown",
+        }
+        for key, digest, saved in rows:
+            state, code = "unknown", "result_not_confirmed"
+            try:
+                value = json.loads(saved)
+                if isinstance(value, dict) and value.get("uncertain") is True:
+                    code = value.get("error_code")
+                    code = (
+                        code if isinstance(code, str) and code in safe_codes else None
+                    )
+                elif saved == _PENDING:
+                    state, code = "pending", None
+                else:
+                    result = muse_construction.MuseConstructionResult.model_validate(
+                        value
+                    )
+                    if result.project_id == project_id:
+                        state, code = "completed", None
+            except ValueError:
+                pass  # Corrupt response stays unknown; no raw response is exposed.
+            receipts.append(
+                muse_construction.MuseConstructionReceipt(
+                    idempotency_key=key,
+                    digest=digest,
+                    state=state,
+                    error_code=code,
+                )
+            )
+        return muse_construction.MuseConstructionReceipts(receipts=tuple(receipts))
+
     @router.post(
         "/{project_id}/construction/propose",
         response_model=muse_construction.MuseConstructionResult,
@@ -150,12 +213,19 @@ def muse_construction_router(
                 "consent_required",
                 "Consent to send the selected photo to MetaMuse is required",
             )
+        if body.approximate and photo is None:
+            raise DesignError(
+                422, "validation_error", "Choose a photo for an approximate preview"
+            )
         resolver = context_resolver or design_context.default_context_resolver()
         resolved = resolver(project_id, project.revision_id)
         photo_hash = _photo_hash(photo)
         digest = _digest(
             {
-                "request": body.model_dump(mode="json"),
+                "request": body.model_dump(
+                    mode="json",
+                    exclude={"approximate"} if not body.approximate else set(),
+                ),
                 "project_id": project_id,
                 "context_fingerprint": resolved.fingerprint,
                 "photo_hash": photo_hash,
@@ -223,7 +293,7 @@ def muse_construction_router(
                     (owner, scope, body.idempotency_key, digest, _PENDING),
                 )
 
-        budget = ProposalBudget(max_rounds=4, seconds=60)
+        budget = ProposalBudget(max_rounds=1 if body.approximate else 2, seconds=120)
 
         def mark_uncertain(code, stage="generation", gateway_code=None):
             marker = json.loads(_uncertain_marker(code))
@@ -244,7 +314,9 @@ def muse_construction_router(
                 )
 
         try:
-            gateway = (gateway_factory or design_runtime.default_gateway_factory)()
+            gateway = (gateway_factory or muse_construction.default_gateway_factory)()
+            if body.approximate and isinstance(gateway, muse_construction.MetaGateway):
+                gateway.max_retries = 0
         except GatewayError as exc:
             clear_pending()
             raise _provider_error(exc) from None
@@ -265,6 +337,7 @@ def muse_construction_router(
                 if photo
                 else None,
                 request_budget=budget,
+                approximate=body.approximate,
             )
         except GatewayError as exc:
             if exc.code in _UNCERTAIN_CODES:
