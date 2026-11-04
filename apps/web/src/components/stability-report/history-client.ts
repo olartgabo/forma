@@ -201,10 +201,17 @@ export class StabilityRequestError extends Error {
     this.ambiguous = ambiguous;
   }
 }
-// Codes whose request may still have run (or is running) on the server.
-const ambiguousCodes = new Set([
-  "generation_in_progress",
-  "generation_outcome_unknown",
+// Only these refusals are definite: the server did not keep the request
+// running or completed. Any other failure may have completed on the server,
+// so a retained MetaMuse request is kept and retried with the same key.
+const definiteCodes = new Set([
+  "consent_required",
+  "blocked",
+  "stale_version",
+  "not_found",
+  "idempotency_conflict",
+  "provider_not_configured",
+  "invalid_response",
 ]);
 const messages: Record<string, string> = {
   consent_required:
@@ -246,13 +253,14 @@ export function stabilityApi(token: string, projectId: string) {
     }
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as unknown;
-      const code = object(body) ? String(body.code) : "";
+      const code =
+        object(body) && typeof body.code === "string" ? body.code : "";
       throw new StabilityRequestError(
-        messages[code] ??
+        (Object.hasOwn(messages, code) ? messages[code] : null) ??
           (response.status === 409
             ? "The project changed. Reload before trying again."
             : "Saved stability reports are unavailable. Try again when ready."),
-        ambiguousCodes.has(code) || !code,
+        !definiteCodes.has(code),
       );
     }
     try {
@@ -346,13 +354,20 @@ export function stabilityApi(token: string, projectId: string) {
       body: StabilityMuseRequest,
       signal: AbortSignal,
     ) {
-      return validateMuse(
-        await json(`${root}/muse-explanations`, signal, {
-          method: "POST",
-          body: JSON.stringify(body),
-        }),
-        expected,
-      );
+      const value = await json(`${root}/muse-explanations`, signal, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      try {
+        return validateMuse(value, expected);
+      } catch (e) {
+        // The server answered 2xx, so it may have completed the paid call;
+        // an unreadable answer is not a definite outcome.
+        throw new StabilityRequestError(
+          e instanceof Error ? e.message : "Invalid MetaMuse explanation.",
+          true,
+        );
+      }
     },
   };
 }

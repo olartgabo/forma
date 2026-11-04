@@ -197,7 +197,9 @@ export default function ReportHistory({
       try {
         answer = await api.sendMuse(expected, body, signal);
       } catch (e) {
-        if (!(e instanceof StabilityRequestError && e.ambiguous)) {
+        // Only a definite refusal releases the request; anything else may
+        // have completed, so it is kept for a retry with the same key.
+        if (e instanceof StabilityRequestError && !e.ambiguous) {
           await clearMuse(token, expected.projectId, body);
           setPending(null);
         }
