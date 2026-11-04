@@ -1,7 +1,8 @@
 """Export actual #148 design-search API responses for the browser check.
 
-SYNTHETIC stock and profile evidence in a temporary database; no model provider
-is called and nothing here is a physical result.
+SYNTHETIC stock and profile evidence in a temporary database. MetaMuse is an
+offline scripted transport through the real gateway, never a provider call.
+Nothing here is a physical result.
 Usage: uv run --locked python apps/web/tests/design-candidates-fixture.py <output.json>
 """
 
@@ -25,7 +26,10 @@ def main(output):
         os.environ["FORMA_DATA_DIR"] = directory
         os.environ.pop("FORMA_API_TOKENS", None)
         t = importlib.import_module("test_plans")
-        from forma_api import synthesis_runtime
+        from forma_api import design_runtime, synthesis_runtime
+        from forma_api.model_gateway import MetaGateway
+
+        Scripted = importlib.import_module("test_synthesis_muse").Scripted
         from forma_api.design_context import (
             DesignContext,
             StaticDesignContextResolver,
@@ -87,6 +91,22 @@ def main(output):
                 ),
             )
             assert probe["status"] == "evaluated"
+            # The real route and gateway with an offline scripted transport.
+            design_runtime.default_gateway_factory = lambda: MetaGateway(
+                Scripted(), max_retries=0, sleep=lambda _: None
+            )
+            muse = post(
+                "/synthesis/muse-explanations",
+                identity
+                | dict(
+                    search_id=search["search_id"],
+                    idempotency_key="browser-muse-key",
+                    question=None,
+                    provider_context_consented=True,
+                ),
+            )
+            design_runtime.default_gateway_factory = provider_forbidden
+            assert muse["engine_probe"]["status"] == "evaluated"
             plans_before = get("/plans")
             readiness = get("/designs/readiness")
             select = post(
@@ -108,6 +128,7 @@ def main(output):
                 search=search,
                 probe=probe,
                 probe_value=deeper,
+                muse=muse,
                 select=select,
                 plans_before=plans_before,
                 plans_after=get("/plans"),

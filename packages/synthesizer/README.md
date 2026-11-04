@@ -27,12 +27,16 @@ assumed: the result is `needs_input`.
 ## Search
 
 Order: sheet, tape, tape/fold profile pair (all by ID), then width, support and
-depth ascending. Each node is one `compile_stand` call (which runs the
-independent `validate_plan`). `max_nodes` (deterministic) and `max_seconds`
-bound it. Outcomes: `candidates_found` (possibly with `exhausted` set),
+depth ascending. Designs are generated lazily; each node is one `compile_stand`
+call (which runs the independent `validate_plan`). `max_nodes` (deterministic)
+and `max_seconds` (covering preparation and finalist evaluation) bound it.
+Outcomes: `candidates_found` (possibly with `exhausted` set),
 `search_exhausted` (no acceptable design before the budget ran out),
-`infeasible` (every grid point evaluated, none accepted), `needs_input`, and
-`active_build` (fresh designs never replace an active build).
+`needs_input` (missing facts or confirmations up front, an angle outside
+0–90°, or compiler rejections asking for measurements, confirmations or
+reviewed profiles), `infeasible` (every grid point evaluated, only stock or
+geometry rejections) and `active_build` (fresh designs never replace an
+active build).
 
 Accepted designs are ranked by consumed sheet region area, then panel area, then
 their values. The second proposal prefers another sheet, then another base depth.

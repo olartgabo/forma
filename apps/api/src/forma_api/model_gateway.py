@@ -324,6 +324,7 @@ class Tool:
             "get_project_snapshot",
             "analyze_stability",
             "explain_stability_inputs",
+            "compare_stand_designs",
         }:
             raise ValueError("tool is not read-only allowlisted")
 

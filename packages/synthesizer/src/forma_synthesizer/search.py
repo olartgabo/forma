@@ -56,6 +56,8 @@ PARAMETERS: tuple[SearchParameter, ...] = (
     "support_length_mm",
     "footprint_depth_mm",
 )
+# Compiler rejections that ask the user for facts rather than describe the stock.
+INPUT_CODES = {"missing_measurement", "needs_confirmation", "unsupported_profile"}
 HARD_FABRICATION = {
     "geometry_invalid",
     "stock_exhausted",
@@ -189,7 +191,18 @@ def missing_inputs(data: SearchInput) -> list[m.Blocker]:
         ):
             if _known(getattr(data.constraints, name)) is None:
                 need(f"Confirm the {name} requirement.")
+        angle = _known(data.constraints.support_angle_deg)
+        if angle is not None and not 0 < angle < 90:
+            need(
+                f"A {angle:g} degree support angle is outside the supported stand "
+                "family, which needs an angle strictly between 0 and 90 degrees.",
+                code="unsupported",
+            )
     if data.parameters is not None:
+        if not data.parameters.tools_confirmed:
+            need("Confirm suitable cutting tools.", code="needs_confirmation")
+        if not data.parameters.joint_access_confirmed:
+            need("Confirm access to all three tape hinges.", code="needs_confirmation")
         for name in (
             "lip_mm",
             "device_width_mm",
@@ -686,6 +699,7 @@ def search(
     clock: Callable[[], float] = time.monotonic,
 ) -> SynthesisResult:
     budget = budget or SearchBudget()
+    started = clock()
     if data.identity.active_version_id is not None:
         return _identity_result(
             data,
@@ -757,19 +771,24 @@ def search(
     angle = float(data.constraints.support_angle_deg.value)
     lip = float(data.parameters.lip_mm.value)
     pairs = _profile_pairs(data)
-    all_domains: list[DimensionDomain] = []
-    space = []
+    grids = []
     for sheet in measured:
         domains = domains_for(data, sheet)
-        all_domains.extend(domains)
-        widths, supports, depths = (domain_values(d) for d in domains)
-        for tape in tapes:
-            for tape_profile, fold_profile in pairs:
-                for width in widths:
-                    for support in supports:
-                        for depth in depths:
-                            space.append(
-                                StandDesign(
+        grids.append((sheet, domains, tuple(domain_values(d) for d in domains)))
+    all_domains = [d for _, domains, _ in grids for d in domains]
+    nodes_total = sum(
+        len(tapes) * len(pairs) * len(w) * len(s) * len(d) for _, _, (w, s, d) in grids
+    )
+
+    def space():
+        # Lazy: the budget bounds work, not just the reported node count.
+        for sheet, _, (widths, supports, depths) in grids:
+            for tape in tapes:
+                for tape_profile, fold_profile in pairs:
+                    for width in widths:
+                        for support in supports:
+                            for depth in depths:
+                                yield StandDesign(
                                     sheet_stock_id=sheet.id,
                                     tape_stock_id=tape.id,
                                     tape_profile_id=tape_profile,
@@ -780,12 +799,12 @@ def search(
                                     lip_mm=lip,
                                     support_angle_deg=angle,
                                 )
-                            )
-    started = clock()
+
     exhausted = None
     accepted: list[_Compiled] = []
     evaluated = 0
-    for design in space:
+    input_blockers: dict[str, m.Blocker] = {}
+    for design in space():
         if evaluated >= budget.max_nodes:
             exhausted = "node_budget"
             break
@@ -795,6 +814,9 @@ def search(
         evaluated += 1
         result = _compile(data, design)
         if result.status != "accepted":
+            for blocker in result.blockers:
+                if blocker.code in INPUT_CODES:
+                    input_blockers.setdefault(blocker.code, blocker)
             for code in {b.code for b in result.blockers} or {"blocked"}:
                 rejections[code] = rejections.get(code, 0) + 1
             continue
@@ -822,6 +844,9 @@ def search(
             break
         if chosen and not _prefer_second(chosen[0].design, item.design, accepted):
             continue
+        if clock() - started > budget.max_seconds:
+            exhausted = "time_budget"
+            break
         finalists += 1
         report = evaluate(data, item.design)
         if report.status == "acceptable":
@@ -835,6 +860,10 @@ def search(
         status = "candidates_found"
     elif exhausted:
         status = "search_exhausted"
+    elif input_blockers:
+        # The compiler asked for a measurement or confirmation; that is not
+        # evidence that the stock cannot make the stand.
+        status = "needs_input"
     else:
         status = "infeasible"
     empty = [
@@ -852,16 +881,18 @@ def search(
         status=status,
         exhausted=exhausted,
         nodes_evaluated=evaluated,
-        nodes_total=len(space),
+        nodes_total=nodes_total,
         domains=tuple(all_domains[:48]),
         candidates=tuple(chosen),
         rejections=tuple(
             RejectionCount(code=code, count=count)
             for code, count in sorted(rejections.items())
         )[:32],
-        blockers=tuple(unmeasured + empty)[:32]
-        if status != "candidates_found"
-        else tuple(unmeasured)[:32],
+        blockers=tuple(
+            unmeasured
+            + (list(input_blockers.values()) if status == "needs_input" else [])
+            + (empty if status != "candidates_found" else [])
+        )[:32],
     )
 
 

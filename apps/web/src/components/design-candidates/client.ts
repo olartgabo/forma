@@ -1,9 +1,14 @@
 import type {
   PlanCompileResult,
+  SynthesisMuseRequest,
+  SynthesisMuseResult,
   SynthesisProbeRequest,
   SynthesisSearchRequest,
   SynthesisSelectRequest,
 } from "../../lib/generated/api-contracts";
+// prettier-ignore
+// @ts-expect-error -- Node tests import TypeScript directly.
+import { receipts } from "./pending.ts";
 import type {
   CandidateReport,
   ProbeResult,
@@ -22,6 +27,9 @@ export type Search = Omit<
   Present<SynthesisResult, "domains" | "blockers" | "rejections">,
   "candidates"
 > & { candidates: readonly Candidate[] };
+export type MuseResult = Omit<SynthesisMuseResult, "engine_probe"> & {
+  engine_probe?: Probe | null;
+};
 export type Probe = Omit<
   Present<ProbeResult, "changed_piece_ids" | "blockers">,
   "report"
@@ -69,9 +77,10 @@ function finite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 function invalid(what: string): never {
+  // A malformed 2xx may follow a completed write: keep any retained key.
   throw new SynthesisRequestError(
-    `The server returned an invalid ${what}. Reload and try again.`,
-    false,
+    `The server returned an invalid ${what}. Retry to check the saved result.`,
+    true,
   );
 }
 
@@ -205,12 +214,31 @@ export class SynthesisRequestError extends Error {
 
 const messages: Record<string, string> = {
   stale_version:
-    "Your materials, plan or build history changed. Search again before choosing.",
-  blocked: "A build is already active. Use the repair flow to change it.",
+    "Your materials, plan or build history changed. Search again before continuing.",
+  blocked:
+    "This request is blocked by the current project state. Reload to see the saved plans.",
   not_found: "This project is no longer available.",
   idempotency_conflict:
-    "This retry differs from the original choice. Search again and choose once more.",
+    "This retry differs from the original request. Search again and try once more.",
+  consent_required: "Confirm sharing the proposed designs with MetaMuse first.",
+  provider_not_configured: "MetaMuse is not configured on this server.",
+  invalid_response:
+    "MetaMuse returned an answer the engine could not verify; nothing was saved.",
+  generation_in_progress: "A MetaMuse comparison is already running.",
+  generation_outcome_unknown:
+    "The previous MetaMuse outcome is unknown. Nothing new was sent.",
 };
+// Only these refusals are definite: the server finished nothing for the key,
+// so a retained request may be released. Anything else keeps it for a retry.
+const definite = new Set([
+  "stale_version",
+  "blocked",
+  "not_found",
+  "idempotency_conflict",
+  "consent_required",
+  "provider_not_configured",
+  "invalid_response",
+]);
 
 export function synthesisApi(token: string, projectId: string) {
   const root = `/api/projects/${encodeURIComponent(projectId)}/synthesis`;
@@ -245,8 +273,7 @@ export function synthesisApi(token: string, projectId: string) {
           (response.status === 409
             ? messages.stale_version
             : "Design search is unavailable. Try again shortly."),
-        // Only definite refusals release a retained selection key.
-        !Object.hasOwn(messages, code),
+        !definite.has(code),
         code === "stale_version",
       );
     }
@@ -292,23 +319,143 @@ export function synthesisApi(token: string, projectId: string) {
         searchId,
       );
     },
-    async select(
-      context: SearchContext,
-      searchId: string,
-      design: StandDesign,
-      key: string,
-      signal: AbortSignal,
-    ) {
-      const body: SynthesisSelectRequest = {
-        ...identity(context),
-        search_id: searchId,
-        design,
-        idempotency_key: key,
-        user_selected: true,
-      };
+    /** Sends a retained body unchanged, so a retry reuses its key. */
+    async select(body: SynthesisSelectRequest, signal: AbortSignal) {
       return validateSelection(await post("select", body, signal));
     },
+    async explain(body: SynthesisMuseRequest, signal: AbortSignal) {
+      return validateMuse(
+        await post("muse-explanations", body, signal),
+        projectId,
+        body,
+      );
+    },
   };
+}
+
+export function selectionBody(
+  context: SearchContext,
+  searchId: string,
+  design: StandDesign,
+  key: string,
+): SynthesisSelectRequest {
+  return {
+    expected_inventory_revision_id: context.inventoryRevisionId,
+    expected_active_version_id: context.activeVersionId,
+    expected_last_event_id: context.lastEventId,
+    search_id: searchId,
+    design,
+    idempotency_key: key,
+    user_selected: true,
+  };
+}
+
+export function museBody(
+  context: SearchContext,
+  searchId: string,
+  key: string,
+  question: string | null,
+): SynthesisMuseRequest {
+  return {
+    expected_inventory_revision_id: context.inventoryRevisionId,
+    expected_active_version_id: context.activeVersionId,
+    expected_last_event_id: context.lastEventId,
+    search_id: searchId,
+    idempotency_key: key,
+    question,
+    provider_context_consented: true,
+  };
+}
+
+const IDENTITY = [
+  "expected_inventory_revision_id",
+  "expected_active_version_id",
+  "expected_last_event_id",
+  "search_id",
+  "idempotency_key",
+];
+function id(value: unknown) {
+  return (
+    typeof value === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,95}$/.test(value)
+  );
+}
+function validIdentity(v: Record<string, unknown>, fields: string[]) {
+  return (
+    Object.keys(v).length === fields.length &&
+    fields.every((k) => Object.hasOwn(v, k)) &&
+    id(v.expected_inventory_revision_id) &&
+    (v.expected_active_version_id === null ||
+      id(v.expected_active_version_id)) &&
+    (v.expected_last_event_id === null || id(v.expected_last_event_id)) &&
+    typeof v.search_id === "string" &&
+    sha256.test(v.search_id) &&
+    typeof v.idempotency_key === "string" &&
+    v.idempotency_key.length >= 8 &&
+    v.idempotency_key.length <= 128
+  );
+}
+export function validSelectRequest(v: unknown): v is SynthesisSelectRequest {
+  return (
+    object(v) &&
+    validIdentity(v, [...IDENTITY, "design", "user_selected"]) &&
+    validDesign(v.design) &&
+    v.user_selected === true
+  );
+}
+export function validMuseRequest(v: unknown): v is SynthesisMuseRequest {
+  return (
+    object(v) &&
+    validIdentity(v, [...IDENTITY, "question", "provider_context_consented"]) &&
+    (v.question === null ||
+      (typeof v.question === "string" &&
+        v.question.length >= 1 &&
+        v.question.length <= 500)) &&
+    v.provider_context_consented === true
+  );
+}
+export const selectionReceipts = receipts(
+  "forma-design-select-pending-v1:",
+  validSelectRequest,
+  "design choice",
+);
+export const museReceipts = receipts(
+  "forma-design-muse-pending-v1:",
+  validMuseRequest,
+  "MetaMuse comparison",
+);
+
+export function validateMuse(
+  value: unknown,
+  projectId: string,
+  body: SynthesisMuseRequest,
+): MuseResult {
+  const explanation = object(value) ? value.explanation : null;
+  if (
+    !object(value) ||
+    value.project_id !== projectId ||
+    value.search_id !== body.search_id ||
+    value.tool_name !== "compare_stand_designs" ||
+    value.physical_status !== "not_verified" ||
+    !object(value.usage) ||
+    !object(explanation) ||
+    explanation.search_id !== body.search_id ||
+    typeof explanation.summary !== "string" ||
+    !Array.isArray(explanation.candidate_notes ?? []) ||
+    !Array.isArray(explanation.unresolved ?? []) ||
+    !Array.isArray(explanation.questions ?? [])
+  )
+    invalid("MetaMuse comparison");
+  const probe = value.engine_probe;
+  if (
+    probe != null &&
+    (!object(probe) ||
+      !probeStatuses.has(String(probe.status)) ||
+      (probe.status === "evaluated" && !object(probe.report)))
+  )
+    invalid("MetaMuse comparison");
+  if (probe != null && probe.status === "evaluated")
+    validateCandidate(probe.report);
+  return value as unknown as MuseResult;
 }
 
 /** Finite domain values, recomputed exactly as the server enumerates them. */

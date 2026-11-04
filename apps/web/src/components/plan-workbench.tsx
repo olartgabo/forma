@@ -610,6 +610,7 @@ export default function PlanWorkbench({
             lastEventId: null,
           }}
           disabled={approvalDisabled || pending !== null || saving}
+          museEnabled={museAvailability?.enabled !== false}
           onSelected={(versionId) => {
             setSelected(versionId);
             setAttempt((value) => value + 1);

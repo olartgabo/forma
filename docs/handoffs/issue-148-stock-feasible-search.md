@@ -1,10 +1,12 @@
 # Issue 148 handoff: stock-feasible design search and checked comparison
 
-Status: implemented and locally green; independent Sol/Terra review pending.
+Status: first review repairs and the MetaMuse adapter implemented; locally green;
+final independent Sol/Terra review pending.
 
 - Issue: #148. Owner @ResniDev; feature reviewer @olartgabo.
 - Base: `main` at `8a05546` (#147 merged as PR #168). Not stacked.
-- Branch: `issue/148-stock-feasible-search`.
+- Branch: `issue/148-stock-feasible-search`. First candidate `20fdbb5`; the
+  repair commit follows it.
 
 ## Behavior
 
@@ -19,88 +21,121 @@ See [packages/synthesizer/README.md](../../packages/synthesizer/README.md) and D
   to a `resize_part` patch and runs the existing `RepairBase.simulate` without
   saving a preview; a width change returns an explicit unsupported blocker.
 - `POST .../synthesis/select` with the `search_id`, design, idempotency key and
-  `user_selected: true`. The server rechecks domain membership and re-evaluates,
-  then saves an ordinary preview through `PlanService.compile_preview` (two
-  previews per revision, same idempotency). Approval stays
-  `POST .../plans/{version}/activate`.
+  `user_selected: true`. A completed selection replays by key before any
+  freshness check. Otherwise the server rechecks domain membership, re-evaluates
+  and saves an ordinary preview through `PlanService.compile_preview`. The
+  two-preview limit and an active build return named `blocked` blockers.
+  Approval stays `POST .../plans/{version}/activate`.
+- `POST .../synthesis/muse-explanations` (consent required). The server reruns
+  the search and requires the same `search_id`, then gives MetaMuse one
+  allowlisted read-only tool, `compare_stand_designs`. Its strict arguments
+  pick the authorized search, one or two authorized candidate IDs and at most
+  one probe whose value comes from `allowed_probe_values`; extra fields such as
+  masses are rejected. The probe runs the deterministic engine and is returned
+  as `engine_probe`, apart from the model's prose. The explanation may cite only
+  returned designs. Pending, unknown-outcome, stale and replay receipts follow
+  the #147 route. Nothing is saved besides the receipt.
 - Every request rechecks owner (404), inventory revision, active version, last
-  event (409) and, for probe/select, the search ID, which hashes the server
-  context fingerprint (process, stand parameters, profiles and evidence), stock,
-  requirements, tools, measurement record IDs and budget.
+  event (409) and, for probe/select/MetaMuse, the search ID. That ID hashes the
+  server context fingerprint (process, stand parameters, profiles and
+  evidence), stock, requirements, tools, measurement record IDs and budget.
 - Web: **Search designs from your saved stock** in the plan step, shown only
   without an active build. Two-column comparison (stacks on phones), a probe
-  with server grid values, and **Use design A/B**. An ambiguous selection keeps
-  its key for **Retry saving this design**. After saving, the existing plan
-  list selects the preview; the existing checkbox and **Approve this plan**
-  remain the only activation.
+  using server grid values, a consented **Ask MetaMuse** comparison, and
+  **Use design A/B**. Selection and MetaMuse bodies are retained in
+  owner/project-scoped browser storage before sending. After a reload,
+  **Retry saving that design** resends the exact body and key. Only definite
+  refusals release a receipt; malformed responses keep it. A probe answer
+  attaches only to the controls that were submitted. The existing checkbox and
+  **Approve this plan** remain the only activation.
+
+## Review repairs (Codex review of `20fdbb5`)
+
+1. Selection keys were memory-only and dropped on malformed 2xx: now durable
+   receipts (`design-candidates/pending.ts`) plus server replay before
+   freshness checks. Regressions: web receipt/malformed tests, route replay
+   after an inventory change, browser lost response + reload + same-key retry.
+2. Late probe answers attached to changed controls: now matched to the
+   submitted candidate, parameter and value. Browser race regression; it fails
+   when the guard is removed (checked).
+3. Unconfirmed tools/access became `infeasible`: now upfront
+   `needs_confirmation`, and any compiler input rejection (missing measurement,
+   confirmation, unsupported profile) yields `needs_input`, never `infeasible`.
+4. The candidate list was built before budgets applied: generation is lazy,
+   and the time budget covers preparation and finalist evaluation.
+5. A 90° requirement raised a validation error: now an explicit `unsupported`
+   blocker for search, probe and selection.
+6. Every `blocked` read as an active build: messages are now neutral and the
+   server names the preview limit or active build.
+7. Missing MetaMuse adapter: added as above.
 
 ## Files
 
 - Owned: `packages/synthesizer/**`;
   `packages/domain/src/forma_domain/synthesis_contracts.py`;
-  `apps/api/src/forma_api/synthesis_runtime.py`, `routes/synthesis.py`;
-  `apps/web/src/components/design-candidates/{client.ts,index.tsx}`;
-  tests `apps/api/tests/test_synthesis_routes.py`,
+  `apps/api/src/forma_api/synthesis_runtime.py`, `synthesis_muse.py`,
+  `routes/synthesis.py`, `routes/synthesis_muse.py`;
+  `apps/web/src/components/design-candidates/{client.ts,index.tsx,pending.ts}`;
+  tests `apps/api/tests/test_synthesis_routes.py`, `test_synthesis_muse.py`,
   `apps/web/tests/design-candidates.test.mjs`,
   `design-candidates-fixture.py`, `design-candidates.browser.mjs`.
 - Declared shared integration edits: `pyproject.toml` (package path and test
-  path), `apps/api/src/forma_api/projects.py` (router registration),
-  `packages/domain/src/forma_domain/generate.py` (module registration),
-  `apps/api/src/forma_api/generate.py` (three request records), regenerated
-  `packages/domain/generated/*` and `apps/web/src/lib/generated/*`,
-  `apps/web/src/components/plan-workbench.tsx` (mount), `apps/web/src/app/globals.css`
-  (layout block at the end), `package.json` (`test:web` entry),
-  `docs/decisions.md` (D054), `docs/handoffs/README.md`.
+  path), `apps/api/src/forma_api/projects.py` (two router registrations),
+  `apps/api/src/forma_api/model_gateway.py` (one tool name added to the
+  read-only allowlist, no behavior change), `packages/domain/src/forma_domain/generate.py`
+  (module registration), `apps/api/src/forma_api/generate.py` (API records),
+  regenerated `packages/domain/generated/*` and `apps/web/src/lib/generated/*`,
+  `apps/web/src/components/plan-workbench.tsx` (mount and MetaMuse availability),
+  `apps/web/src/app/globals.css` (layout block at the end), `package.json`
+  (`test:web` entry), `docs/decisions.md` (D054), `docs/handoffs/README.md`.
 - Consumed unchanged: `compile_stand`, `validate_plan`, `render_manual`,
   `project_nominal_geometry`, `piece_reference`, `fabrication_report`,
-  `RepairBase`/`confirmed_remaining`, `PlanService.compile_preview`, design
-  context resolver. No #147 report contract, fabrication rule, repair search,
-  scheduler or viewer change. No new dependency.
+  `RepairBase`/`confirmed_remaining`, `PlanService.compile_preview`, the design
+  context resolver and the #147 receipt helpers in `routes/designs.py`. No #147
+  report contract, fabrication rule, repair search, scheduler or viewer change.
+  No new dependency.
 
 ## Checks actually run (Windows, Node 22.21.0, npm 11.16.0, Python 3.12)
 
-- `npm run check`: exit 0. Python 1704 passed; web 165 pass; devloop 18 pass;
+- `npm run check`: exit 0. Python 1722 passed; web 168 pass; devloop 18 pass;
   production build compiled; formatting, Ruff and contract freshness clean.
-- New tests: `packages/synthesizer/tests/test_search.py` (13),
-  `apps/api/tests/test_synthesis_routes.py` (6),
-  `apps/web/tests/design-candidates.test.mjs` (6).
-- Browser, local Edge via Playwright, `next dev` at 127.0.0.1:3024:
-  `PASS 390px` and `PASS 1280px` — search/compare two named designs, read-only
-  probe with regenerated brace, lost-response selection retried with one key,
-  separate explicit approval; no horizontal overflow; replayed responses only.
-  Reproduce with
+- Feature tests: `packages/synthesizer/tests/test_search.py` (18),
+  `apps/api/tests/test_synthesis_routes.py` (8),
+  `apps/api/tests/test_synthesis_muse.py` (11),
+  `apps/web/tests/design-candidates.test.mjs` (9).
+- Browser, local Edge via Playwright, `next dev` at 127.0.0.1:3024: `PASS 390px`
+  and `PASS 1280px` — search/compare two named designs, probe race ignored and
+  regenerated brace shown, consented MetaMuse comparison with engine probe,
+  lost selection recovered after reload with one key, separate explicit
+  approval; no horizontal overflow; replayed responses only. Reproduce with
   `uv run --locked python apps/web/tests/design-candidates-fixture.py <out.json>`
   then `node apps/web/tests/design-candidates.browser.mjs <playwright index.mjs> http://127.0.0.1:3024 <out.json>`.
 
-Acceptance coverage: insufficient sheet and tape; identical-input determinism;
-node and time budget exhaustion versus infeasibility; brace and geometry
-regeneration after a depth change; missing and incompatible measurements;
-hard failures excluded (search, probe and select); stale revision/active/event
-and stale search ID; cross-owner 404; completed cut blocks an active-build probe
-through the existing replanner; no persisted row changes from search or probe;
-browser search → comparison → selection → separate approval.
-
 ## Evidence limits
 
-All inputs are SYNTHETIC fixtures. Browser checks replay real server responses
-with intercepted transport. No model provider call was made or needed. No live
-or physical result is claimed; every candidate's stability remains unmeasured.
+All inputs are SYNTHETIC fixtures. MetaMuse tests and the browser fixture use
+the real gateway with an offline scripted transport; no provider call was made,
+and no live MetaMuse result is claimed. The expired verification window still
+blocks agent live probes. Candidate stability is not compared numerically: an
+unbuilt geometry has no measured stand mass, centre of mass or contact, and
+measurements of another stand never transfer. Those rows stay missing,
+incompatible or unsupported. No physical result is claimed.
 
 ## Remaining unsupported cases
 
 - Shapes other than the triangular tape stand; multi-region or rotated sheets.
 - Searching the support angle (it is the confirmed requirement) or the lip.
 - Global optimality: rejection inside the finite grid proves nothing beyond it.
-- Stability, retention, joint strength and observed access for unbuilt designs.
+- Numerical stability, retention, joint strength and observed access for
+  unbuilt designs (needs a built stand and #149 measurement selection).
 - Active-build width changes, and any resize the existing replanner blocks
-  (for example a completed cut).
-- MetaMuse explanation of candidates (no tool adapter in this slice).
+  (for example a completed cut). The active-build probe has no UI; the panel is
+  hidden during a build and the repair flow remains the path.
+- Live MetaMuse acceptance (needs the finite verification window).
 - Spanish copy for the new panel.
-- An idempotent selection retry after a concurrent inventory change returns 409
-  instead of replaying; the saved preview is visible in the plan list.
 
 ## Next
 
-Independent Sol/Terra review of this diff, then feature review and exact-head
-remote checks before merge. #149 measurement selection can consume
-`SynthesisResult`/`CandidateReport` once this contract is reviewed.
+One final independent Sol/Terra review of the complete diff from `main`, then
+feature review and exact-head remote checks before merge. #149 measurement
+selection can consume `SynthesisResult`/`CandidateReport` once reviewed.

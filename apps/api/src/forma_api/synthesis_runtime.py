@@ -262,11 +262,26 @@ def _probe_active(store, project_id, data: SearchInput, body) -> ProbeResult:
 def run_select(
     store, owner, project_id, body, resolver, plan_service
 ) -> PlanCompileResult:
-    """Recheck the design server-side, then save an ordinary proposed preview."""
+    """Recheck the design server-side, then save an ordinary proposed preview.
+
+    A saved selection replays by key before any freshness check, so retrying a
+    lost response can never save a second preview.
+    """
+    scope = project_id + ":synthesis-select"
+    payload = body.model_dump(mode="json")
+    with store.transaction() as connection:
+        store.read(connection, owner, project_id)
+        digest, replay = store.replay(
+            connection, owner, scope, body.idempotency_key, payload
+        )
+    if replay is not None:
+        return PlanCompileResult.model_validate(replay)
     data = resolve(store, owner, project_id, body, resolver)
     _require_search(data, body)
     if data.identity.active_version_id is not None:
-        raise ProjectError(409, "blocked", "Active plans require a revision")
+        return _blocked(
+            "A build is already active for this project; change it through the repair flow."
+        )
     missing = missing_inputs(data)
     if missing:
         return PlanCompileResult(
@@ -285,17 +300,51 @@ def run_select(
         return PlanCompileResult(
             status="blocked", blockers=(report.blockers or failures)[:16]
         )
-    return plan_service.compile_preview(
-        owner,
-        project_id,
-        CompilePreview(
-            expected_revision_id=data.identity.inventory_revision_id,
-            idempotency_key=body.idempotency_key,
-            candidate=design_candidate(body.design),
-        ),
-        process=data.process,
-        parameters=stand_parameters(data.parameters, body.design),
-        joint_profiles=data.joint_profiles,
-        kerf_mm=data.kerf_mm,
-        edge_margin_mm=data.edge_margin_mm,
+    try:
+        result = plan_service.compile_preview(
+            owner,
+            project_id,
+            CompilePreview(
+                expected_revision_id=data.identity.inventory_revision_id,
+                idempotency_key=body.idempotency_key,
+                candidate=design_candidate(body.design),
+            ),
+            process=data.process,
+            parameters=stand_parameters(data.parameters, body.design),
+            joint_profiles=data.joint_profiles,
+            kerf_mm=data.kerf_mm,
+            edge_margin_mm=data.edge_margin_mm,
+        )
+    except ProjectError as error:
+        if error.status != 409 or error.envelope.code != "blocked":
+            raise
+        if "At most two designs" in error.envelope.message:
+            return _blocked(
+                "Two proposed designs are already saved for this inventory. Review "
+                "or approve one of the saved plans below; nothing new was saved."
+            )
+        return _blocked(
+            "A build is already active for this project; change it through the repair flow."
+        )
+    if result.status == "accepted":
+        with store.transaction() as connection:
+            prior = connection.execute(
+                "SELECT 1 FROM requests WHERE owner=? AND scope=? AND key=?",
+                (owner, scope, body.idempotency_key),
+            ).fetchone()
+            if prior is None:
+                store.remember(
+                    connection,
+                    owner,
+                    scope,
+                    body.idempotency_key,
+                    digest,
+                    result.model_dump(mode="json"),
+                )
+    return result
+
+
+def _blocked(message: str) -> PlanCompileResult:
+    return PlanCompileResult(
+        status="blocked", blockers=(Blocker(code="unsupported", message=message),)
     )

@@ -1,7 +1,9 @@
 // Replays actual API responses exported by design-candidates-fixture.py in a
-// local intercepted browser. SYNTHETIC inputs; no provider and no physical pass.
-// Covers search → comparison → probe → explicit selection (with a lost response
-// and same-key retry) → the existing, separate plan approval.
+// local intercepted browser. SYNTHETIC inputs; MetaMuse is an offline scripted
+// transport recorded from the real route; no provider and no physical pass.
+// Covers search → comparison → probe (with a stale-response race) → MetaMuse
+// comparison → explicit selection whose response is lost, recovered after a
+// reload with the same key → the existing, separate plan approval.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -15,13 +17,23 @@ const origin = new URL(baseUrl);
 if (!["localhost", "127.0.0.1", "[::1]"].includes(origin.hostname))
   throw new Error("Only a local intercepted browser is permitted");
 const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
-const { project, search, probe, select, version } = fixture;
+const { project, search, probe, select, version, muse } = fixture;
 const base = `/api/projects/${project.id}`;
 const [first, second] = search.candidates;
 const { chromium } = await import(pathToFileURL(modulePath).href);
 const browser = await chromium.launch(
   process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {},
 );
+
+async function open(page) {
+  await page.goto(`${origin.origin}/?project=${project.id}`);
+  await page.getByLabel("Owner credential").fill("synthetic-browser-owner");
+  await page.getByRole("button", { name: "Open workbench" }).click();
+  return page.getByRole("region", {
+    name: "Search designs from your saved stock",
+  });
+}
+
 try {
   for (const width of [390, 1280]) {
     const page = await (
@@ -36,6 +48,9 @@ try {
     const posts = [];
     let saved = false;
     let selectCalls = 0;
+    let probeCalls = 0;
+    let releaseProbe = () => {};
+    const heldProbe = new Promise((resolve) => (releaseProbe = resolve));
     page.on("pageerror", (e) => errors.push(e.message));
     await page.context().route("**/*", async (route) => {
       const request = route.request();
@@ -59,11 +74,20 @@ try {
           return route.fulfill({ json: search });
         }
         if (url.pathname === `${base}/synthesis/probe`) {
+          probeCalls += 1;
           assert.equal(body.search_id, search.search_id);
           assert.equal(body.parameter, "footprint_depth_mm");
           assert.equal(body.value_mm, fixture.probe_value);
           assert.deepEqual(body.design, first.design);
+          // The first answer arrives after the selector has changed.
+          if (probeCalls === 1) await heldProbe;
           return route.fulfill({ json: probe });
+        }
+        if (url.pathname === `${base}/synthesis/muse-explanations`) {
+          assert.equal(body.provider_context_consented, true);
+          assert.equal(body.search_id, search.search_id);
+          assert.equal("design" in body, false);
+          return route.fulfill({ json: muse });
         }
         if (url.pathname === `${base}/synthesis/select`) {
           selectCalls += 1;
@@ -99,20 +123,13 @@ try {
         json: { code: "unavailable", message: "Not part of this fixture" },
       });
     });
-    await page.goto(`${origin.origin}/?project=${project.id}`);
-    await page.getByLabel("Owner credential").fill("synthetic-browser-owner");
-    await page.getByRole("button", { name: "Open workbench" }).click();
-    const panel = page.getByRole("region", {
-      name: "Search designs from your saved stock",
-    });
+    let panel = await open(page);
     await panel
       .getByRole("button", { name: "Search stock-feasible designs" })
       .click();
     const designA = panel.getByRole("article", { name: "Design A" });
-    const designB = panel.getByRole("article", { name: "Design B" });
     await designA.waitFor();
-    await designB.waitFor();
-    assert.equal(await panel.getByRole("article").count(), 2);
+    await panel.getByRole("article", { name: "Design B" }).waitFor();
     for (const name of ["Support panel", "Base panel", "Rear brace"])
       assert.equal(
         await designA.getByText(name, { exact: true }).count(),
@@ -129,42 +146,91 @@ try {
       await panel.innerText(),
       new RegExp(`Checked ${search.nodes_evaluated} of ${search.nodes_total}`),
     );
-    // Search and probe are read-only: only their own POSTs were sent.
+
+    // Probe race: a late answer must not attach to a changed selector.
     await panel
       .getByRole("button", { name: "Try a size change" })
       .first()
       .click();
+    const value = panel.getByLabel("New value");
     await panel.getByLabel("Dimension").selectOption("footprint_depth_mm");
-    await panel
-      .getByLabel("New value")
-      .selectOption(String(fixture.probe_value));
+    await value.selectOption(String(fixture.probe_value));
     await panel.getByRole("button", { name: "Check this change" }).click();
-    const changed = panel.getByRole("article", { name: "Changed design" });
-    await changed.waitFor();
+    const other = (await value.locator("option").allTextContents())
+      .map((text) => text.replace(" mm", ""))
+      .find(
+        (text) =>
+          /^[0-9.]+$/.test(text) && Number(text) !== fixture.probe_value,
+      );
+    await value.selectOption(other);
+    releaseProbe();
+    // The check button re-enables once the late answer has been handled.
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll(".design-probe button")].some(
+        (b) => b.textContent === "Check this change" && !b.disabled,
+      ),
+    );
+    assert.equal(await panel.getByText(/Engine result for/).count(), 0);
+    await value.selectOption(String(fixture.probe_value));
+    await panel.getByRole("button", { name: "Check this change" }).click();
+    await panel.getByRole("article", { name: "Changed design" }).waitFor();
     assert.match(
       await panel.innerText(),
-      /Recalculated pieces: stand-base, stand-brace/,
+      new RegExp(
+        `Engine result for Base depth = ${fixture.probe_value} mm: still fits your stock. Recalculated pieces: stand-base, stand-brace`,
+      ),
     );
+
+    // MetaMuse needs explicit consent and only explains engine results.
+    const ask = panel.getByRole("button", { name: "Ask MetaMuse" });
+    assert.equal(await ask.isDisabled(), true);
+    await panel
+      .getByLabel("Share these proposed designs (no photos) with MetaMuse")
+      .check();
+    await ask.click();
+    const answer = panel.getByRole("article", { name: "MetaMuse comparison" });
+    await answer.waitFor();
+    assert.match(
+      await answer.innerText(),
+      /Model wording is not a physical test/,
+    );
+    await answer
+      .getByRole("article", { name: "Engine check requested by MetaMuse" })
+      .waitFor();
     assert.deepEqual(
       posts.map(([path]) => path),
-      [`${base}/synthesis/search`, `${base}/synthesis/probe`],
+      [
+        `${base}/synthesis/search`,
+        `${base}/synthesis/probe`,
+        `${base}/synthesis/probe`,
+        `${base}/synthesis/muse-explanations`,
+      ],
     );
-    // Choose design B: the first response is lost, the retry reuses the key.
+
+    // Choose design B; the response is lost, then the page is reloaded.
     await panel.getByRole("button", { name: "Use design B" }).click();
     await panel
-      .getByRole("button", { name: "Retry saving this design" })
-      .click();
+      .getByRole("button", { name: "Retry saving that design" })
+      .waitFor();
+    await page.reload();
+    panel = await open(page);
+    const retry = panel.getByRole("button", {
+      name: "Retry saving that design",
+    });
+    await retry.click();
     await panel.getByText(/Saved as a proposed plan/).waitFor();
     const selects = posts.filter(([path]) =>
       path.endsWith("/synthesis/select"),
     );
     assert.equal(selects.length, 2);
-    assert.equal(selects[0][1].idempotency_key, selects[1][1].idempotency_key);
+    assert.deepEqual(selects[0][1], selects[1][1]);
+    assert.equal(await retry.count(), 0);
     assert.equal(
       posts.some(([path]) => path.endsWith("/activate")),
       false,
       "selection must not approve",
     );
+
     // Approval is the existing, separate transaction.
     const approve = page.getByRole("button", { name: "Approve this plan" });
     await approve.waitFor();
@@ -187,7 +253,7 @@ try {
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
     console.log(
-      `PASS ${width}px search/compare two named designs, read-only probe with regenerated brace, lost-response selection retried with one key, separate explicit approval; replayed SYNTHETIC responses only`,
+      `PASS ${width}px search/compare two named designs, probe race ignored and regenerated brace shown, consented MetaMuse comparison with engine probe, lost selection recovered after reload with one key, separate explicit approval; replayed SYNTHETIC responses only`,
     );
     await page.context().close();
   }

@@ -163,3 +163,68 @@ def test_search_inputs_are_not_mutated():
     before = [s.model_dump() for s in data.stocks]
     search(data)
     assert [s.model_dump() for s in data.stocks] == before
+
+
+def test_unconfirmed_tools_or_access_need_input_not_infeasible():
+    data = search_input()
+    for field in ("tools_confirmed", "joint_access_confirmed"):
+        unconfirmed = search_input(
+            parameters=data.parameters.model_copy(update={field: False})
+        )
+        result = search(unconfirmed)
+        assert result.status == "needs_input", field
+        assert any(b.code == "needs_confirmation" for b in result.blockers)
+
+
+def test_compiler_input_rejections_are_needs_input_not_infeasible():
+    # Sheet thickness outside the reviewed profile range: the compiler asks for
+    # a supported profile on every node, which says nothing about stock size.
+    thick = search_input(stocks=(sheet("thick-sheet", 200, 550, thickness=5), tape()))
+    result = search(thick)
+    assert result.status == "needs_input" and not result.candidates
+    assert result.nodes_evaluated == result.nodes_total > 0
+    assert any(b.code == "unsupported_profile" for b in result.blockers)
+
+
+def test_out_of_family_angle_is_an_explicit_blocker_not_an_error():
+    from synthetic_inputs import constraints
+
+    data = search_input(constraints=constraints(angle=90))
+    result = search(data)
+    assert result.status == "needs_input"
+    assert any(
+        b.code == "unsupported" and "90 degree" in b.message for b in result.blockers
+    )
+    base = search(search_input()).candidates[0]
+    probed = probe(data, SearchBudget(), base.design, "part_width_mm", 70.0)
+    assert probed.status == "unsupported" and probed.blockers
+
+
+def test_candidates_are_generated_lazily_within_the_budget(monkeypatch):
+    import sys
+
+    module = sys.modules["forma_synthesizer.search"]
+
+    built = []
+
+    class Counting(module.StandDesign):
+        def __init__(self, **values):
+            built.append(1)
+            super().__init__(**values)
+
+    monkeypatch.setattr(module, "StandDesign", Counting)
+    result = search(search_input(), SearchBudget(max_nodes=1))
+    assert result.nodes_evaluated == 1 and result.nodes_total == 64
+    assert len(built) <= 2
+
+
+def test_final_evaluation_is_inside_the_time_budget():
+    calls = count()
+    # Generous for preparation and every node, then late for finalists.
+    timed = search(
+        search_input(),
+        SearchBudget(max_seconds=1),
+        clock=lambda: 0 if next(calls) < 65 else 100,
+    )
+    assert timed.nodes_evaluated == timed.nodes_total == 64
+    assert timed.status == "search_exhausted" and timed.exhausted == "time_budget"

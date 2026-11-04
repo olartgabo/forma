@@ -4,6 +4,11 @@ import { test } from "node:test";
 import {
   SynthesisRequestError,
   domainValues,
+  museReceipts,
+  selectionBody,
+  selectionReceipts,
+  validSelectRequest,
+  validateMuse,
   synthesisApi,
   validateProbe,
   validateSearch,
@@ -211,7 +216,8 @@ test("ambiguous failures keep a selection retryable; definite ones release it", 
   const original = globalThis.fetch;
   const api = synthesisApi("token", "project-a");
   const signal = new AbortController().signal;
-  const select = () => api.select(context, searchId, design, "key-1", signal);
+  const body = selectionBody(context, searchId, design, "key-0000001");
+  const select = () => api.select(body, signal);
   try {
     globalThis.fetch = async () => {
       throw new TypeError("network");
@@ -239,10 +245,154 @@ test("ambiguous failures keep a selection retryable; definite ones release it", 
     };
     await select();
     assert.equal(sent[0][0], "/api/projects/project-a/synthesis/select");
-    assert.equal(sent[0][1].idempotency_key, "key-1");
+    assert.equal(sent[0][1].idempotency_key, "key-0000001");
     assert.equal(sent[0][1].user_selected, true);
     assert.equal(sent[0][1].expected_last_event_id, null);
   } finally {
     globalThis.fetch = original;
   }
+});
+
+class MemoryStorage {
+  values = new Map();
+  getItem(key) {
+    return this.values.has(key) ? this.values.get(key) : null;
+  }
+  setItem(key, value) {
+    this.values.set(key, String(value));
+  }
+  removeItem(key) {
+    this.values.delete(key);
+  }
+}
+
+test("a selection receipt survives reload and is scoped to owner and project", async () => {
+  const storage = new MemoryStorage();
+  const body = selectionBody(context, searchId, design, "key-0000001");
+  assert.equal(validSelectRequest(body), true);
+  assert.equal(validSelectRequest({ ...body, extra: 1 }), false);
+  await selectionReceipts.retain("token-a", "project-a", body, storage);
+  assert.deepEqual(
+    await selectionReceipts.pending("token-a", "project-a", storage),
+    body,
+  );
+  assert.equal(
+    await selectionReceipts.pending("token-b", "project-a", storage),
+    null,
+  );
+  assert.equal(
+    await selectionReceipts.pending("token-a", "project-b", storage),
+    null,
+  );
+  const other = selectionBody(context, searchId, design, "key-0000002");
+  await assert.rejects(
+    selectionReceipts.retain("token-a", "project-a", other, storage),
+  );
+  // The MetaMuse receipt is independent of the selection receipt.
+  assert.equal(
+    await museReceipts.pending("token-a", "project-a", storage),
+    null,
+  );
+  await selectionReceipts.clear("token-a", "project-a", other, storage);
+  assert.notEqual(
+    await selectionReceipts.pending("token-a", "project-a", storage),
+    null,
+  );
+  await selectionReceipts.clear("token-a", "project-a", body, storage);
+  assert.equal(
+    await selectionReceipts.pending("token-a", "project-a", storage),
+    null,
+  );
+  const [key] = [...storage.values.keys()];
+  assert.equal(key, undefined);
+  await selectionReceipts.retain("token-a", "project-a", body, storage);
+  const [stored] = [...storage.values.keys()];
+  storage.setItem(stored, "{not json");
+  await assert.rejects(
+    selectionReceipts.pending("token-a", "project-a", storage),
+    /cannot be verified/,
+  );
+});
+
+test("a malformed success keeps the key; blocked is not called an active build", async () => {
+  const original = globalThis.fetch;
+  const api = synthesisApi("token", "project-a");
+  const signal = new AbortController().signal;
+  const body = selectionBody(context, searchId, design, "key-0000001");
+  try {
+    globalThis.fetch = respond(200, { status: "accepted" });
+    await assert.rejects(api.select(body, signal), (e) => e.retry === true);
+    globalThis.fetch = respond(409, { code: "blocked", message: "x" });
+    await assert.rejects(
+      api.select(body, signal),
+      (e) => !e.retry && !/active/i.test(e.message),
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("MetaMuse answers must match the request and keep engine checks valid", () => {
+  const request = {
+    expected_inventory_revision_id: "inventory-a",
+    expected_active_version_id: null,
+    expected_last_event_id: null,
+    search_id: searchId,
+    idempotency_key: "muse-0000001",
+    question: null,
+    provider_context_consented: true,
+  };
+  const answer = {
+    project_id: "project-a",
+    search_id: searchId,
+    tool_name: "compare_stand_designs",
+    prompt_version: "design-comparison-v1",
+    explanation: {
+      search_id: searchId,
+      summary: "SYNTHETIC",
+      candidate_notes: [],
+      unresolved: [],
+      questions: [],
+    },
+    engine_probe: null,
+    usage: { input_tokens: 1, output_tokens: 1 },
+    physical_status: "not_verified",
+    replayed: false,
+  };
+  assert.equal(validateMuse(answer, "project-a", request).search_id, searchId);
+  assert.throws(() =>
+    validateMuse(
+      { ...answer, search_id: "b".repeat(64) },
+      "project-a",
+      request,
+    ),
+  );
+  assert.throws(() =>
+    validateMuse(
+      { ...answer, physical_status: "passed" },
+      "project-a",
+      request,
+    ),
+  );
+  const failed = candidate({
+    checks: [
+      {
+        check_id: "compiler",
+        category: "compiler",
+        status: "modeled_failure",
+        detail: "SYNTHETIC",
+        blocker_codes: [],
+      },
+    ],
+  });
+  assert.throws(() =>
+    validateMuse(
+      {
+        ...answer,
+        engine_probe: { status: "evaluated", report: failed },
+      },
+      "project-a",
+      request,
+    ),
+  );
 });

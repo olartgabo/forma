@@ -746,3 +746,10 @@ of another assembled stand never transfer. Search and probe write nothing.
 Selecting a design saves an ordinary preview through the existing plan
 transaction; activation remains the separate approval. An active build changes
 only through the existing repair simulation.
+
+Review repair, same day: compiler requests for measurements, confirmations or
+reviewed profiles make a search `needs_input`, never `infeasible`. Candidates
+are generated lazily and the time budget covers final evaluation. MetaMuse may
+compare the proposed designs through one read-only tool, `compare_stand_designs`,
+choosing only authorized candidate IDs and one grid probe value; the probe is the
+engine's result, shown apart from the model's words.

@@ -274,3 +274,70 @@ def test_active_build_probe_uses_repair_simulation_and_mutates_nothing(setup):
     assert state(directory) == before
     current_project = client.get(f"/api/projects/{project['id']}", headers=AUTH).json()
     assert current_project["active_version_id"] == version.version_id
+
+
+def plan_count(directory):
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        return connection.execute("SELECT COUNT(*) FROM plans").fetchone()[0]
+
+
+def select_body(project, result, design, key):
+    return identity(
+        project,
+        search_id=result["search_id"],
+        design=design,
+        idempotency_key=key,
+        user_selected=True,
+    )
+
+
+def test_lost_selection_replays_by_key_even_after_inventory_changes(setup):
+    client, project, directory, _ = setup
+    result = search(client, project)
+    body = select_body(
+        project, result, result["candidates"][0]["design"], "select-replay-1"
+    )
+    first = post(client, project, "select", body).json()
+    assert first["status"] == "accepted"
+    changed = client.put(
+        f"/api/projects/{project['id']}/inventory",
+        headers=AUTH,
+        json={
+            "expected_revision_id": project["revision_id"],
+            "idempotency_key": "inventory-after-select",
+            "stocks": project["stocks"],
+            "user_confirmed": True,
+        },
+    )
+    assert changed.status_code == 200, changed.text
+    retry = post(client, project, "select", body)
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["replayed"] and retry.json()["version"] == first["version"]
+    assert plan_count(directory) == 1
+    other = body | {"design": result["candidates"][1]["design"]}
+    conflict = post(client, project, "select", other)
+    assert conflict.status_code == 409 and "idempotency_conflict" in conflict.text
+
+
+def test_preview_limit_is_named_not_reported_as_an_active_build(setup):
+    client, project, directory, _ = setup
+    result = search(client, project)
+    first, second = result["candidates"]
+    for index, chosen in enumerate((first, second)):
+        saved = post(
+            client,
+            project,
+            "select",
+            select_body(project, result, chosen["design"], f"select-limit-{index}"),
+        ).json()
+        assert saved["status"] == "accepted"
+    widths = next(d for d in result["domains"] if d["parameter"] == "part_width_mm")
+    third = first["design"] | {"part_width_mm": widths["lower_mm"] + widths["step_mm"]}
+    blocked = post(
+        client, project, "select", select_body(project, result, third, "select-limit-2")
+    ).json()
+    assert blocked["status"] == "blocked"
+    message = blocked["blockers"][0]["message"]
+    assert "Two proposed designs are already saved" in message
+    assert "active" not in message
+    assert plan_count(directory) == 2
