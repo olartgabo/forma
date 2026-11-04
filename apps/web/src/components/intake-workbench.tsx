@@ -23,6 +23,7 @@ import {
   type MuseProviderStatus,
 } from "../lib/muse-provider";
 import FormaWordmark from "./forma-wordmark";
+import GuidedIntake from "./guided-intake";
 import PhotoLocalizationPanel from "./photo-localization-panel";
 import MuseIntakePanel from "./muse-intake-panel";
 import MuseConstructionPanel from "./muse-construction-panel";
@@ -397,7 +398,8 @@ function ProjectWorkbench({
       JSON.stringify(requirements) !==
         JSON.stringify(project.requirements ?? emptyRequirements()));
   const intakeLocked = busy || pending !== null;
-  const locked = intakeLocked || planPending;
+  const [guidedBusy, setGuidedBusy] = useState(false);
+  const locked = intakeLocked || planPending || guidedBusy;
 
   useEffect(() => {
     const lifetime = new AbortController();
@@ -628,7 +630,26 @@ function ProjectWorkbench({
   }
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!project || locked || !checked) return;
+    if (!checked) return;
+    submitInventory(stocks);
+  }
+  // Guided intake saves through the same validated path; its Save button is
+  // the user's explicit confirmation.
+  // Guided cards edit the same rows as Details, so one draft and one dirty
+  // state cover both editors and every downstream control.
+  function changeGuided(update: (current: readonly Stock[]) => Stock[]) {
+    setRows((current) =>
+      update(current.map((row) => row.stock)).map((stock) => {
+        const row = current.find((item) => item.stock.id === stock.id);
+        return { key: row?.key ?? stock.id, stock, saved: row?.saved ?? false };
+      }),
+    );
+    setChecked(false);
+    setNotice("");
+  }
+
+  function submitInventory(stocks: Stock[]) {
+    if (!project || locked) return;
     const confirmedRequirements: BuildRequirements = {
       ...requirements,
       tools: (requirements.tools ?? [])
@@ -848,8 +869,9 @@ function ProjectWorkbench({
                 <h2 id="photos-title">Photograph your materials</h2>
               </div>
               <p>
-                Keep sheets, strips and connectors visible. Photos stay private
-                in this project unless you explicitly ask Muse about one below.
+                Lay sheets and strips flat beside the printed FORMA reference
+                card and take the photo from above. Photos stay private in this
+                project unless you explicitly send one to Muse or SAM.
               </p>
               <form
                 onSubmit={(event) => {
@@ -874,8 +896,8 @@ function ProjectWorkbench({
                     required
                   />
                   <p className="help">
-                    JPEG, PNG or WebP, up to 8 MiB. A photo cannot establish
-                    exact dimensions.
+                    JPEG, PNG or WebP, up to 8 MiB. A photo gives size
+                    estimates, not ruler measurements.
                   </p>
                   <button type="submit" className="secondary">
                     Upload photo
@@ -967,292 +989,324 @@ function ProjectWorkbench({
               className="materials-panel"
               aria-labelledby="materials-title"
             >
-              <div className="section-title">
-                <span aria-hidden="true">2</span>
-                <h2 id="materials-title">Record what you have</h2>
-              </div>
-              <p>
-                Use one record per physical item. Measure in millimeters; leave
-                a value blank when it is unknown.
-              </p>
-              <form onSubmit={save}>
-                <fieldset
-                  disabled={locked || Boolean(project.active_version_id)}
-                >
-                  {rows.length === 0 && (
-                    <div className="empty-note">
-                      <h3>Your materials start here</h3>
-                      <p>
-                        Add a sheet, strip, roll of tape or length of cord. No
-                        sizes are assumed.
-                      </p>
-                    </div>
-                  )}
-                  {rows.map((row, index) => {
-                    const stock = row.stock;
-                    const hasRegions = Boolean(stock.usable_regions?.length);
-                    const relevant = measurements.filter(({ field }) =>
-                      stock.kind === "tape" || stock.kind === "cord"
-                        ? field === "remaining_length_mm"
-                        : field !== "remaining_length_mm",
-                    );
-                    return (
-                      <article className="stock-record" key={row.key}>
-                        <div className="stock-heading">
-                          <h3>Material {index + 1}</h3>
-                          <button
-                            className="quiet danger"
-                            type="button"
-                            onClick={() => {
-                              setRows((current) =>
-                                current.filter((item) => item.key !== row.key),
+              <GuidedIntake
+                key={`${token}:${project.id}`}
+                token={token}
+                project={project}
+                photos={photos}
+                stocks={stocks}
+                dirty={dirty}
+                disabled={locked}
+                inventoryStale={stale}
+                museAvailability={museAvailability}
+                onStocks={changeGuided}
+                onBusy={setGuidedBusy}
+                onSave={() => submitInventory(stocks)}
+                onProject={install}
+              />
+              <details className="manual-intake">
+                <summary id="materials-title">
+                  Details: every material field and build requirement
+                </summary>
+                <p>
+                  Use one record per physical item. Measure in millimeters;
+                  leave a value blank when it is unknown.
+                </p>
+                <form onSubmit={save}>
+                  <fieldset
+                    disabled={locked || Boolean(project.active_version_id)}
+                  >
+                    {rows.length === 0 && (
+                      <div className="empty-note">
+                        <h3>Your materials start here</h3>
+                        <p>
+                          Add a sheet, strip, roll of tape or length of cord. No
+                          sizes are assumed.
+                        </p>
+                      </div>
+                    )}
+                    {rows.map((row, index) => {
+                      const stock = row.stock;
+                      const hasRegions = Boolean(stock.usable_regions?.length);
+                      const relevant = measurements.filter(({ field }) =>
+                        stock.kind === "tape" || stock.kind === "cord"
+                          ? field === "remaining_length_mm"
+                          : field !== "remaining_length_mm",
+                      );
+                      return (
+                        <article className="stock-record" key={row.key}>
+                          <div className="stock-heading">
+                            <h3>Material {index + 1}</h3>
+                            <button
+                              className="quiet danger"
+                              type="button"
+                              onClick={() => {
+                                setRows((current) =>
+                                  current.filter(
+                                    (item) => item.key !== row.key,
+                                  ),
+                                );
+                                setChecked(false);
+                                setNotice("");
+                              }}
+                            >
+                              Remove material {index + 1}
+                            </button>
+                          </div>
+                          <div className="stock-properties">
+                            <div>
+                              <label htmlFor={`${row.key}-id`}>Item ID</label>
+                              <input
+                                id={`${row.key}-id`}
+                                value={stock.id}
+                                readOnly={row.saved}
+                                required
+                                maxLength={96}
+                                pattern={"[A-Za-z][A-Za-z0-9_\\-]{0,95}"}
+                                onChange={(event) =>
+                                  changeStock(row.key, {
+                                    id: event.target.value,
+                                  })
+                                }
+                              />
+                              <p className="help">
+                                Label the physical item with this ID.
+                                {row.saved
+                                  ? " Saved IDs stay fixed."
+                                  : " Letters, numbers, hyphens or underscores."}
+                              </p>
+                            </div>
+                            <div>
+                              <label htmlFor={`${row.key}-kind`}>
+                                Item type
+                              </label>
+                              <select
+                                id={`${row.key}-kind`}
+                                value={stock.kind}
+                                disabled={hasRegions}
+                                onChange={(event) =>
+                                  changeStock(row.key, {
+                                    kind: event.target.value as Stock["kind"],
+                                  })
+                                }
+                              >
+                                <option value="sheet">Sheet</option>
+                                <option value="strip">Strip</option>
+                                <option value="tape">Tape</option>
+                                <option value="cord">Cord</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label htmlFor={`${row.key}-material`}>
+                                Material
+                              </label>
+                              <select
+                                id={`${row.key}-material`}
+                                value={stock.material}
+                                disabled={hasRegions}
+                                onChange={(event) =>
+                                  changeStock(row.key, {
+                                    material: event.target
+                                      .value as Stock["material"],
+                                  })
+                                }
+                              >
+                                <option value="cardboard">Cardboard</option>
+                                <option value="paperboard">Paperboard</option>
+                                <option value="other_supported">
+                                  Other material (requires review)
+                                </option>
+                              </select>
+                            </div>
+                            <div>
+                              <label htmlFor={`${row.key}-condition`}>
+                                Condition
+                              </label>
+                              <select
+                                id={`${row.key}-condition`}
+                                value={stock.condition}
+                                onChange={(event) =>
+                                  changeStock(row.key, {
+                                    condition: event.target
+                                      .value as Stock["condition"],
+                                  })
+                                }
+                              >
+                                <option value="uncertain">Not checked</option>
+                                <option value="usable">Usable</option>
+                                <option value="damaged">Damaged</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="measurements">
+                            {relevant.map(({ field, label }) => {
+                              const measurement = stock[field];
+                              return (
+                                <div className="measurement" key={field}>
+                                  <label htmlFor={`${row.key}-${field}`}>
+                                    {label} <span>(mm)</span>
+                                  </label>
+                                  <input
+                                    id={`${row.key}-${field}`}
+                                    type="number"
+                                    inputMode="decimal"
+                                    step="any"
+                                    min="0"
+                                    disabled={hasRegions}
+                                    value={measurement.value ?? ""}
+                                    onChange={(event) => {
+                                      const value =
+                                        event.target.value === ""
+                                          ? null
+                                          : Number(event.target.value);
+                                      changeStock(row.key, {
+                                        [field]:
+                                          value === null
+                                            ? unknown()
+                                            : {
+                                                value,
+                                                unit: "mm",
+                                                source: "user_ruler",
+                                                confirmed: false,
+                                              },
+                                      });
+                                    }}
+                                  />
+                                  <label
+                                    className="checkbox-label"
+                                    htmlFor={`${row.key}-${field}-confirmed`}
+                                  >
+                                    <input
+                                      id={`${row.key}-${field}-confirmed`}
+                                      type="checkbox"
+                                      aria-label={`${label} measured and checked`}
+                                      disabled={
+                                        measurement.value === null || hasRegions
+                                      }
+                                      checked={measurement.confirmed}
+                                      onChange={(event) =>
+                                        changeStock(row.key, {
+                                          [field]: {
+                                            ...measurement,
+                                            confirmed: event.target.checked,
+                                          },
+                                        })
+                                      }
+                                    />
+                                    Measured and checked
+                                  </label>
+                                  {measurement.value === null && (
+                                    <span className="unknown-note">
+                                      Unknown
+                                    </span>
+                                  )}
+                                  {measurement.value !== null &&
+                                    !measurement.confirmed && (
+                                      <span className="unknown-note">
+                                        Needs confirmation
+                                      </span>
+                                    )}
+                                </div>
                               );
-                              setChecked(false);
-                              setNotice("");
-                            }}
-                          >
-                            Remove material {index + 1}
-                          </button>
-                        </div>
-                        <div className="stock-properties">
-                          <div>
-                            <label htmlFor={`${row.key}-id`}>Item ID</label>
-                            <input
-                              id={`${row.key}-id`}
-                              value={stock.id}
-                              readOnly={row.saved}
-                              required
-                              maxLength={96}
-                              pattern={"[A-Za-z][A-Za-z0-9_\\-]{0,95}"}
-                              onChange={(event) =>
-                                changeStock(row.key, { id: event.target.value })
-                              }
-                            />
+                            })}
+                          </div>
+                          {hasRegions && (
                             <p className="help">
-                              Label the physical item with this ID.
-                              {row.saved
-                                ? " Saved IDs stay fixed."
-                                : " Letters, numbers, hyphens or underscores."}
+                              Existing usable-region geometry is retained.
+                              Dimension changes need a separate revision
+                              workflow.
                             </p>
-                          </div>
-                          <div>
-                            <label htmlFor={`${row.key}-kind`}>Item type</label>
-                            <select
-                              id={`${row.key}-kind`}
-                              value={stock.kind}
-                              disabled={hasRegions}
-                              onChange={(event) =>
-                                changeStock(row.key, {
-                                  kind: event.target.value as Stock["kind"],
-                                })
-                              }
-                            >
-                              <option value="sheet">Sheet</option>
-                              <option value="strip">Strip</option>
-                              <option value="tape">Tape</option>
-                              <option value="cord">Cord</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label htmlFor={`${row.key}-material`}>
-                              Material
-                            </label>
-                            <select
-                              id={`${row.key}-material`}
-                              value={stock.material}
-                              disabled={hasRegions}
-                              onChange={(event) =>
-                                changeStock(row.key, {
-                                  material: event.target
-                                    .value as Stock["material"],
-                                })
-                              }
-                            >
-                              <option value="cardboard">Cardboard</option>
-                              <option value="paperboard">Paperboard</option>
-                              <option value="other_supported">
-                                Other material (requires review)
-                              </option>
-                            </select>
-                          </div>
-                          <div>
-                            <label htmlFor={`${row.key}-condition`}>
-                              Condition
-                            </label>
-                            <select
-                              id={`${row.key}-condition`}
-                              value={stock.condition}
-                              onChange={(event) =>
-                                changeStock(row.key, {
-                                  condition: event.target
-                                    .value as Stock["condition"],
-                                })
-                              }
-                            >
-                              <option value="uncertain">Not checked</option>
-                              <option value="usable">Usable</option>
-                              <option value="damaged">Damaged</option>
-                            </select>
-                          </div>
-                        </div>
-                        <div className="measurements">
-                          {relevant.map(({ field, label }) => {
-                            const measurement = stock[field];
-                            return (
-                              <div className="measurement" key={field}>
-                                <label htmlFor={`${row.key}-${field}`}>
-                                  {label} <span>(mm)</span>
-                                </label>
-                                <input
-                                  id={`${row.key}-${field}`}
-                                  type="number"
-                                  inputMode="decimal"
-                                  step="any"
-                                  min="0"
-                                  disabled={hasRegions}
-                                  value={measurement.value ?? ""}
-                                  onChange={(event) => {
-                                    const value =
-                                      event.target.value === ""
-                                        ? null
-                                        : Number(event.target.value);
-                                    changeStock(row.key, {
-                                      [field]:
-                                        value === null
-                                          ? unknown()
-                                          : {
-                                              value,
-                                              unit: "mm",
-                                              source: "user_ruler",
-                                              confirmed: false,
-                                            },
-                                    });
-                                  }}
-                                />
+                          )}
+                          {photos.length > 0 && (
+                            <fieldset className="photo-links">
+                              <legend>Matching photos</legend>
+                              {photos.map((photo, photoIndex) => (
                                 <label
                                   className="checkbox-label"
-                                  htmlFor={`${row.key}-${field}-confirmed`}
+                                  key={photo.id}
                                 >
                                   <input
-                                    id={`${row.key}-${field}-confirmed`}
                                     type="checkbox"
-                                    aria-label={`${label} measured and checked`}
-                                    disabled={
-                                      measurement.value === null || hasRegions
+                                    checked={
+                                      stock.image_ids?.includes(photo.id) ??
+                                      false
                                     }
-                                    checked={measurement.confirmed}
                                     onChange={(event) =>
                                       changeStock(row.key, {
-                                        [field]: {
-                                          ...measurement,
-                                          confirmed: event.target.checked,
-                                        },
+                                        image_ids: event.target.checked
+                                          ? [
+                                              ...(stock.image_ids ?? []),
+                                              photo.id,
+                                            ]
+                                          : stock.image_ids?.filter(
+                                              (id) => id !== photo.id,
+                                            ),
                                       })
                                     }
                                   />
-                                  Measured and checked
+                                  Photo {photoIndex + 1}
                                 </label>
-                                {measurement.value === null && (
-                                  <span className="unknown-note">Unknown</span>
-                                )}
-                                {measurement.value !== null &&
-                                  !measurement.confirmed && (
-                                    <span className="unknown-note">
-                                      Needs confirmation
-                                    </span>
-                                  )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                        {hasRegions && (
-                          <p className="help">
-                            Existing usable-region geometry is retained.
-                            Dimension changes need a separate revision workflow.
-                          </p>
-                        )}
-                        {photos.length > 0 && (
-                          <fieldset className="photo-links">
-                            <legend>Matching photos</legend>
-                            {photos.map((photo, photoIndex) => (
-                              <label className="checkbox-label" key={photo.id}>
-                                <input
-                                  type="checkbox"
-                                  checked={
-                                    stock.image_ids?.includes(photo.id) ?? false
-                                  }
-                                  onChange={(event) =>
-                                    changeStock(row.key, {
-                                      image_ids: event.target.checked
-                                        ? [...(stock.image_ids ?? []), photo.id]
-                                        : stock.image_ids?.filter(
-                                            (id) => id !== photo.id,
-                                          ),
-                                    })
-                                  }
-                                />
-                                Photo {photoIndex + 1}
-                              </label>
-                            ))}
-                          </fieldset>
-                        )}
-                      </article>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    className="secondary add-material"
-                    disabled={rows.length >= 32}
-                    onClick={() => {
-                      setRows((current) => [...current, newRow()]);
-                      setChecked(false);
-                      setNotice("");
-                    }}
-                  >
-                    Add a material
-                  </button>
-                  {rows.length >= 32 && (
-                    <p className="help">
-                      This project supports up to 32 material records.
-                    </p>
-                  )}
-                  <BuildRequirementsFields
-                    value={requirements}
-                    onChange={(next) => {
-                      setRequirements(next);
-                      setChecked(false);
-                      setNotice("");
-                    }}
-                  />
-                  <div className="save-inventory">
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(event) => setChecked(event.target.checked)}
-                      />
-                      I checked these materials, tools and requirements. Blank
-                      measurements are still unknown.
-                    </label>
-                    <div className="save-row">
-                      <button
-                        type="submit"
-                        className="primary"
-                        disabled={!checked || rows.length === 0 || stale}
-                      >
-                        Save materials and requirements
-                      </button>
-                      <span className="help">
-                        {dirty
-                          ? "Unsaved changes"
-                          : project.inventory_confirmed
-                            ? "Inventory saved"
-                            : "Inventory not confirmed"}
-                      </span>
+                              ))}
+                            </fieldset>
+                          )}
+                        </article>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className="secondary add-material"
+                      disabled={rows.length >= 32}
+                      onClick={() => {
+                        setRows((current) => [...current, newRow()]);
+                        setChecked(false);
+                        setNotice("");
+                      }}
+                    >
+                      Add a material
+                    </button>
+                    {rows.length >= 32 && (
+                      <p className="help">
+                        This project supports up to 32 material records.
+                      </p>
+                    )}
+                    <BuildRequirementsFields
+                      value={requirements}
+                      onChange={(next) => {
+                        setRequirements(next);
+                        setChecked(false);
+                        setNotice("");
+                      }}
+                    />
+                    <div className="save-inventory">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) => setChecked(event.target.checked)}
+                        />
+                        I checked these materials, tools and requirements. Blank
+                        measurements are still unknown.
+                      </label>
+                      <div className="save-row">
+                        <button
+                          type="submit"
+                          className="primary"
+                          disabled={!checked || rows.length === 0 || stale}
+                        >
+                          Save materials and requirements
+                        </button>
+                        <span className="help">
+                          {dirty
+                            ? "Unsaved changes"
+                            : project.inventory_confirmed
+                              ? "Inventory saved"
+                              : "Inventory not confirmed"}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </fieldset>
-              </form>
+                  </fieldset>
+                </form>
+              </details>
               {project.active_version_id && (
                 <p className="error">
                   This project already has an active plan. Inventory edits

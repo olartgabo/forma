@@ -855,3 +855,34 @@ must match the current authorized context. Missing or stale overlays remain
 unavailable. Camera controls and case selection change display only; separated
 parts hide world-coordinate overlays. Stored reports remain readable after an
 engine or numerical dependency upgrade and are marked stale.
+
+## D061: Reference-scaled planar photo estimates stay estimates, November 4, 2026
+
+The user requested photo-first intake with calibrated dimension estimates (#177).
+This deliberately changes #7's rule that image-derived sizes stay unknown: a
+flat sheet or strip photographed beside a verified reference may now prefill an
+unconfirmed `photo_estimate` value. The domain validator forbids a confirmed
+`photo_estimate`, so every existing confirmed-measurement gate still requires a
+ruler value; "save estimated dimensions" never becomes "measured".
+
+Method: OpenCV 5.0.0.93 ArUco detection and a least-squares planar homography,
+with optional lens correction bound to an exact uncropped image size (library
+only for now; the API does not yet store calibrations, so app estimates are
+uncalibrated and say so). The
+printable FORMA card has four markers (16 points), so the fit has residuals and
+each marker can be predicted from the others; a single marker or a user-marked
+rectangle is accepted but reported as having no independent check. The printed
+check lines must be measured with a ruler, because printer scaling is not
+observable in the photo. Outlines are seeded from SAM or manual boxes, segmented
+against the surrounding surface and snapped to the colour edge; the measured
+edge scatter raises the outline uncertainty, and ragged or non-square outlines
+give enclosing dimensions only, never stock size. Uncertainty is a stated
+Monte Carlo sensitivity, not a calibrated confidence interval.
+
+Rejected: a single pixel-per-millimetre scale (wrong under perspective); one
+known line length (does not define plane geometry); bounding boxes or convex
+hulls as stock (overstate usable material); learned metric depth (Depth
+Anything 3, Depth Pro) or reconstruction (COLMAP) without a measured
+improvement on our materials, compatible licences and deployable resources.
+Accuracy on real photographs is unvalidated until the evaluation procedure in
+the [photo measurement handoff](handoffs/issue-177-photo-measurement.md) runs.

@@ -1060,6 +1060,149 @@
       "title": "BuildPlan",
       "type": "object"
     },
+    "CameraCalibration": {
+      "additionalProperties": false,
+      "description": "Lens model valid only for the stated device at this exact image size.\n\nStored photos carry no EXIF, so FORMA cannot verify the device; the binding\nis the user's statement plus an exact width/height match, uncropped.",
+      "properties": {
+        "calibration_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Calibration Id",
+          "type": "string"
+        },
+        "camera_matrix": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            }
+          ],
+          "title": "Camera Matrix",
+          "type": "array"
+        },
+        "crop": {
+          "const": "full_frame",
+          "default": "full_frame",
+          "title": "Crop",
+          "type": "string"
+        },
+        "device_label": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Device Label",
+          "type": "string"
+        },
+        "distortion": {
+          "maxItems": 5,
+          "minItems": 5,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Distortion",
+          "type": "array"
+        },
+        "image_height_px": {
+          "exclusiveMinimum": 0,
+          "maximum": 30000,
+          "title": "Image Height Px",
+          "type": "integer"
+        },
+        "image_width_px": {
+          "exclusiveMinimum": 0,
+          "maximum": 30000,
+          "title": "Image Width Px",
+          "type": "integer"
+        },
+        "method_version": {
+          "const": "card-calibration-v1",
+          "default": "card-calibration-v1",
+          "title": "Method Version",
+          "type": "string"
+        },
+        "rms_reprojection_px": {
+          "minimum": 0,
+          "title": "Rms Reprojection Px",
+          "type": "number"
+        },
+        "view_count": {
+          "maximum": 64,
+          "minimum": 3,
+          "title": "View Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "calibration_id",
+        "device_label",
+        "image_width_px",
+        "image_height_px",
+        "camera_matrix",
+        "distortion",
+        "rms_reprojection_px",
+        "view_count"
+      ],
+      "title": "CameraCalibration",
+      "type": "object"
+    },
     "CandidateCheck": {
       "additionalProperties": false,
       "description": "One row of the declared check matrix. Unknown is never a pass.",
@@ -1575,6 +1718,34 @@
         "assumptions"
       ],
       "title": "CanonicalGeometryPreview",
+      "type": "object"
+    },
+    "CaptureDeclaration": {
+      "additionalProperties": false,
+      "description": "What the user states about the scene; a photo cannot establish these.",
+      "properties": {
+        "same_surface_as_reference": {
+          "title": "Same Surface As Reference",
+          "type": "boolean"
+        },
+        "shape": {
+          "enum": [
+            "flat",
+            "curved",
+            "folded",
+            "stacked",
+            "raised",
+            "roll"
+          ],
+          "title": "Shape",
+          "type": "string"
+        }
+      },
+      "required": [
+        "shape",
+        "same_surface_as_reference"
+      ],
+      "title": "CaptureDeclaration",
       "type": "object"
     },
     "CenterOfMass": {
@@ -3212,6 +3383,76 @@
       "title": "DiagnosisProposal",
       "type": "object"
     },
+    "Diagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "reference_not_found",
+            "reference_unverified",
+            "reference_partial",
+            "reference_too_small",
+            "reference_blurry",
+            "degenerate_reference",
+            "steep_angle",
+            "low_resolution_at_material",
+            "far_from_reference",
+            "fit_residual_high",
+            "holdout_error_high",
+            "no_independent_check",
+            "lens_uncorrected",
+            "calibration_mismatch",
+            "calibration_applied",
+            "outline_clipped",
+            "outline_box_too_tight",
+            "outline_not_found",
+            "outline_crosses_horizon",
+            "irregular_outline",
+            "holes_present",
+            "opposite_edges_differ",
+            "unsupported_shape",
+            "not_on_reference_plane",
+            "thickness_not_measurable"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "blocking"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message"
+      ],
+      "title": "Diagnostic",
+      "type": "object"
+    },
     "DimensionDomain": {
       "additionalProperties": false,
       "description": "A finite step-aligned grid between explicit inclusive bounds.\n\nValues are ``lower_mm + k * step_mm`` for ``k`` in ``0..count-1``. When the\nbounds are empty the count is zero and ``empty_reason`` names the limiting\ninventory or requirement.",
@@ -3293,6 +3534,86 @@
         "upper_basis"
       ],
       "title": "DimensionDomain",
+      "type": "object"
+    },
+    "DimensionEstimate": {
+      "additionalProperties": false,
+      "properties": {
+        "definition": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Definition",
+          "type": "string"
+        },
+        "display_step": {
+          "exclusiveMinimum": 0,
+          "title": "Display Step",
+          "type": "number"
+        },
+        "display_value": {
+          "title": "Display Value",
+          "type": "number"
+        },
+        "name": {
+          "enum": [
+            "edge_length_mm",
+            "edge_width_mm",
+            "enclosing_length_mm",
+            "enclosing_width_mm",
+            "outline_area_mm2",
+            "hole_area_mm2"
+          ],
+          "title": "Name",
+          "type": "string"
+        },
+        "sensitivity_high": {
+          "title": "Sensitivity High",
+          "type": "number"
+        },
+        "sensitivity_low": {
+          "title": "Sensitivity Low",
+          "type": "number"
+        },
+        "stock_field": {
+          "anyOf": [
+            {
+              "enum": [
+                "width_mm",
+                "height_mm"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stock Field"
+        },
+        "unit": {
+          "enum": [
+            "mm",
+            "mm2"
+          ],
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "definition",
+        "unit",
+        "value",
+        "display_value",
+        "display_step",
+        "sensitivity_low",
+        "sensitivity_high"
+      ],
+      "title": "DimensionEstimate",
       "type": "object"
     },
     "Effects": {
@@ -3399,6 +3720,92 @@
         "message"
       ],
       "title": "ErrorEnvelope",
+      "type": "object"
+    },
+    "EstimateInput": {
+      "additionalProperties": false,
+      "description": "Everything an estimate depends on; its digest identifies the estimate.",
+      "properties": {
+        "calibration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CameraCalibration"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "capture": {
+          "$ref": "#/$defs/CaptureDeclaration"
+        },
+        "image_height_px": {
+          "exclusiveMinimum": 0,
+          "maximum": 30000,
+          "title": "Image Height Px",
+          "type": "integer"
+        },
+        "image_width_px": {
+          "exclusiveMinimum": 0,
+          "maximum": 30000,
+          "title": "Image Width Px",
+          "type": "integer"
+        },
+        "media_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Media Id",
+          "type": "string"
+        },
+        "media_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Media Sha256",
+          "type": "string"
+        },
+        "outline": {
+          "$ref": "#/$defs/OutlineInput"
+        },
+        "reference": {
+          "$ref": "#/$defs/ReferenceInput"
+        },
+        "stock_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Stock Id",
+          "type": "string"
+        },
+        "stock_kind": {
+          "enum": [
+            "sheet",
+            "strip",
+            "tape",
+            "cord"
+          ],
+          "title": "Stock Kind",
+          "type": "string"
+        },
+        "stock_material": {
+          "enum": [
+            "cardboard",
+            "paperboard",
+            "other_supported"
+          ],
+          "title": "Stock Material",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stock_id",
+        "stock_kind",
+        "stock_material",
+        "media_id",
+        "media_sha256",
+        "image_width_px",
+        "image_height_px",
+        "reference",
+        "outline",
+        "capture"
+      ],
+      "title": "EstimateInput",
       "type": "object"
     },
     "Evidence": {
@@ -5462,6 +5869,7 @@
             "user_ruler",
             "known_reference",
             "calculated",
+            "photo_estimate",
             "unknown"
           ],
           "title": "Source",
@@ -6144,6 +6552,99 @@
       "title": "OrderStep",
       "type": "object"
     },
+    "OutlineInput": {
+      "additionalProperties": false,
+      "description": "Where the material is. Boxes are refined; a polygon is used as drawn.",
+      "properties": {
+        "holes_px": {
+          "default": [],
+          "items": {
+            "items": {
+              "$ref": "#/$defs/PixelPoint"
+            },
+            "type": "array"
+          },
+          "maxItems": 8,
+          "title": "Holes Px",
+          "type": "array"
+        },
+        "polygon_px": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PixelPoint"
+          },
+          "maxItems": 512,
+          "title": "Polygon Px",
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "sam_box",
+            "manual_box",
+            "user_polygon"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "x1": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "X1"
+        },
+        "x2": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "X2"
+        },
+        "y1": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Y1"
+        },
+        "y2": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Y2"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "title": "OutlineInput",
+      "type": "object"
+    },
     "Part": {
       "additionalProperties": false,
       "properties": {
@@ -6210,6 +6711,154 @@
         "centroid"
       ],
       "title": "PartCentroid",
+      "type": "object"
+    },
+    "PhotoEstimate": {
+      "additionalProperties": false,
+      "properties": {
+        "assumptions": {
+          "default": [],
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 12,
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "calibration_status": {
+          "enum": [
+            "uncalibrated",
+            "applied",
+            "mismatch"
+          ],
+          "title": "Calibration Status",
+          "type": "string"
+        },
+        "diagnostics": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          },
+          "maxItems": 32,
+          "title": "Diagnostics",
+          "type": "array"
+        },
+        "dimensions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DimensionEstimate"
+          },
+          "maxItems": 6,
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "holes_px": {
+          "default": [],
+          "items": {
+            "items": {
+              "$ref": "#/$defs/PixelPoint"
+            },
+            "type": "array"
+          },
+          "maxItems": 8,
+          "title": "Holes Px",
+          "type": "array"
+        },
+        "input": {
+          "$ref": "#/$defs/EstimateInput"
+        },
+        "input_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Input Digest",
+          "type": "string"
+        },
+        "measurement_status": {
+          "const": "photo_estimate_unconfirmed",
+          "default": "photo_estimate_unconfirmed",
+          "title": "Measurement Status",
+          "type": "string"
+        },
+        "method_version": {
+          "const": "planar-homography-v1",
+          "default": "planar-homography-v1",
+          "title": "Method Version",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "estimate",
+            "enclosing_only",
+            "needs_better_photo",
+            "needs_manual_measurement",
+            "unsupported_shape",
+            "reference_not_found",
+            "reference_unverified"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "outline_px": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PixelPoint"
+          },
+          "maxItems": 2048,
+          "title": "Outline Px",
+          "type": "array"
+        },
+        "reference_corners_mm": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PixelPoint"
+          },
+          "maxItems": 16,
+          "title": "Reference Corners Mm",
+          "type": "array"
+        },
+        "reference_corners_px": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PixelPoint"
+          },
+          "maxItems": 16,
+          "title": "Reference Corners Px",
+          "type": "array"
+        },
+        "request": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request"
+        },
+        "uncertainty": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Uncertainty"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "input_digest",
+        "input",
+        "outcome",
+        "calibration_status"
+      ],
+      "title": "PhotoEstimate",
       "type": "object"
     },
     "PhysicalEvent": {
@@ -6448,6 +7097,29 @@
         "geometry_class"
       ],
       "title": "PieceReference",
+      "type": "object"
+    },
+    "PixelPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "maximum": 30000,
+          "minimum": -0.5,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 30000,
+          "minimum": -0.5,
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "title": "PixelPoint",
       "type": "object"
     },
     "Point3": {
@@ -6858,6 +7530,128 @@
         "height"
       ],
       "title": "Rect",
+      "type": "object"
+    },
+    "ReferenceInput": {
+      "additionalProperties": false,
+      "description": "What the reference is and how its physical size is known.",
+      "properties": {
+        "aruco_id": {
+          "anyOf": [
+            {
+              "maximum": 49,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aruco Id"
+        },
+        "corners_px": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PixelPoint"
+          },
+          "maxItems": 16,
+          "title": "Corners Px",
+          "type": "array"
+        },
+        "height_mm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 2000,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height Mm"
+        },
+        "kind": {
+          "enum": [
+            "forma_card",
+            "aruco_marker",
+            "rectangle"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "printed_check_x_mm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 400,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Printed Check X Mm"
+        },
+        "printed_check_y_mm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 400,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Printed Check Y Mm"
+        },
+        "size_source": {
+          "anyOf": [
+            {
+              "enum": [
+                "ruler",
+                "published_standard"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size Source"
+        },
+        "size_tolerance_mm": {
+          "maximum": 20,
+          "minimum": 0,
+          "title": "Size Tolerance Mm",
+          "type": "number"
+        },
+        "width_mm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 2000,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width Mm"
+        }
+      },
+      "required": [
+        "kind",
+        "size_tolerance_mm"
+      ],
+      "title": "ReferenceInput",
       "type": "object"
     },
     "Region": {
@@ -8318,6 +9112,20 @@
           "title": "Material",
           "type": "string"
         },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
         "remaining_length_mm": {
           "$ref": "#/$defs/Measurement"
         },
@@ -8721,6 +9529,97 @@
         "declared_name"
       ],
       "title": "ToolCheck",
+      "type": "object"
+    },
+    "Uncertainty": {
+      "additionalProperties": false,
+      "properties": {
+        "fit_rms_mm": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fit Rms Mm"
+        },
+        "holdout_checks": {
+          "minimum": 0,
+          "title": "Holdout Checks",
+          "type": "integer"
+        },
+        "holdout_max_error_mm": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Holdout Max Error Mm"
+        },
+        "method": {
+          "const": "monte_carlo_sensitivity",
+          "default": "monte_carlo_sensitivity",
+          "title": "Method",
+          "type": "string"
+        },
+        "outline_edge_residual_px": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outline Edge Residual Px"
+        },
+        "outline_sigma_px": {
+          "minimum": 0,
+          "title": "Outline Sigma Px",
+          "type": "number"
+        },
+        "reference_corner_sigma_px": {
+          "minimum": 0,
+          "title": "Reference Corner Sigma Px",
+          "type": "number"
+        },
+        "reference_size_tolerance_mm": {
+          "minimum": 0,
+          "title": "Reference Size Tolerance Mm",
+          "type": "number"
+        },
+        "samples": {
+          "minimum": 0,
+          "title": "Samples",
+          "type": "integer"
+        },
+        "statement": {
+          "default": "Spread of results when the stated inputs vary by the stated amounts. It is a sensitivity analysis, not a calibrated confidence interval.",
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "samples",
+        "reference_corner_sigma_px",
+        "outline_sigma_px",
+        "reference_size_tolerance_mm",
+        "holdout_checks"
+      ],
+      "title": "Uncertainty",
       "type": "object"
     },
     "VersionHistory": {

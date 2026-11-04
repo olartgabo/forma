@@ -58,6 +58,11 @@ from forma_api.photo_localization import (
     PhotoLocalizationRequest,
     PhotoLocalizationResult,
 )
+from forma_api.photo_measurement_runtime import (
+    PhotoEstimateList,
+    PhotoEstimateRecord,
+    PhotoEstimateRequest,
+)
 from forma_api.plans import (
     ActivationResult,
     CompilePreview,
@@ -233,6 +238,9 @@ API_RECORDS = (
     IntakeResult,
     PhotoLocalizationRequest,
     PhotoLocalizationResult,
+    PhotoEstimateList,
+    PhotoEstimateRecord,
+    PhotoEstimateRequest,
     InventoryUpdate,
     ManualBillItem,
     ManualDocument,

@@ -1042,6 +1042,18 @@ def test_future_resize_with_identical_unused_unknown_sheet():
     assert data == original
 
 
+def test_renaming_unused_unknown_stock_is_not_a_physical_change():
+    data = add_unused_unknown(input_data(), unused_unknown())
+    data["remaining_stock"][-1]["name"] = "Spare sheet"
+    result = run(data)
+    assert result.status == "feasible", result.blockers
+    # A real change to the same unused stock still needs confirmation.
+    data = add_unused_unknown(input_data(), unused_unknown())
+    data["remaining_stock"][-1].update(name="Spare sheet", condition="usable")
+    result = run(data)
+    assert any(b.code == "needs_confirmation" for b in result.blockers)
+
+
 def test_future_resize_with_identical_unused_unknown_connector():
     data = add_unused_unknown(input_data(), unused_unknown(kind="tape"))
     original = deepcopy(data)
