@@ -30,13 +30,16 @@ export default function SourcingPanel({
   projects,
   disabled,
   onOpen,
+  onBusyChange,
 }: {
   token: string;
   projects: readonly SavedProjectSummary[];
   disabled: boolean;
   onOpen: (id: string) => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [projectId, setProjectId] = useState("");
+  const [researchLocked, setResearchLocked] = useState(false);
   return (
     <section className={styles.panel} data-blueprint-surface="shopping-panel">
       <h2>Find materials nearby</h2>
@@ -48,7 +51,7 @@ export default function SourcingPanel({
         Shopping project
         <select
           value={projectId}
-          disabled={disabled}
+          disabled={disabled || researchLocked}
           onChange={(e) => setProjectId(e.target.value)}
         >
           <option value="">Choose a project</option>
@@ -66,6 +69,8 @@ export default function SourcingPanel({
           projectId={projectId}
           disabled={disabled}
           onOpen={onOpen}
+          onBusyChange={onBusyChange}
+          onProjectLockChange={setResearchLocked}
         />
       )}
       {!projects.length && (
@@ -80,11 +85,15 @@ function ProjectSourcing({
   projectId,
   disabled,
   onOpen,
+  onBusyChange,
+  onProjectLockChange,
 }: {
   token: string;
   projectId: string;
   disabled: boolean;
   onOpen: (id: string) => void;
+  onBusyChange?: (busy: boolean) => void;
+  onProjectLockChange?: (locked: boolean) => void;
 }) {
   const [needs, setNeeds] = useState<SourcingNeeds | null>(null);
   const [error, setError] = useState("");
@@ -117,6 +126,14 @@ function ProjectSourcing({
   const [run, setRun] = useState<ResearchRun | null>(null);
   const [uncertain, setUncertain] = useState(false);
   const [pending, setPending] = useState<ResearchRequest | null>(null);
+  useEffect(() => {
+    onBusyChange?.(busy || locationBusy);
+  }, [onBusyChange, busy, locationBusy]);
+  useEffect(() => {
+    onProjectLockChange?.(busy || uncertain || locationBusy);
+  }, [onProjectLockChange, busy, uncertain, locationBusy]);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
+  useEffect(() => () => onProjectLockChange?.(false), [onProjectLockChange]);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => {
     const current = new AbortController();
@@ -914,7 +931,10 @@ function ProjectSourcing({
               Open Meta AI ↗
             </a>
           </section>
-          <button disabled={disabled || busy} onClick={() => onOpen(projectId)}>
+          <button
+            disabled={disabled || busy || uncertain}
+            onClick={() => onOpen(projectId)}
+          >
             Review actual materials in project ↗
           </button>
         </>

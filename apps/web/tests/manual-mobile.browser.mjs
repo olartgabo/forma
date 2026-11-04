@@ -99,6 +99,18 @@ async function scenario(width, failed, extra = null) {
     [base, project],
     [`${base}/designs/readiness`, readiness],
     [`${base}/media`, { media: [] }],
+    // Guided intake reads these on load; the fixture has no saved photos.
+    [`${base}/photo-estimates`, { records: [] }],
+    [
+      `${base}/recognized-items`,
+      {
+        project_id: project.id,
+        revision: null,
+        catalog_version: "material-catalog-v1",
+        items: [],
+        problems: [],
+      },
+    ],
     [`${base}/plans`, { plans: [version] }],
     [`${base}/versions/${version.version_id}`, version],
     [`${base}/versions/${version.version_id}/progress`, progress(failed)],
@@ -365,8 +377,41 @@ async function scenario(width, failed, extra = null) {
           name: "Full-size diagram; scroll to inspect dimensions",
         });
         assert(await region.isVisible());
+        const cue = manual.locator(".diagram-pan-cue");
+        assert(await cue.isVisible());
+        assert.equal(
+          await region.getAttribute("aria-describedby"),
+          await cue.getAttribute("id"),
+        );
         await region.focus();
         assert(await region.evaluate((el) => document.activeElement === el));
+        // Every part of the enlarged drawing is reachable by keyboard panning.
+        const pan = () =>
+          region.evaluate((el) => ({
+            left: el.scrollLeft,
+            client: el.clientWidth,
+            scroll: el.scrollWidth,
+          }));
+        const start = await pan();
+        assert(start.scroll > start.client, JSON.stringify(start));
+        await region.press("ArrowRight");
+        await page.waitForFunction(
+          (el) => el.scrollLeft > 0,
+          await region.elementHandle(),
+        );
+        await region.evaluate((el) => {
+          el.scrollLeft = el.scrollWidth;
+        });
+        const end = await pan();
+        assert(
+          end.left + end.client >= end.scroll - 1,
+          JSON.stringify({ start, end }),
+        );
+        const doc = await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth + 1,
+        );
+        assert(doc, "the enlarged drawing scrolls inside its frame only");
+        observations.push({ step: i + 1, enlarged: { start, end } });
         await manual
           .getByRole("button", { name: "Fit diagram to screen" })
           .click();

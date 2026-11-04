@@ -390,6 +390,20 @@ export function estimateSummary(estimate: PhotoEstimate): string | null {
   return null;
 }
 
+/** Why a refused estimate was refused, for display beside its next step. */
+export function refusalReasons(estimate: PhotoEstimate): string[] {
+  if (estimate.outcome === "estimate" || estimate.outcome === "enclosing_only")
+    return [];
+  return (estimate.diagnostics ?? [])
+    .filter((d) => d.severity === "blocking")
+    .map((d) => d.message);
+}
+
+/** The user can fix this refusal by correcting the reference values. */
+export function needsReferenceValues(estimate: PhotoEstimate): boolean {
+  return estimate.outcome === "reference_unverified";
+}
+
 export function sizeFieldsFor(kind: Kind): SizeField[] {
   return kind === "tape" || kind === "cord" ? [] : ["width_mm", "height_mm"];
 }

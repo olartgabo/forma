@@ -3,9 +3,12 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
+from fastapi.responses import JSONResponse
+from forma_stability.geometry import UnsupportedGeometry, project_nominal_geometry
 
 from forma_api import stability_reports as reports
 from forma_api import stability_runtime as runtime
+from forma_api.muse_construction import MuseConstructionResult
 from forma_api.plans import PlanService
 from forma_api.progress import snapshot
 from forma_api.projects import ProjectError, ProjectStore
@@ -21,12 +24,91 @@ from forma_api.stability_stages import (
     StageAnalysisResponse,
     analyze_stage,
 )
+from forma_domain.assembly_geometry_contracts import CanonicalGeometryPreview
 from forma_domain.models import ID, Evidence, EvidenceInvalidation, PhysicalEvent
 
 
 def stability_router(store: ProjectStore, authenticate, resolver=None) -> APIRouter:
     Owner = Annotated[str, Depends(authenticate)]
     router = APIRouter(tags=["stability"])
+
+    @router.get(
+        "/{project_id}/construction/preview", response_model=MuseConstructionResult
+    )
+    def saved_construction(
+        project_id: ID,
+        expected_inventory_revision_id: ID,
+        owner: Owner,
+        response: Response,
+    ):
+        """Read a completed proposal receipt; never dispatch or rerun the engine."""
+        response.headers["Cache-Control"] = "no-store"
+        with store.transaction() as connection:
+            project = store.read(connection, owner, project_id)
+            if (
+                project.revision_id != expected_inventory_revision_id
+                or project.active_version_id is not None
+            ):
+                raise ProjectError(
+                    409, "stale_version", "Saved project changed; reload it"
+                )
+            row = connection.execute(
+                "SELECT response FROM requests WHERE owner=? AND scope=? ORDER BY rowid DESC LIMIT 1",
+                (owner, project_id + ":construction-proposal"),
+            ).fetchone()
+            if row is not None:
+                # Pending/uncertain markers are not completed geometry. Invalid
+                # or foreign receipts must not leak a substitute design.
+                try:
+                    result = MuseConstructionResult.model_validate_json(row[0])
+                except ValueError:
+                    return JSONResponse(
+                        {
+                            "code": "generation_outcome_unknown",
+                            "message": "No completed construction proposal; reconcile the latest request",
+                        },
+                        status_code=409,
+                        headers={"Cache-Control": "no-store"},
+                    )
+                if (
+                    result.project_id == project_id
+                    and result.inventory_revision_id == project.revision_id
+                ):
+                    return result
+                raise ProjectError(
+                    409, "stale_version", "Saved proposal changed; reload it"
+                )
+            raise ProjectError(404, "not_found", "No saved construction proposal")
+
+    @router.get(
+        "/{project_id}/versions/{version_id}/geometry",
+        response_model=CanonicalGeometryPreview,
+    )
+    def saved_geometry(
+        project_id: ID,
+        version_id: ID,
+        expected_inventory_revision_id: ID,
+        owner: Owner,
+        response: Response,
+    ):
+        """Read the immutable design's planned assembly, never observed progress."""
+        response.headers["Cache-Control"] = "no-store"
+        with store.transaction() as connection:
+            project = store.read(connection, owner, project_id)
+            version = PlanService(store).read(connection, project_id, version_id)
+            if (
+                project.active_version_id != version_id
+                or project.revision_id != expected_inventory_revision_id
+            ):
+                raise ProjectError(
+                    409, "stale_version", "Saved project changed; reload it"
+                )
+            try:
+                # Deliberately omit events: this is the saved design, not an
+                # assertion about the current physical construction state.
+                return project_nominal_geometry(version.plan)
+            except UnsupportedGeometry as error:
+                raise ProjectError(422, "validation_error", str(error)) from None
 
     @router.get(
         "/{project_id}/stability/context", response_model=runtime.StabilityContext

@@ -1,6 +1,6 @@
 # Issue #177 follow-up: live intake repairs
 
-Branch `issue/live-intake-repairs` (PR #188). Decision D070, which is one
+Branch `issue/live-intake-repairs` (PR #188). Decision D071, which is one
 implementation with D066 and D067 (#186/#187). Follows the material
 catalog (D062, `issue-177-material-catalog.md`) and the photo estimator
 (`issue-177-photo-measurement.md`).
@@ -146,8 +146,10 @@ a label-only answer validated as success.
   11,739 + 3,863 at default effort on cf315d3. 2 SAM images with zero token
   counts, which does not prove a zero charge. No dollar charge was reported;
   no unknown outcome or retry.
-- **Observed gap:** without the reference lines, "Suggest an outline" shows
-  its error in the section status area, out of view of the button.
+- **Observed gap, since fixed:** without the reference lines, "Suggest an
+  outline" showed its error in the section status area, out of view of the
+  button. After merging main's calibration guidance (#192), it opens and
+  scrolls to the reference fields instead, as measuring does.
 
 ### Earlier run (head cf315d3, before the merge)
 
@@ -166,7 +168,6 @@ fallback estimate, and 11,739 + 3,863 Spark tokens (3,515 reasoning).
   reference locally; if it cannot, it selects nothing. The estimator's own
   check still blocks a reference outline.
 - Why SAM returns no box for this scene is unknown.
-- The out-of-view error for missing reference lines (above) is not fixed.
 - SAM-to-estimator success has not been observed on any image.
 - The overlapping `fix/intake-failure-diagnostics` work landed on main as
-  #186/#187 and is merged here as one implementation (D070).
+  #186/#187 and is merged here as one implementation (D071).

@@ -1,4 +1,4 @@
-"""Material holds during an active build (#177 follow-up, D070).
+"""Material holds during an active build (#177 follow-up, D071).
 
 A held material (an item identified as something its saved stock is not)
 pauses current repair and fabrication actions for that build. Recorded

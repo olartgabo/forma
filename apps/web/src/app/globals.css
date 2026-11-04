@@ -688,6 +688,12 @@ figcaption span {
   width: max(100%, 70rem);
   max-width: none;
 }
+.diagram-pan-cue {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  color: white;
+  font-size: 0.9rem;
+}
 .project-rail {
   position: sticky;
   top: 1rem;
@@ -1321,4 +1327,10 @@ button.link {
     grid-template-columns: 1fr;
     gap: 2px;
   }
+}
+
+.workbench-dashboard {
+  width: 100%;
+  max-width: none;
+  padding: 0;
 }

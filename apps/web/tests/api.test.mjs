@@ -1432,6 +1432,27 @@ test("photo requests use private blob downloads and scoped retry headers", async
   assert.equal(calls[3].options.headers.get("Idempotency-Key"), "delete-key");
 });
 
+test("undecodable photo upload names the file problem, not measurements", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      { code: "validation_error", message: "PRIVATE_TEXT" },
+      { status: 422 },
+    ),
+  );
+  const file = new File(["not an image"], "renamed.png", { type: "image/png" });
+  await assert.rejects(
+    uploadPhoto(token, "project-a", file, "upload-key"),
+    (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 422);
+      assert.match(error.message, /could not be opened as a still photo/);
+      assert.match(error.message, /JPEG, PNG or WebP/);
+      assert.doesNotMatch(error.message, /measurements|PRIVATE_TEXT/);
+      return true;
+    },
+  );
+});
+
 test("error messages expose known conflict codes without echoing server content", async (t) => {
   t.mock.method(globalThis, "fetch", async () =>
     Response.json(
