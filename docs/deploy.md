@@ -69,6 +69,10 @@ else. A failed check, build or health request fails the job. Compose builds
 every image before it replaces any container, so a failed build leaves the
 previous version serving.
 
+`Offline checks` also builds `deploy/api.Dockerfile`, starts the image and
+requests its `/api/health`, so an image that builds but cannot start fails the
+pull request instead of the host.
+
 The workflow skips a commit the host has already moved past, so a late run for
 an older commit does not roll the host back. To redeploy a commit, rerun its
 `Deploy` job in GitHub Actions.

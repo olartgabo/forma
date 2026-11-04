@@ -28,6 +28,23 @@ jobs:
       - run: uv sync --locked
       - run: npm run check
 
+  api-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f deploy/api.Dockerfile -t forma-api .
+      - name: Start the image and request /api/health
+        # The image builds even when its COPY lines miss a package; only
+        # starting the app shows the import failure that broke the host (#173).
+        run: |
+          token=$(openssl rand -hex 32)
+          docker run -d --name api -p 8000:8000 -e FORMA_API_TOKENS="{\"ci\":\"$token\"}" forma-api
+          if ! curl -fsS --retry 10 --retry-delay 2 --retry-all-errors http://127.0.0.1:8000/api/health; then
+            docker logs api
+            exit 1
+          fi
+
   attribution:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
