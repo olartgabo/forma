@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, requestIntakeObservation } from "../lib/api";
 import { museDiagnosticsFromResult } from "../lib/provider-usage";
 import {
+  intakeFailureReason,
+  intakeFailureSummary,
+  type IntakeFailureDiagnostics,
+} from "../lib/intake-failure";
+import {
   formatEnglishGroupedNumber,
   museFailureText,
   museNoticeText,
@@ -59,6 +64,8 @@ export default function MuseIntakePanel({
   const [consented, setConsented] = useState(false);
   const [result, setResult] = useState<IntakeResult | null>(null);
   const [failure, setFailure] = useState<MuseStoredFailure | null>(null);
+  const [failureDiagnostics, setFailureDiagnostics] =
+    useState<IntakeFailureDiagnostics | null>(null);
   const [cancelledNotice, setCancelledNotice] = useState<MuseNoticeId | null>(
     null,
   );
@@ -82,6 +89,7 @@ export default function MuseIntakePanel({
     setConsented(false);
     setResult(null);
     setFailure(null);
+    setFailureDiagnostics(null);
     setCancelledNotice(null);
     setBusy(false);
   }, [
@@ -113,6 +121,7 @@ export default function MuseIntakePanel({
     controller.current = null;
     setBusy(false);
     setFailure(null);
+    setFailureDiagnostics(null);
     setCancelledNotice("intake-cancelled");
   }
 
@@ -138,6 +147,7 @@ export default function MuseIntakePanel({
     setConsented(false);
     setBusy(true);
     setFailure(null);
+    setFailureDiagnostics(null);
     setCancelledNotice(null);
     setResult(null);
     try {
@@ -164,6 +174,9 @@ export default function MuseIntakePanel({
           apiMessage: failure instanceof ApiError ? failure.message : undefined,
           fallbackSection: "intake",
         }),
+      );
+      setFailureDiagnostics(
+        failure instanceof ApiError ? failure.intakeDiagnostics : null,
       );
     } finally {
       if (!requestController.signal.aborted && requestEpoch === epoch.current) {
@@ -261,10 +274,16 @@ export default function MuseIntakePanel({
             cancelledMessage={museNoticeText(cancelledNotice, locale)}
             errorCode={failure?.code}
             errorMessage={
-              failure ? museFailureText(failure, locale) : undefined
+              failure
+                ? failureDiagnostics
+                  ? intakeFailureReason(failureDiagnostics, locale)
+                  : museFailureText(failure, locale)
+                : undefined
             }
             diagnostics={
-              result ? museDiagnosticsFromResult(result.diagnostics) : null
+              result
+                ? museDiagnosticsFromResult(result.diagnostics)
+                : intakeFailureSummary(failureDiagnostics)
             }
             locale={locale}
           />

@@ -1284,3 +1284,25 @@ def test_http_accepts_extended_timeout_without_real_network(monkeypatch):
     monkeypatch.setattr(MetaHTTP, "_post_once", post_once)
     assert MetaHTTP("secret").post("/chat/completions", {}, 120) == {"ok": True}
     assert observed == [120]
+
+
+def test_validation_diagnostics_bound_paths_and_redact_unknown_properties():
+    fake = Fake(
+        final(json.dumps({"questions": ["ok"], "PRIVATE-key": "PRIVATE-value"}))
+    )
+    with pytest.raises(GatewayError) as failure:
+        MetaGateway(fake).propose("private prompt", Proposal)
+    assert failure.value.diagnostic_reason == "invalid_schema"
+    assert failure.value.validation_issues == [
+        {"path": ["<field>"], "type": "extra_forbidden"}
+    ]
+    assert "PRIVATE" not in json.dumps(failure.value.validation_issues)
+    fake = Fake(final(json.dumps({"questions": ["ok"] * 25 + [None] * 30})))
+    with pytest.raises(GatewayError) as failure:
+        MetaGateway(fake).propose("private prompt", Proposal)
+    issues = failure.value.validation_issues
+    assert len(issues) == 16
+    assert all(
+        issue == {"path": ["questions", "<index>"], "type": "string_type"}
+        for issue in issues
+    )

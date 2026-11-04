@@ -501,7 +501,7 @@ remain unchanged. No physical success follows from this authorization.
 
 ## D039: Measured stability and a separate engine lab, November 3, 2026
 
-Issue #17 now sequences ResniDev's #146–#149 separately from Gabo's #150–#152.
+Issue #17 now sequences ResniDev's #146â€“#149 separately from Gabo's #150â€“#152.
 The user requested continuing #146 and a direct way to assess the calculation
 engine. This work builds on PR #145 without merging that draft implicitly.
 
@@ -919,7 +919,7 @@ this checkout. `forma_api.recognition_evaluate` scores recorded proposals
 against such a set and refuses a coverage claim until every category and scene
 type has real labelled instances.
 
-## D064 — Illustrated material review board (November 4, 2026)
+## D064 â€” Illustrated material review board (November 4, 2026)
 
 Use the supplied 60 front-facing cutouts as representative art over the shared guided-intake draft. Show at most six cutouts on desktop and three on phones, preserving full editable records below. Recognition does not grant fabrication support. CSS derives crisp offset shadows from image alpha; no runtime image generation or artificial discovery timing. Request state drives loading, and actual returned construction plans enable design navigation. See [handoff](handoffs/material-board.md).
 ## D063: Check web research against saved materials during intake, November 4, 2026
@@ -946,8 +946,14 @@ When the engine identifies a missing measurement, the research result opens
 the existing measurement form and fetches a decision for the current inventory.
 The builder still has to enter and confirm the measured value before saving.
 
-## D065 — Photo recognition deadline and board annotations (November 4, 2026)
+## D065 â€” Photo recognition deadline and board annotations (November 4, 2026)
 
 Give photo intake one provider attempt with a 120-second total budget and timeout; retain the ordinary gateway defaults for other operations and the longer browser/proxy deadlines. A timeout does not prove provider cancellation or zero usage. Preserve unknown receipts and reconcile them without inventing billing outcomes.
 
 Selected and hovered representative cutouts use a faint alpha-derived white glow. Italic labels and angled leader lines evoke blueprint annotations; selection still opens the existing material correction controls.
+
+## D066 â€” Retain safe photo-recognition failure diagnostics (November 4, 2026)
+
+A deployed photo request exposed that generic invalid_response errors discarded why the proposal was rejected and any provider usage. Keep the public error family compatible while returning bounded owner-only failure diagnostics from the same request. Show those details in both photo-recognition interfaces without raw provider content or credentials. Failed recognition never becomes a material or physical observation; unknown usage stays unknown.
+
+The diagnostic reproduction exhausted 2,048 output tokens before completing the structured answer. Raise only photo intake to an 8,192 completion-token ceiling, retaining one 120-second attempt without retries. Remove conflicting labels-only prompt wording so the requested catalog item proposals are explicit.

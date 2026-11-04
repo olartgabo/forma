@@ -1,7 +1,7 @@
 """Server-only intake observation runtime. Proposals only; never mutates state."""
 
 import time
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import Field, StrictBool
 
@@ -23,6 +23,7 @@ from forma_domain.material_catalog import catalog_prompt
 from forma_domain.models import ID, Record, Text
 
 MAX_PROVIDER_IMAGE_BYTES = 5_000_000
+INTAKE_MAX_COMPLETION_TOKENS = 8192
 SUPPORTED_IMAGE_TYPES = ("image/jpeg", "image/png")
 
 CATALOG_RULES = catalog_prompt() + " "
@@ -39,9 +40,10 @@ INTAKE_SYSTEM_PROMPT = (
     + LANGUAGE_RULE
 )
 INTAKE_PROMPT = (
-    "List visible candidate material labels and questions only for the "
-    "consented inventory photo. Also return one item per visible object, "
-    "following the catalog rules."
+    "Return visible candidate material labels, structured item proposals in items, "
+    "and questions for the consented inventory photo. Include one item per visible "
+    "object following the catalog rules; when no objects are visible, items may be "
+    "empty. Keep measurement_source=unknown and leave unmeasured dimensions unknown."
 )
 
 
@@ -56,6 +58,74 @@ class IntakeDiagnostics(Record):
     model: str = Field(min_length=1, max_length=80)
     elapsed_ms: int = Field(ge=0)
     usage: ProviderUsage | None = None
+
+
+IntakeFailureReason = Literal[
+    "refusal",
+    "incomplete_output",
+    "invalid_proposal",
+    "invalid_json",
+    "invalid_schema",
+    "invalid_response",
+    "empty_observation",
+    "response_too_large",
+    "timeout",
+    "budget_exhausted",
+    "network_error",
+    "authentication",
+    "access_denied",
+    "rate_limit",
+    "provider_http_error",
+    "round_limit",
+    "provider_error",
+]
+
+
+class IntakeValidationIssue(Record):
+    path: list[str | int] = Field(max_length=8)
+    type: Literal[
+        "json_invalid",
+        "missing",
+        "extra_forbidden",
+        "string_type",
+        "string_too_long",
+        "string_too_short",
+        "int_type",
+        "int_parsing",
+        "float_type",
+        "float_parsing",
+        "bool_type",
+        "literal_error",
+        "enum",
+        "list_type",
+        "dict_type",
+        "model_type",
+        "greater_than",
+        "greater_than_equal",
+        "less_than",
+        "less_than_equal",
+        "finite_number",
+        "value_error",
+        "other",
+    ]
+
+
+class IntakeFailureDiagnostics(Record):
+    """Safe request-local failure details; never provider text or validation errors."""
+
+    reason: IntakeFailureReason
+    model: str = Field(min_length=1, max_length=80)
+    elapsed_ms: int = Field(ge=0)
+    usage: ProviderUsage
+    validation_issues: list[IntakeValidationIssue] = Field(
+        default_factory=list, max_length=16
+    )
+
+
+class IntakeGatewayError(GatewayError):
+    def __init__(self, code: str, diagnostics: IntakeFailureDiagnostics):
+        super().__init__(code)
+        self.diagnostics = diagnostics
 
 
 class IntakeErrorResponse(Record):
@@ -77,6 +147,7 @@ class IntakeErrorResponse(Record):
         "provider_error",
     ]
     message: Text
+    diagnostics: IntakeFailureDiagnostics | None = None
 
 
 class IntakeResult(Record):
@@ -189,18 +260,34 @@ def observe_photo(
         max_rounds=getattr(gateway, "max_rounds", 4),
         seconds=getattr(gateway, "budget", 60),
     )
-    observation = gateway.propose(
-        INTAKE_PROMPT,
-        IntakeObservation,
-        image=ImageInput(image_data, content_type, True),  # type: ignore[arg-type]
-        request_budget=budget,
-        system_prompt=INTAKE_SYSTEM_PROMPT,
-        context={"project_goal": project_goal},
-    )
-    if not observation.items and not any(
-        item.strip() for item in (*observation.labels, *observation.questions)
-    ):
-        raise GatewayError("invalid_response")
+    try:
+        observation = gateway.propose(
+            INTAKE_PROMPT,
+            IntakeObservation,
+            image=ImageInput(image_data, content_type, True),  # type: ignore[arg-type]
+            request_budget=budget,
+            system_prompt=INTAKE_SYSTEM_PROMPT,
+            context={"project_goal": project_goal},
+            max_completion_tokens=INTAKE_MAX_COMPLETION_TOKENS,
+        )
+        if not observation.items and not any(
+            item.strip() for item in (*observation.labels, *observation.questions)
+        ):
+            raise GatewayError("empty_observation")
+    except GatewayError as exc:
+        detail = exc.diagnostic_reason or exc.code
+        reason = detail if detail in get_args(IntakeFailureReason) else "provider_error"
+        diagnostics = IntakeFailureDiagnostics(
+            reason=reason,
+            model=str(getattr(gateway, "spark", "unknown"))[:80] or "unknown",
+            elapsed_ms=round((time.monotonic() - start) * 1000),
+            usage=summarize_usage(budget.traces),
+            validation_issues=exc.validation_issues,
+        )
+        raise IntakeGatewayError(
+            "invalid_response" if exc.code == "empty_observation" else exc.code,
+            diagnostics,
+        ) from None
     elapsed_ms = round((time.monotonic() - start) * 1000)
     if budget.traces:
         elapsed_ms = budget.traces[-1].elapsed_ms

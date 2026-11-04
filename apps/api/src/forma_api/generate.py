@@ -45,8 +45,10 @@ from forma_api.intake_research_muse import ResearchFinding
 from forma_api.intake_runtime import (
     IntakeDiagnostics,
     IntakeErrorResponse,
+    IntakeFailureDiagnostics,
     IntakeRequest,
     IntakeResult,
+    IntakeValidationIssue,
 )
 from forma_api.measurement_runtime import (
     DecisionRequest,
@@ -243,10 +245,12 @@ API_RECORDS = (
     ProjectSnapshot,
     SnapshotToolArgs,
     IntakeDiagnostics,
+    IntakeFailureDiagnostics,
     IntakeErrorResponse,
     IntakeObservation,
     IntakeRequest,
     IntakeResult,
+    IntakeValidationIssue,
     PhotoLocalizationRequest,
     PhotoLocalizationResult,
     PhotoEstimateList,

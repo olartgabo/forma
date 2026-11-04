@@ -1,4 +1,7 @@
 import type { Stock } from "./generated/contracts";
+// prettier-ignore
+// @ts-expect-error -- Node tests import TypeScript directly.
+import { parseIntakeFailureDiagnostics, type IntakeFailureDiagnostics } from "./intake-failure.ts";
 import type {
   BuildRequirements,
   ActivationResult,
@@ -41,12 +44,19 @@ import type {
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly intakeDiagnostics: IntakeFailureDiagnostics | null;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    intakeDiagnostics: IntakeFailureDiagnostics | null = null,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.intakeDiagnostics = intakeDiagnostics;
   }
 }
 
@@ -144,8 +154,11 @@ async function responseError(
   repair = false,
 ): Promise<ApiError> {
   let code = "request_failed";
+  let intakeDiagnostics: IntakeFailureDiagnostics | null = null;
   try {
     const body: unknown = await response.json();
+    if (intake && !design && !diagnosis && !repair && isRecord(body))
+      intakeDiagnostics = parseIntakeFailureDiagnostics(body.diagnostics);
     if (typeof body === "object" && body !== null && "code" in body) {
       const known = repair
         ? REPAIR_CODES
@@ -258,6 +271,7 @@ async function responseError(
       INTAKE_CODE_MESSAGES[code] ??
         intakeStatusMessages[response.status] ??
         "FORMA could not complete this request. Try again shortly.",
+      intakeDiagnostics,
     );
   }
   const messages: Record<number, string> = {
