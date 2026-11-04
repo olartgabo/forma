@@ -1080,6 +1080,44 @@ function ProjectWorkbench({
                   Photos stay private in this project unless you explicitly send
                   one to Muse or SAM.
                 </p>
+                {photoEntry && (
+                  <div className="size-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={locked || constructionBusy}
+                      onClick={() => {
+                        chooseEntryMode("detailed");
+                        requestAnimationFrame(() => {
+                          const materials = document.getElementById(
+                            "material-review-details",
+                          );
+                          const reference =
+                            document.querySelector<HTMLDetailsElement>(
+                              ".guided-reference",
+                            );
+                          if (materials instanceof HTMLDetailsElement)
+                            materials.open = true;
+                          if (reference) {
+                            reference.open = true;
+                            reference.scrollIntoView({ block: "start" });
+                            reference
+                              .querySelector("summary")
+                              ?.focus({ preventScroll: true });
+                          }
+                        });
+                      }}
+                    >
+                      Estimate material sizes
+                    </button>
+                    <p className="help">
+                      Use a flat reference with known dimensions in the same
+                      photo. Empty material sizes can be filled as unconfirmed
+                      drafts; save materials when ready. Thickness and mass need
+                      separate measurements.
+                    </p>
+                  </div>
+                )}
                 <form
                   onSubmit={(event) => {
                     event.preventDefault();

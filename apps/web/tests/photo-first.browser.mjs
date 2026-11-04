@@ -91,6 +91,17 @@ try {
       .getAttribute("aria-pressed"),
     "true",
   );
+  await page.getByRole("button", { name: "Estimate material sizes" }).click();
+  await page
+    .getByRole("heading", { name: "Review your materials", exact: true })
+    .waitFor();
+  assert.equal(
+    await page.locator(".guided-reference").evaluate((el) => el.open),
+    true,
+  );
+  assert.equal(calls, 0);
+  assert.deepEqual(unexpectedWrites, []);
+  await page.getByRole("button", { name: "Photo first", exact: true }).click();
   await panel.getByLabel("Choose a material photo").selectOption("photo-one");
   await panel.getByLabel(/Send the saved goal/).check();
   await panel.getByLabel(/Also send the selected/).check();

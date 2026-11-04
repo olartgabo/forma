@@ -1070,3 +1070,20 @@ recover a missing result or reconcile an unknown outcome by itself. Existing
 successful proposal diagrams remain reviewable, and a confirmed completed receipt
 can permit a separately consented action. Offline intercepted browser regressions
 are software checks, not live provider recovery or physical build evidence.
+
+## D075 - Prefill empty material sizes from reference-based photo estimates (November 4, 2026)
+
+Photo first exposes the existing material and reference controls through Estimate
+material sizes. A current, matching reference-based estimate fills only untouched
+empty width and height drafts, with photo_estimate provenance and no measurement
+confirmation. Existing values, partial manual measurements, thickness and mass
+remain unchanged. Stale, foreign and enclosing-only estimates cannot fill sizes.
+The existing explicit Save materials action persists the draft; opening the
+controls or receiving an estimate does not save inventory or invoke a provider.
+
+Known scale and the existing flat, same-plane and visibility requirements remain
+necessary. A visible ruler without established markings is not a calibrated
+reference, and a partly hidden sheet does not establish its full dimensions.
+These prefills do not grant fabrication approval or reconcile an unknown request.
+Intercepted browser checks exercise the connected draft and save flow with
+synthetic responses; they do not establish accuracy on the user's actual photo.

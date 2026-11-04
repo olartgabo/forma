@@ -85,6 +85,7 @@ import {
   needsReferenceValues,
   newStock,
   polygonOutline,
+  prefillEmptySizes,
   recordRuler,
   referenceInput,
   refusalReasons,
@@ -197,6 +198,10 @@ export default function GuidedIntake({
     [token, project.id],
   );
   const [records, setRecords] = useState<PhotoEstimateRecord[]>([]);
+  const latestProject = useRef(project);
+  latestProject.current = project;
+  const latestStocks = useRef(stocks);
+  latestStocks.current = stocks;
   // Identified-item cards: saved separately from stock, never confirming it.
   const itemsApi = useMemo(
     () => recognizedItems(token, project.id),
@@ -993,18 +998,35 @@ export default function GuidedIntake({
     try {
       const record = await api.create(body);
       if (!alive.current) return;
+      if (
+        latestProject.current.id !== record.project_id ||
+        record.status !== "current" ||
+        record.estimate.input.stock_id !== body.stock_id ||
+        latestProject.current.revision_id !== body.expected_revision_id ||
+        record.created_revision_id !== body.expected_revision_id ||
+        record.estimate.input.media_id !== body.media_id
+      ) {
+        setNotice(
+          "This estimate no longer matches the current materials. Measure again before filling sizes.",
+        );
+        return;
+      }
       setListAttempt((value) => value + 1);
-      patch(card.stock.id, (c) => ({
-        stock: c.stock.image_ids?.includes(body.media_id)
-          ? c.stock
+      const updateStock = (stock: Stock) => {
+        if (stock.id !== body.stock_id) return stock;
+        const linked = stock.image_ids?.includes(body.media_id)
+          ? stock
           : {
-              ...c.stock,
-              image_ids: [...(c.stock.image_ids ?? []), body.media_id],
-            },
-      }));
+              ...stock,
+              image_ids: [...(stock.image_ids ?? []), body.media_id],
+            };
+        return prefillEmptySizes(linked, record);
+      };
+      if (latestStocks.current.some((stock) => updateStock(stock) !== stock))
+        onStocks((current) => current.map(updateStock));
       setNotice(
         record.estimate.outcome === "estimate"
-          ? `Photo estimate ready for ${card.name}. It stays an estimate until you measure with a ruler.`
+          ? `Photo estimate ready for ${card.name}. Empty sizes are filled as unconfirmed drafts; existing values are kept. Save materials when ready.`
           : (record.estimate.request ?? "The photo could not support a size."),
       );
       if (needsReferenceValues(record.estimate) && body.media_id === photoId)
