@@ -7,7 +7,7 @@ from threading import Event
 from types import SimpleNamespace
 
 import pytest
-from test_intake_research_muse import CLAIM, citation, message, response, search_call
+from test_intake_research_muse import citation, message, response, search_call
 from test_plans import AUTH, OTHER, stand_inputs
 from test_synthesis_routes import identity, post, search, state
 from test_synthesis_routes import setup as setup
@@ -71,7 +71,9 @@ def provider(monkeypatch):
         calls.append(("adjudicator", options))
         assert findings == (FINDING,)
         assert analysis.focus == "stock"
-        return options[-1].id
+        return runtime.muse.ResearchSelection(
+            option_id=options[-1].id, tradeoff=options[-1].tradeoffs[0], source_index=0
+        )
 
     monkeypatch.setattr(runtime.muse, "scout", scout)
     monkeypatch.setattr(runtime.muse, "analyze", analyze)
@@ -109,6 +111,7 @@ def test_research_recommends_only_checked_candidates_and_uses_normal_preview(
     assert data["search"] == engine
     candidate = engine["candidates"][-1]
     assert data["recommended_candidate_id"] == candidate["candidate_id"]
+    assert data["recommendation_source_index"] == 0
     assert len(provider) == 3
     assert {detail for role, detail in provider if role != "adjudicator"} == {
         runtime.BRIEFS["phone_stand"]
@@ -238,7 +241,11 @@ def test_no_sources_and_abstention_leave_engine_candidates_available(
 ):
     client, project, _, _ = ready
     monkeypatch.setattr(
-        runtime.muse, "adjudicate", lambda *args: runtime.muse.NO_PREFERENCE
+        runtime.muse,
+        "adjudicate",
+        lambda *args: runtime.muse.ResearchSelection(
+            option_id=runtime.muse.NO_PREFERENCE, tradeoff=None, source_index=None
+        ),
     )
     result = post(client, project, "research", body(project)).json()
     assert result["coverage"] == "complete"
@@ -392,11 +399,23 @@ def test_expired_capacity_lease_does_not_hold_global_pool(ready, provider):
     )
 
 
-def test_connected_roles_parse_meta_wire_shape_without_private_project_data(
+def test_paired_research_outcomes_keep_the_same_checked_options_and_sources(
     ready, monkeypatch
 ):
-    client, project, _, _ = ready
+    client, project, directory, _ = ready
     calls = []
+    claim = "A deeper base gives a tabletop stand room for a rear brace."
+    counterclaim = "A shallower base leaves more room on the desk."
+    source_text = claim + " " + counterclaim
+    sources = (
+        citation(end_index=len(claim)),
+        citation(
+            start_index=len(claim) + 1,
+            end_index=len(source_text),
+            url="https://example.org/short-base",
+        ),
+    )
+    selection = {}
 
     class Transport:
         def post(self, path, payload, timeout):
@@ -410,24 +429,105 @@ def test_connected_roles_parse_meta_wire_shape_without_private_project_data(
             calls.append(payload)
             if "tools" in payload:
                 assert payload["max_tool_calls"] == 1
-                result = response(search_call(), message(CLAIM, (citation(),)))
+                result = response(search_call(), message(source_text, sources))
             elif payload["text"]["format"]["name"] == "ResearchAnalysis":
                 result = response(message('{"focus":"stock"}'))
             else:
-                result = response(message('{"option_id":"option-b"}'))
+                context = json.loads(payload["input"])
+                assert context["source_claims"] == [claim, counterclaim]
+                assert "deeper_base" not in context["eligible_options"][0]["tradeoffs"]
+                assert "deeper_base" in context["eligible_options"][1]["tradeoffs"]
+                result = response(message(json.dumps(selection)))
             return result | {"usage": {"input_tokens": 10, "output_tokens": 3}}
 
     monkeypatch.setenv("FORMA_INTAKE_RESEARCH", "1")
     monkeypatch.setattr(
         runtime.MetaGateway, "from_env", lambda: runtime.MetaGateway(Transport())
     )
+    before = state(directory)
+    engine = search(client, project)
+    for case, option, tradeoff, index, coverage in (
+        ("supported", "option-b", "deeper_base", 0, "complete"),
+        ("conflict", "no_preference", None, None, "complete"),
+        ("direction", "option-a", "deeper_base", 0, "partial"),
+        ("bad-source", "option-b", "deeper_base", 3, "partial"),
+    ):
+        selection.update(option_id=option, tradeoff=tradeoff, source_index=index)
+        reply = post(
+            client,
+            project,
+            "research",
+            body(project, idempotency_key="research-" + case),
+        )
+        assert reply.status_code == 200, reply.text
+        data = reply.json()
+        assert data["coverage"] == coverage
+        assert data["search"] == engine
+        assert [finding["claim"] for finding in data["findings"]] == [
+            claim,
+            counterclaim,
+        ]
+        assert data["usage"] == {
+            "model_calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 9,
+        }
+        if case == "supported":
+            assert (
+                data["recommended_candidate_id"]
+                == engine["candidates"][1]["candidate_id"]
+            )
+            assert data["recommendation_source_index"] == 0
+            assert "deeper base" in data["reason"]
+        else:
+            assert data["recommended_candidate_id"] is None
+            assert data["recommendation_source_index"] is None
+    assert len(calls) == 12
+    assert {k: v for k, v in state(directory).items() if k != "requests"} == {
+        k: v for k, v in before.items() if k != "requests"
+    }
+
+
+def test_legacy_receipt_keeps_checked_designs_and_drops_unattributed_recommendation(
+    ready, provider
+):
+    client, project, directory, _ = ready
+    first = post(client, project, "research", body(project)).json()
+    assert first["recommended_candidate_id"]
+    legacy = dict(first)
+    del legacy["recommendation_source_index"]
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        connection.execute(
+            "UPDATE requests SET response=? WHERE scope=? AND key=?",
+            (
+                json.dumps({"result": legacy, "uncertain": False}),
+                project["id"] + runtime.SCOPE,
+                body(project)["idempotency_key"],
+            ),
+        )
+    result = post(client, project, "research", body(project)).json()
+    assert result["replayed"] is True
+    assert result["recommended_candidate_id"] is None
+    assert result["recommendation_source_index"] is None
+    assert result["search"] == first["search"]
+    assert result["findings"] == first["findings"]
+    assert len(provider) == 3
+
+
+def test_one_checked_option_uses_scout_only(ready, provider, monkeypatch):
+    client, project, _, _ = ready
+    original_search = runtime.search
+
+    def search_one(data, budget):
+        result = original_search(data, budget)
+        return result.model_copy(update={"candidates": result.candidates[:1]})
+
+    monkeypatch.setattr(runtime, "search", search_one)
     reply = post(client, project, "research", body(project))
     assert reply.status_code == 200, reply.text
-    data = reply.json()
-    assert data["coverage"] == "complete"
-    assert (
-        data["recommended_candidate_id"]
-        == data["search"]["candidates"][1]["candidate_id"]
-    )
-    assert len(calls) == 3
-    assert data["usage"] == {"model_calls": 3, "input_tokens": 30, "output_tokens": 9}
+    result = reply.json()
+    assert len(result["search"]["candidates"]) == 1
+    assert result["findings"]
+    assert result["coverage"] == "complete"
+    assert result["recommended_candidate_id"] is None
+    assert [role for role, _ in provider] == ["scout"]

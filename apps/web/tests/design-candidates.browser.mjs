@@ -115,9 +115,15 @@ try {
                 claim: "An example uses a taped brace.",
                 url: "https://example.com/stand",
               },
+              {
+                title: "SYNTHETIC deeper base reference",
+                claim: "An example uses a deeper base.",
+                url: "https://example.com/deeper-base",
+              },
             ],
             search: searchB,
             recommended_candidate_id: second.candidate_id,
+            recommendation_source_index: 1,
           };
           if (researchBodies.length === 2) {
             markResearchStarted();
@@ -370,6 +376,11 @@ try {
       await source.getAttribute("href"),
       "https://example.com/stand",
     );
+    await research
+      .getByRole("listitem")
+      .filter({ hasText: "Source used for the recommendation" })
+      .getByRole("link", { name: "SYNTHETIC deeper base reference" })
+      .waitFor();
     assert.deepEqual(researchBodies[1], researchBodies[2]);
     assert.equal(await panel.getByText("Suggested by research").count(), 0);
     await research

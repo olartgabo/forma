@@ -10,7 +10,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
 from forma_synthesizer import search
-from pydantic import Field, StrictBool, field_validator, model_validator
+from pydantic import Field, StrictBool, StrictInt, field_validator, model_validator
 
 from forma_api import intake_research_muse as muse
 from forma_api import measurement_runtime, synthesis_runtime
@@ -18,7 +18,7 @@ from forma_api.model_gateway import GatewayError, MetaGateway
 from forma_api.projects import Key, ProjectError, ProjectStore
 from forma_api.provider_diagnostics import ProviderUsage, summarize_usage
 from forma_domain.models import ID, Record, Text
-from forma_domain.synthesis_contracts import SynthesisResult
+from forma_domain.synthesis_contracts import CandidateReport, SynthesisResult
 
 SCOPE = ":intake-research"
 LEASE_SCOPE = "intake-research-leases"
@@ -29,6 +29,12 @@ BRIEFS = {
 UNCERTAIN = {"timeout", "network_error", "budget_exhausted", "provider_outcome_unknown"}
 DEADLINE_SECONDS = 20
 MAX_CONCURRENT = 2
+TRADEOFF_REASON: dict[muse.ResearchTradeoff, str] = {
+    "less_sheet_stock": "uses less sheet stock",
+    "deeper_base": "has a deeper base",
+    "shallower_base": "has a shallower base",
+    "less_tape": "uses less tape",
+}
 
 
 class IntakeResearchAvailability(Record):
@@ -62,6 +68,9 @@ class IntakeResearchResult(Record):
     question: Text | None = None
     search: SynthesisResult | None = None
     recommended_candidate_id: ID | None = None
+    recommendation_source_index: StrictInt | None = Field(
+        default=None, ge=0, lt=muse.MAX_FINDINGS
+    )
     provider_elapsed_ms: int | None = Field(default=None, ge=0)
     usage: ProviderUsage | None = None
     replayed: bool = False
@@ -75,8 +84,12 @@ class IntakeResearchResult(Record):
             or self.search.identity.inventory_revision_id != self.inventory_revision_id
         ):
             raise ValueError("Only eligible results carry current checked designs")
+        if (self.recommended_candidate_id is None) != (
+            self.recommendation_source_index is None
+        ):
+            raise ValueError("A recommendation and its source must be paired")
         if self.recommended_candidate_id is not None and (
-            not self.findings
+            self.recommendation_source_index >= len(self.findings)
             or self.search is None
             or self.recommended_candidate_id
             not in {candidate.candidate_id for candidate in self.search.candidates}
@@ -178,33 +191,64 @@ def _engine_result(store, owner, project_id, body, identity, data, resolver):
     )
 
 
+def _option(
+    option_id: str, candidate: CandidateReport, other: CandidateReport
+) -> muse.ResearchOption:
+    tradeoffs: list[muse.ResearchTradeoff] = []
+    if candidate.material is not None and other.material is not None:
+        if candidate.material.region_area_mm2 < other.material.region_area_mm2:
+            tradeoffs.append("less_sheet_stock")
+        if candidate.material.tape_length_mm < other.material.tape_length_mm:
+            tradeoffs.append("less_tape")
+    depth, other_depth = (
+        candidate.design.footprint_depth_mm,
+        other.design.footprint_depth_mm,
+    )
+    if depth != other_depth:
+        tradeoffs.append("deeper_base" if depth > other_depth else "shallower_base")
+    return muse.ResearchOption(id=option_id, tradeoffs=tuple(tradeoffs))
+
+
 def _investigate(base, gateway, brief, deadline, current):
     started = monotonic()
     findings = ()
     analysis = None
     uncertain = False
     scout_succeeded = False
+    candidates = base.search.candidates
+    options = (
+        (
+            _option("option-a", candidates[0], candidates[1]),
+            _option("option-b", candidates[1], candidates[0]),
+        )
+        if len(candidates) == 2
+        else ()
+    )
+    compare = any(option.tradeoffs for option in options)
     with ThreadPoolExecutor(max_workers=2) as pool:
         scout_job = pool.submit(muse.scout, gateway, brief, deadline)
-        analysis_job = pool.submit(muse.analyze, gateway, brief, deadline)
+        analysis_job = (
+            pool.submit(muse.analyze, gateway, brief, deadline) if compare else None
+        )
         try:
             findings = scout_job.result()
             scout_succeeded = True
         except GatewayError as exc:
             uncertain = exc.code in UNCERTAIN
-        try:
-            analysis = analysis_job.result()
-        except GatewayError as exc:
-            uncertain |= exc.code in UNCERTAIN
+        if analysis_job is not None:
+            try:
+                analysis = analysis_job.result()
+            except GatewayError as exc:
+                uncertain |= exc.code in UNCERTAIN
 
     coverage = "no_sources" if scout_succeeded else "unavailable"
     reason = base.reason
     recommended = None
+    source_index = None
     if findings:
-        candidates = base.search.candidates
-        if len(candidates) == 1:
-            coverage = "complete" if analysis is not None else "partial"
-            reason = "The stand search found one checked proposal. The sources describe related approaches."
+        if not compare:
+            coverage = "complete"
+            reason = "The sources describe related approaches. The stand search found no distinct tradeoff to adjudicate."
         else:
             coverage = "partial"
             if (
@@ -213,44 +257,26 @@ def _investigate(base, gateway, brief, deadline, current):
                 and monotonic() < deadline
                 and current()
             ):
-                first, second = candidates
-                options = (
-                    muse.ResearchOption(id="option-a", tradeoff="least_stock"),
-                    muse.ResearchOption(
-                        id="option-b",
-                        tradeoff="alternative_stock_or_base",
-                        uses_alternate_sheet=(
-                            second.design.sheet_stock_id != first.design.sheet_stock_id
-                        ),
-                        different_base_depth=(
-                            second.design.footprint_depth_mm
-                            != first.design.footprint_depth_mm
-                        ),
-                        uses_less_tape=(
-                            second.material is not None
-                            and first.material is not None
-                            and second.material.tape_length_mm
-                            < first.material.tape_length_mm
-                        ),
-                    ),
-                )
                 try:
                     selection = muse.adjudicate(
                         gateway, brief, findings, analysis, options, deadline
                     )
-                    selected = {option.id: c for option, c in zip(options, candidates)}
-                    if selection in selected:
-                        recommended = selected[selection].candidate_id
-                        coverage = "complete"
-                        reason = (
-                            "Research favored the stock-saving checked proposal."
-                            if selection == "option-a"
-                            else "Research favored the checked alternative stock or base."
-                        )
-                    elif selection == muse.NO_PREFERENCE:
-                        coverage = "complete"
+                    coverage = "complete"
+                    if selection.option_id == muse.NO_PREFERENCE:
                         reason = (
                             "The sources did not distinguish the checked proposals."
+                        )
+                    else:
+                        selected = {
+                            option.id: c
+                            for option, c in zip(options, candidates, strict=True)
+                        }
+                        recommended = selected[selection.option_id].candidate_id
+                        source_index = selection.source_index
+                        reason = (
+                            "Research favored the checked option that "
+                            + TRADEOFF_REASON[selection.tradeoff]
+                            + "."
                         )
                 except GatewayError as exc:
                     uncertain |= exc.code in UNCERTAIN
@@ -265,6 +291,7 @@ def _investigate(base, gateway, brief, deadline, current):
             "coverage": coverage,
             "findings": findings,
             "recommended_candidate_id": recommended,
+            "recommendation_source_index": source_index,
             "reason": reason,
             "provider_elapsed_ms": round((monotonic() - started) * 1000),
             "usage": summarize_usage(gateway.traces),
@@ -459,11 +486,21 @@ def _receipt(result: IntakeResearchResult | None, uncertain: bool) -> str:
 
 
 def _replayed_result(replay: dict) -> IntakeResearchResult | JSONResponse:
-    if replay.get("result") is None:
+    result = replay.get("result")
+    if result is None:
         return _outcome_unknown(
             "The previous research may still be running or its outcome is unknown."
         )
-    return IntakeResearchResult.model_validate({**replay["result"], "replayed": True})
+    if result.get("recommended_candidate_id") is not None and (
+        "recommendation_source_index" not in result
+    ):
+        # Old receipts have checked designs but no basis for the recommendation.
+        result = {
+            **result,
+            "recommended_candidate_id": None,
+            "reason": "Cited sources and checked options are available for review.",
+        }
+    return IntakeResearchResult.model_validate({**result, "replayed": True})
 
 
 def _outcome_unknown(message: str) -> JSONResponse:

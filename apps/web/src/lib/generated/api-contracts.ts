@@ -344,6 +344,7 @@ export type IntakeResearchResult = {
   readonly "question"?: (string | null);
   readonly "search"?: (SynthesisResult | null);
   readonly "recommended_candidate_id"?: (string | null);
+  readonly "recommendation_source_index"?: (number | null);
   readonly "provider_elapsed_ms"?: (number | null);
   readonly "usage"?: (ProviderUsage | null);
   readonly "replayed"?: boolean;

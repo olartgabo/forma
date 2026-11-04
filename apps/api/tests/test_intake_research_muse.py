@@ -182,9 +182,21 @@ def test_analyst_receives_public_brief_only_and_cannot_invent_check_families():
 @pytest.mark.parametrize(
     ("provider_output", "selected"),
     [
-        ('{"option_id":"second"}', "second"),
-        ('{"option_id":"no_preference"}', "no_preference"),
-        ('{"option_id":"invented"}', None),
+        ('{"option_id":"second","tradeoff":"deeper_base","source_index":0}', "second"),
+        (
+            '{"option_id":"no_preference","tradeoff":null,"source_index":null}',
+            "no_preference",
+        ),
+        ('{"option_id":"invented","tradeoff":"deeper_base","source_index":0}', None),
+        ('{"option_id":"first","tradeoff":"deeper_base","source_index":0}', None),
+        ('{"option_id":"second","tradeoff":"shallower_base","source_index":0}', None),
+        ('{"option_id":"second","tradeoff":"deeper_base","source_index":1}', None),
+        ('{"option_id":"second","tradeoff":"deeper_base","source_index":true}', None),
+        ('{"option_id":"second","tradeoff":"deeper_base","source_index":null}', None),
+        (
+            '{"option_id":"no_preference","tradeoff":"deeper_base","source_index":0}',
+            None,
+        ),
         ('{"option_id":"first","physical_pass":true}', None),
     ],
 )
@@ -201,19 +213,17 @@ def test_adjudicator_cannot_select_outside_engine_option_aliases(
         deadline,
     )
     options = (
-        ResearchOption(id="first", tradeoff="least_stock"),
+        ResearchOption(id="first", tradeoffs=("less_sheet_stock", "shallower_base")),
         ResearchOption(
             id="second",
-            tradeoff="alternative_stock_or_base",
-            different_base_depth=True,
-            uses_less_tape=True,
+            tradeoffs=("deeper_base", "less_tape"),
         ),
     )
     transport = Transport(response(message(provider_output)))
     gateway = MetaGateway(transport)
     if selected is not None:
         assert (
-            adjudicate(gateway, BRIEF, findings, analysis, options, deadline)
+            adjudicate(gateway, BRIEF, findings, analysis, options, deadline).option_id
             == selected
         )
     else:
@@ -225,5 +235,5 @@ def test_adjudicator_cannot_select_outside_engine_option_aliases(
         "public_brief": BRIEF,
         "source_claims": [CLAIM],
         "analysis": {"focus": "stock"},
-        "eligible_options": [option.model_dump() for option in options],
+        "eligible_options": [option.model_dump(mode="json") for option in options],
     }

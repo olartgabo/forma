@@ -852,3 +852,7 @@ The builder approves the public brief. Findings stay separate from inventory,
 plans and physical evidence. Unsupported essential requirements and hard
 blockers stay visible. The feature starts disabled pending the
 [provider handoff and acceptance checks](handoffs/issue-9-intake-research.md).
+
+Recommendations identify the cited finding and a directional comparison the
+engine confirms for the selected option. The scout runs alone when the engine
+has one checked option or no measured difference to compare.

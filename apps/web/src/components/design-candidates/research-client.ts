@@ -11,6 +11,7 @@ import { receipts } from "./pending.ts";
 
 export type ResearchResult = Omit<IntakeResearchResult, "search"> & {
   findings: NonNullable<IntakeResearchResult["findings"]>;
+  recommendation_source_index: number | null;
   search: Search | null;
 };
 
@@ -85,19 +86,29 @@ export function validateResearch(
 
   const search =
     value.search == null ? null : validateSearch(value.search, context);
+  const recommendation = value.recommended_candidate_id ?? null;
+  const sourceIndex = value.recommendation_source_index ?? null;
   if (
     (value.decision === "eligible") !==
       (search?.status === "candidates_found") ||
-    (value.recommended_candidate_id != null &&
+    (recommendation === null) !== (sourceIndex === null) ||
+    (sourceIndex !== null &&
+      (typeof sourceIndex !== "number" ||
+        !Number.isInteger(sourceIndex) ||
+        sourceIndex < 0 ||
+        sourceIndex >= value.findings.length)) ||
+    (recommendation !== null &&
       (value.decision !== "eligible" ||
-        !value.findings.length ||
         !search?.candidates.some(
-          (candidate) =>
-            candidate.candidate_id === value.recommended_candidate_id,
+          (candidate) => candidate.candidate_id === recommendation,
         )))
   )
     throw invalid();
-  return { ...(value as unknown as ResearchResult), search };
+  return {
+    ...(value as unknown as ResearchResult),
+    recommendation_source_index: sourceIndex,
+    search,
+  };
 }
 
 function validRequest(value: unknown): value is IntakeResearchRequest {

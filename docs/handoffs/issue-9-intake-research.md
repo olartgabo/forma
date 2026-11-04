@@ -23,15 +23,18 @@ feasibility unresolved.
 
 For eligible inputs, a Muse Spark scout looks for cited comparable projects.
 A separate analyst reads the public brief and static stand catalog to flag a
-relevant check family. FORMA sends the two tasks in parallel. If usable sources
-and two checked options remain, a fresh adjudicator can recommend a candidate
-or abstain. It sees only bounded findings and relative tradeoffs such as whether
-the second candidate uses less tape. FORMA translates its opaque selection
-back to a candidate from the exact current engine search.
+relevant check family when there are two checked options with a measurable
+difference. FORMA sends those two tasks in parallel. A fresh adjudicator can
+recommend an option or abstain. A recommendation identifies the cited finding
+and a directional tradeoff such as less tape or a deeper base. The server checks
+that the source exists and that the option has that tradeoff in the current
+engine search. The connection between the source and the choice remains advice.
+With one checked option or no comparable difference, only the scout runs.
 
-The workbench shows sources, coverage and the next action separately. The builder
-can bring those same checked candidates into the existing comparison and
-selection flow. Selection uses the existing synthesis route to recheck the
+The workbench shows sources, coverage and the next action separately and marks
+the source the recommendation used. The builder can bring those same checked
+candidates into the existing comparison and selection flow. Selection uses the
+existing synthesis route to recheck the
 search and save a preview. Activation is a separate explicit approval. Research
 writes no inventory, plan, operation, or physical evidence.
 
@@ -74,7 +77,11 @@ Offline route and gateway tests cover the connected checked-candidate path,
 missing tools, unsupported plug clearance, impossible stock, stale results,
 privacy, malformed citations, timeouts and idempotency. Browser tests cover
 consent and review through the existing design controls with mocked transport.
-The synthetic checks establish software behavior.
+The synthetic checks establish software behavior. Paired fixture runs hold
+the findings and checked candidates fixed while the adjudicator recommends,
+abstains, cites an unavailable source, or chooses the wrong depth direction.
+An older receipt replays its sources and checked candidates without the
+unattributed recommendation or another dispatch.
 
 The live verification window is expired. An authorized probe still needs to
 confirm provider availability, retention behavior, citation shape and actual

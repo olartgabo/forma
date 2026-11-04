@@ -526,13 +526,25 @@ test("research can recommend only a cited, current, checked engine candidate", (
     reason: "SYNTHETIC reason",
     search: result(),
     recommended_candidate_id: candidate().candidate_id,
+    recommendation_source_index: 0,
   };
   assert.equal(
     validateResearch(response, context).recommended_candidate_id,
     candidate().candidate_id,
   );
+  assert.equal(
+    validateResearch(response, context).recommendation_source_index,
+    0,
+  );
   for (const changed of [
     { recommended_candidate_id: "foreign-candidate" },
+    { recommended_candidate_id: null },
+    { recommendation_source_index: undefined },
+    { recommendation_source_index: null },
+    { recommendation_source_index: -1 },
+    { recommendation_source_index: 0.5 },
+    { recommendation_source_index: 1 },
+    { recommendation_source_index: "0" },
     { findings: [] },
     { inventory_revision_id: "inventory-b" },
     { search: result({ identity: { ...identity, project_id: "foreign" } }) },
@@ -562,6 +574,7 @@ test("research can recommend only a cited, current, checked engine candidate", (
       findings: [],
       search: null,
       recommended_candidate_id: null,
+      recommendation_source_index: null,
     },
     context,
   );

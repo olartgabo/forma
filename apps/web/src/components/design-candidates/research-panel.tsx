@@ -26,7 +26,7 @@ const copy = {
     clearance: "Plug clearance is essential",
     brief: "Public brief sent to MetaMuse",
     transfer:
-      "MetaMuse may also see whether a checked option uses a different sheet or base, or less tape. Photos and exact measurements stay in FORMA.",
+      "MetaMuse may also see how checked options compare in sheet and tape use or base depth. Photos and exact measurements stay in FORMA.",
     consent: "Share this brief and option comparisons with MetaMuse",
     start: "Research and check ideas",
     retry: "Retry the same research request",
@@ -43,6 +43,7 @@ const copy = {
     stale: "Your inventory changed. Reload it before researching again.",
     unknown: "The provider outcome is unknown. FORMA sent no new request.",
     recommendation: "Suggested by research",
+    recommendationSource: "Source used for the recommendation",
     coverage: {
       complete: "Research complete",
       partial: "Research partially complete",
@@ -70,7 +71,7 @@ const copy = {
     clearance: "El espacio para el conector es imprescindible",
     brief: "Descripción pública que recibirá MetaMuse",
     transfer:
-      "MetaMuse también puede recibir si una opción comprobada usa otra lámina, otra base o menos cinta. Las fotos y las medidas exactas se quedan en FORMA.",
+      "MetaMuse también puede recibir comparaciones entre las opciones comprobadas sobre el uso de lámina y cinta o la profundidad de la base. Las fotos y las medidas exactas se quedan en FORMA.",
     consent: "Compartir esta descripción y las comparaciones con MetaMuse",
     start: "Buscar y comprobar ideas",
     retry: "Reintentar la misma solicitud",
@@ -89,6 +90,7 @@ const copy = {
     unknown:
       "Se desconoce el resultado del proveedor. FORMA no envió otra solicitud.",
     recommendation: "Sugerido por la investigación",
+    recommendationSource: "Fuente usada para la recomendación",
     coverage: {
       complete: "Investigación terminada",
       partial: "Investigación parcial",
@@ -375,8 +377,11 @@ export default function ResearchPanel({
             <>
               <h4>{labels.sources}</h4>
               <ul>
-                {result.findings.map((finding) => (
+                {result.findings.map((finding, index) => (
                   <li key={JSON.stringify(finding)}>
+                    {result.recommendation_source_index === index && (
+                      <p className="help">{labels.recommendationSource}</p>
+                    )}
                     <a
                       href={finding.url}
                       target="_blank"
