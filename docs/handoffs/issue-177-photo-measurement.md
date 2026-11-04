@@ -100,20 +100,25 @@ machine (Docker is not installed), and the hosted host was not deployed.
 
 ## Checks run
 
-`npm run check` (Node 22.23.4, npm 11.16.0 via corepack) exited 0 on the
-pre-review candidate: format, lint, contracts current, typecheck, 199 web
-tests, 1832 Python tests, devloop 18, Next build. After the review repairs
-(failed retries no longer supersede usable estimates; a 2 mm / 1 % display
-floor when the lens is uncorrected or there is no independent check), only
-`pytest packages/photo_measure/tests apps/api/tests/test_photo_estimates.py`
-was rerun: 42 passed. The full check must be rerun on the final head.
+`npm run check` (Node 22.23.4, npm 11.16.0 via corepack) exited 0 on
+2c55efc: format, lint, contracts current, typecheck, 199 web tests, 1838
+Python tests, devloop 18 tests, Next production build.
 
-Pre-review: one read-only Claude (Sonnet) review. Repaired: failed retries
-superseding usable estimates; display floor; dropping a stock now retires its
-estimates permanently (re-adding the ID cannot revive them); design readiness
-asks for a ruler value instead of counting a photo estimate as present; D060
-states calibration is library-only. Not changed: boxes are inclusive pixel
-indices, so a box ending on the last pixel is already accepted.
+## Review
+
+- Pre-review: one read-only Claude (Sonnet) pass; its findings were repaired
+  (failed retries no longer supersede usable estimates, 2 mm / 1 % display
+  floor without lens correction or independent check, design readiness asks
+  for a ruler value, D060 states calibration is library-only).
+- Independent Sol review (Codex CLI 0.166.0, `gpt-6.1-sol`, read-only, fresh
+  context) of a72b32f: REQUEST_CHANGES, 8 findings. Repaired in 2c259b8
+  (shared draft with Details and project keying, notch and out-of-photo
+  outline checks, permanent retirement on type change or photo unlinking,
+  rename on blur, SAM recovery bound to its material, exact #149 answer
+  retries, single-threaded OpenCV). Re-review: 7 resolved, 1 open plus 2
+  regressions; repaired in 2c55efc (lock Details during guided writes, apply
+  guided edits to the latest draft, read early `removed` records). Second
+  re-review: APPROVE, no regressions. Two repair attempts used.
 
 ## Accuracy
 
