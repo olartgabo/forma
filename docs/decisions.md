@@ -728,3 +728,21 @@ read-only tools, `analyze_stability` and `explain_stability_inputs`. Their
 arguments select server-authorized identities and cases only. A report is
 modeled evidence of nothing physical, and MetaMuse cannot add measurements,
 confirm inputs or approve plans.
+
+## D054: Bounded stock-feasible stand search, November 3, 2026
+
+Design search (#148) enumerates a finite step-aligned grid of panel width,
+support length and base depth for each saved single-region sheet, tape stock and
+reviewed tape/fold profile pair. Grid bounds come from confirmed device sizes,
+the sheet's usable region and the footprint limits; the support angle is the
+user's requirement and the lip comes from the confirmed stand parameters. Every
+grid point is compiled by `compile_stand` and the independent validator. A node
+budget (deterministic) and a time guard bound the search; running out is
+reported apart from infeasibility. At most two acceptable designs are proposed,
+ordered by consumed sheet area, then panel area, then their values; the second
+prefers another sheet or base depth. Stability, retention and joint strength
+for an unbuilt geometry stay missing, incompatible or unsupported. Measurements
+of another assembled stand never transfer. Search and probe write nothing.
+Selecting a design saves an ordinary preview through the existing plan
+transaction; activation remains the separate approval. An active build changes
+only through the existing repair simulation.
