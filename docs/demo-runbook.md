@@ -42,6 +42,22 @@ process. `.env.example` lists some of them and is not loaded automatically.
 > scoped to one inventory revision, so any inventory save needs a new entry.
 > Export the variable and restart the API. Use the "Saved input checklist" to
 > see what is still missing.
+>
+> Before restarting, check the file locally. The API never says why a manifest
+> is invalid; this command does, by field location and without echoing values:
+>
+> ```sh
+> uv run --locked python -m forma_api.design_context_check template --project-id <id> --revision-id <revision>
+> uv run --locked python -m forma_api.design_context_check schema
+> uv run --locked python -m forma_api.design_context_check check <manifest.json> --project-id <id> --revision-id <revision>
+> ```
+>
+> `template` prints a scoped entry with every measured fact left empty. Fill it
+> from measurements and reviewed profiles, never from the synthetic test
+> fixtures. `check` uses the server's resolver and exits 0 only when exactly one
+> entry matches and nothing is missing. The current revision ID is shown in the
+> saved-projects list and in the read-only `forma_api.demo_smoke --project-id`
+> report.
 
 Never commit or paste values for any of these variables.
 
