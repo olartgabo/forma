@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from test_plans import AUTH, OTHER, TOKENS, prepared
 from test_stability_measurements import capture_payload, measurement_url
 
-from forma_api import synthesis_runtime
+from forma_api import measurement_runtime, synthesis_runtime
 from forma_api.design_context import DesignContext, StaticDesignContextResolver
 from forma_api.main import create_app
 
@@ -216,6 +216,43 @@ def unavailable(client, project, decision, key="unavailable-0001"):
             "user_confirmed": True,
         },
     )
+
+
+@pytest.mark.parametrize("commit_before_deciding", [False, True])
+def test_identical_unavailable_retry_replays_during_decision(
+    design, monkeypatch, commit_before_deciding
+):
+    client, project, _, directory = design
+    first = decide(client, project).json()
+    original = measurement_runtime.decide
+    interleaved = False
+
+    def decide_with_concurrent_commit(*args, **kwargs):
+        nonlocal interleaved
+        if interleaved:
+            return original(*args, **kwargs)
+        interleaved = True
+        if commit_before_deciding:
+            assert unavailable(client, project, first).status_code == 200
+        result = original(*args, **kwargs)
+        if not commit_before_deciding:
+            assert unavailable(client, project, first).status_code == 200
+        return result
+
+    monkeypatch.setattr(measurement_runtime, "decide", decide_with_concurrent_commit)
+    response = unavailable(client, project, first)
+    assert response.status_code == 200, response.text
+    assert (
+        first["question"]["target"]["key"]
+        in response.json()["identity"]["declined_target_keys"]
+    )
+    with sqlite3.connect(directory / "projects.sqlite3") as connection:
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM requests WHERE scope LIKE '%:measurement-unavailable'"
+            ).fetchone()[0]
+            == 1
+        )
 
 
 def test_unavailable_is_recorded_once_and_replays_after_a_change(design):

@@ -186,24 +186,27 @@ def mark_unavailable(store, owner, project_id, body: UnavailableRequest, resolve
         )
     if replay is None:
         current = decide(store, owner, project_id, body, resolver)
-        question = current.question
-        if (
-            question is None
-            or question.question_id != body.question_id
-            or question.target.key != body.target_key
-        ):
-            raise ProjectError(
-                409,
-                "stale_version",
-                "This is no longer the selected measurement; reload it",
-            )
         with store.transaction() as connection:
             project = store.read(connection, owner, project_id)
+            # Another identical request may have committed while deciding.
+            digest, replay = store.replay(
+                connection, owner, scope, body.idempotency_key, payload
+            )
+            if replay is None and (
+                current.question is None
+                or current.question.question_id != body.question_id
+                or current.question.target.key != body.target_key
+            ):
+                raise ProjectError(
+                    409,
+                    "stale_version",
+                    "This is no longer the selected measurement; reload it",
+                )
             row = connection.execute(
                 "SELECT id FROM progress_events WHERE project_id=? ORDER BY rowid DESC LIMIT 1",
                 (project_id,),
             ).fetchone()
-            if (
+            if replay is None and (
                 project.revision_id != body.expected_inventory_revision_id
                 or project.active_version_id != body.expected_active_version_id
                 or (row[0] if row else None) != body.expected_last_event_id
@@ -213,14 +216,15 @@ def mark_unavailable(store, owner, project_id, body: UnavailableRequest, resolve
                 raise ProjectError(
                     409, "stale_version", "The project changed; reload it"
                 )
-            store.remember(
-                connection,
-                owner,
-                scope,
-                body.idempotency_key,
-                digest,
-                {"target_key": body.target_key, "question_id": body.question_id},
-            )
+            if replay is None:
+                store.remember(
+                    connection,
+                    owner,
+                    scope,
+                    body.idempotency_key,
+                    digest,
+                    {"target_key": body.target_key, "question_id": body.question_id},
+                )
     # Saved or replayed, the answer is the project's current decision.
     with store.transaction() as connection:
         project = store.read(connection, owner, project_id)

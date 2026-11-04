@@ -201,10 +201,56 @@ test("usable area needs confirmed dimensions and becomes one whole region", () =
   const body = answerBody(sized, region, null, "answer-0005");
   assert.deepEqual(body.stocks[0].usable_regions, [
     {
-      id: "sheet-a-whole",
+      id: "sheet-a",
       geometry: { x: 0, y: 0, width: 200, height: 550, rotation_deg: 0 },
     },
   ]);
+});
+
+test("usable area accepts a stock ID at the domain length limit", () => {
+  const stockId = "s".repeat(96);
+  const sized = {
+    ...project,
+    stocks: [
+      {
+        ...sheet,
+        id: stockId,
+        width_mm: {
+          value: 200,
+          unit: "mm",
+          source: "user_ruler",
+          confirmed: true,
+        },
+        height_mm: {
+          value: 550,
+          unit: "mm",
+          source: "user_ruler",
+          confirmed: true,
+        },
+      },
+    ],
+  };
+  const region = question({
+    target: {
+      key: `stock:${stockId}:usable_region`,
+      kind: "stock",
+      property: "usable_region",
+      stock_id: stockId,
+      label: "Usable area",
+      pieces: [],
+    },
+  });
+  const body = answerBody(sized, region, null, "answer-long-id");
+  const saved = body.stocks[0].usable_regions[0];
+  assert.match(saved.id, /^[A-Za-z][A-Za-z0-9_-]{0,95}$/);
+  assert.equal(body.stocks[0].id, stockId);
+  assert.deepEqual(saved.geometry, {
+    x: 0,
+    y: 0,
+    width: 200,
+    height: 550,
+    rotation_deg: 0,
+  });
 });
 
 test("a requirement answer updates only that constraint", () => {
