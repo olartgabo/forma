@@ -11,6 +11,7 @@ from forma_api.projects import (
     project_router,
 )
 from forma_api.routes.health import router as health_router
+from forma_api.routes.photo_estimates import reference_router
 
 
 def create_app(
@@ -19,6 +20,7 @@ def create_app(
     app = FastAPI(title="FORMA API", version="0.1.0")
     app.add_exception_handler(ProjectError, project_error_handler)
     app.include_router(health_router, prefix="/api")
+    app.include_router(reference_router, prefix="/api")
     app.include_router(
         project_router(
             ProjectStore(

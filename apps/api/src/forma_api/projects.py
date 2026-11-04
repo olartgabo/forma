@@ -363,6 +363,15 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                         raise ProjectError(
                             422, "validation_error", "Unresolved media reference"
                         )
+            from forma_api.photo_measurement_runtime import inventory_problems
+
+            if unmatched := inventory_problems(connection, project, body.stocks):
+                raise ProjectError(
+                    422,
+                    "validation_error",
+                    "Photo estimates must match a current estimate for the same "
+                    "material and photo: " + ", ".join(unmatched),
+                )
             updated = Project(
                 **{
                     **project.model_dump(),
@@ -378,6 +387,9 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 "UPDATE projects SET body=? WHERE id=? AND owner=?",
                 (updated.model_dump_json(), project_id, owner),
             )
+            from forma_api.photo_measurement_runtime import retire_removed
+
+            retire_removed(connection, project_id, body.stocks)
             result = ProjectResult(project=updated).model_dump(mode="json")
             store.remember(
                 connection, owner, scope, body.idempotency_key, digest, result
@@ -436,6 +448,9 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
                 "DELETE FROM requests WHERE owner=? AND scope=?",
                 (owner, project_id + ":photo-localization"),
             )
+            from forma_api.photo_measurement_runtime import purge
+
+            purge(connection, owner, project_id)
             connection.execute("DELETE FROM projects WHERE id=?", (project_id,))
             result = DeleteResult(project_id=project_id).model_dump(mode="json")
             store.remember(connection, owner, scope, idempotency_key, digest, result)
@@ -464,9 +479,11 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     router.include_router(media_router(store, authenticate))
     router.include_router(construction_router(store, authenticate))
     router.include_router(muse_construction_router(store, authenticate))
+    from forma_api.routes.photo_estimates import photo_estimates_router
     from forma_api.routes.photo_localization import photo_localization_router
 
     router.include_router(photo_localization_router(store, authenticate))
+    router.include_router(photo_estimates_router(store, authenticate))
     router.include_router(intake_router(store, authenticate))
     router.include_router(plan_router(store, authenticate))
     router.include_router(progress_router(store, authenticate))

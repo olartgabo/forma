@@ -15,6 +15,7 @@ from forma_api.model_gateway import MetaGateway
 from forma_api.plans import PlanService
 from forma_api.projects import BuildRequirements, Project, ProjectStore
 from forma_api.proposal_prompts import LANGUAGE_RULE
+from forma_domain.models import Measurement
 
 
 class Fake:
@@ -277,6 +278,29 @@ def test_missing_inputs_match_compiler_valid_fixture_by_stock_kind(tmp_path):
         "remaining length of stock synthetic-tape-stock" in item for item in missing
     )
     assert not any("height of stock synthetic-tape-stock" in item for item in missing)
+    # A #177 photo estimate is a value but never a confirmed measurement.
+    photo_width = project.model_copy(
+        update={
+            "stocks": (
+                sheet.model_copy(
+                    update={
+                        "width_mm": Measurement(
+                            value=280,
+                            unit="mm",
+                            source="photo_estimate",
+                            confirmed=False,
+                        )
+                    }
+                ),
+                tape,
+            )
+        }
+    )
+    missing = design_runtime.missing_inputs(photo_width, resolved)
+    assert any(
+        "width of stock synthetic-sheet" in item and "with a ruler" in item
+        for item in missing
+    )
 
 
 def test_readiness_complete_is_checklist_only_and_missing_stays_missing(tmp_path):
