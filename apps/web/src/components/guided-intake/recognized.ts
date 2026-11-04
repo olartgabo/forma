@@ -128,21 +128,31 @@ export function mergeProposals(
   mediaId: string,
   newId: (name: string) => string,
 ): { items: RecognizedItem[]; added: number; skipped: number } {
+  // A proposal matches at most one existing card on the same photo (best
+  // overlap, IoU >= 0.5) and each card absorbs at most one proposal. Proposals
+  // in the same answer never suppress each other, so overlapping objects stay
+  // separate cards.
+  const pairs: [number, number, number][] = [];
+  proposals.forEach((p, pi) =>
+    items.forEach((item, ii) => {
+      if (!p.box || !item.box || item.media_id !== mediaId) return;
+      const score = iou(item.box, p.box);
+      if (score >= 0.5) pairs.push([score, pi, ii]);
+    }),
+  );
+  pairs.sort((a, b) => b[0] - a[0]);
+  const matched = new Set<number>();
+  const used = new Set<number>();
+  for (const [, pi, ii] of pairs) {
+    if (matched.has(pi) || used.has(ii)) continue;
+    matched.add(pi);
+    used.add(ii);
+  }
   const next = [...items];
   let added = 0;
-  let skipped = 0;
-  for (const proposal of proposals) {
+  proposals.forEach((proposal, pi) => {
+    if (matched.has(pi)) return;
     const box = proposal.box ?? null;
-    const overlaps =
-      box &&
-      next.some(
-        (item) =>
-          item.media_id === mediaId && item.box && iou(item.box, box) >= 0.5,
-      );
-    if (overlaps) {
-      skipped += 1;
-      continue;
-    }
     const name = defaultItemName(
       proposal.identity,
       next.map((i) => i.name),
@@ -161,8 +171,8 @@ export function mergeProposals(
       user_fields: [],
     });
     added += 1;
-  }
-  return { items: next, added, skipped };
+  });
+  return { items: next, added, skipped: matched.size };
 }
 
 type UserField = NonNullable<RecognizedItem["user_fields"]>[number];

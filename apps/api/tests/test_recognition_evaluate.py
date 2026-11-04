@@ -154,6 +154,8 @@ def test_unpredicted_photos_count_as_missed_and_synthetic_is_refused(tmp_path):
     report = run(*write(tmp_path, photos, []))
     assert report["unpredicted_photos"] == 1
     assert report["per_category"]["sponge"]["missed"] == 1
+    assert report["scenes"]["occlusion"] == {"instances": 1, "missed": 1}
+    assert report["scenes"]["partially_visible_instance"]["missed"] == 1
     manifest, recorded = write(tmp_path, photos, [])
     data = json.loads(manifest.read_text())
     manifest.write_text(json.dumps({**data, "synthetic": True}))

@@ -145,11 +145,9 @@ def run(manifest_path: Path, predictions_path: Path) -> dict:
         totals["photos"] += 1
         prediction = by_photo.get(photo.id)
         if prediction is None:
+            # Scored as an empty answer, so its misses reach the scene report.
             totals["unpredicted_photos"] += 1
-            for t in photo.instances:
-                per_category[t.category_id]["instances"] += 1
-                per_category[t.category_id]["missed"] += 1
-            continue
+            prediction = PhotoPrediction(photo_id=photo.id, items=())
         items = prediction.items
         matches, used = _match(photo.instances, items)
         totals["unlocated_proposals"] += sum(p.box is None for p in items)

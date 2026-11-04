@@ -175,13 +175,20 @@ export default function GuidedIntake({
   );
   const [items, setItems] = useState<RecognizedItem[]>([]);
   const [itemsRevision, setItemsRevision] = useState<string | null>(null);
-  const [itemsLoaded, setItemsLoaded] = useState(false);
+  const [itemsState, setItemsState] = useState<"loading" | "ready" | "failed">(
+    "loading",
+  );
   const [itemsDirty, setItemsDirty] = useState(false);
   const [itemProblems, setItemProblems] = useState<Record<string, string[]>>(
     {},
   );
-  const itemsRetry = useRef<RecognizedItemsUpdate | null>(null);
-  const itemsAfterSave = useRef<string | null>(null);
+  // A save whose answer was lost: retried with the same body and key before
+  // any later edits are sent, so its receipt is never orphaned.
+  const pendingItems = useRef<RecognizedItemsUpdate | null>(null);
+  // The inventory save the item cards are waiting for.
+  const itemsAfterSave = useRef<{ from: string; stocks: string } | null>(null);
+  // Saved materials whose item was later identified as something else.
+  const [strayStocks, setStrayStocks] = useState<Record<string, string>>({});
   const [extras, setExtras] = useState<Record<string, Extra>>({});
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const [photoId, setPhotoId] = useState("");
@@ -224,10 +231,14 @@ export default function GuidedIntake({
         setItems([...saved.items]);
         setItemsRevision(saved.revision);
         setItemProblems(problemMap(saved.problems ?? []));
-        setItemsLoaded(true);
+        setItemsState("ready");
       })
       .catch((failure) => {
-        if (!controller.signal.aborted) setError((failure as Error).message);
+        if (controller.signal.aborted) return;
+        setItemsState("failed");
+        setError(
+          `${(failure as Error).message} Item cards are unavailable until the project is reloaded; materials can still be edited.`,
+        );
       });
     return () => controller.abort();
   }, [itemsApi]);
@@ -237,42 +248,78 @@ export default function GuidedIntake({
   ) {
     setItems(update);
     setItemsDirty(true);
-    itemsRetry.current = null;
+  }
+  function changeItem(
+    id: string,
+    update: (item: RecognizedItem) => RecognizedItem,
+  ) {
+    const before = items.find((i) => i.id === id);
+    if (!before) return;
+    const after = keepValidLink(update(before), stocks);
+    const dropped = before.stock_id && !after.stock_id ? before.stock_id : null;
+    if (dropped) {
+      if (!(project.stocks ?? []).some((s) => s.id === dropped))
+        // Generated for this item and never saved: it goes with the link.
+        onStocks((current) => current.filter((s) => s.id !== dropped));
+      else setStrayStocks((m) => ({ ...m, [dropped]: after.name }));
+    }
+    changeItems((current) => current.map((i) => (i.id === id ? after : i)));
   }
   async function saveItems() {
-    if (!itemsLoaded) return;
-    const body: RecognizedItemsUpdate = itemsRetry.current ?? {
-      expected_revision: itemsRevision,
-      idempotency_key: crypto.randomUUID(),
-      // A link only holds for a saved stock of the matching type.
-      items: items.map((item) => keepValidLink(item, project.stocks ?? [])),
-    };
-    itemsRetry.current = body;
+    if (itemsState !== "ready") {
+      setError(
+        "Saved item cards could not be loaded, so they were not saved. Reload the project and try again.",
+      );
+      return;
+    }
+    const draft = items.map((item) =>
+      keepValidLink(item, project.stocks ?? []),
+    );
     setBusy("items");
     try {
-      const saved = await itemsApi.save(body);
-      itemsRetry.current = null;
-      if (!alive.current) return;
+      let revision = itemsRevision;
+      let saved = null;
+      let sent: readonly RecognizedItem[] | null = null;
+      if (pendingItems.current) {
+        saved = await itemsApi.save(pendingItems.current);
+        sent = pendingItems.current.items ?? [];
+        pendingItems.current = null;
+        revision = saved.revision;
+      }
+      if (!sent || JSON.stringify(sent) !== JSON.stringify(draft)) {
+        const body: RecognizedItemsUpdate = {
+          expected_revision: revision,
+          idempotency_key: crypto.randomUUID(),
+          items: draft,
+        };
+        pendingItems.current = body;
+        saved = await itemsApi.save(body);
+        pendingItems.current = null;
+      }
+      if (!alive.current || !saved) return;
       setItems([...saved.items]);
       setItemsRevision(saved.revision);
       setItemProblems(problemMap(saved.problems ?? []));
       setItemsDirty(false);
     } catch (failure) {
-      if (!(failure as ItemsRequestError).retryExact) itemsRetry.current = null;
+      if (!(failure as ItemsRequestError).retryExact)
+        pendingItems.current = null;
       if (alive.current) setError((failure as Error).message);
     } finally {
       if (alive.current) setBusy("");
     }
   }
-  // Item cards are saved right after the inventory they link to.
+  // Item cards are saved right after the inventory save they wait for, and
+  // only when that save is what landed; any other revision cancels them.
   useEffect(() => {
-    if (
-      itemsAfterSave.current &&
-      itemsAfterSave.current !== project.revision_id
-    ) {
-      itemsAfterSave.current = null;
-      void saveItems();
-    }
+    const want = itemsAfterSave.current;
+    if (!want || want.from === project.revision_id) return;
+    itemsAfterSave.current = null;
+    if (stockKey(project.stocks ?? []) === want.stocks) void saveItems();
+    else
+      setNotice(
+        "Item cards were not saved because the saved materials changed. Review them and save again.",
+      );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.revision_id]);
   function useAsMaterial(item: RecognizedItem) {
@@ -414,6 +461,12 @@ export default function GuidedIntake({
   }
   function remove(card: Card) {
     onStocks((current) => current.filter((s) => s.id !== card.stock.id));
+    if (items.some((i) => i.stock_id === card.stock.id))
+      changeItems((current) =>
+        current.map((i) =>
+          i.stock_id === card.stock.id ? { ...i, stock_id: null } : i,
+        ),
+      );
   }
   function commitName(card: Card) {
     const name = nameDrafts[card.stock.id];
@@ -442,7 +495,7 @@ export default function GuidedIntake({
   }
 
   async function suggest() {
-    if (!photo || !museConsent || locked) return;
+    if (!photo || !museConsent || locked || itemsState !== "ready") return;
     setBusy("muse");
     setError("");
     try {
@@ -1096,7 +1149,7 @@ export default function GuidedIntake({
               <button
                 type="button"
                 className="primary"
-                disabled={locked || !museConsent}
+                disabled={locked || !museConsent || itemsState !== "ready"}
                 onClick={() => void suggest()}
               >
                 {busy === "muse"
@@ -1205,6 +1258,14 @@ export default function GuidedIntake({
                   Different piece
                 </button>
               </div>
+              {strayStocks[card.stock.id] && (
+                <p className="warning">
+                  You identified &ldquo;{strayStocks[card.stock.id]}&rdquo; as
+                  something else, but this saved material is still a{" "}
+                  {card.stock.material} {card.stock.kind}. Remove it if it is
+                  not.
+                </p>
+              )}
               <div className="field-row">
                 <label>
                   Type
@@ -1577,20 +1638,14 @@ export default function GuidedIntake({
         photos={photos}
         stocks={stocks}
         problems={itemProblems}
-        locked={locked}
-        onChange={(id, update) =>
-          changeItems((current) =>
-            current.map((i) =>
-              i.id === id ? keepValidLink(update(i), stocks) : i,
-            ),
-          )
-        }
+        locked={locked || itemsState !== "ready"}
+        onChange={changeItem}
         onRemove={(id) =>
           changeItems((current) => current.filter((i) => i.id !== id))
         }
         onUseAsMaterial={useAsMaterial}
       />
-      {(cards.length > 0 || items.length > 0) && (
+      {(cards.length > 0 || items.length > 0 || itemsDirty) && (
         <div className="guided-save">
           <button
             type="button"
@@ -1606,7 +1661,11 @@ export default function GuidedIntake({
             disabled={locked || inventoryStale || (!dirty && !itemsDirty)}
             onClick={() => {
               if (dirty) {
-                if (itemsDirty) itemsAfterSave.current = project.revision_id;
+                if (itemsDirty)
+                  itemsAfterSave.current = {
+                    from: project.revision_id,
+                    stocks: stockKey(stocks),
+                  };
                 onSave();
               } else void saveItems();
             }}
@@ -1751,4 +1810,8 @@ function problemMap(
   const map: Record<string, string[]> = {};
   for (const p of problems) (map[p.item_id] ??= []).push(p.problem);
   return map;
+}
+
+function stockKey(stocks: readonly Stock[]): string {
+  return JSON.stringify(stocks.map((s) => [s.id, s.kind, s.material]).sort());
 }

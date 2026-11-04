@@ -109,6 +109,44 @@ test("separate instances become separate cards; groups keep no count", () => {
   assert.equal(merged.items[0].box_source, "muse_approximate");
 });
 
+test("overlapping objects in one answer stay separate cards", () => {
+  const merged = mergeProposals(
+    [],
+    [
+      proposal(
+        { outcome: "catalog", category_id: "plastic_bottle" },
+        box(0.1, 0.1, 0.6, 0.9),
+      ),
+      proposal(
+        { outcome: "catalog", category_id: "plastic_bottle" },
+        box(0.2, 0.1, 0.7, 0.9),
+      ),
+    ],
+    "photo-1",
+    newId,
+  );
+  assert.equal(merged.added, 2);
+  assert.equal(merged.skipped, 0);
+  // Against one saved card, only the best overlap is absorbed.
+  const later = mergeProposals(
+    merged.items.slice(0, 1),
+    [
+      proposal(
+        { outcome: "catalog", category_id: "plastic_bottle" },
+        box(0.1, 0.1, 0.6, 0.9),
+      ),
+      proposal(
+        { outcome: "catalog", category_id: "plastic_bottle" },
+        box(0.2, 0.1, 0.7, 0.9),
+      ),
+    ],
+    "photo-1",
+    newId,
+  );
+  assert.equal(later.skipped, 1);
+  assert.equal(later.added, 1);
+});
+
 test("corrections survive later suggestions and a save/reload round trip", () => {
   const first = mergeProposals(
     [],

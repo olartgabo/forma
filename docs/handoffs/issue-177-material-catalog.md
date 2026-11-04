@@ -80,7 +80,7 @@ extending the estimator to unsupported flat items and sticks is not done.
 
 ## Behaviour
 
-- "Suggest materials with Muse" (consented, one bounded call) now returns item
+- "Suggest materials from this photo" (consented, one bounded call) now returns item
   proposals. Each becomes an Identified item card with a stable ID and readable
   name ("Plastic bottle", "Plastic bottle 2"). Two bottles stay two cards; a
   pile stays one card marked "A group (not counted)". Uncertain items are named
@@ -107,6 +107,29 @@ Targeted, on this branch: domain catalog tests (15), recognized-item API tests
 (4), recognition scoring tests (2), intake route tests (35, including the
 catalog case), web item-model tests (6), typecheck and lint. The full check
 result on the pushed head is recorded in the PR.
+
+## Connected demo (local, synthetic)
+
+On a local development server with a throwaway credential and a synthetic
+rendered photo (no provider call; cards seeded through the API): four cards
+rendered (two bottles, one partly hidden with a look-alike alternative, a
+cardboard sheet and an uncertain group); correcting bottle 1 to food container
+and "Use as a material" on the cardboard, then one Save, stored the inventory
+and then the cards; after reload the correction ("You chose what this is") and
+the link were kept. Re-identifying the saved cardboard as plastic sheet showed
+the warning on the saved material.
+
+## Review
+
+Independent Sol review (Codex CLI, `gpt-6.1-sol`, read-only) of f865e37:
+REQUEST_CHANGES, 6 major and 1 minor. Repaired: a correction that unlinks a
+generated, unsaved material removes it and flags a saved one; a save whose
+answer was lost is retried with the same key before later edits; cards save
+after an inventory save only when that save's stock set landed; editing and
+Muse suggestions wait for the saved cards to load; Save stays visible while
+card changes are pending; proposals in one answer never suppress each other
+and each saved card absorbs at most one overlapping proposal; photos without
+a prediction reach the scene report. Re-review result is in the PR.
 
 ## Recognition evaluation
 
