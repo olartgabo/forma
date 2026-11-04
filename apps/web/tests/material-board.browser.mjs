@@ -470,12 +470,10 @@ try {
       exact: true,
     });
     await hoverTarget.hover();
-    const hoverStyle = await hoverTarget
-      .locator("img")
-      .evaluate((img) => ({
-        filter: getComputedStyle(img).filter,
-        scale: getComputedStyle(img).getPropertyValue("--scale"),
-      }));
+    const hoverStyle = await hoverTarget.locator("img").evaluate((img) => ({
+      filter: getComputedStyle(img).filter,
+      scale: getComputedStyle(img).getPropertyValue("--scale"),
+    }));
     assert.match(hoverStyle.filter, /255, 255, 255/);
     assert.equal(hoverStyle.scale.trim(), "1.06");
     await board.screenshot({
