@@ -790,6 +790,75 @@ figcaption span {
   filter: grayscale(1) invert(1);
   mix-blend-mode: screen;
 }
+.construction-blueprints {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 12px;
+}
+.construction-blueprint {
+  min-width: 0;
+  margin: 0;
+}
+.construction-blueprint .drawing-sheet-title {
+  font-size: 0.8rem;
+}
+.construction-blueprint .drawing-sheet-title span {
+  color: #c9f6ff;
+}
+.construction-blueprint-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.construction-blueprint-panel {
+  fill: #9feaff14;
+  stroke: #e7fbff;
+  stroke-linejoin: round;
+}
+.construction-blueprint-panel[data-step-focus="true"] {
+  fill: #ff95c217;
+  stroke: #ff95c2;
+}
+.construction-blueprint-number {
+  fill: white;
+  stroke: var(--blueprint);
+  stroke-width: 4px;
+  paint-order: stroke;
+  font:
+    bold 18px ui-monospace,
+    monospace;
+}
+.construction-blueprint-dimension {
+  fill: none;
+  stroke: #9feaff;
+  stroke-width: 1.2px;
+}
+.construction-blueprint-dimension text {
+  fill: #c9f6ff;
+  stroke: var(--blueprint);
+  stroke-width: 4px;
+  paint-order: stroke;
+  font:
+    18px ui-monospace,
+    monospace;
+}
+.construction-blueprint-caption {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-top: 1px solid #ffffff80;
+  color: #e7fbff;
+  font:
+    0.75rem/1.5 ui-monospace,
+    monospace;
+}
+.construction-preparation-sheet {
+  max-width: 360px;
+  margin: 0.75rem 0;
+}
+.construction-preparation-sheet .construction-blueprint-canvas {
+  max-height: 240px;
+  padding: 12px;
+}
 .part-files {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));

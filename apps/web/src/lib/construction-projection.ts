@@ -5,6 +5,22 @@ export type ConstructionView = "top" | "front" | "side";
 const finitePoint = (point: Point3) =>
   [point.x, point.y, point.z].every(Number.isFinite);
 
+/** Depth increases toward the viewer (screen-right cross screen-up).
+ * Ascending painter order therefore draws the farthest facets first. */
+export function constructionCamera(yawDegrees: number, pitchDegrees: number) {
+  const yaw = (yawDegrees * Math.PI) / 180;
+  const pitch = (pitchDegrees * Math.PI) / 180;
+  return (point: Point3): ProjectionPoint => {
+    const across = point.x * Math.cos(yaw) - point.y * Math.sin(yaw);
+    const rearward = point.x * Math.sin(yaw) + point.y * Math.cos(yaw);
+    return {
+      x: across,
+      y: -(rearward * Math.sin(pitch) + point.z * Math.cos(pitch)),
+      depth: -rearward * Math.cos(pitch) + point.z * Math.sin(pitch),
+    };
+  };
+}
+
 /** Display only the finite canonical facets present in this step. */
 export function projectConstructionFacets(
   facets: readonly CanonicalFacet[],
@@ -57,7 +73,7 @@ export function orthographicConstruction(
     view === "top"
       ? { x: p.x, y: -p.y, depth: p.z }
       : view === "front"
-        ? { x: p.x, y: -p.z, depth: p.y }
+        ? { x: p.x, y: -p.z, depth: -p.y }
         : { x: p.y, y: -p.z, depth: p.x },
   );
   return {

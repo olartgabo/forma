@@ -166,6 +166,11 @@ try {
     name: "Prepare the proposed pieces",
   });
   await preparation.waitFor();
+  assert.ok(
+    (await preparation
+      .locator(".drawing-sheet.construction-preparation-sheet")
+      .count()) > 0,
+  );
   assert.match(await preparation.innerText(), /200 × 240 mm/);
   assert.ok(
     (await preparation
@@ -225,6 +230,46 @@ try {
   });
   await diagrams.waitFor();
   assert.equal(await diagrams.getByRole("img").count(), 3);
+  assert.equal(
+    await diagrams.locator(".drawing-sheet.construction-blueprint").count(),
+    3,
+  );
+  const blueprintStyle = await diagrams
+    .locator(".construction-blueprint")
+    .first()
+    .evaluate((el) => ({
+      background: getComputedStyle(el).backgroundColor,
+      grid: getComputedStyle(el).backgroundImage,
+    }));
+  assert.equal(blueprintStyle.background, "rgb(22, 91, 189)");
+  assert.match(blueprintStyle.grid, /linear-gradient/);
+  const focusStyle = await diagrams
+    .locator('polygon[data-step-focus="true"]')
+    .first()
+    .evaluate((el) => ({
+      stroke: getComputedStyle(el).stroke,
+      width: getComputedStyle(el).strokeWidth,
+    }));
+  assert.equal(focusStyle.stroke, "rgb(255, 149, 194)");
+  assert.equal(focusStyle.width, "4px");
+  assert.match(await diagrams.innerText(), /STEP 1 \/ TOP/i);
+  const firstPoints =
+    fixture.result.candidates[0].construction.steps[0].analysis.facets.flatMap(
+      (f) => f.vertices,
+    );
+  const zSpanMm =
+    (Math.max(...firstPoints.map((p) => p.z)) -
+      Math.min(...firstPoints.map((p) => p.z))) *
+    1000;
+  for (const view of ["front", "side"])
+    assert.equal(
+      await diagrams
+        .getByRole("img", { name: new RegExp(`^${view} diagram`) })
+        .locator('[data-dimension="height"]')
+        .count(),
+      Math.round(zSpanMm * 10) > 0 ? 1 : 0,
+      "zero-span panels must not gain invented height arrows",
+    );
   const currentIds = await panel
     .getByRole("img", { name: /Proposed construction geometry/ })
     .locator("polygon")
@@ -241,7 +286,14 @@ try {
     assert.deepEqual(ids, currentIds);
   }
   await panel.getByRole("button", { name: "Next step" }).click();
-  assert.match(await diagrams.innerText(), /proposed bounds/);
+  assert.match(await diagrams.innerText(), /proposed bounds/i);
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth + 1,
+    ),
+    false,
+    "blueprint sheets fit the viewport",
+  );
   if (process.env.SCREENSHOT_PATH)
     await diagrams.screenshot({ path: process.env.SCREENSHOT_PATH });
   // Metadata may hydrate after an initially restored manual. It must restore
