@@ -83,6 +83,23 @@ implemented; hosted authentication remains #6 work. The
 [#1 handoff](../../docs/handoffs/issue-1-workspace.md) reserves the service/domain
 boundary for review before those changes.
 
+## Agent access over MCP
+
+`POST /api/mcp` is a stateless streamable-HTTP MCP endpoint for agents acting for
+a project owner. Send the owner's configured token as `Authorization: Bearer
+<token>`; requests without one return 401. Tools forward to the REST routes above
+in-process, so the same ownership, validation, idempotency and stale-revision
+rules apply. Available tools: `list_projects`, `get_project`, `create_project`,
+`list_photos`, `upload_photo` (base64 JPEG/PNG/WebP, at most 8 MiB) and
+`update_inventory`. Provider calls, plan approval, physical records and deletion
+are not exposed. See D077 in the [decisions](../../docs/decisions.md).
+
+To inspect it locally with MCPJam while `npm run dev:api` runs:
+
+```sh
+npx -y @mcpjam/cli@latest tools list --url http://127.0.0.1:8000/api/mcp --access-token "$TOKEN"
+```
+
 ## Local private projects (#6, first slice)
 
 `create_app()` now exposes project creation/read/deletion and pre-plan inventory

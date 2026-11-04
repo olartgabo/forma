@@ -1123,3 +1123,21 @@ replacement manuals can then be reopened, and separately consented subsequent
 generation remains possible. Any agent live verification still requires its own
 finite call ceiling, deadline and durable usage record; intercepted browser tests
 do not establish provider success or physical build readiness.
+
+## D077 - Expose an MCP endpoint for agent uploads (November 4, 2026)
+
+The user requests an MCP server so an agent can upload project information for
+the user. `POST /api/mcp` serves stateless streamable-HTTP MCP from the API
+process, so hosted traffic reaches it through the existing `/api/*` rewrite. It
+requires the same owner bearer tokens as the REST routes and returns 401 before
+any MCP parsing when the token is missing or unknown.
+
+Each tool forwards to the existing REST route in-process with the caller's
+token, so ownership checks, validation, idempotency and stale-revision 409s are
+the REST behavior unchanged. The tools are `list_projects`, `get_project`,
+`create_project`, `list_photos`, `upload_photo` (base64, same 8 MiB limit) and
+`update_inventory`. Inventory updates still require `user_confirmed: true`; the
+server instructions tell the agent to set it only after the user reviewed the
+values. No tool calls a model provider, approves or activates a plan, records
+physical work or evidence, or deletes data. Those remain in the app with the
+user present. Agent-supplied values are user-reported inventory, not measurements.
