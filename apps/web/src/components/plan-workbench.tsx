@@ -756,7 +756,11 @@ export default function PlanWorkbench({
               projectId={project.id}
               planVersionId={version.version_id}
               inventoryRevisionId={project.revision_id}
-              refreshKey={stabilityRefresh + (diagnosisRefreshKey ?? 0)}
+              refreshKey={
+                stabilityRefresh +
+                measurementRefresh +
+                (diagnosisRefreshKey ?? 0)
+              }
               selectedOperationId={panel?.operation_id ?? null}
               disabled={
                 approvalDisabled ||

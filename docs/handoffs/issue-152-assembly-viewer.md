@@ -45,13 +45,24 @@ node apps/web/tests/assembly-view.browser.mjs <playwright-module> http://127.0.0
 The fixture exporter runs actual synthetic compiler/renderer/API inputs to
 produce planned, unsupported partial and user-reported assembled responses.
 The intercepted local-browser runner checks 390px and 1280px, exact facet counts,
-keyboard/pointer controls, zoom/separation, stable manual links, no display-driven
-requests or physical writes, unsupported/unavailable/stale/foreign response
-cleanup and a delayed response after disconnect. It blocks unexpected API
-requests, mutations and non-local traffic. Screenshots are saved to the operating
+keyboard/pointer controls, native vertical touch tilt on mobile, zoom/separation,
+stable manual links, no display-driven analysis requests or writes,
+unsupported/unavailable/stale/foreign response cleanup and a delayed response
+after disconnect. A separate explicit measurement capture uses real exported
+API responses: the editor locks part-to-manual navigation, and saving refreshes
+the open viewer with the new history cursor and evidence revision without a
+manual refresh. That path allows one explicit read-only stability analysis and
+one intercepted synthetic measurement save. All other mutations and non-local
+traffic are blocked. Screenshots are saved to the operating
 system temporary directory as `forma-assembly152-390.png` and `-1280.png`.
 
 Local targeted results: Python 10 passed; Node 6 passed; browser PASS at both
 widths. Repository-wide checks and independent review are recorded by the
 integrating owner on the final combined head. These are software observations,
 not provider, hosted or physical-build acceptance.
+
+Independent review repairs set `touch-action: none` on the drawing so native
+vertical drag reaches its tilt handler; the surrounding page remains scrollable.
+The connected mount includes the measurement-save revision in its viewer refresh
+key. The browser regression covers both repaired behaviors and the existing
+navigation lock during measurement entry.

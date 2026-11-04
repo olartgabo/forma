@@ -98,6 +98,55 @@ def main(output):
                 params={"plan_version_id": version.version_id},
                 headers=t.AUTH,
             ).json()
+            data["assembled_progress"] = client.get(
+                base + f"/versions/{version.version_id}/progress", headers=t.AUTH
+            ).json()
+            analysis = client.post(
+                base + "/stability/analyses",
+                headers=t.AUTH,
+                json=params | {"expected_last_event_id": current["last_event_id"]},
+            )
+            assert analysis.status_code == 200, analysis.text
+            data["assembled_analysis"] = analysis.json()
+            measurements_test = importlib.import_module("test_stability_measurements")
+            measurement_body = measurements_test.capture_payload(
+                (
+                    client,
+                    f"/test/{project['id']}/stability/analyses",
+                    params,
+                    Path(directory),
+                ),
+                assembled=False,
+            )
+            measurement_body["expected_last_event_id"] = current["last_event_id"]
+            data["measurement_body"] = measurement_body
+            saved = client.post(
+                base + "/stability/measurements", headers=t.AUTH, json=measurement_body
+            )
+            assert saved.status_code == 200, saved.text
+            data["measurement_saved"] = saved.json()
+            params["expected_last_event_id"] = saved.json()["last_event_id"]
+            data["measured_context"] = client.get(
+                base + "/stability/context",
+                params={"plan_version_id": version.version_id},
+                headers=t.AUTH,
+            ).json()
+            data["measured_progress"] = client.get(
+                base + f"/versions/{version.version_id}/progress", headers=t.AUTH
+            ).json()
+            measured_view = client.get(
+                base + "/assembly-view", params=params, headers=t.AUTH
+            )
+            assert measured_view.status_code == 200, measured_view.text
+            data["measured_view"] = measured_view.json()
+            assert (
+                data["measured_view"]["last_event_id"]
+                != data["assembled_view"]["last_event_id"]
+            )
+            assert (
+                data["measured_view"]["evidence_revision"]
+                != data["assembled_view"]["evidence_revision"]
+            )
             assert data["view"]["status"] == "ready"
             assert data["partial_view"]["geometry"] is None
             assert data["assembled_view"]["geometry"]["stage"] == "reported_assembled"

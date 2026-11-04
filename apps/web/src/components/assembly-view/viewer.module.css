@@ -13,7 +13,7 @@
   height: auto;
   background: white;
   border: 1px solid #64748b;
-  touch-action: pan-y;
+  touch-action: none;
 }
 .canvas:focus-visible {
   outline: 3px solid #1d4ed8;

@@ -1,4 +1,5 @@
-// Real compiler/canonical/API fixture replay. No provider or physical writes.
+// Real compiler/canonical/API fixture replay. Provider calls and physical reports
+// are forbidden; one explicit synthetic measurement save is intercepted locally.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -33,6 +34,8 @@ try {
     const errors = [],
       unexpected = [],
       writes = [],
+      measurementWrites = [],
+      analysisRequests = [],
       viewRequests = [];
     let mode = "ready",
       releaseLate,
@@ -60,6 +63,40 @@ try {
         return route.abort();
       }
       if (!url.pathname.startsWith("/api/")) return route.continue();
+      if (
+        request.method() === "POST" &&
+        mode === "assembled" &&
+        url.pathname === `${base}/stability/analyses`
+      ) {
+        analysisRequests.push(request.postDataJSON());
+        assert.equal(
+          analysisRequests.length,
+          1,
+          "only the explicit capture prerequisite analyzes",
+        );
+        return route.fulfill({ json: fixture.assembled_analysis });
+      }
+      if (
+        request.method() === "POST" &&
+        mode === "assembled" &&
+        url.pathname === `${base}/stability/measurements`
+      ) {
+        measurementWrites.push(request.postDataJSON());
+        assert.equal(measurementWrites.length, 1);
+        assert.deepEqual(
+          {
+            ...measurementWrites[0],
+            idempotency_key: fixture.measurement_body.idempotency_key,
+          },
+          fixture.measurement_body,
+        );
+        mode = "measured";
+        replay.set(
+          `${base}/versions/${version.version_id}/progress`,
+          fixture.measured_progress,
+        );
+        return route.fulfill({ json: fixture.measurement_saved });
+      }
       if (request.method() !== "GET") {
         writes.push(request.method() + " " + url.pathname);
         return route.fulfill({
@@ -74,9 +111,11 @@ try {
           json:
             mode === "partial"
               ? fixture.partial_context
-              : mode === "assembled"
-                ? fixture.assembled_context
-                : fixture.context,
+              : mode === "measured"
+                ? fixture.measured_context
+                : mode === "assembled"
+                  ? fixture.assembled_context
+                  : fixture.context,
         });
       if (url.pathname === `${base}/assembly-view`) {
         viewRequests.push(url.search);
@@ -109,9 +148,11 @@ try {
               ? { ...fixture.view, project_id: "foreign" }
               : mode === "partial"
                 ? fixture.partial_view
-                : mode === "assembled"
-                  ? fixture.assembled_view
-                  : fixture.view,
+                : mode === "measured"
+                  ? fixture.measured_view
+                  : mode === "assembled"
+                    ? fixture.assembled_view
+                    : fixture.view,
         });
       }
       if (!replay.has(url.pathname)) {
@@ -162,6 +203,57 @@ try {
       box.y + box.height / 2 + 20,
     );
     await page.mouse.up();
+    if (width === 390) {
+      await canvas.scrollIntoViewIfNeeded();
+      await canvas.evaluate((element) => {
+        element.dataset.touchCanceled = "0";
+        element.addEventListener(
+          "pointercancel",
+          () => {
+            element.dataset.touchCanceled = "1";
+          },
+          { once: true },
+        );
+      });
+      const touchBox = await canvas.boundingBox();
+      const beforeTouch = await canvas
+        .locator("polygon")
+        .first()
+        .getAttribute("points");
+      const scrollBefore = await page.evaluate(() => scrollY);
+      const cdp = await context.newCDPSession(page);
+      const x = touchBox.x + touchBox.width / 2,
+        y = touchBox.y + touchBox.height / 2;
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x, y }],
+      });
+      for (const distance of [20, 40, 60])
+        await cdp.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x, y: y + distance }],
+        });
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      });
+      await cdp.detach();
+      assert.equal(
+        await canvas.getAttribute("data-touch-canceled"),
+        "0",
+        "vertical touch drag is not canceled by browser panning",
+      );
+      assert.notEqual(
+        await canvas.locator("polygon").first().getAttribute("points"),
+        beforeTouch,
+        "vertical touch tilts the assembly",
+      );
+      assert.equal(
+        await page.evaluate(() => scrollY),
+        scrollBefore,
+        "canvas drag does not scroll the page",
+      );
+    }
     assert.equal(
       viewRequests.length,
       1,
@@ -192,6 +284,16 @@ try {
       writes.length,
       0,
       "part selection navigates without completing work",
+    );
+    assert.equal(
+      analysisRequests.length,
+      0,
+      "ordinary camera/selection controls never analyze",
+    );
+    assert.equal(
+      measurementWrites.length,
+      0,
+      "ordinary camera/selection controls never save measurements",
     );
     assert.ok(
       await viewer.evaluate(
@@ -226,12 +328,106 @@ try {
       );
     }
     mode = "assembled";
+    replay.set(
+      `${base}/versions/${version.version_id}/progress`,
+      fixture.assembled_progress,
+    );
     await viewer
       .getByRole("button", { name: "Refresh assembly view", exact: true })
       .click();
     await viewer
       .getByRole("heading", { name: "User-reported assembled stage" })
       .waitFor();
+    await page
+      .getByRole("button", { name: "Refresh physical reports", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Analyze stability", exact: true })
+      .click();
+    const capture = page.getByRole("region", {
+      name: "Stability measurements",
+    });
+    await capture
+      .getByRole("button", {
+        name: "Record stability measurements",
+        exact: true,
+      })
+      .click();
+    const measurements = fixture.measurement_body.measurements;
+    const fill = async (name, value) =>
+      capture.locator(`[name="${name}"]`).fill(String(value));
+    for (const [prefix, body] of [
+      ["stand", measurements.stand],
+      ...measurements.cases.map((c) => [c.orientation, c.device]),
+    ]) {
+      await fill(`${prefix}_mass_g`, body.mass_kg * 1000);
+      await fill(`${prefix}_mass_resolution_g`, body.mass_resolution_kg * 1000);
+      await fill(
+        `${prefix}_position_resolution_mm`,
+        body.position_resolution_m * 1000,
+      );
+      for (const axis of ["x", "y", "z"])
+        await fill(`${prefix}_${axis}_mm`, body.center_of_mass_m[axis] * 1000);
+      await fill(`${prefix}_method`, body.method);
+    }
+    for (const item of measurements.cases)
+      await fill(`${item.orientation}_pose`, item.pose_description);
+    for (const name of ["x_min", "x_max", "y_min", "y_max"])
+      await fill(
+        `contact_${name}_mm`,
+        measurements.support[`${name}_m`] * 1000,
+      );
+    await fill(
+      "contact_resolution_mm",
+      measurements.support.resolution_m * 1000,
+    );
+    await fill("contact_method", measurements.support.method);
+    await fill("required_margin_mm", measurements.required_margin_m * 1000);
+    for (const name of [
+      "stand_includes_all_parts_and_connectors",
+      "actual_contacts_confirmed",
+      "rigid_assembly_assumed",
+      "horizontal_surface_confirmed",
+      "stationary_device_assumed",
+      "gravity_only_assumed",
+      "user_confirmed",
+    ])
+      await capture.locator(`[name="${name}"]`).check();
+    await canvas.waitFor();
+    await viewer.getByRole("button", { name: part, exact: true }).click();
+    assert.equal(
+      await manualButton.isDisabled(),
+      true,
+      "measurement edit preserves the existing manual navigation lock",
+    );
+    const viewsBeforeSave = viewRequests.length;
+    await capture
+      .getByRole("button", { name: "Save stability measurements", exact: true })
+      .click();
+    await page.getByText("Measurements saved.", { exact: false }).waitFor();
+    await viewer.locator("summary").click();
+    await viewer
+      .getByText(
+        `Evidence revision ${fixture.measured_view.evidence_revision}.`,
+        { exact: false },
+      )
+      .waitFor();
+    assert.ok(
+      viewRequests.length > viewsBeforeSave,
+      "same-page save refreshes an open viewer without a manual refresh",
+    );
+    const freshParams = new URLSearchParams(viewRequests.at(-1));
+    assert.equal(
+      freshParams.get("expected_last_event_id"),
+      fixture.measured_context.last_event_id,
+      "new view request binds the saved measurement history cursor",
+    );
+    assert.notEqual(
+      fixture.measured_view.evidence_revision,
+      fixture.assembled_view.evidence_revision,
+    );
+    assert.equal(analysisRequests.length, 1);
+    assert.equal(measurementWrites.length, 1);
     mode = "late";
     await viewer
       .getByRole("button", { name: "Refresh assembly view", exact: true })
@@ -254,7 +450,7 @@ try {
     assert.deepEqual(writes, []);
     await context.close();
     console.log(
-      `PASS assembly viewer ${width}px: canonical facets, keyboard/pointer, zoom/separation, manual links, stale/foreign/unsupported/unavailable fallback, unmount cleanup, zero physical writes`,
+      `PASS assembly viewer ${width}px: canonical facets, keyboard/pointer${width === 390 ? "/vertical touch" : ""}, zoom/separation, locked manual links, measurement-save cursor/evidence refresh, stale/foreign/unsupported/unavailable fallback, unmount cleanup; camera controls cause zero analysis or writes, one explicit synthetic capture save`,
     );
   }
 } finally {
