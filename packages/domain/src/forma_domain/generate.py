@@ -9,6 +9,7 @@ from pydantic.json_schema import models_json_schema
 
 from . import (
     assembly_geometry_contracts,
+    assembly_view_contracts,
     construction_plan,
     construction_resources,
     fabrication_contracts,
@@ -70,6 +71,7 @@ def domain_records():
             models,
             fabrication_contracts,
             assembly_geometry_contracts,
+            assembly_view_contracts,
             generic_assembly,
             construction_plan,
             construction_resources,

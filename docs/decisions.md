@@ -717,3 +717,18 @@ excluded. The two-candidate limit and fabrication authority remain unchanged.
 
 The shared wordmark uses the supplied vector artwork and retains the existing
 header and loader colors. The browser icon uses the supplied logo in site blue.
+
+## D053: Inspect canonical assembly geometry in the manual, November 3, 2026
+
+The user requested issue #152 after the canonical geometry baseline merged.
+The active manual adds an owner-scoped assembly viewer using that producer's
+exact facets, part IDs, stage and geometry hash. The display adapter projects
+those coordinates; orbit, zoom and separated-part offsets change presentation
+only. Selecting a part or operation navigates the existing manual and records
+no physical work.
+
+This explicitly authorizes the scoped viewer despite the earlier physical-P0
+pause on optional 3D presentation. Unsupported partial, damaged, detached or
+repaired states retain the authoritative SVG/history fallback. Planned and
+user-reported assembly remain nominal; absent matching numerical overlays are
+shown as unavailable. No camera action dispatches analysis or changes evidence.

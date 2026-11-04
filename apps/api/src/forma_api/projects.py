@@ -440,6 +440,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     from forma_api.plans import plan_router
     from forma_api.progress import progress_router
     from forma_api.proof import proof_router
+    from forma_api.routes.assembly_view import assembly_view_router
     from forma_api.routes.designs import designs_router
     from forma_api.routes.diagnosis import diagnosis_router
     from forma_api.routes.fabrication import fabrication_router
@@ -461,6 +462,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     router.include_router(diagnosis_router(store, authenticate))
     router.include_router(repairs_router(store, authenticate))
     router.include_router(stability_router(store, authenticate))
+    router.include_router(assembly_view_router(store, authenticate))
     router.include_router(fabrication_router(store, authenticate))
     router.include_router(repair_search_router(store, authenticate))
     return router

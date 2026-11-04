@@ -58,6 +58,11 @@ export type AssemblyJoint = {
   readonly "second": FacetEdge;
 };
 
+export type AssemblyOperationParts = {
+  readonly "operation_id": string;
+  readonly "part_ids": ReadonlyArray<string>;
+};
+
 export type AssemblyPart = {
   readonly "part_id": string;
   readonly "facets": ReadonlyArray<AssemblyFacet>;
@@ -74,6 +79,19 @@ export type AssemblyStage = {
   readonly "label": string;
   readonly "present_part_ids": ReadonlyArray<string>;
   readonly "active_joint_ids": ReadonlyArray<string>;
+};
+
+export type AssemblyViewResponse = {
+  readonly "project_id": string;
+  readonly "plan_version_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "last_event_id": (string | null);
+  readonly "evidence_revision": string;
+  readonly "status": "ready" | "unsupported";
+  readonly "geometry"?: (CanonicalGeometryPreview | null);
+  readonly "operation_parts": ReadonlyArray<AssemblyOperationParts>;
+  readonly "blockers"?: ReadonlyArray<string>;
+  readonly "overlay_coverage"?: "unavailable";
 };
 
 export type AttachBrace = {

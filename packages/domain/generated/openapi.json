@@ -398,6 +398,31 @@
         "title": "AssemblyJoint",
         "type": "object"
       },
+      "AssemblyOperationParts": {
+        "additionalProperties": false,
+        "properties": {
+          "operation_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "part_ids": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Part Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "operation_id",
+          "part_ids"
+        ],
+        "title": "AssemblyOperationParts",
+        "type": "object"
+      },
       "AssemblyPart": {
         "additionalProperties": false,
         "properties": {
@@ -489,6 +514,97 @@
           "active_joint_ids"
         ],
         "title": "AssemblyStage",
+        "type": "object"
+      },
+      "AssemblyViewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "blockers": {
+            "default": [],
+            "items": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "evidence_revision": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Evidence Revision",
+            "type": "string"
+          },
+          "geometry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CanonicalGeometryPreview"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "inventory_revision_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Inventory Revision Id",
+            "type": "string"
+          },
+          "last_event_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Event Id"
+          },
+          "operation_parts": {
+            "items": {
+              "$ref": "#/components/schemas/AssemblyOperationParts"
+            },
+            "maxItems": 64,
+            "title": "Operation Parts",
+            "type": "array"
+          },
+          "overlay_coverage": {
+            "const": "unavailable",
+            "default": "unavailable",
+            "title": "Overlay Coverage",
+            "type": "string"
+          },
+          "plan_version_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Plan Version Id",
+            "type": "string"
+          },
+          "project_id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "plan_version_id",
+          "inventory_revision_id",
+          "last_event_id",
+          "evidence_revision",
+          "status",
+          "operation_parts"
+        ],
+        "title": "AssemblyViewResponse",
         "type": "object"
       },
       "AttachBrace": {

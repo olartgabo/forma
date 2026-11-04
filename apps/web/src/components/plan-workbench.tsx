@@ -25,6 +25,7 @@ import MuseRequestStatus from "./muse-request-status";
 import { useMuseLanguage } from "./muse-language-provider";
 import PhysicalProgress from "./physical-progress";
 import StabilityReportPanel from "./stability-report";
+import AssemblyView from "./assembly-view";
 import type {
   DesignGenerateRequest,
   DesignGenerateResult,
@@ -747,6 +748,29 @@ export default function PlanWorkbench({
                 />
               )}
             </article>
+          )}
+          {current && version && (
+            <AssemblyView
+              key={`assembly:${project.id}:${version.version_id}`}
+              token={token}
+              projectId={project.id}
+              planVersionId={version.version_id}
+              inventoryRevisionId={project.revision_id}
+              refreshKey={stabilityRefresh + (diagnosisRefreshKey ?? 0)}
+              selectedOperationId={panel?.operation_id ?? null}
+              disabled={
+                approvalDisabled ||
+                pending !== null ||
+                progressPending ||
+                measurementPending
+              }
+              onSelectOperation={(operationId) => {
+                const index = version.manual.panels.findIndex(
+                  (item) => item.operation_id === operationId,
+                );
+                if (index >= 0) setStep(index);
+              }}
+            />
           )}
           {current && version && (
             <StabilityReportPanel

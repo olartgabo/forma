@@ -102,6 +102,7 @@ from forma_api.stability_stages import StageAnalysisRequest, StageAnalysisRespon
 from forma_domain import (
     models,
 )
+from forma_domain.assembly_view_contracts import AssemblyViewResponse
 from forma_domain.fabrication_contracts import (
     FabricationReport,
     FabricationSnapshot,
@@ -118,6 +119,7 @@ from forma_domain.repair_search_contracts import (
 )
 
 API_RECORDS = (
+    AssemblyViewResponse,
     MuseConstructionRequest,
     MuseConstructionResult,
     MuseConstructionCandidateResult,
