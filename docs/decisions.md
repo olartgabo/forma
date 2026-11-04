@@ -712,3 +712,8 @@ and allowlisted canonical geometry diagnostics to the existing single correction
 request. Diagnostic probes reuse the geometry producer; they cannot accept a
 candidate or invent measurements. Raw exception payloads, notes and labels are
 excluded. The two-candidate limit and fabrication authority remain unchanged.
+
+## D052: Use the supplied FORMA vector artwork, November 3, 2026
+
+The shared wordmark uses the supplied vector artwork and retains the existing
+header and loader colors. The browser icon uses the supplied logo in site blue.
