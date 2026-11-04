@@ -5,7 +5,14 @@ import time
 
 import pytest
 
-from forma_api.intake_research_muse import ResearchOption, adjudicate, analyze, scout
+from forma_api.intake_research_muse import (
+    ResearchAnalysis,
+    ResearchOption,
+    SourceSupport,
+    adjudicate,
+    analyze,
+    scout,
+)
 from forma_api.model_gateway import GatewayError, MetaGateway
 
 BRIEF = "Find a tabletop stand approach using sheet stock and tape."
@@ -44,8 +51,12 @@ def response(*items):
     return {"status": "completed", "output": list(items)}
 
 
-def search_call():
-    return {"type": "web_search_call", "status": "completed"}
+def search_call(*results):
+    return {"type": "web_search_call", "status": "completed", "results": list(results)}
+
+
+def retrieved(snippet=CLAIM, *, url=URL, title="  Cardboard  tabletop stand "):
+    return {"type": "text_result", "snippet": snippet, "title": title, "url": url}
 
 
 def citation(**changes):
@@ -59,13 +70,13 @@ def citation(**changes):
     }
 
 
-def test_scout_only_keeps_provider_cited_spans_after_search():
+def test_scout_uses_retrieved_excerpt_instead_of_model_written_claim():
     transport = Transport(
         response(
             {"type": "reasoning", "summary": "Provider reasoning stays private."},
-            search_call(),
+            search_call(retrieved(), retrieved(url="https://example.org/uncited")),
             message(
-                CLAIM + " This is an uncited claim.",
+                "A deeper base leaves room for a brace. This is an uncited claim.",
                 (citation(), citation(), citation(end_index=1000)),
             ),
         )
@@ -82,6 +93,7 @@ def test_scout_only_keeps_provider_cited_spans_after_search():
     assert payload["max_tool_calls"] == 1
     assert payload["max_output_tokens"] > 0
     assert payload["tools"] == [{"type": "web_search"}]
+    assert payload["include"] == ["web_search_call.results"]
     assert 0 < timeout <= 2
     assert len(gateway.traces) == 1
 
@@ -103,7 +115,9 @@ def test_scout_only_keeps_provider_cited_spans_after_search():
     ],
 )
 def test_scout_drops_nonpublic_or_ambiguous_urls(url):
-    transport = Transport(response(search_call(), message(CLAIM, (citation(url=url),))))
+    transport = Transport(
+        response(search_call(retrieved(url=url)), message(CLAIM, (citation(url=url),)))
+    )
     assert scout(MetaGateway(transport), BRIEF, time.monotonic() + 2) == ()
 
 
@@ -112,7 +126,13 @@ def test_scout_requires_search_and_annotation_and_rejects_duplicated_tool_calls(
     fake_claim = message(CLAIM, (citation(),))
     skipped = MetaGateway(Transport(response(fake_claim)))
     assert scout(skipped, BRIEF, deadline) == ()
-    uncited = MetaGateway(Transport(response(search_call(), message(CLAIM))))
+    unmatched = MetaGateway(
+        Transport(
+            response(search_call(retrieved(url="https://example.org")), fake_claim)
+        )
+    )
+    assert scout(unmatched, BRIEF, deadline) == ()
+    uncited = MetaGateway(Transport(response(search_call(retrieved()), message(CLAIM))))
     assert scout(uncited, BRIEF, deadline) == ()
     extra_calls = MetaGateway(
         Transport(response(search_call(), search_call(), fake_claim))
@@ -166,17 +186,63 @@ def test_nonterminal_provider_response_has_unknown_outcome(status):
         scout(gateway, BRIEF, time.monotonic() + 2)
 
 
-def test_analyst_receives_public_brief_only_and_cannot_invent_check_families():
-    transport = Transport(response(message('{"focus":"stock"}')))
-    assert analyze(MetaGateway(transport), BRIEF, time.monotonic() + 2).focus == "stock"
+@pytest.mark.parametrize(
+    "change",
+    [
+        {},
+        {"quote": "."},
+        {"quote": "A deeper base"},
+        {"quote": "An invented sentence about base depth."},
+        {"tradeoff": "shallower_base"},
+        {"source_index": 1},
+        {"source_index": True},
+    ],
+)
+def test_analyst_must_quote_an_existing_excerpt_for_an_allowed_tradeoff(change):
+    claim = (
+        CLAIM
+        if change.get("quote") == "."
+        else "A deeper base leaves room for a rear brace."
+    )
+    support = {"source_index": 0, "tradeoff": "deeper_base", "quote": claim}
+    transport = Transport(
+        response(
+            message(json.dumps({"supports": [support | change], "conflicting": False}))
+        )
+    )
+    findings = scout(
+        MetaGateway(
+            Transport(
+                response(
+                    search_call(retrieved(claim)),
+                    message(claim, (citation(end_index=len(claim)),)),
+                )
+            )
+        ),
+        BRIEF,
+        time.monotonic() + 2,
+    )
+    args = (
+        MetaGateway(transport),
+        BRIEF,
+        findings,
+        ("deeper_base",),
+        time.monotonic() + 2,
+    )
+    if change:
+        with pytest.raises(GatewayError, match="invalid_response"):
+            analyze(*args)
+    else:
+        assert analyze(*args).supports == (SourceSupport(**support),)
     payload = transport.calls[0][1]
     assert payload["store"] is False
-    assert json.loads(payload["input"]) == {"public_brief": BRIEF}
+    assert json.loads(payload["input"]) == {
+        "public_brief": BRIEF,
+        "source_excerpts": [claim],
+        "allowed_tradeoffs": ["deeper_base"],
+    }
     assert "tools" not in payload
     assert payload["text"]["format"]["type"] == "json_schema"
-    invalid = Transport(response(message('{"focus":"load_capacity"}')))
-    with pytest.raises(GatewayError, match="invalid_response"):
-        analyze(MetaGateway(invalid), BRIEF, time.monotonic() + 2)
 
 
 @pytest.mark.parametrize(
@@ -190,6 +256,7 @@ def test_analyst_receives_public_brief_only_and_cannot_invent_check_families():
         ('{"option_id":"invented","tradeoff":"deeper_base","source_index":0}', None),
         ('{"option_id":"first","tradeoff":"deeper_base","source_index":0}', None),
         ('{"option_id":"second","tradeoff":"shallower_base","source_index":0}', None),
+        ('{"option_id":"second","tradeoff":"less_tape","source_index":0}', None),
         ('{"option_id":"second","tradeoff":"deeper_base","source_index":1}', None),
         ('{"option_id":"second","tradeoff":"deeper_base","source_index":true}', None),
         ('{"option_id":"second","tradeoff":"deeper_base","source_index":null}', None),
@@ -204,11 +271,21 @@ def test_adjudicator_cannot_select_outside_engine_option_aliases(
     provider_output, selected
 ):
     deadline = time.monotonic() + 2
-    analysis = analyze(
-        MetaGateway(Transport(response(message('{"focus":"stock"}')))), BRIEF, deadline
-    )
+    claim = "A deeper base leaves more room behind the support."
+    evidence = SourceSupport(source_index=0, tradeoff="deeper_base", quote=claim)
+    analysis = ResearchAnalysis(supports=(evidence,), conflicting=False)
     findings = scout(
-        MetaGateway(Transport(response(search_call(), message(CLAIM, (citation(),))))),
+        MetaGateway(
+            Transport(
+                response(
+                    search_call(
+                        retrieved(claim), retrieved(url="https://example.org/hinge")
+                    ),
+                    message(claim, (citation(end_index=len(claim)),)),
+                    message(CLAIM, (citation(url="https://example.org/hinge"),)),
+                )
+            )
+        ),
         BRIEF,
         deadline,
     )
@@ -233,7 +310,7 @@ def test_adjudicator_cannot_select_outside_engine_option_aliases(
     assert "tools" not in payload
     assert json.loads(payload["input"]) == {
         "public_brief": BRIEF,
-        "source_claims": [CLAIM],
-        "analysis": {"focus": "stock"},
+        "source_excerpts": [claim, CLAIM],
+        "supported_evidence": [evidence.model_dump(mode="json")],
         "eligible_options": [option.model_dump(mode="json") for option in options],
     }

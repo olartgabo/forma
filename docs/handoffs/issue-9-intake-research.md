@@ -24,15 +24,16 @@ The missing-input result links directly to the workbench measurement controls.
 Opening them fetches the current deterministic decision and focuses the form.
 A stale decision clears the old form. Opening it saves nothing.
 
-For eligible inputs, a Muse Spark scout looks for cited comparable projects.
-A separate analyst reads the public brief and static stand catalog to flag a
-relevant check family when there are two checked options with a measurable
-difference. FORMA sends those two tasks in parallel. A fresh adjudicator can
-recommend an option or abstain. A recommendation identifies the cited finding
-and a directional tradeoff such as less tape or a deeper base. The server checks
-that the source exists and that the option has that tradeoff in the current
-engine search. The connection between the source and the choice remains advice.
-With one checked option or no comparable difference, only the scout runs.
+For eligible inputs, a Muse Spark scout looks for comparable firsthand projects
+and requests the search tool's retrieved excerpts. FORMA matches citations to
+those results by URL. The analyst sees the excerpts and only the directions
+present in the engine comparison. FORMA checks that each proposed evidence
+quote occurs in the named excerpt. A fresh adjudicator considers the excerpts
+and can recommend only a source and tradeoff that the analyst supported and
+the chosen engine candidate exhibits. The relevance judgment remains advisory.
+Missing evidence or opposed base-depth evidence skips adjudication. With one
+checked option, no comparable difference or no matched excerpt, only the scout
+runs. See the [source-grounding handoff](issue-9-source-grounded-investigation.md).
 
 The workbench shows sources, coverage and the next action separately and marks
 the source the recommendation used. The builder can bring those same checked
@@ -69,9 +70,8 @@ evidence.
   out of the research requests. The result reports elapsed provider time and
   provider-reported usage when available. Keep raw responses out of storage
   and Proof.
-- Findings retain bounded text with a provider citation over the claim.
-  FORMA validates links and renders them as text and public HTTPS URLs.
-  The citation identifies a source. Its claim remains advisory.
+- New findings retain bounded text from a cited search result. FORMA validates
+  public HTTPS URLs without fetching them. Findings remain advisory.
 
 Provider references
 
@@ -86,10 +86,10 @@ missing tools, unsupported plug clearance, impossible stock, stale results,
 privacy, malformed citations, timeouts and idempotency. Browser tests cover
 consent and review through the existing design controls with mocked transport.
 The synthetic checks establish software behavior. Paired fixture runs hold
-the findings and checked candidates fixed while the adjudicator recommends,
-abstains, cites an unavailable source, or chooses the wrong depth direction.
-An older receipt replays its sources and checked candidates without the
-unattributed recommendation or another dispatch.
+the findings and checked candidates fixed while testing supported advice,
+conflict, an unrelated source, and the wrong depth direction. An older
+receipt replays its sources and checked candidates and clears its
+recommendation without another dispatch.
 
 Run the three-arm replay with
 `uv run --locked pytest -q -s apps/api/tests/test_intake_research_evaluation.py`.

@@ -14,7 +14,13 @@ from time import perf_counter
 from test_intake_research import body, revise_inventory
 from test_intake_research import ready as ready
 from test_intake_research import setup as setup
-from test_intake_research_muse import citation, message, response, search_call
+from test_intake_research_muse import (
+    citation,
+    message,
+    response,
+    retrieved,
+    search_call,
+)
 from test_synthesis_routes import identity, post, state
 
 from forma_api import intake_research as runtime
@@ -72,6 +78,12 @@ SELECTIONS = {
     "conflicting-precedents": ("no_preference", None, None),
     "irrelevant-citation": ("option-b", "deeper_base", 0),
 }
+SUPPORT = {
+    "compact-phone": ((1, "shallower_base"),),
+    "brace-space-reading": ((0, "deeper_base"),),
+    "conflicting-precedents": ((0, "deeper_base"), (1, "shallower_base")),
+    "irrelevant-citation": (),
+}
 
 
 class ReplayTransport:
@@ -84,25 +96,46 @@ class ReplayTransport:
         if "tools" in payload:
             self.calls["scout"] += 1
             assert payload["input"] == runtime.BRIEFS[self.brief.use_case]
+            assert payload["include"] == ["web_search_call.results"]
+            excerpts = CLAIMS[self.brief.name]
+            results = [
+                retrieved(
+                    excerpt,
+                    title=f"Synthetic example {index + 1}",
+                    url=f"https://example.org/fixture/{index + 1}",
+                )
+                for index, excerpt in enumerate(excerpts)
+            ]
+            # A model-written paraphrase can overstate what the source says.
+            claims = (
+                (BRACE_SPACE,) if self.brief.name == "irrelevant-citation" else excerpts
+            )
             findings = [
                 message(
                     claim,
                     (
                         citation(
                             end_index=len(claim),
-                            title=f"Synthetic example {index + 1}",
-                            url=f"https://example.org/fixture/{index + 1}",
+                            url=results[index]["url"],
                         ),
                     ),
                 )
-                for index, claim in enumerate(CLAIMS[self.brief.name])
+                for index, claim in enumerate(claims)
             ]
-            return response(search_call(), *(findings or [message(TAPE_HINGE)]))
+            return response(search_call(*results), *(findings or [message(TAPE_HINGE)]))
 
         role = payload["text"]["format"]["name"]
         if role == "ResearchAnalysis":
             self.calls["analyst"] += 1
-            return response(message('{"focus":"joint_profiles"}'))
+            excerpts = CLAIMS[self.brief.name]
+            assert json.loads(payload["input"])["source_excerpts"] == list(excerpts)
+            supports = [
+                {"source_index": index, "tradeoff": tradeoff, "quote": excerpts[index]}
+                for index, tradeoff in SUPPORT[self.brief.name]
+            ]
+            return response(
+                message(json.dumps({"supports": supports, "conflicting": False}))
+            )
         assert role == "ResearchSelection"
         self.calls["adjudicator"] += 1
         option, tradeoff, source = SELECTIONS[self.brief.name]
@@ -215,9 +248,12 @@ def test_paired_intake_research_evaluation(ready, monkeypatch):
                     lambda: runtime.MetaGateway(transport),
                 )
                 if mode == "citations-only":
-                    # There is no citations-only endpoint. Omit the advisory
-                    # analysis for this arm so only the real scout can dispatch.
-                    patch.setattr(runtime.muse, "analyze", lambda *_: None)
+                    # End this arm after the real scout, with excerpts available
+                    # but no evidence assessment or recommendation.
+                    def omit_analysis(*_):
+                        raise runtime.GatewayError("invalid_response")
+
+                    patch.setattr(runtime.muse, "analyze", omit_analysis)
                 path, payload = (
                     ("search", identity(project))
                     if mode == "stock-only"
@@ -240,12 +276,11 @@ def test_paired_intake_research_evaluation(ready, monkeypatch):
             if mode != "stock-only" and brief.stop_reason is None:
                 expected_calls["scout"] = 1
                 if mode == "full-adjudication":
-                    expected_calls["analyst"] = 1
-                    expected_calls["adjudicator"] = bool(CLAIMS[brief.name])
+                    expected_calls["analyst"] = bool(CLAIMS[brief.name])
+                    expected_calls["adjudicator"] = brief.useful_direction is not None
             assert transport.calls == expected_calls
             row = assess(brief, mode, result, transport.calls, elapsed)
-            # Score the adversarial reply without requiring the API to accept it.
-            if mode == "full-adjudication" and brief.name != "irrelevant-citation":
+            if mode == "full-adjudication":
                 assert row["useful_recommendation"] or row["correct_abstention"], row
             if mode == "full-adjudication" and brief.name == "compact-phone":
                 wrong_claim = result | {

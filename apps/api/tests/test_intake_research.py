@@ -8,7 +8,13 @@ from threading import Event
 from types import SimpleNamespace
 
 import pytest
-from test_intake_research_muse import citation, message, response, search_call
+from test_intake_research_muse import (
+    citation,
+    message,
+    response,
+    retrieved,
+    search_call,
+)
 from test_plans import AUTH, OTHER, stand_inputs
 from test_synthesis_routes import identity, post, search, state
 from test_synthesis_routes import setup as setup
@@ -17,7 +23,7 @@ from forma_api import intake_research as runtime
 from forma_api.model_gateway import GatewayError
 
 FINDING = runtime.muse.ResearchFinding(
-    claim="A cardboard stand can use a taped triangular brace.",
+    claim="A deeper base leaves room for a rear brace.",
     title="Tabletop stand example",
     url="https://example.org/stand",
 )
@@ -64,16 +70,26 @@ def provider(monkeypatch):
         calls.append(("scout", brief))
         return (FINDING,)
 
-    def analyze(gateway, brief, deadline):
+    def analyze(gateway, brief, findings, tradeoffs, deadline):
         calls.append(("analyst", brief))
-        return runtime.muse.ResearchAnalysis(focus="stock")
+        assert findings == (FINDING,)
+        assert "deeper_base" in tradeoffs
+        return runtime.muse.ResearchAnalysis(
+            supports=(
+                runtime.muse.SourceSupport(
+                    source_index=0, tradeoff="deeper_base", quote=FINDING.claim
+                ),
+            ),
+            conflicting=False,
+        )
 
     def adjudicate(gateway, brief, findings, analysis, options, deadline):
         calls.append(("adjudicator", options))
         assert findings == (FINDING,)
-        assert analysis.focus == "stock"
         return runtime.muse.ResearchSelection(
-            option_id=options[-1].id, tradeoff=options[-1].tradeoffs[0], source_index=0
+            option_id=options[-1].id,
+            tradeoff=analysis.supports[0].tradeoff,
+            source_index=0,
         )
 
     monkeypatch.setattr(runtime.muse, "scout", scout)
@@ -110,7 +126,8 @@ def test_research_recommends_only_checked_candidates_and_uses_normal_preview(
     assert data["findings"] == [FINDING.model_dump(mode="json")]
     engine = search(client, project)
     assert data["search"] == engine
-    candidate = engine["candidates"][-1]
+    checked = data["search"]
+    candidate = checked["candidates"][-1]
     assert data["recommended_candidate_id"] == candidate["candidate_id"]
     assert data["recommendation_source_index"] == 0
     assert len(provider) == 3
@@ -138,7 +155,7 @@ def test_research_recommends_only_checked_candidates_and_uses_normal_preview(
         "select",
         identity(
             project,
-            search_id=engine["search_id"],
+            search_id=checked["search_id"],
             design=candidate["design"],
             idempotency_key="research-preview",
             user_selected=True,
@@ -264,6 +281,7 @@ def test_no_sources_and_abstention_leave_engine_candidates_available(
     assert result["findings"] == []
     assert result["recommended_candidate_id"] is None
     assert result["search"]["status"] == "candidates_found"
+    assert [role for role, _ in provider] == ["scout", "analyst"]
 
 
 def test_pending_reservation_and_inventory_change_block_late_result(
@@ -294,6 +312,7 @@ def test_pending_reservation_and_inventory_change_block_late_result(
         finally:
             finish.set()
         assert pending.result(timeout=12).status_code == 409
+    assert not provider  # The replacement scout ran, and no later role dispatched.
     assert not any(runtime.SCOPE in row[1] for row in state(directory)["requests"])
 
 
@@ -450,12 +469,31 @@ def test_paired_research_outcomes_keep_the_same_checked_options_and_sources(
             calls.append(payload)
             if "tools" in payload:
                 assert payload["max_tool_calls"] == 1
-                result = response(search_call(), message(source_text, sources))
+                result = response(
+                    search_call(
+                        retrieved(claim, url=sources[0]["url"]),
+                        retrieved(counterclaim, url=sources[1]["url"]),
+                    ),
+                    message(source_text, sources),
+                )
             elif payload["text"]["format"]["name"] == "ResearchAnalysis":
-                result = response(message('{"focus":"stock"}'))
+                supports = [
+                    {"source_index": 0, "tradeoff": "deeper_base", "quote": claim}
+                ]
+                if selection["option_id"] == "no_preference":
+                    supports.append(
+                        {
+                            "source_index": 1,
+                            "tradeoff": "shallower_base",
+                            "quote": counterclaim,
+                        }
+                    )
+                result = response(
+                    message(json.dumps({"supports": supports, "conflicting": False}))
+                )
             else:
                 context = json.loads(payload["input"])
-                assert context["source_claims"] == [claim, counterclaim]
+                assert context["source_excerpts"] == [claim, counterclaim]
                 assert "deeper_base" not in context["eligible_options"][0]["tradeoffs"]
                 assert "deeper_base" in context["eligible_options"][1]["tradeoffs"]
                 result = response(message(json.dumps(selection)))
@@ -491,6 +529,7 @@ def test_paired_research_outcomes_keep_the_same_checked_options_and_sources(
         ("conflict", "no_preference", None, None, "complete"),
         ("direction", "option-a", "deeper_base", 0, "partial"),
         ("bad-source", "option-b", "deeper_base", 3, "partial"),
+        ("wrong-source", "option-b", "deeper_base", 1, "partial"),
     ):
         selection.update(option_id=option, tradeoff=tradeoff, source_index=index)
         reply = post(
@@ -508,10 +547,11 @@ def test_paired_research_outcomes_keep_the_same_checked_options_and_sources(
             claim,
             counterclaim,
         ]
+        model_calls = 2 if case == "conflict" else 3
         assert data["usage"] == {
-            "model_calls": 3,
-            "input_tokens": 30,
-            "output_tokens": 9,
+            "model_calls": model_calls,
+            "input_tokens": 10 * model_calls,
+            "output_tokens": 3 * model_calls,
         }
         if case == "supported":
             assert (
@@ -523,20 +563,22 @@ def test_paired_research_outcomes_keep_the_same_checked_options_and_sources(
         else:
             assert data["recommended_candidate_id"] is None
             assert data["recommendation_source_index"] is None
-    assert len(calls) == 12
+    assert len(calls) == 14
     assert {k: v for k, v in state(directory).items() if k != "requests"} == {
         k: v for k, v in before.items() if k != "requests"
     }
 
 
-def test_legacy_receipt_keeps_checked_designs_and_drops_unattributed_recommendation(
-    ready, provider
+@pytest.mark.parametrize("has_source_index", [False, True])
+def test_legacy_receipt_keeps_checked_designs_and_drops_unverified_recommendation(
+    ready, provider, has_source_index
 ):
     client, project, directory, _ = ready
     first = post(client, project, "research", body(project)).json()
     assert first["recommended_candidate_id"]
     legacy = dict(first)
-    del legacy["recommendation_source_index"]
+    if not has_source_index:
+        del legacy["recommendation_source_index"]
     with sqlite3.connect(directory / "projects.sqlite3") as connection:
         connection.execute(
             "UPDATE requests SET response=? WHERE scope=? AND key=?",

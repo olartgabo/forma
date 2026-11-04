@@ -2,7 +2,6 @@
 
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor
 from time import monotonic, time
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -29,6 +28,7 @@ BRIEFS = {
 UNCERTAIN = {"timeout", "network_error", "budget_exhausted", "provider_outcome_unknown"}
 DEADLINE_SECONDS = 20
 MAX_CONCURRENT = 2
+RECEIPT_EVIDENCE_VERSION = 1
 TRADEOFF_REASON: dict[muse.ResearchTradeoff, str] = {
     "less_sheet_stock": "uses less sheet stock",
     "deeper_base": "has a deeper base",
@@ -212,9 +212,11 @@ def _option(
 def _investigate(base, gateway, brief, deadline, current):
     started = monotonic()
     findings = ()
-    analysis = None
     uncertain = False
-    scout_succeeded = False
+    coverage = "unavailable"
+    reason = base.reason
+    recommended = None
+    source_index = None
     candidates = base.search.candidates
     options = (
         (
@@ -224,40 +226,37 @@ def _investigate(base, gateway, brief, deadline, current):
         if len(candidates) == 2
         else ()
     )
-    compare = any(option.tradeoffs for option in options)
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        scout_job = pool.submit(muse.scout, gateway, brief, deadline)
-        analysis_job = (
-            pool.submit(muse.analyze, gateway, brief, deadline) if compare else None
-        )
-        try:
-            findings = scout_job.result()
-            scout_succeeded = True
-        except GatewayError as exc:
-            uncertain = exc.code in UNCERTAIN
-        if analysis_job is not None:
-            try:
-                analysis = analysis_job.result()
-            except GatewayError as exc:
-                uncertain |= exc.code in UNCERTAIN
+    tradeoffs = tuple(
+        sorted({tradeoff for option in options for tradeoff in option.tradeoffs})
+    )
 
-    coverage = "no_sources" if scout_succeeded else "unavailable"
-    reason = base.reason
-    recommended = None
-    source_index = None
-    if findings:
-        if not compare:
+    def can_continue():
+        return current() and monotonic() < deadline
+
+    try:
+        findings = muse.scout(gateway, brief, deadline)
+        if not findings:
+            coverage = "no_sources"
+            reason = "No cited excerpts matched the retrieved sources. You can still review the checked designs."
+        elif not tradeoffs:
             coverage = "complete"
             reason = "The sources describe related approaches. The stand search found no distinct tradeoff to adjudicate."
         else:
             coverage = "partial"
-            if (
-                analysis is not None
-                and not uncertain
-                and monotonic() < deadline
-                and current()
-            ):
-                try:
+            reason = "Source review did not finish. You can still compare the checked designs."
+            if can_continue():
+                analysis = muse.analyze(gateway, brief, findings, tradeoffs, deadline)
+                directions = {item.tradeoff for item in analysis.supports}
+                if (
+                    analysis.conflicting
+                    or {"deeper_base", "shallower_base"} <= directions
+                ):
+                    coverage = "complete"
+                    reason = "The retrieved excerpts favor conflicting tradeoffs."
+                elif not analysis.supports:
+                    coverage = "complete"
+                    reason = "The retrieved excerpts did not support a measured difference between the checked designs."
+                elif can_continue():
                     selection = muse.adjudicate(
                         gateway, brief, findings, analysis, options, deadline
                     )
@@ -278,8 +277,8 @@ def _investigate(base, gateway, brief, deadline, current):
                             + TRADEOFF_REASON[selection.tradeoff]
                             + "."
                         )
-                except GatewayError as exc:
-                    uncertain |= exc.code in UNCERTAIN
+    except GatewayError as exc:
+        uncertain = exc.code in UNCERTAIN
 
     if uncertain:
         reason += (
@@ -481,6 +480,7 @@ def _receipt(result: IntakeResearchResult | None, uncertain: bool) -> str:
         {
             "result": result.model_dump(mode="json") if result is not None else None,
             "uncertain": uncertain,
+            "evidence_version": RECEIPT_EVIDENCE_VERSION,
         }
     )
 
@@ -492,12 +492,13 @@ def _replayed_result(replay: dict) -> IntakeResearchResult | JSONResponse:
             "The previous research may still be running or its outcome is unknown."
         )
     if result.get("recommended_candidate_id") is not None and (
-        "recommendation_source_index" not in result
+        replay.get("evidence_version") != RECEIPT_EVIDENCE_VERSION
     ):
-        # Old receipts have checked designs but no basis for the recommendation.
+        # Earlier receipts did not tie the recommendation to retrieved evidence.
         result = {
             **result,
             "recommended_candidate_id": None,
+            "recommendation_source_index": None,
             "reason": "Cited sources and checked options are available for review.",
         }
     return IntakeResearchResult.model_validate({**result, "replayed": True})

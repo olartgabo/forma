@@ -863,3 +863,18 @@ A stale inventory or unsupported essential requirement clears those choices.
 When the engine identifies a missing measurement, the research result opens
 the existing measurement form and fetches a decision for the current inventory.
 The builder still has to enter and confirm the measured value before saving.
+
+## D061. Review retrieved excerpts before recommending a stand, November 4, 2026
+
+The scout requests source excerpts from the search tool. FORMA matches them to
+cited URLs and shows those excerpts to the builder. A separate analyst pairs
+verbatim evidence with a tradeoff found by the engine. The adjudicator reviews
+the excerpts and can recommend only a supported pairing on a checked design.
+Research stops early when evidence is absent or points to opposite base
+depths. Legacy receipts retain references and checked options, with earlier
+recommendations cleared.
+
+Selection still rechecks the design against current project inputs before
+compiling a preview. This work stays within the triangular tape stand and the
+existing intake research feature flag. See the
+[handoff](handoffs/issue-9-source-grounded-investigation.md).
