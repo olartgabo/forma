@@ -209,6 +209,17 @@ def missing_inputs(project, resolved: ResolvedDesignContext) -> list[str]:
         ):
             if measurement.value is None:
                 missing.append(f"Confirm the {label} requirement.")
+    missing.extend(context_missing_inputs(resolved))
+    for blocker in resolved.blockers:
+        if blocker.message not in missing:
+            missing.append(blocker.message)
+    return missing[:32]
+
+
+def context_missing_inputs(resolved: ResolvedDesignContext) -> list[str]:
+    """Server design-context facts still unset for this revision."""
+
+    missing = []
     if not resolved.joint_profiles:
         missing.append("No reviewed joint profiles are configured for this revision.")
     if resolved.process is None:
@@ -219,10 +230,7 @@ def missing_inputs(project, resolved: ResolvedDesignContext) -> list[str]:
         missing.append("Selected kerf is not configured.")
     if resolved.edge_margin_mm is None:
         missing.append("Selected edge margin is not configured.")
-    for blocker in resolved.blockers:
-        if blocker.message not in missing:
-            missing.append(blocker.message)
-    return missing[:32]
+    return missing
 
 
 def build_snapshot(project, resolved: ResolvedDesignContext) -> ProjectSnapshot:
