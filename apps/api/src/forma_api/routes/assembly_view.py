@@ -14,7 +14,7 @@ from forma_api.stability_measurements import (
     latest_record,
     typed_evidence_ids,
 )
-from forma_api.stability_reports import SavedStabilityReport, dependencies, freshness
+from forma_api.stability_reports import SavedStabilityReport, freshness
 from forma_api.stability_runtime import StabilitySnapshot
 from forma_domain.assembly_view_contracts import AssemblyViewResponse
 from forma_domain.models import ID, Evidence, EvidenceInvalidation, PhysicalEvent
@@ -118,7 +118,6 @@ def assembly_view_router(store: ProjectStore, authenticate) -> APIRouter:
                     }
                     if (
                         freshness(saved, project, cursor, invalidations).current
-                        and saved.dependencies == dependencies()
                         and saved.project_id == project_id
                         and saved.report_id == "stability-report-" + report.cache_hash
                         and identity == saved.analysis_input.identity

@@ -60,7 +60,9 @@ export type AssemblyViewResponse = {
   readonly "geometry"?: (CanonicalGeometryPreview | null);
   readonly "operation_parts": ReadonlyArray<AssemblyOperationParts>;
   readonly "blockers"?: ReadonlyArray<string>;
-  readonly "overlay_coverage"?: "unavailable";
+  readonly "overlay_coverage"?: "unavailable" | "available";
+  readonly "overlay_report_id"?: (string | null);
+  readonly "overlay_report"?: (StabilityReport | null);
 };
 
 export type Box = {
@@ -710,7 +712,7 @@ export type RepairSearchSummary = {
 
 export type ReportFreshness = {
   readonly "current": boolean;
-  readonly "stale_reasons"?: ReadonlyArray<"plan_changed" | "inventory_changed" | "history_changed" | "evidence_invalidated">;
+  readonly "stale_reasons"?: ReadonlyArray<"plan_changed" | "inventory_changed" | "history_changed" | "evidence_invalidated" | "engine_changed">;
 };
 
 export type ResizeMeasurement = {
