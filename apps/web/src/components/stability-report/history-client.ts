@@ -21,6 +21,7 @@ const staleReasons = new Set([
   "inventory_changed",
   "history_changed",
   "evidence_invalidated",
+  "engine_changed",
 ]);
 const outcomes = new Set([
   "not_comparable",
@@ -179,17 +180,72 @@ export function validateMuse(
   expected: ExpectedContext,
 ): StabilityMuseResult {
   const explanation = object(value) ? value.explanation : null;
+  const focus = object(value) ? value.focus : null;
   if (
     !object(value) ||
     value.project_id !== expected.projectId ||
     value.physical_status !== "not_verified" ||
     !object(explanation) ||
-    typeof explanation.summary !== "string"
+    typeof explanation.summary !== "string" ||
+    !object(focus) ||
+    !Array.isArray(focus.case_ids) ||
+    focus.case_ids.length < 1 ||
+    focus.case_ids.length > 2 ||
+    new Set(focus.case_ids).size !== focus.case_ids.length ||
+    !focus.case_ids.every((id) => typeof id === "string") ||
+    !Array.isArray(focus.check_types) ||
+    focus.check_types.length < 1 ||
+    focus.check_types.length > 5 ||
+    new Set(focus.check_types).size !== focus.check_types.length ||
+    !focus.check_types.every((type) =>
+      ["support", "tip", "slide", "joint", "deformation"].includes(
+        String(type),
+      ),
+    ) ||
+    !Array.isArray(value.focused_results) ||
+    value.focused_results.length !==
+      focus.case_ids.length * focus.check_types.length
   )
     invalid("MetaMuse explanation");
   const report = validateSummary(value.report, expected);
-  if (explanation.report_id !== report.report_id)
+  if (
+    explanation.report_id !== report.report_id ||
+    focus.report_id !== report.report_id ||
+    focus.case_ids.some((id) => !report.case_ids.includes(id))
+  )
     invalid("MetaMuse explanation");
+  const pairs = new Set<string>();
+  for (const row of value.focused_results) {
+    if (
+      !object(row) ||
+      typeof row.case_id !== "string" ||
+      typeof row.check_type !== "string" ||
+      !focus.case_ids.includes(row.case_id) ||
+      !focus.check_types.includes(row.check_type) ||
+      typeof row.explanation !== "string" ||
+      ![
+        "modeled_pass",
+        "modeled_fail",
+        "indeterminate",
+        "needs_measurement",
+        "unsupported",
+        "not_applicable",
+      ].includes(String(row.status)) ||
+      ![
+        "complete",
+        "invalid_input",
+        "numerical_failure",
+        "budget_exhausted",
+        "not_run",
+      ].includes(String(row.computation)) ||
+      !Array.isArray(row.unresolved_predicates) ||
+      !row.unresolved_predicates.every((item) => typeof item === "string")
+    )
+      invalid("MetaMuse focused result");
+    const pair = `${row.case_id}/${row.check_type}`;
+    if (pairs.has(pair)) invalid("MetaMuse focused result");
+    pairs.add(pair);
+  }
   return value as StabilityMuseResult;
 }
 
