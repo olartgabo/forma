@@ -73,6 +73,10 @@ previous version serving.
 requests its `/api/health`, so an image that builds but cannot start fails the
 pull request instead of the host.
 
+The `web-image` job builds `deploy/web.Dockerfile` with its own source copies.
+This catches imports of shared packages omitted from the image, including the
+assembly viewer's display projection, before deployment.
+
 The workflow skips a commit the host has already moved past, so a late run for
 an older commit does not roll the host back. To redeploy a commit, rerun its
 `Deploy` job in GitHub Actions.

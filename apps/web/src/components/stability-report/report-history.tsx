@@ -29,6 +29,7 @@ const staleText: Record<string, string> = {
   inventory_changed: "the inventory changed",
   history_changed: "build history or measurements changed",
   evidence_invalidated: "its measurement evidence was invalidated",
+  engine_changed: "the engine or numerical dependency versions changed",
 };
 function freshness(summary: StabilityReportSummary) {
   return summary.freshness.current
@@ -361,7 +362,9 @@ export default function ReportHistory({
             ? "MetaMuse will explain the inputs of the selected saved report."
             : "MetaMuse will run the stability tool on the current plan and save that report."}{" "}
           It can only read server data; it cannot add measurements or approve
-          anything.
+          anything. Muse selects saved cases and checks; the server renders
+          their actual statuses and fixed limitations. Model-authored prose is
+          never displayed.
         </p>
         <label>
           <input
@@ -430,21 +433,27 @@ export default function ReportHistory({
       </fieldset>
       {muse && (
         <article aria-label="MetaMuse stability explanation">
-          <h5>
-            MetaMuse explanation of report {shortId(muse.report.report_id)}
-          </h5>
+          <h5>Muse-selected report focus {shortId(muse.report.report_id)}</h5>
           <p>
-            Model explanation of a modeled result; physical stability is not
-            verified.{" "}
+            Saved numerical results for the selected focus; physical stability
+            is not verified.{" "}
             {museUnchecked
               ? "Its report is no longer in the latest history, so freshness was not rechecked."
               : `${freshness(muse.report)}.`}
           </p>
           <p>{muse.explanation.summary}</p>
+          <p>
+            Selected cases: {muse.focus.case_ids.join(", ")}. Checks:{" "}
+            {muse.focus.check_types.join(", ")}.
+          </p>
           <ul>
-            {muse.explanation.case_notes?.map((n, i) => (
-              <li key={i}>
-                {n.case_id}: {n.note}
+            {muse.focused_results.map((row) => (
+              <li key={`${row.case_id}/${row.check_type}`}>
+                {row.case_id} / {row.check_type}: {label(row.status)} (
+                {label(row.computation)}). {row.explanation}
+                {!!row.unresolved_predicates?.length && (
+                  <p>Unresolved: {row.unresolved_predicates.join("; ")}</p>
+                )}
               </li>
             ))}
           </ul>

@@ -840,7 +840,23 @@ repaired states retain the authoritative SVG/history fallback. Planned and
 user-reported assembly remain nominal; absent matching numerical overlays are
 shown as unavailable. No camera action dispatches analysis or changes evidence.
 
-## D060: Reference-scaled planar photo estimates stay estimates, November 4, 2026
+## D060: Bind displayed stability claims to saved results, November 4, 2026
+
+Following the merged #147 and #152 implementations, MetaMuse selects a bounded
+focus from authorized saved cases and check types. The server derives displayed
+statuses, explanations and cautions from the saved engine report. Model-written
+prose cannot assert a physical pass. Completed older receipts retain their request
+identity and usage but receive the same deterministic presentation; unresolved
+provider outcomes continue to block new dispatches.
+
+The assembly viewer reads matching saved reports without running analysis. Report
+identity, canonical geometry, measurements, profiles, history and engine dependencies
+must match the current authorized context. Missing or stale overlays remain
+unavailable. Camera controls and case selection change display only; separated
+parts hide world-coordinate overlays. Stored reports remain readable after an
+engine or numerical dependency upgrade and are marked stale.
+
+## D061: Reference-scaled planar photo estimates stay estimates, November 4, 2026
 
 The user requested photo-first intake with calibrated dimension estimates (#177).
 This deliberately changes #7's rule that image-derived sizes stay unknown: a
@@ -871,7 +887,7 @@ improvement on our materials, compatible licences and deployable resources.
 Accuracy on real photographs is unvalidated until the evaluation procedure in
 the [photo measurement handoff](handoffs/issue-177-photo-measurement.md) runs.
 
-## D061: Recognition categories are not fabrication materials, November 4, 2026
+## D062: Recognition categories are not fabrication materials, November 4, 2026
 
 The user extended #177 to an initial catalog of 48 everyday categories. They are
 recognition categories: what a visible object probably is. Identity, a

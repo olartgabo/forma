@@ -28,6 +28,7 @@ try {
       await browser.newContext({
         viewport: { width, height: 900 },
         serviceWorkers: "block",
+        reducedMotion: "reduce",
       })
     ).newPage();
     page.setDefaultTimeout(30000);
@@ -258,6 +259,17 @@ try {
     await answer
       .getByText(fixture.muse_replay.explanation.summary, { exact: true })
       .waitFor();
+    await answer
+      .getByRole("heading", { name: /Muse-selected report focus/ })
+      .waitFor();
+    for (const row of fixture.muse_replay.focused_results) {
+      assert.match(
+        await answer.textContent(),
+        new RegExp(row.explanation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      );
+      for (const predicate of row.unresolved_predicates)
+        assert.ok((await answer.textContent()).includes(predicate));
+    }
     await answer
       .getByText("Stale — build history or measurements changed", {
         exact: false,

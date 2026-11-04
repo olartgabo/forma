@@ -5,6 +5,7 @@ import type { AssemblyViewResponse } from "../../lib/generated/contracts";
 import {
   initialCamera,
   projectFacets,
+  projectWorldPoints,
   type Camera,
 } from "../../../../../packages/assembly_view/projection";
 import { requestView } from "./client";
@@ -36,6 +37,7 @@ export default function AssemblyView({
   const [pending, setPending] = useState(false);
   const [camera, setCamera] = useState<Camera>(initialCamera);
   const [selectedPart, setSelectedPart] = useState<string | null>(null);
+  const [overlayCase, setOverlayCase] = useState("");
   const drag = useRef<{ id: number; x: number; y: number } | null>(null);
   // A response cannot survive a changed authorization, history, or manual context.
   const identity = `${token}:${projectId}:${planVersionId}:${inventoryRevisionId}:${refreshKey}:${reload}`;
@@ -44,6 +46,7 @@ export default function AssemblyView({
     setResponse(null);
     setError("");
     setSelectedPart(null);
+    setOverlayCase("");
     setCamera(initialCamera);
     drag.current = null;
     if (!open) {
@@ -86,6 +89,17 @@ export default function AssemblyView({
     links.find((item) => item.operation_id === selectedOperationId)?.part_ids ??
     [];
   const facets = geometry ? projectFacets(geometry.facets, camera) : [];
+  const overlays = view?.overlay_report?.overlays ?? [];
+  const overlay =
+    overlays.find((item) => item.case_id === overlayCase) ?? overlays[0];
+  const overlayVisible = !!geometry && !!overlay && camera.explode === 0;
+  const projectedOverlay = overlayVisible
+    ? projectWorldPoints(geometry.facets, camera, [
+        ...overlay.support_polygon,
+        ...overlay.critical_edge,
+        overlay.center_of_mass,
+      ])
+    : [];
   const orbit = (yaw: number, pitch: number) =>
     setCamera((value) => ({
       ...value,
@@ -137,10 +151,48 @@ export default function AssemblyView({
                 Nominal geometry. This does not measure the actual shape,
                 confirm joints, or establish a physical test pass.
               </p>
-              <p>
-                Report overlay coverage: unavailable. Measurements and physical
-                checks remain separate.
-              </p>
+              {overlay ? (
+                <div aria-label="Saved modeled overlay">
+                  <label>
+                    Saved report case
+                    <select
+                      value={overlay.case_id}
+                      onChange={(event) => setOverlayCase(event.target.value)}
+                    >
+                      {overlays.map((item) => (
+                        <option key={item.case_id} value={item.case_id}>
+                          {item.case_id}: {item.orientation}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p>
+                    Saved modeled overlay: center of mass, support outline and
+                    critical edge. This is a point estimate, not a physical
+                    pass.
+                  </p>
+                  <p>
+                    Saved report status: {view?.overlay_report?.status}.
+                    Coverage: {view?.overlay_report?.coverage}.
+                  </p>
+                  <p>
+                    Signed tipping margin:{" "}
+                    {Number(overlay.signed_margin_m.toPrecision(5))} m. Report{" "}
+                    {view?.overlay_report_id}.
+                  </p>
+                  {camera.explode !== 0 && (
+                    <p>
+                      Set Separate parts to zero to show the world-space
+                      overlay.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p>
+                  Report overlay coverage: unavailable. Measurements and
+                  physical checks remain separate.
+                </p>
+              )}
               <p id="assembly-controls-help">
                 Drag to orbit, or focus the drawing and use arrow keys. Use the
                 controls to zoom or separate parts. Separation changes only the
@@ -224,6 +276,39 @@ export default function AssemblyView({
                     />
                   </g>
                 ))}
+                {overlayVisible && overlay && (
+                  <g
+                    role="group"
+                    aria-label={`${overlay.case_id} modeled stability overlay`}
+                    pointerEvents="none"
+                  >
+                    <polygon
+                      points={projectedOverlay
+                        .slice(0, overlay.support_polygon.length)
+                        .map((p) => `${p.x},${p.y}`)
+                        .join(" ")}
+                      fill="none"
+                      stroke="#7c3e00"
+                      strokeWidth="3"
+                      strokeDasharray="5 4"
+                    />
+                    <polyline
+                      points={projectedOverlay
+                        .slice(overlay.support_polygon.length, -1)
+                        .map((p) => `${p.x},${p.y}`)
+                        .join(" ")}
+                      fill="none"
+                      stroke="#7c3e00"
+                      strokeWidth="5"
+                    />
+                    <circle
+                      cx={projectedOverlay[projectedOverlay.length - 1].x}
+                      cy={projectedOverlay[projectedOverlay.length - 1].y}
+                      r="6"
+                      fill="#7c3e00"
+                    />
+                  </g>
+                )}
                 {geometry.active_part_ids.map((partId, index) => {
                   const facet = facets.find((item) => item.part_id === partId);
                   if (!facet) return null;

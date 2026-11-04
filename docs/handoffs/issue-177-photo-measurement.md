@@ -119,7 +119,7 @@ Python tests, devloop 18 tests, Next production build.
 - Pre-review: one read-only Claude (Sonnet) pass; its findings were repaired
   (failed retries no longer supersede usable estimates, 2 mm / 1 % display
   floor without lens correction or independent check, design readiness asks
-  for a ruler value, D060 states calibration is library-only).
+  for a ruler value, D061 states calibration is library-only).
 - Independent Sol review (Codex CLI 0.166.0, `gpt-6.1-sol`, read-only, fresh
   context) of a72b32f: REQUEST_CHANGES, 8 findings. Repaired in 2c259b8
   (shared draft with Details and project keying, notch and out-of-photo

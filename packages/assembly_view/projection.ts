@@ -19,7 +19,7 @@ export const initialCamera: Camera = {
   zoom: 1,
   explode: 0,
 };
-export function projectFacets(facets: readonly Facet[], camera: Camera) {
+function projector(facets: readonly Facet[], camera: Camera) {
   const vertices = facets.flatMap((facet) => facet.vertices);
   const axes = ["x", "y", "z"] as const;
   const bounds = axes.map((axis) => {
@@ -31,10 +31,13 @@ export function projectFacets(facets: readonly Facet[], camera: Camera) {
   const yaw = (camera.yaw * Math.PI) / 180,
     pitch = (camera.pitch * Math.PI) / 180;
   const partIds = [...new Set(facets.map((f) => f.part_id))].sort();
-  const rotate = (point: Point, part: string) => {
-    const rank = partIds.indexOf(part);
+  return (point: Point, part?: string) => {
+    const rank = part === undefined ? 0 : partIds.indexOf(part);
     // Separate source parts along the display's horizontal axis, never a joint axis.
-    const separation = (rank - (partIds.length - 1) / 2) * camera.explode * 0.5;
+    const separation =
+      part === undefined
+        ? 0
+        : (rank - (partIds.length - 1) / 2) * camera.explode * 0.5;
     const x = (point.x - center[0]) / span;
     const y = (point.y - center[1]) / span;
     const z = (point.z - center[2]) / span;
@@ -48,6 +51,17 @@ export function projectFacets(facets: readonly Facet[], camera: Camera) {
       depth: depth * Math.cos(pitch) + z * Math.sin(pitch),
     };
   };
+}
+export function projectWorldPoints(
+  facets: readonly Facet[],
+  camera: Camera,
+  points: readonly Point[],
+) {
+  const rotate = projector(facets, camera);
+  return points.map((point) => rotate(point));
+}
+export function projectFacets(facets: readonly Facet[], camera: Camera) {
+  const rotate = projector(facets, camera);
   return facets
     .map((facet) => ({
       ...facet,

@@ -570,10 +570,37 @@
           "type": "array"
         },
         "overlay_coverage": {
-          "const": "unavailable",
           "default": "unavailable",
+          "enum": [
+            "unavailable",
+            "available"
+          ],
           "title": "Overlay Coverage",
           "type": "string"
+        },
+        "overlay_report": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StabilityReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "overlay_report_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Overlay Report Id"
         },
         "plan_version_id": {
           "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",

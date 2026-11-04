@@ -213,7 +213,9 @@ test("a MetaMuse answer must cite its tool report and stay unverified", () => {
     mode: "analyze_current",
     tool_name: "analyze_stability",
     report: summary("a", { source: "muse_tool" }),
-    explanation: { report_id: id("a"), summary: "Synthetic explanation" },
+    focus: { report_id: id("a"), case_ids: ["portrait"], check_types: ["tip"] },
+    focused_results: report("a").results,
+    explanation: { report_id: id("a"), summary: "Saved numerical status" },
     usage: { model_calls: 2 },
     physical_status: "not_verified",
   };
@@ -232,6 +234,34 @@ test("a MetaMuse answer must cite its tool report and stay unverified", () => {
   assert.throws(
     () => validateMuse({ ...result, physical_status: "passed" }, expected),
     /invalid/,
+  );
+  for (const focus of [
+    { ...result.focus, case_ids: ["foreign-case"] },
+    { ...result.focus, case_ids: [] },
+    { ...result.focus, check_types: ["certified-safe"] },
+    { ...result.focus, check_types: ["tip", "tip"] },
+  ])
+    assert.throws(
+      () => validateMuse({ ...result, focus }, expected),
+      /invalid/,
+    );
+  assert.throws(
+    () => validateMuse({ ...result, focused_results: [] }, expected),
+    /invalid/,
+  );
+});
+
+test("numerical dependency changes remain readable as stale history", () => {
+  const upgraded = summary("a", {
+    freshness: { current: false, stale_reasons: ["engine_changed"] },
+  });
+  assert.equal(validateSummary(upgraded, expected).freshness.current, false);
+  assert.deepEqual(
+    validateHistory(
+      { project_id: expected.projectId, reports: [upgraded] },
+      expected,
+    ).reports[0].freshness.stale_reasons,
+    ["engine_changed"],
   );
 });
 
@@ -414,7 +444,9 @@ test("a completed POST with a lost response is retried with the same body", asyn
       source: "muse_tool",
       freshness: { current: false, stale_reasons: ["history_changed"] },
     }),
-    explanation: { report_id: id("a"), summary: "Synthetic explanation" },
+    focus: { report_id: id("a"), case_ids: ["portrait"], check_types: ["tip"] },
+    focused_results: report("a").results,
+    explanation: { report_id: id("a"), summary: "Saved numerical status" },
     usage: { model_calls: 2 },
     physical_status: "not_verified",
     replayed: true,
@@ -494,7 +526,9 @@ test("a code-less error or invalid success keeps the same body and key", async (
     mode: "analyze_current",
     tool_name: "analyze_stability",
     report: summary("a", { source: "muse_tool" }),
-    explanation: { report_id: id("a"), summary: "Synthetic explanation" },
+    focus: { report_id: id("a"), case_ids: ["portrait"], check_types: ["tip"] },
+    focused_results: report("a").results,
+    explanation: { report_id: id("a"), summary: "Saved numerical status" },
     usage: { model_calls: 2 },
     physical_status: "not_verified",
     replayed: true,

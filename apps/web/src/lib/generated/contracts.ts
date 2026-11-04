@@ -91,7 +91,9 @@ export type AssemblyViewResponse = {
   readonly "geometry"?: (CanonicalGeometryPreview | null);
   readonly "operation_parts": ReadonlyArray<AssemblyOperationParts>;
   readonly "blockers"?: ReadonlyArray<string>;
-  readonly "overlay_coverage"?: "unavailable";
+  readonly "overlay_coverage"?: "unavailable" | "available";
+  readonly "overlay_report_id"?: (string | null);
+  readonly "overlay_report"?: (StabilityReport | null);
 };
 
 export type AttachBrace = {
