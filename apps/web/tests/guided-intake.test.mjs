@@ -11,6 +11,7 @@ import {
   nameFromId,
   needsReferenceValues,
   newStock,
+  prefillEmptySizes,
   recordRuler,
   referenceInput,
   refusalReasons,
@@ -62,7 +63,12 @@ function record(overrides = {}, estimate = {}) {
     replayed: false,
     estimate: {
       input_digest: "a".repeat(64),
-      input: { stock_id: "cardboard-sheet-a--abc", media_id: "photo-1" },
+      input: {
+        stock_id: "cardboard-sheet-a--abc",
+        media_id: "photo-1",
+        stock_kind: "sheet",
+        stock_material: "cardboard",
+      },
       outcome: "estimate",
       dimensions: dims,
       calibration_status: "uncalibrated",
@@ -128,6 +134,93 @@ test("using an estimate never confirms it; a ruler value is a separate action", 
     "unknown",
   );
   assert.throws(() => recordRuler(stock, "width_mm", 0));
+});
+
+test("a current photo estimate prefills only untouched draft sizes", () => {
+  const stock = newStock(
+    "cardboard-sheet-a--abc",
+    suggestFromLabel("cardboard"),
+    null,
+  );
+  const before = structuredClone(stock);
+  const filled = prefillEmptySizes(stock, record());
+  assert.deepEqual(stock, before);
+  assert.deepEqual(filled.width_mm, {
+    value: 280,
+    unit: "mm",
+    source: "photo_estimate",
+    confirmed: false,
+  });
+  assert.equal(filled.height_mm.value, 190);
+  assert.deepEqual(filled.thickness_mm, before.thickness_mm);
+  assert.deepEqual(filled.remaining_length_mm, before.remaining_length_mm);
+  assert.deepEqual(filled.usable_regions, []);
+  assert.deepEqual(filled.image_ids, ["photo-1"]);
+  assert.equal(prefillEmptySizes(filled, record()), filled);
+});
+
+test("prefill preserves every existing size and fills the other empty field", () => {
+  const stock = newStock(
+    "cardboard-sheet-a--abc",
+    suggestFromLabel("cardboard"),
+    null,
+  );
+  for (const existing of [
+    { value: 281, unit: "mm", source: "user_ruler", confirmed: true },
+    { value: 281, unit: "mm", source: "user_ruler", confirmed: false },
+    { value: 270, unit: "mm", source: "photo_estimate", confirmed: false },
+    { value: 260, unit: "mm", source: "known_reference", confirmed: false },
+    { value: 255, unit: "mm", source: "calculated", confirmed: false },
+    { value: null, unit: "mm", source: "unknown", confirmed: true },
+    {
+      value: null,
+      unit: "mm",
+      source: "unknown",
+      confirmed: false,
+      evidence_ids: ["evidence-1"],
+    },
+  ]) {
+    const result = prefillEmptySizes(
+      { ...stock, width_mm: existing },
+      record(),
+    );
+    assert.deepEqual(result.width_mm, existing);
+    assert.equal(result.height_mm.value, 190);
+    const opposite = prefillEmptySizes(
+      { ...stock, height_mm: existing },
+      record(),
+    );
+    assert.deepEqual(opposite.height_mm, existing);
+    assert.equal(opposite.width_mm.value, 280);
+  }
+});
+
+test("stale, foreign, retyped and enclosing-only records never prefill", () => {
+  const stock = newStock(
+    "cardboard-sheet-a--abc",
+    suggestFromLabel("cardboard"),
+    null,
+  );
+  for (const invalid of [
+    record({ status: "stale" }),
+    record({}, { outcome: "enclosing_only" }),
+    record({}, { measurement_status: "confirmed" }),
+    record(
+      {},
+      { input: { ...record().estimate.input, stock_id: "other-stock" } },
+    ),
+    record({}, { input: { ...record().estimate.input, stock_kind: "strip" } }),
+    record(
+      {},
+      { input: { ...record().estimate.input, stock_material: "paperboard" } },
+    ),
+  ])
+    assert.equal(prefillEmptySizes(stock, invalid), stock);
+  const invalidValues = record(
+    {},
+    { dimensions: dims.map((d) => ({ ...d, display_value: NaN })) },
+  );
+  assert.equal(prefillEmptySizes(stock, invalidValues), stock);
 });
 
 test("stale, foreign or enclosing-only estimates cannot fill sizes", () => {

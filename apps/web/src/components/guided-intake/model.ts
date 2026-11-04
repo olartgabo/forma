@@ -184,6 +184,46 @@ export function prefill(estimate: PhotoEstimate) {
   return values;
 }
 
+/** Fill only untouched draft sizes from a current, reference-based estimate. */
+export function prefillEmptySizes(
+  stock: Stock,
+  record: PhotoEstimateRecord,
+): Stock {
+  const estimate = record.estimate;
+  if (
+    record.status !== "current" ||
+    estimate.outcome !== "estimate" ||
+    estimate.measurement_status !== "photo_estimate_unconfirmed" ||
+    estimate.input.stock_id !== stock.id ||
+    estimate.input.stock_kind !== stock.kind ||
+    estimate.input.stock_material !== stock.material
+  )
+    return stock;
+  const values = prefill(estimate);
+  let next = stock;
+  for (const field of ["width_mm", "height_mm"] as const) {
+    const current = stock[field];
+    const value = values[field];
+    if (
+      current.value === null &&
+      current.source === "unknown" &&
+      current.confirmed === false &&
+      !current.evidence_ids?.length &&
+      value !== undefined &&
+      Number.isFinite(value) &&
+      value > 0
+    )
+      next = { ...next, [field]: photoMeasurement(value) };
+  }
+  if (next === stock) return stock;
+  return {
+    ...next,
+    image_ids: next.image_ids?.includes(estimate.input.media_id)
+      ? next.image_ids
+      : [...(next.image_ids ?? []), estimate.input.media_id],
+  };
+}
+
 /** "Save estimated dimensions": unconfirmed photo_estimate values. The app
  * may still ask for a ruler value before a buildable design. */
 export function applyEstimate(
