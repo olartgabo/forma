@@ -993,24 +993,36 @@ export function loadProof(
   );
 }
 
-export function uploadPhoto(
+export async function uploadPhoto(
   token: string,
   id: string,
   file: File,
   key: string,
   signal?: AbortSignal,
 ): Promise<MediaResult> {
-  return request(
-    token,
-    `${projectPath(id)}/media`,
-    {
-      method: "POST",
-      headers: { "Content-Type": file.type, "Idempotency-Key": key },
-      body: file,
-    },
-    json<MediaResult>,
-    signal,
-  );
+  try {
+    return await request(
+      token,
+      `${projectPath(id)}/media`,
+      {
+        method: "POST",
+        headers: { "Content-Type": file.type, "Idempotency-Key": key },
+        body: file,
+      },
+      json<MediaResult>,
+      signal,
+    );
+  } catch (error) {
+    // The upload route answers 422 only when the bytes are not a usable still
+    // image; the shared message would wrongly point at measurements.
+    if (error instanceof ApiError && error.status === 422)
+      throw new ApiError(
+        422,
+        error.code,
+        "This file could not be opened as a still photo. Choose a valid JPEG, PNG or WebP image.",
+      );
+    throw error;
+  }
 }
 
 export function fetchPhoto(
