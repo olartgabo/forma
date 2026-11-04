@@ -88,7 +88,7 @@ const en = {
       "Save or reload the inventory first: the saved inventory is stale or has unsaved changes, so Muse is unavailable until it matches the server.",
     ask: "Ask Muse about this photo",
     pending:
-      "Asking Muse… Cancel stops FORMA waiting; Muse may still process this request. FORMA may retry a rate limit or temporary server error once by default, within the same deadline. Timeouts, network errors and unknown outcomes are not retried automatically. A new request needs fresh consent.",
+      "Asking Muse… Cancel stops FORMA waiting; Muse may still process this request. FORMA sends this photo request once and does not retry it automatically. A new request needs fresh consent.",
     cancelled:
       "Cancelled. FORMA stopped waiting for Muse; Muse may already be processing the photo, so no result was shown.",
     requestFailed:
@@ -309,7 +309,7 @@ const es: MuseCopy = {
       "Guarda o recarga primero el inventario: el inventario guardado está desactualizado o tiene cambios sin guardar, por lo que Muse no estará disponible hasta que coincida con el servidor.",
     ask: "Preguntar a Muse sobre esta foto",
     pending:
-      "Preguntando a Muse… Cancelar hace que FORMA deje de esperar; Muse puede seguir procesando esta solicitud. FORMA puede reintentar una vez por defecto ante un límite de solicitudes o un error temporal del servidor, dentro del mismo plazo. No reintenta automáticamente los tiempos agotados, errores de red ni resultados desconocidos. Una nueva solicitud requiere un nuevo consentimiento.",
+      "Preguntando a Muse… Cancelar hace que FORMA deje de esperar; Muse puede seguir procesando esta solicitud. FORMA envía esta solicitud de foto una sola vez y no la reintenta automáticamente. Una nueva solicitud requiere un nuevo consentimiento.",
     cancelled:
       "Cancelado. FORMA dejó de esperar a Muse; es posible que Muse ya esté procesando la foto, por lo que no se mostró ningún resultado.",
     requestFailed:

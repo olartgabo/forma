@@ -69,6 +69,71 @@ def _parse_retry_after(response) -> float | None:
     return float(int(significant))
 
 
+SAFE_VALIDATION_TYPES = frozenset(
+    {
+        "json_invalid",
+        "missing",
+        "extra_forbidden",
+        "string_type",
+        "string_too_long",
+        "string_too_short",
+        "int_type",
+        "int_parsing",
+        "float_type",
+        "float_parsing",
+        "bool_type",
+        "literal_error",
+        "enum",
+        "list_type",
+        "dict_type",
+        "model_type",
+        "greater_than",
+        "greater_than_equal",
+        "less_than",
+        "less_than_equal",
+        "finite_number",
+        "value_error",
+    }
+)
+
+
+def safe_validation_issues(
+    error: ValidationError, output: type[BaseModel]
+) -> list[dict]:
+    """Bound schema-known locations and error categories, excluding provider data."""
+    fields = set()
+
+    def collect(schema):
+        if isinstance(schema, dict):
+            fields.update(schema.get("properties", {}).keys())
+            for value in schema.values():
+                collect(value)
+        elif isinstance(schema, list):
+            for value in schema:
+                collect(value)
+
+    collect(output.model_json_schema())
+    return [
+        {
+            "path": [
+                part
+                if (isinstance(part, str) and part in fields)
+                or (type(part) is int and 0 <= part <= 24)
+                else "<index>"
+                if type(part) is int
+                else "<field>"
+                for part in issue["loc"][:8]
+            ],
+            "type": issue["type"]
+            if issue["type"] in SAFE_VALIDATION_TYPES
+            else "other",
+        }
+        for issue in error.errors(
+            include_input=False, include_context=False, include_url=False
+        )[:16]
+    ]
+
+
 class GatewayError(Exception):
     """Only a stable safe code crosses the gateway boundary."""
 
@@ -78,10 +143,14 @@ class GatewayError(Exception):
         *,
         retryable: bool = False,
         retry_after: float | None = None,
+        diagnostic_reason: Literal["invalid_json", "invalid_schema"] | None = None,
+        validation_issues: list[dict] | None = None,
     ):
         self.code = code
         self.retryable = retryable
         self.retry_after = retry_after
+        self.validation_issues = validation_issues or []
+        self.diagnostic_reason = diagnostic_reason
         super().__init__(code)
 
 
@@ -620,14 +689,24 @@ class MetaGateway:
                 if choice["finish_reason"] != "stop" or message.get("tool_calls"):
                     raise GatewayError("incomplete_output")
                 return output.model_validate_json(message["content"], strict=True)
-            except (
-                AttributeError,
-                KeyError,
-                IndexError,
-                TypeError,
-                ValueError,
-                ValidationError,
-            ):
+            except ValidationError as exc:
+                # Inspect only Pydantic's error type, never input/context/text.
+                reason = (
+                    "invalid_json"
+                    if any(
+                        issue["type"] == "json_invalid"
+                        for issue in exc.errors(
+                            include_input=False, include_context=False
+                        )
+                    )
+                    else "invalid_schema"
+                )
+                raise GatewayError(
+                    "invalid_proposal",
+                    diagnostic_reason=reason,
+                    validation_issues=safe_validation_issues(exc, output),
+                ) from None
+            except (AttributeError, KeyError, IndexError, TypeError, ValueError):
                 raise GatewayError("invalid_proposal") from None
         raise GatewayError("round_limit")
 

@@ -310,6 +310,15 @@ export type IntakeDiagnostics = {
 export type IntakeErrorResponse = {
   readonly "code": "validation_error" | "not_found" | "stale_version" | "consent_required" | "provider_not_configured" | "provider_authentication" | "access_denied" | "rate_limit" | "timeout" | "network_error" | "invalid_response" | "provider_http_error" | "provider_error";
   readonly "message": string;
+  readonly "diagnostics"?: (IntakeFailureDiagnostics | null);
+};
+
+export type IntakeFailureDiagnostics = {
+  readonly "reason": "refusal" | "incomplete_output" | "invalid_proposal" | "invalid_json" | "invalid_schema" | "invalid_response" | "empty_observation" | "response_too_large" | "timeout" | "budget_exhausted" | "network_error" | "authentication" | "access_denied" | "rate_limit" | "provider_http_error" | "round_limit" | "provider_error";
+  readonly "model": string;
+  readonly "elapsed_ms": number;
+  readonly "usage": ProviderUsage;
+  readonly "validation_issues"?: ReadonlyArray<IntakeValidationIssue>;
 };
 
 export type IntakeObservation = {
@@ -359,6 +368,11 @@ export type IntakeResult = {
   readonly "media_id": string;
   readonly "observation": IntakeObservation;
   readonly "diagnostics": IntakeDiagnostics;
+};
+
+export type IntakeValidationIssue = {
+  readonly "path": ReadonlyArray<(string | number)>;
+  readonly "type": "json_invalid" | "missing" | "extra_forbidden" | "string_type" | "string_too_long" | "string_too_short" | "int_type" | "int_parsing" | "float_type" | "float_parsing" | "bool_type" | "literal_error" | "enum" | "list_type" | "dict_type" | "model_type" | "greater_than" | "greater_than_equal" | "less_than" | "less_than_equal" | "finite_number" | "value_error" | "other";
 };
 
 export type InventoryUpdate = {

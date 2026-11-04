@@ -4,7 +4,18 @@
 // Stock values live in the workbench's rows (one draft shared with Details);
 // this component keeps only display state such as names, boxes and outlines.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { requestIntakeObservation } from "../../lib/api";
+import { ApiError, requestIntakeObservation } from "../../lib/api";
+import {
+  intakeFailureReason,
+  intakeFailureSummary,
+  type IntakeFailureDiagnostics,
+} from "../../lib/intake-failure";
+import MuseRequestStatus from "../muse-request-status";
+import { useMuseLanguage } from "../muse-language-provider";
+import {
+  museDiagnosticsFromResult,
+  type MuseDiagnosticsSummary,
+} from "../../lib/provider-usage";
 import {
   localizationReceipts,
   localizePhoto,
@@ -202,7 +213,19 @@ export default function GuidedIntake({
   const [reference, setReference] = useState<Record<string, ReferenceDraft>>(
     {},
   );
-  const [error, setError] = useState("");
+  const [error, setErrorValue] = useState("");
+  const [successDiagnostics, setSuccessDiagnostics] =
+    useState<MuseDiagnosticsSummary | null>(null);
+  const [failureDiagnostics, setFailureDiagnostics] =
+    useState<IntakeFailureDiagnostics | null>(null);
+  function setError(value: string) {
+    setErrorValue(value);
+    setFailureDiagnostics(null);
+    setSuccessDiagnostics(null);
+  }
+  const { locale, copy } = useMuseLanguage();
+  const intakeController = useRef<AbortController | null>(null);
+  const intakeEpoch = useRef(0);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [museConsent, setMuseConsent] = useState(false);
@@ -225,6 +248,31 @@ export default function GuidedIntake({
   >({});
   const [focus, setFocus] = useState<string | null>(null);
   const alive = useRef(true);
+  const photosKey = photos
+    .map((photo) => `${photo.id}:${photo.content_type}:${photo.byte_count}`)
+    .join(",");
+  useEffect(() => {
+    intakeEpoch.current += 1;
+    intakeController.current?.abort();
+    intakeController.current = null;
+    setFailureDiagnostics(null);
+    setSuccessDiagnostics(null);
+    setErrorValue("");
+    setNotice("");
+    setMuseConsent(false);
+    setBusy((current) => (current === "muse" ? "" : current));
+    return () => {
+      intakeEpoch.current += 1;
+      intakeController.current?.abort();
+    };
+  }, [
+    token,
+    project.id,
+    project.revision_id,
+    project.goal,
+    photoId,
+    photosKey,
+  ]);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -510,14 +558,26 @@ export default function GuidedIntake({
     if (!photo || !museConsent || locked || itemsState !== "ready") return;
     setBusy("muse");
     setError("");
+    setNotice("");
+    setMuseConsent(false);
+    const controller = new AbortController();
+    intakeController.current = controller;
+    const requestEpoch = ++intakeEpoch.current;
     try {
       const result = await requestIntakeObservation(
         token,
         project.id,
         photo.id,
         project.revision_id,
+        controller.signal,
       );
-      if (!alive.current) return;
+      if (
+        !alive.current ||
+        controller.signal.aborted ||
+        requestEpoch !== intakeEpoch.current
+      )
+        return;
+      setSuccessDiagnostics(museDiagnosticsFromResult(result.diagnostics));
       const proposals = validProposals(result.observation.items);
       if (proposals.length) {
         const merged = mergeProposals(items, proposals, photo.id, (name) =>
@@ -543,9 +603,27 @@ export default function GuidedIntake({
           : "Muse did not name any material. Add materials by hand.",
       );
     } catch (failure) {
-      if (alive.current) setError((failure as Error).message);
+      if (
+        alive.current &&
+        !controller.signal.aborted &&
+        requestEpoch === intakeEpoch.current
+      ) {
+        const diagnostics =
+          failure instanceof ApiError ? failure.intakeDiagnostics : null;
+        setError(
+          diagnostics
+            ? intakeFailureReason(diagnostics, locale)
+            : (failure as Error).message,
+        );
+        setFailureDiagnostics(diagnostics);
+      }
     } finally {
-      if (alive.current) {
+      if (
+        alive.current &&
+        !controller.signal.aborted &&
+        requestEpoch === intakeEpoch.current
+      ) {
+        intakeController.current = null;
         setBusy("");
         setMuseConsent(false);
       }
@@ -925,6 +1003,22 @@ export default function GuidedIntake({
           </div>
         )}
       </div>
+      <MuseRequestStatus
+        busy={busy === "muse"}
+        pendingMessage={copy.intake.pending}
+        onCancel={() => {
+          intakeEpoch.current += 1;
+          intakeController.current?.abort();
+          intakeController.current = null;
+          setBusy("");
+          setError("");
+          setNotice(copy.intake.cancelled);
+        }}
+        diagnostics={
+          successDiagnostics ?? intakeFailureSummary(failureDiagnostics)
+        }
+        locale={locale}
+      />
       <MaterialBoard
         items={items}
         stocks={stocks}

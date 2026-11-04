@@ -287,6 +287,7 @@ def test_default_intake_gateway_allows_one_long_call_without_retries(monkeypatch
     )
     assert 119 < fake.calls[0][2] <= 120
     assert gateway.budget == 120
+    assert fake.calls[0][1]["max_completion_tokens"] == 8192
     assert gateway.max_rounds == 1
     assert gateway.max_retries == 0
     failing = Fake(GatewayError("rate_limit", retryable=True))
@@ -296,3 +297,54 @@ def test_default_intake_gateway_allows_one_long_call_without_retries(monkeypatch
             gateway, project_goal="stand", image_data=PNG, content_type="image/png"
         )
     assert len(failing.calls) == 1
+
+
+def test_failure_diagnostics_use_only_current_request_and_allowlisted_reason():
+    fake = Fake(
+        final_usage(INTAKE_JSON, {"prompt_tokens": 100, "completion_tokens": 50}),
+        GatewayError("PRIVATE unknown error"),
+    )
+    gateway = MetaGateway(fake)
+    intake_runtime.observe_photo(
+        gateway, project_goal="private goal", image_data=PNG, content_type="image/png"
+    )
+    with pytest.raises(intake_runtime.IntakeGatewayError) as failure:
+        intake_runtime.observe_photo(
+            gateway,
+            project_goal="private goal",
+            image_data=PNG,
+            content_type="image/png",
+        )
+    safe = failure.value.diagnostics.model_dump(mode="json")
+    assert safe["reason"] == "provider_error"
+    assert safe["usage"] == {
+        "model_calls": 1,
+        "input_tokens": None,
+        "output_tokens": None,
+    }
+    assert "PRIVATE" not in json.dumps(safe)
+    assert "private goal" not in json.dumps(safe)
+
+
+def test_intake_completion_budget_does_not_change_other_proposal_defaults():
+    fake = Fake(final(INTAKE_JSON), final(INTAKE_JSON))
+    gateway = MetaGateway(fake)
+    intake_runtime.observe_photo(
+        gateway, project_goal="stand", image_data=PNG, content_type="image/png"
+    )
+    gateway.propose("ordinary proposal", IntakeObservation)
+    assert [request[1]["max_completion_tokens"] for request in fake.calls] == [
+        8192,
+        2048,
+    ]
+
+
+def test_intake_prompts_consistently_request_structured_items_and_unknown_measurements():
+    for prompt in (intake_runtime.INTAKE_SYSTEM_PROMPT, intake_runtime.INTAKE_PROMPT):
+        assert "structured item proposals in items" in prompt
+        assert "one item per visible object" in prompt
+        assert "when no objects are visible, items may be empty" in prompt
+        assert "measurement_source=unknown" in prompt
+        assert "labels and questions only" not in prompt
+    assert "never" in intake_runtime.INTAKE_SYSTEM_PROMPT
+    assert "infer millimeters" in intake_runtime.INTAKE_SYSTEM_PROMPT
