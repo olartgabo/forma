@@ -3530,3 +3530,23 @@ test("a held material pauses repair advice with a local message", async (t) => {
     },
   );
 });
+
+test("missing or invalid recognition survives as a safe validation issue", () => {
+  const parsed = parseIntakeFailureDiagnostics({
+    reason: "invalid_schema",
+    model: "muse-spark-1.3",
+    elapsed_ms: 10,
+    usage: { model_calls: 1, input_tokens: 5, output_tokens: 5 },
+    validation_issues: [
+      { path: ["recognition"], type: "missing" },
+      { path: ["recognition"], type: "literal_error" },
+      { path: ["items"], type: "missing" },
+    ],
+  });
+  assert.deepEqual(parsed.validationIssues, [
+    { path: ["recognition"], type: "missing" },
+    { path: ["recognition"], type: "literal_error" },
+    { path: ["items"], type: "missing" },
+  ]);
+  assert.match(intakeFailureReason(parsed), /recognition: missing/);
+});

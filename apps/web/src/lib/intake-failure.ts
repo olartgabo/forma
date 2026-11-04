@@ -27,6 +27,7 @@ const validationTypes = new Set([
 ]);
 const validationFields = new Set([
   "labels",
+  "recognition",
   "measurement_source",
   "questions",
   "items",
