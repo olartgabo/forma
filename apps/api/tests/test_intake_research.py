@@ -3,6 +3,7 @@
 import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from io import BytesIO
 from threading import Event
 from types import SimpleNamespace
 
@@ -416,12 +417,32 @@ def test_paired_research_outcomes_keep_the_same_checked_options_and_sources(
         ),
     )
     selection = {}
+    synthetic_key = "synthetic-muse-key-for-local-tests"
 
-    class Transport:
-        def post(self, path, payload, timeout):
-            assert path == "/responses" and payload["store"] is False
+    class Socket:
+        def settimeout(self, timeout):
             assert 0 < timeout <= runtime.DEADLINE_SECONDS
+
+    class Response(BytesIO):
+        status = 200
+
+    class Connection:
+        def __init__(self, host, timeout):
+            assert host == "api.meta.ai"
+            assert 0 < timeout <= runtime.DEADLINE_SECONDS
+            self.sock = None
+
+        def connect(self):
+            self.sock = Socket()
+
+        def request(self, method, path, *, body, headers):
+            assert method == "POST" and path == "/v1/responses"
+            assert headers["Authorization"] == "Bearer " + synthetic_key
+            assert headers["Content-Type"] == "application/json"
+            payload = json.loads(body)
+            assert payload["store"] is False
             sent = json.dumps(payload)
+            assert synthetic_key not in sent
             assert project["id"] not in sent
             assert project["revision_id"] not in sent
             assert project["goal"] not in sent
@@ -438,12 +459,31 @@ def test_paired_research_outcomes_keep_the_same_checked_options_and_sources(
                 assert "deeper_base" not in context["eligible_options"][0]["tradeoffs"]
                 assert "deeper_base" in context["eligible_options"][1]["tradeoffs"]
                 result = response(message(json.dumps(selection)))
-            return result | {"usage": {"input_tokens": 10, "output_tokens": 3}}
+            self.body = result | {"usage": {"input_tokens": 10, "output_tokens": 3}}
+
+        def getresponse(self):
+            return Response(json.dumps(self.body).encode())
+
+        def close(self):
+            self.sock = None
 
     monkeypatch.setenv("FORMA_INTAKE_RESEARCH", "1")
+    monkeypatch.delenv("META_GUARD_HOME", raising=False)
+    monkeypatch.delenv("MODEL_API_KEY", raising=False)
     monkeypatch.setattr(
-        runtime.MetaGateway, "from_env", lambda: runtime.MetaGateway(Transport())
+        "forma_api.model_gateway.http.client.HTTPSConnection", Connection
     )
+    unavailable = post(
+        client, project, "research", body(project, idempotency_key="research-no-key")
+    )
+    assert unavailable.status_code == 200
+    assert unavailable.json()["coverage"] == "unavailable"
+    assert not calls
+
+    monkeypatch.setenv("MODEL_API_KEY", synthetic_key)
+    status = client.get("/api/provider/status")
+    assert status.status_code == 200 and status.json()["configured"] is True
+    assert synthetic_key not in status.text
     before = state(directory)
     engine = search(client, project)
     for case, option, tradeoff, index, coverage in (
@@ -460,6 +500,7 @@ def test_paired_research_outcomes_keep_the_same_checked_options_and_sources(
             body(project, idempotency_key="research-" + case),
         )
         assert reply.status_code == 200, reply.text
+        assert synthetic_key not in reply.text
         data = reply.json()
         assert data["coverage"] == coverage
         assert data["search"] == engine

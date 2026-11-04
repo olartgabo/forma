@@ -96,8 +96,16 @@ Rebuilding replaces containers but keeps the `forma_forma-data` and
 ## Local run
 
 With Docker running, copy `deploy/.env.example` to `deploy/.env`, set tokens, and
-run `docker compose -f deploy/compose.yaml up --build`. With `FORMA_HOST=localhost`
-Caddy serves `https://localhost` with its internal certificate authority.
+run `docker compose --env-file deploy/.env -f deploy/compose.yaml up --build`.
+With `FORMA_HOST=localhost`, Caddy serves `https://localhost` with its internal
+certificate authority.
+
+An isolated stack can opt in to intake research with
+`FORMA_INTAKE_RESEARCH=1` in its environment. Compose passes the flag and
+`MODEL_API_KEY` to FastAPI. The default flag is off. The application reads
+these settings directly. The separate
+[paid verification policy](../tools/devloop/guarded/POLICY.md#actual-app-runtime-and-live-tests)
+governs acceptance tests that call the provider.
 
 ## Limits
 
