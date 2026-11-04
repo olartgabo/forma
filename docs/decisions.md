@@ -839,3 +839,17 @@ pause on optional 3D presentation. Unsupported partial, damaged, detached or
 repaired states retain the authoritative SVG/history fallback. Planned and
 user-reported assembly remain nominal; absent matching numerical overlays are
 shown as unavailable. No camera action dispatches analysis or changes evidence.
+
+## D060. Draft decision for optional web research during intake, November 4, 2026
+
+Add an opt-in investigation before design proposal. A Muse Spark scout finds
+cited projects while a separate analyst maps requirements and flags potential
+blockers. FORMA runs existing checks on saved inputs. A bounded adjudicator uses
+findings and check results to recommend an approach, a decisive question or a
+stop. Code enforces check outcomes and preserves unknowns.
+
+The builder approves a public brief and can continue without research. Findings
+stay separate from inventory, immutable plans and physical evidence. Any design
+still goes through fabrication checks, compiler validation and explicit approval.
+The feature starts disabled pending the
+[provider handoff and acceptance checks](handoffs/issue-9-intake-research.md).
