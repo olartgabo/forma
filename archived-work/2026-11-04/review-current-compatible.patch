@@ -1,0 +1,1944 @@
+diff --git a/apps/api/src/forma_api/proposal_service.py b/apps/api/src/forma_api/proposal_service.py
+index 1e0605d..3491b30 100644
+--- a/apps/api/src/forma_api/proposal_service.py
++++ b/apps/api/src/forma_api/proposal_service.py
+@@ -526,6 +526,9 @@ class ProposalService:
+         if snapshot.plan:
+             for field in ("parts", "joints", "operations", "checkpoints"):
+                 ids.update(item.id for item in getattr(snapshot.plan, field))
++            ids.update(
++                feature.id for part in snapshot.plan.parts for feature in part.features
++            )
+         for history in snapshot.historical_scopes:
+             ids.update(
+                 history.operation_ids + history.part_ids + history.checkpoint_ids
+diff --git a/apps/api/tests/test_model_gateway.py b/apps/api/tests/test_model_gateway.py
+index 8184c66..afe1f37 100644
+--- a/apps/api/tests/test_model_gateway.py
++++ b/apps/api/tests/test_model_gateway.py
+@@ -1,6 +1,10 @@
++import argparse
++import importlib.util
+ import json
++import sys
+ import threading
+ from dataclasses import asdict
++from pathlib import Path
+ 
+ import pytest
+ from pydantic import BaseModel, ConfigDict
+@@ -341,3 +345,211 @@ def test_absolute_timer_interrupts_stalled_headers_and_cleans_up(monkeypatch):
+     assert {
+         id(t) for t in threading.enumerate() if isinstance(t, threading.Timer)
+     } == timers_before
++
++
++SMOKE_PATH = Path(__file__).resolve().parents[3] / "scripts" / "smoke_meta.py"
++
++
++def _load_smoke():
++    spec = importlib.util.spec_from_file_location("smoke_meta", SMOKE_PATH)
++    module = importlib.util.module_from_spec(spec)
++    assert spec.loader is not None
++    spec.loader.exec_module(module)
++    return module
++
++
++smoke_meta = _load_smoke()
++
++
++def test_smoke_preflight_lists_all_blockers_without_network(monkeypatch):
++    def _forbid(*args, **kwargs):
++        pytest.fail("preflight must not touch the network")
++
++    monkeypatch.setattr(
++        smoke_meta.MetaGateway,
++        "from_env",
++        classmethod(lambda cls: _forbid()),
++    )
++    monkeypatch.setattr("forma_api.model_gateway.MetaHTTP.post", _forbid)
++    args = argparse.Namespace(
++        image=Path("/nonexistent/team-photo.jpg"),
++        consented=False,
++        live=False,
++    )
++    blockers = smoke_meta.preflight(args, {})
++    assert blockers == [
++        "MODEL_API_KEY missing",
++        "real team photo missing",
++        "photo consent missing",
++        "explicit --live missing; no network attempted",
++    ]
++
++
++def test_smoke_success_reports_metadata_without_private_data(monkeypatch):
++    fake_key = "FAKE_KEY_ABC123"
++    secret_label = "SECRET_LABEL_XYZ"
++    secret_question = "SECRET_QUESTION_XYZ"
++    tool_response = call("check_measurements", '{"measurements_confirmed":false}')
++    final_response = final(
++        json.dumps(
++            {
++                "labels": [secret_label],
++                "measurement_source": "unknown",
++                "questions": [secret_question],
++            }
++        )
++    )
++    sam_response = {
++        "status": "completed",
++        "output": [
++            {
++                "content": [
++                    {
++                        "type": "output_text",
++                        "text": "<0f>0<|box;x1=1;y1=2;x2=20;y2=30;w=40;h=50|>",
++                    }
++                ]
++            }
++        ],
++    }
++    fake = Fake(tool_response, final_response, sam_response)
++    monkeypatch.setenv("MODEL_API_KEY", fake_key)
++    transport = MetaHTTP(fake_key)
++    transport.post = fake.post
++    gateway = MetaGateway(transport)
++    image = ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True)
++    exit_code, report = smoke_meta.run_smoke(gateway, image, "cardboard sheet")
++    assert exit_code == 0
++    assert report["status"] == "ok"
++    assert report["spark_image_schema_tool"] == "validated"
++    assert report["label_count"] == 1
++    assert report["question_count"] == 1
++    assert report["box_count"] == 1
++    assert report["sam"] == "boxes_returned"
++    assert report["models"] == {"spark": gateway.spark, "sam": gateway.sam}
++    assert report["models"] == {"spark": "muse-spark-1.3", "sam": "sam-3.1"}
++    expected_python = (
++        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
++    )
++    assert report["runtime"]["python"] == expected_python
++    assert isinstance(report["runtime"]["pydantic"], str)
++    assert report["runtime"]["forma_api"] is None or isinstance(
++        report["runtime"]["forma_api"], str
++    )
++    assert report["runtime"]["http_client"] == "stdlib http.client"
++    assert [t["endpoint"] for t in report["traces"]] == [
++        "/chat/completions",
++        "/chat/completions",
++        "/responses",
++    ]
++    assert [t["status"] for t in report["traces"]] == ["ok", "ok", "ok"]
++    assert set(report) == {
++        "prompt_version",
++        "schema_version",
++        "runtime",
++        "models",
++        "status",
++        "spark_image_schema_tool",
++        "label_count",
++        "question_count",
++        "sam",
++        "box_count",
++        "traces",
++    }
++    assert "boxes" not in report
++    serialized = json.dumps(report)
++    assert fake_key not in serialized
++    assert secret_label not in serialized
++    assert secret_question not in serialized
++    assert "data:image" not in serialized
++    assert '"x1"' not in serialized
++    assert '"x2"' not in serialized
++    assert '"y1"' not in serialized
++    assert '"y2"' not in serialized
++
++
++def test_smoke_spark_error_skips_sam():
++    fake = Fake(GatewayError("authentication"))
++    gateway = MetaGateway(fake)
++    image = ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True)
++    exit_code, report = smoke_meta.run_smoke(gateway, image, "cardboard sheet")
++    assert exit_code == 1
++    assert report["status"] == "authentication"
++    assert "sam" not in report
++    assert len(report["traces"]) == 1
++    assert report["traces"][0]["endpoint"] == "/chat/completions"
++    assert report["traces"][0]["status"] == "authentication"
++
++
++def test_smoke_sam_refusal_fails_with_sam_failed():
++    tool_response = call("check_measurements", '{"measurements_confirmed":false}')
++    final_response = final(
++        json.dumps(
++            {
++                "labels": ["plain sheet"],
++                "measurement_source": "unknown",
++                "questions": ["What is the thickness?"],
++            }
++        )
++    )
++    sam_refusal = {
++        "status": "completed",
++        "output": [{"content": [{"type": "refusal", "refusal": "no"}]}],
++    }
++    fake = Fake(tool_response, final_response, sam_refusal)
++    gateway = MetaGateway(fake)
++    image = ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True)
++    exit_code, report = smoke_meta.run_smoke(gateway, image, "cardboard sheet")
++    assert exit_code == 3
++    assert report["status"] == "sam_failed"
++    assert report["spark_image_schema_tool"] == "validated"
++    assert report["sam"] == "refusal"
++    assert report["fallback"] == (
++        "manual Box validation available; user must label/correct"
++    )
++
++
++def test_smoke_sam_empty_output_reports_ok_no_matches():
++    tool_response = call("check_measurements", '{"measurements_confirmed":false}')
++    final_response = final(
++        json.dumps(
++            {
++                "labels": ["plain sheet"],
++                "measurement_source": "unknown",
++                "questions": ["What is the thickness?"],
++            }
++        )
++    )
++    sam_empty = {
++        "status": "completed",
++        "output": [{"content": [{"type": "output_text", "text": ""}]}],
++    }
++    fake = Fake(tool_response, final_response, sam_empty)
++    gateway = MetaGateway(fake)
++    image = ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True)
++    exit_code, report = smoke_meta.run_smoke(gateway, image, "cardboard sheet")
++    assert exit_code == 0
++    assert report["status"] == "ok"
++    assert report["sam"] == "no_matches_manual_box_required"
++    assert report["box_count"] == 0
++
++
++def test_smoke_main_oversized_photo_reports_invalid_image(
++    monkeypatch, tmp_path, capsys
++):
++    fake_key = "FAKE_KEY_OVERSIZED_456"
++    monkeypatch.setenv("MODEL_API_KEY", fake_key)
++    photo = tmp_path / "team-photo.jpg"
++    photo.write_bytes(b"\xff\xd8\xff" + b"\x00" * 5_000_000)
++    fake = Fake()
++    monkeypatch.setattr(
++        smoke_meta.MetaGateway,
++        "from_env",
++        classmethod(lambda cls: MetaGateway(fake)),
++    )
++    exit_code = smoke_meta.main(["--live", "--consented", "--image", str(photo)])
++    assert exit_code == 1
++    output = json.loads(capsys.readouterr().out)
++    assert output["status"] == "invalid_image"
++    assert fake.calls == []
++    assert fake_key not in json.dumps(output)
+diff --git a/apps/api/tests/test_proposal_service.py b/apps/api/tests/test_proposal_service.py
+index 824dcf5..17e598d 100644
+--- a/apps/api/tests/test_proposal_service.py
++++ b/apps/api/tests/test_proposal_service.py
+@@ -408,6 +408,20 @@ def diagnose_data(**changes):
+     )
+ 
+ 
++def snapshot_with_slot_feature():
++    data = snapshot().model_dump()
++    for part in data["plan"]["parts"]:
++        if part["id"] == "part-a":
++            part["features"] = (
++                m.Feature(
++                    id="known-slot",
++                    kind="slot",
++                    geometry=m.Rect(x=1, y=1, width=3, height=2),
++                ),
++            )
++    return ProposalSnapshot.model_validate(data)
++
++
+ def test_diagnosis_separates_observation_hypothesis_question_and_uses_snapshot():
+     fake = FakeTransport(diagnose_data())
+     result = service(fake).run(
+@@ -438,6 +452,110 @@ def test_diagnosis_unknown_affected_id_stops():
+     assert result.error_code == "invalid_diagnosis_reference"
+ 
+ 
++def test_diagnosis_accepts_current_plan_slot_feature():
++    state = snapshot_with_slot_feature()
++    before = state.model_dump_json()
++    fake = FakeTransport(diagnose_data(affected_ids=["known-slot"]))
++    result = service(fake).run(
++        "diagnose",
++        state,
++        "private failure",
++        image=ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True),
++        photo_evidence_id="photo-a",
++    )
++    assert result.status == "needs_clarification"
++    assert result.proposal.visible_observations == ("private visible tear",)
++    assert result.proposal.hypotheses == ("weak edge, uncertain",)
++    assert result.proposal.affected_ids == ("known-slot",)
++    assert result.proposal.questions_or_measurements == ("Measure the edge distance.",)
++    assert result.questions == ("Measure the edge distance.",)
++    assert state.model_dump_json() == before
++    trace = result.trace.model_dump_json()
++    assert "private" not in trace and "known-slot" not in trace
++
++
++def test_diagnosis_context_exposes_current_plan_slot_feature():
++    state = snapshot_with_slot_feature()
++    fake = FakeTransport(diagnose_data(affected_ids=["known-slot"]))
++    result = service(fake).run(
++        "diagnose",
++        state,
++        "private failure",
++        image=ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True),
++        photo_evidence_id="photo-a",
++    )
++    assert result.status == "needs_clarification"
++    assert result.proposal.affected_ids == ("known-slot",)
++    context = json.loads(fake.calls[0]["messages"][1]["content"][0]["text"])[
++        "untrusted_context"
++    ]["snapshot"]
++    part_ctx = next(p for p in context["plan"]["parts"] if p["id"] == "part-a")
++    feature_ids = [feature["id"] for feature in part_ctx["features"]]
++    assert "known-slot" in feature_ids
++    assert result.proposal.affected_ids[0] in feature_ids
++
++
++def test_diagnosis_unknown_feature_id_stops():
++    result = service(FakeTransport(diagnose_data(affected_ids=["invented-slot"]))).run(
++        "diagnose",
++        snapshot_with_slot_feature(),
++        "failure",
++        image=ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True),
++        photo_evidence_id="photo-a",
++    )
++    assert result.status == "stopped" and result.proposal is None
++    assert result.error_code == "invalid_diagnosis_reference"
++
++
++def test_diagnosis_feature_outside_current_plan_is_not_available():
++    # known-slot exists only in a different plan; this authorized plan lacks it.
++    result = service(FakeTransport(diagnose_data(affected_ids=["known-slot"]))).run(
++        "diagnose",
++        snapshot(),
++        "failure",
++        image=ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True),
++        photo_evidence_id="photo-a",
++    )
++    assert result.status == "stopped" and result.proposal is None
++    assert result.error_code == "invalid_diagnosis_reference"
++
++
++def test_diagnosis_feature_with_absent_plan_is_not_available():
++    data = snapshot_with_slot_feature().model_dump()
++    data["plan"] = None
++    data["current_operation_id"] = None
++    data["events"] = []
++    data["evidence"] = []
++    state = ProposalSnapshot.model_validate(data)
++    fake = FakeTransport(diagnose_data(affected_ids=["known-slot"]))
++    result = service(fake).run(
++        "diagnose",
++        state,
++        "failure",
++        image=ImageInput(b"\xff\xd8\xffsynthetic", "image/jpeg", True),
++        photo_evidence_id="photo-a",
++    )
++    assert result.status == "needs_clarification" and result.proposal is None
++    assert not fake.calls
++
++
++def test_repair_patch_cannot_target_current_slot_feature():
++    called = []
++    result = service(
++        FakeTransport(
++            batch(
++                repair(target_id="known-slot"),
++                questions=("Please confirm available material.",),
++            )
++        ),
++        lambda c, s: called.append(c),
++    ).run("repair", snapshot_with_slot_feature(), "repair")
++    assert not called and result.status == "needs_clarification"
++    assert result.proposal is None
++    assert result.reviews[0].feedback.blockers[0].code == "invalid_reference"
++    assert result.reviews[0].feedback.blockers[0].target_ids == ("known-slot",)
++
++
+ @pytest.mark.parametrize(
+     "change",
+     [
+diff --git a/docs/handoffs/issue-4-meta-gateway.md b/docs/handoffs/issue-4-meta-gateway.md
+index 9e8e75d..4ae154e 100644
+--- a/docs/handoffs/issue-4-meta-gateway.md
++++ b/docs/handoffs/issue-4-meta-gateway.md
+@@ -13,3 +13,5 @@ Official endpoints/protocols were read directly; sources and missing evidence ar
+ Verification: pinned uv sync --locked installed the existing lock unchanged; Ruff check passed; Ruff format --check reported 42 files formatted; offline pytest reported 31 passed (29 gateway, 2 health) on Python 3.12.6 / pytest 9.2.0 / Pydantic 2.14.2. Smoke preflight reports missing key/photo/consent/live flag with no network request. Smoke exited 2; git diff --check passed. No physical attempts or provider successes are claimed.
+ 
+ Review follow-up: absolute call timers shut down active sockets to interrupt slow headers/bodies and are cancelled/joined in cleanup. DNS/pre-socket connection and OS delays remain documented limits. SAM refusals/missing/non-text output fail explicitly; only an explicit empty output_text counts as zero matches. Synthetic cancellation/cleanup and refusal tests pass.
++
++Smoke update: scripts/smoke_meta.py now splits preflight from run_smoke and reports runtime and models metadata alongside existing traces, with offline coverage driving the smoke flow through a fake transport. Live Spark and SAM evidence, account region and privacy and quota and budget confirmation, and the consented real-photo run are still missing, and #4 stays open.
+diff --git a/packages/compiler/src/forma_compiler/validation.py b/packages/compiler/src/forma_compiler/validation.py
+index 7df5473..da32e27 100644
+--- a/packages/compiler/src/forma_compiler/validation.py
++++ b/packages/compiler/src/forma_compiler/validation.py
+@@ -107,9 +107,38 @@ def validate_plan(
+     ):
+         fail("invalid_reference", "Cut process evidence belongs to another project.")
+ 
++    # Critical measurements are required only for stock a part, cut, joint or
++    # other physical operation actually uses. Unused inventory stays in the
++    # plan as explicit unknown stock; it is never allocated below.
++    required_stock_ids = {p.source_stock_id for p in plan.parts}
++    for op in plan.operations:
++        required_stock_ids.update(op.stock_ids)
++        for pid in op.part_ids:
++            if pid in parts:
++                required_stock_ids.add(parts[pid].source_stock_id)
++        args = op.args
++        stock_id = getattr(args, "stock_id", None)
++        if stock_id:
++            required_stock_ids.add(stock_id)
++        required_stock_ids.update(getattr(args, "material_loss_stock_ids", ()) or ())
++        for attr in ("part_id", "brace_part_id"):
++            pid = getattr(args, attr, None)
++            if pid in parts:
++                required_stock_ids.add(parts[pid].source_stock_id)
++        for attr in ("feature_id", "tab_feature_id", "slot_feature_id"):
++            fid = getattr(args, attr, None)
++            if fid in features:
++                required_stock_ids.add(features[fid][0].source_stock_id)
++        joint_id = getattr(args, "joint_id", None)
++        if joint_id in joints:
++            for pid in joints[joint_id].part_ids:
++                if pid in parts:
++                    required_stock_ids.add(parts[pid].source_stock_id)
++
+     for stock in plan.stocks:
++        required = stock.id in required_stock_ids
+         if stock.kind in ("tape", "cord"):
+-            if measured(
++            if required and measured(
+                 stock.remaining_length_mm, stock.id, "remaining connector length"
+             ):
+                 lengths[stock.id] = stock.remaining_length_mm.value
+@@ -120,6 +149,36 @@ def validate_plan(
+                     stock.id,
+                 )
+             continue
++        if not required:
++            # Known region contradictions are still invalid, but unknown or
++            # unconfirmed dimensions neither block nor allocate this stock.
++            prior_unused: list[Rect] = []
++            for region in stock.usable_regions:
++                # Rect origins are schema-nonnegative, so each known axis can
++                # be checked independently without inventing the other axis.
++                exceeds_known_width = (
++                    stock.width_mm.value is not None
++                    and region.geometry.x + region.geometry.width
++                    > stock.width_mm.value + EPS
++                )
++                exceeds_known_height = (
++                    stock.height_mm.value is not None
++                    and region.geometry.y + region.geometry.height
++                    > stock.height_mm.value + EPS
++                )
++                if (
++                    exceeds_known_width
++                    or exceeds_known_height
++                    or any(overlaps(region.geometry, r) for r in prior_unused)
++                ):
++                    fail(
++                        "geometry_invalid",
++                        "Usable regions must be disjoint and inside measured stock.",
++                        stock.id,
++                        region.id,
++                    )
++                prior_unused.append(region.geometry)
++            continue
+         dimensions = [
+             measured(getattr(stock, name), stock.id, name)
+             for name in ("width_mm", "height_mm", "thickness_mm")
+diff --git a/packages/compiler/tests/test_validation.py b/packages/compiler/tests/test_validation.py
+index 935ab3e..8a7dbc3 100644
+--- a/packages/compiler/tests/test_validation.py
++++ b/packages/compiler/tests/test_validation.py
+@@ -305,6 +305,137 @@ def test_stock_regions_may_not_overlap():
+     assert "geometry_invalid" in codes(data)
+ 
+ 
++def unknown_stock(stock_id, kind):
++    unknown = dict(value=None, unit="mm", source="unknown", confirmed=False)
++    return dict(
++        id=stock_id,
++        kind=kind,
++        material="cardboard" if kind == "sheet" else "other_supported",
++        width_mm=unknown,
++        height_mm=unknown,
++        thickness_mm=unknown,
++        remaining_length_mm=unknown,
++        condition="uncertain",
++        usable_regions=[],
++    )
++
++
++def test_unused_unknown_stock_does_not_block_and_is_retained():
++    data = plan_data()
++    data["stocks"].append(unknown_stock("unused-unmeasured", "sheet"))
++    data["stocks"].append(unknown_stock("unused-unknown-tape", "tape"))
++    result = validate_plan(
++        BuildPlan.model_validate(data), process=process(), allow_synthetic=True
++    )
++    assert result.status == "accepted", result.blockers
++    assert result.plan is not None
++    retained = {stock.id: stock for stock in result.plan.stocks}
++    for stock_id in ("unused-unmeasured", "unused-unknown-tape"):
++        stock = retained[stock_id]
++        assert stock.width_mm.value is None
++        assert stock.remaining_length_mm.value is None
++        assert not stock.width_mm.confirmed
++        assert stock.condition == "uncertain"
++
++
++def test_unused_unknown_stock_overlapping_regions_still_block():
++    data = plan_data()
++    stock = unknown_stock("unused-unmeasured", "sheet")
++    stock["usable_regions"] = [
++        dict(id="a", geometry=dict(x=0, y=0, width=50, height=50)),
++        dict(id="b", geometry=dict(x=10, y=10, width=50, height=50)),
++    ]
++    data["stocks"].append(stock)
++    assert "geometry_invalid" in codes(data)
++
++
++def test_unused_stock_knownwidthoverflow_still_blocks():
++    data = plan_data()
++    stock = unknown_stock("unused-width-only", "sheet")
++    stock["width_mm"] = measurement(50)
++    stock["usable_regions"] = [
++        dict(id="too-wide", geometry=dict(x=0, y=0, width=100, height=10))
++    ]
++    data["stocks"].append(stock)
++    assert "geometry_invalid" in codes(data)
++
++
++def test_unused_stock_knownheightoverflow_still_blocks():
++    data = plan_data()
++    stock = unknown_stock("unused-height-only", "sheet")
++    stock["height_mm"] = measurement(50)
++    stock["usable_regions"] = [
++        dict(id="too-tall", geometry=dict(x=0, y=0, width=10, height=100))
++    ]
++    data["stocks"].append(stock)
++    assert "geometry_invalid" in codes(data)
++
++
++def test_unused_stock_partialknownaxisfits_is_accepted():
++    for axis, stock_id, geometry in (
++        ("width_mm", "unused-width-fits", dict(x=0, y=0, width=50, height=10)),
++        ("height_mm", "unused-height-fits", dict(x=0, y=0, width=10, height=50)),
++    ):
++        data = plan_data()
++        stock = unknown_stock(stock_id, "sheet")
++        stock[axis] = measurement(50)
++        stock["usable_regions"] = [dict(id="fits-known-axis", geometry=geometry)]
++        data["stocks"].append(stock)
++        assert not codes(data)
++
++
++def test_unused_measured_sheet_is_accepted():
++    data = plan_data()
++    spare = deepcopy(data["stocks"][0])
++    spare["id"] = "spare-sheet"
++    spare["usable_regions"] = [
++        dict(id="spare-region", geometry=dict(x=0, y=0, width=200, height=120))
++    ]
++    data["stocks"].append(spare)
++    assert not codes(data)
++
++
++def test_cut_from_unknown_stock_still_blocks():
++    data = plan_data()
++    stock = unknown_stock("unknown-source", "sheet")
++    stock["usable_regions"] = [
++        dict(id="unknown-region", geometry=dict(x=0, y=0, width=100, height=100))
++    ]
++    data["stocks"].append(stock)
++    data["parts"].append(
++        dict(
++            id="brace",
++            source_stock_id="unknown-source",
++            source_region_id="unknown-region",
++            geometry=dict(x=5, y=5, width=30, height=50),
++            condition="usable",
++        )
++    )
++    op = deepcopy(data["operations"][0])
++    op.update(id="cut_unknown", depends_on=[])
++    op["stock_ids"] = ["unknown-source"]
++    op["args"].update(
++        stock_id="unknown-source",
++        source_region_id="unknown-region",
++        child_part_ids=["brace"],
++    )
++    op["effects"] = dict(
++        created_part_ids=["brace"], consumed_region_ids=["unknown-region"]
++    )
++    data["operations"].append(op)
++    assert "missing_measurement" in codes(data)
++
++
++def test_joint_with_unknown_tape_still_blocks():
++    data = joined_data()
++    stock = unknown_stock("unknown-tape", "tape")
++    stock["condition"] = "usable"
++    data["stocks"].append(stock)
++    data["operations"][-1]["stock_ids"] = ["unknown-tape"]
++    data["operations"][-1]["args"]["stock_id"] = "unknown-tape"
++    assert "missing_measurement" in codes(data)
++
++
+ def test_wrong_stock_offcut_provenance():
+     data = second_cut(plan_data())
+     other = deepcopy(data["stocks"][0])
+diff --git a/packages/renderer/src/forma_renderer/svg.py b/packages/renderer/src/forma_renderer/svg.py
+index fa99101..30c5b48 100644
+--- a/packages/renderer/src/forma_renderer/svg.py
++++ b/packages/renderer/src/forma_renderer/svg.py
+@@ -17,7 +17,8 @@ from .template import profile_evidence_valid
+ class BillItem:
+     id: str
+     stock_id: str
+-    quantity: float
++    # None means the quantity is explicitly unknown, never a fabricated zero.
++    quantity: float | None
+     unit: str
+     description: str
+ 
+@@ -80,6 +81,8 @@ def tools_for(operation):
+ 
+ def instruction(operation, plan):
+     if operation.type == "cut_rect":
++        if operation.effects.created_offcuts:
++            return f"Confirm all measurements and safe tools. Cut the three labelled panels; kerf {number(operation.args.kerf_mm)} mm, edge margin {number(operation.args.edge_margin_mm)} mm. Labelled offcut regions are remaining stock; other unallocated sheet material is waste."
+         return f"Confirm all measurements and safe tools. Cut the three labelled panels; kerf {number(operation.args.kerf_mm)} mm, edge margin {number(operation.args.edge_margin_mm)} mm. Unallocated sheet material is waste, not available offcut stock."
+     if operation.type == "fold":
+         a = operation.args
+@@ -121,12 +124,12 @@ def flat_view(root, plan, operation, selected, *, stock=False):
+             stroke="#111",
+             stroke_width=2,
+         )
+-        text(
+-            group,
+-            0,
+-            -18,
+-            f"{source.id}: {number(width)} x {number(height)} mm; shaded remainder = waste",
+-        )
++        offcuts = operation.effects.created_offcuts
++        if offcuts:
++            caption = f"{source.id}: {number(width)} x {number(height)} mm; shaded remainder = waste except labelled offcut regions are remaining stock"
++        else:
++            caption = f"{source.id}: {number(width)} x {number(height)} mm; shaded remainder = waste"
++        text(group, 0, -18, caption)
+         for index, p in enumerate(parts):
+             rect = p.geometry
+             pg = element(group, "g", data_part_id=p.id)
+@@ -164,6 +167,28 @@ def flat_view(root, plan, operation, selected, *, stock=False):
+                 f"Stock origin ({dimension(rect.x)}, {dimension(rect.y)}) mm",
+                 14,
+             )
++        for region in offcuts:
++            geo = region.geometry
++            og = element(group, "g", data_region_id=region.id)
++            element(
++                og,
++                "rect",
++                x=number(geo.x * scale),
++                y=number(geo.y * scale),
++                width=number(geo.width * scale),
++                height=number(geo.height * scale),
++                fill="none",
++                stroke="#111",
++                stroke_width=2,
++                stroke_dasharray="3 3",
++            )
++            text(
++                og,
++                number((geo.x + geo.width / 2) * scale),
++                number((geo.y + geo.height / 2) * scale),
++                f"{region.id} {dimension(geo.width)} x {dimension(geo.height)} mm",
++                12,
++            )
+     else:
+         for index, p in enumerate(parts):
+             scale = min(200 / p.geometry.width, 315 / p.geometry.height)
+@@ -502,6 +527,7 @@ def render_manual(
+         )
+     panels = []
+     attached = set()
++    used_by_stock: dict[str, float] = {}
+     for index, operation in enumerate(plan.operations):
+         selected = (
+             tuple(p.id for p in plan.parts)
+@@ -556,6 +582,25 @@ def render_manual(
+         text(root, 35, 66, operation.id, 15)
+         lines(root, 35, 96, instructions, width=102, size=15)
+         drawing = element(root, "g", transform=f"translate(0 {header_extra})")
++        tape_readout = None
++        if operation.type == "tape_joint":
++            stock = next(s for s in plan.stocks if s.id == operation.args.stock_id)
++            if stock.remaining_length_mm.value is None:
++                return Manual(
++                    "blocked",
++                    (),
++                    (),
++                    (
++                        m.Blocker(
++                            code="missing_measurement",
++                            message="Tape remaining length unknown.",
++                        ),
++                    ),
++                )
++            used_before = used_by_stock.get(stock.id, 0.0)
++            this_step = operation.args.length_mm
++            remaining_after = stock.remaining_length_mm.value - used_before - this_step
++            tape_readout = (stock.id, used_before, this_step, remaining_after)
+         if operation.type == "cut_rect":
+             flat_view(drawing, plan, operation, selected, stock=True)
+         elif (
+@@ -565,6 +610,20 @@ def render_manual(
+             flat_view(drawing, plan, operation, selected)
+         else:
+             side_view(drawing, plan, operation, attached)
++        if tape_readout is not None:
++            stock_id, used_before, this_step, remaining_after = tape_readout
++            readout = element(drawing, "g", data_stock_id=stock_id)
++            text(
++                readout, 610, 445, f"tape used before: {dimension(used_before)} mm", 13
++            )
++            text(readout, 610, 463, f"this step: {dimension(this_step)} mm", 13)
++            text(
++                readout,
++                610,
++                481,
++                f"tape left after: {dimension(remaining_after)} mm",
++                13,
++            )
+         text(drawing, 35, 645, "Tools: " + ", ".join(tools_for(operation)), 15)
+         text(
+             drawing,
+@@ -606,7 +665,7 @@ def render_manual(
+             size=14,
+         )
+         svg = ET.tostring(root, encoding="unicode", short_empty_elements=True)
+-        # Hash exact visible bytes plus renderer version. No plan version/time in a reusable panel.
++        # dependency_hash covers the visible SVG; version IDs stay excluded
+         dependency_hash = sha256(("stand-svg-v1\n" + svg).encode()).hexdigest()
+         panels.append(
+             Panel(
+@@ -619,6 +678,11 @@ def render_manual(
+             )
+         )
+         attached.update(operation.effects.attached_joint_ids)
++        if operation.type == "tape_joint":
++            used_by_stock[operation.args.stock_id] = (
++                used_by_stock.get(operation.args.stock_id, 0.0)
++                + operation.args.length_mm
++            )
+     bill = tuple(
+         BillItem(
+             p.id,
+@@ -636,20 +700,31 @@ def render_manual(
+                 for o in plan.operations
+                 if o.type == "tape_joint" and o.args.stock_id == stock.id
+             )
++            joints = sum(
++                1
++                for o in plan.operations
++                if o.type == "tape_joint" and o.args.stock_id == stock.id
++            )
++            remaining = stock.remaining_length_mm
++            remaining_known = remaining.value is not None and remaining.confirmed
+             bill += (
+                 BillItem(
+                     f"{stock.id}-consumed",
+                     stock.id,
+                     used,
+                     "mm",
+-                    "Three full-width hinge strips",
++                    f"{joints} tape joint strip(s)"
++                    if joints
++                    else "Tape not used by this plan",
+                 ),
+                 BillItem(
+                     f"{stock.id}-remaining",
+                     stock.id,
+-                    stock.remaining_length_mm.value - used,
++                    remaining.value - used if remaining_known else None,
+                     "mm",
+-                    "Remaining connector length",
++                    "Remaining connector length"
++                    if remaining_known
++                    else "Remaining connector length unknown; not measured/confirmed",
+                 ),
+             )
+         if stock.kind == "sheet":
+@@ -669,6 +744,14 @@ def render_manual(
+                     - sum(r.geometry.width * r.geometry.height for r in offcuts)
+                 )
+                 available.update({r.id: r.geometry for r in offcuts})
++            dimensions_known = all(
++                item.value is not None and item.confirmed
++                for item in (
++                    stock.width_mm,
++                    stock.height_mm,
++                    stock.thickness_mm,
++                )
++            )
+             bill += (
+                 BillItem(
+                     f"{stock.id}-waste",
+@@ -680,9 +763,13 @@ def render_manual(
+                 BillItem(
+                     f"{stock.id}-remaining",
+                     stock.id,
+-                    sum(r.width * r.height for r in available.values()),
++                    sum(r.width * r.height for r in available.values())
++                    if dimensions_known
++                    else None,
+                     "mm2",
+-                    "Usable stock regions not consumed by planned cuts",
++                    "Usable stock regions not consumed by planned cuts"
++                    if dimensions_known
++                    else "Remaining usable area unknown; stock dimensions not measured/confirmed",
+                 ),
+             )
+     return Manual("accepted", tuple(panels), bill, ())
+diff --git a/packages/renderer/tests/test_stand_manual.py b/packages/renderer/tests/test_stand_manual.py
+index 3e4082d..75ab2f7 100644
+--- a/packages/renderer/tests/test_stand_manual.py
++++ b/packages/renderer/tests/test_stand_manual.py
+@@ -1,17 +1,19 @@
+ """Synthetic software fixtures only. No physical build or test was performed."""
+ 
++import re
+ import xml.etree.ElementTree as ET
+ from datetime import UTC, datetime
+ 
+ import pytest
+ from forma_compiler import CutProcess
+ from forma_renderer import StandParameters, compile_stand, render_manual
++from forma_renderer.svg import dimension
+ 
+ from forma_domain import models as m
+ 
+ 
++# measured() builds a confirmed calculated measurement for SYNTHETIC fixtures.
+ def measured(value, unit="mm"):
+-    # Synthetic confirmation flags exercise the software path; evidence stays synthetic.
+     return m.Measurement(value=value, unit=unit, source="calculated", confirmed=True)
+ 
+ 
+@@ -138,6 +140,128 @@ def manual(plan, parameters, process):
+     )
+ 
+ 
++def _tape_readout(panel, operation):
++    root = ET.fromstring(panel.svg)
++    stock_id = operation.args.stock_id
++    groups = [n for n in root.iter() if n.attrib.get("data-stock-id") == stock_id]
++    assert len(groups) == 1
++    ns = "http://www.w3.org/2000/svg"
++    texts = ["".join(t.itertext()) for t in groups[0].iter(f"{{{ns}}}text")]
++    joined = " ".join(texts)
++    nums = [float(v) for v in re.findall(r"([0-9]+(?:\.[0-9]+)?)\s*mm", joined)]
++    return texts, nums
++
++
++def test_tape_panels_show_decreasing_remaining_from_plan():
++    plan, parameters, process = build()
++    result = manual(plan, parameters, process)
++    assert result.status == "accepted"
++    tape_ops = [o for o in plan.operations if o.type == "tape_joint"]
++    assert len(tape_ops) == 3
++    stock_id = tape_ops[0].args.stock_id
++    assert all(o.args.stock_id == stock_id for o in tape_ops)
++    width = tape_ops[0].args.length_mm
++    assert width == pytest.approx(plan.parts[0].geometry.width)
++    assert all(o.args.length_mm == pytest.approx(width) for o in tape_ops)
++    initial = next(s for s in plan.stocks if s.id == stock_id).remaining_length_mm.value
++    assert initial is not None
++    tape_ids = {o.id for o in tape_ops}
++    tape_panels = [p for p in result.panels if p.operation_id in tape_ids]
++    assert len(tape_panels) == 3
++    order = {o.id: idx for idx, o in enumerate(plan.operations)}
++    tape_panels.sort(key=lambda p: order[p.operation_id])
++    tape_ops_sorted = sorted(tape_ops, key=lambda o: order[o.id])
++    remainings = []
++    for k, (panel, op) in enumerate(zip(tape_panels, tape_ops_sorted), start=1):
++        texts, nums = _tape_readout(panel, op)
++        assert len(nums) == 3
++        used_before, this_step, remaining = nums
++        assert texts[0].startswith("tape used before")
++        assert dimension((k - 1) * width) in texts[0]
++        assert dimension(width) in texts[1]
++        assert dimension(initial - k * width) in texts[2]
++        assert used_before == pytest.approx((k - 1) * width)
++        assert this_step == pytest.approx(width)
++        assert remaining == pytest.approx(initial - k * width)
++        remainings.append(remaining)
++    assert remainings[0] > remainings[1] > remainings[2]
++    bill_remaining = next(
++        b.quantity for b in result.bill_of_materials if b.id == f"{stock_id}-remaining"
++    )
++    assert remainings[-1] == pytest.approx(bill_remaining)
++
++
++def test_cut_panel_offcut_and_waste_caption():
++    plan, parameters, process = build()
++    result = manual(plan, parameters, process)
++    cut = result.panels[0]
++    root = ET.fromstring(cut.svg)
++    assert not [n for n in root.iter() if "data-region-id" in n.attrib]
++    assert "shaded remainder = waste" in cut.svg
++    cut_op = next(o for o in plan.operations if o.type == "cut_rect")
++    source_region = next(
++        r
++        for s in plan.stocks
++        for r in s.usable_regions
++        if r.id == cut_op.args.source_region_id
++    )
++    sg = source_region.geometry
++    offcut_geo = {"x": 120, "y": 400, "width": 40, "height": 80, "rotation_deg": 0}
++    ox, oy, ow, oh = (
++        offcut_geo["x"],
++        offcut_geo["y"],
++        offcut_geo["width"],
++        offcut_geo["height"],
++    )
++    assert ox >= sg.x and oy >= sg.y
++    assert ox + ow <= sg.x + sg.width and oy + oh <= sg.y + sg.height
++    for part in plan.parts:
++        pg = part.geometry
++        overlaps = not (
++            ox + ow <= pg.x
++            or pg.x + pg.width <= ox
++            or oy + oh <= pg.y
++            or pg.y + pg.height <= oy
++        )
++        assert not overlaps, f"offcut overlaps {part.id}"
++    data = plan.model_dump()
++    offcut = {"id": "fixture-offcut-1", "geometry": dict(offcut_geo)}
++    data["operations"][0]["effects"]["created_offcuts"] = (offcut,)
++    injected = m.BuildPlan.model_validate(data)
++    rendered = manual(injected, parameters, process)
++    assert rendered.status == "accepted", (
++        "hand-injected offcut should validate; if blocked, validation rejects hand-injected offcuts"
++    )
++    cut2 = rendered.panels[0]
++    root2 = ET.fromstring(cut2.svg)
++    regions = [
++        n for n in root2.iter() if n.attrib.get("data-region-id") == "fixture-offcut-1"
++    ]
++    assert len(regions) == 1
++    assert [
++        n.attrib.get("data-region-id")
++        for n in root2.iter()
++        if "data-region-id" in n.attrib
++    ] == ["fixture-offcut-1"]
++    ns = "http://www.w3.org/2000/svg"
++    label = " ".join("".join(t.itertext()) for t in regions[0].iter(f"{{{ns}}}text"))
++    assert "fixture-offcut-1" in label
++    assert f"{dimension(ow)} x {dimension(oh)} mm" in label
++    rect = regions[0].find(f"{{{ns}}}rect")
++    assert rect is not None and rect.attrib["fill"] == "none"
++    sheet = next(s for s in plan.stocks if s.id == cut_op.args.stock_id)
++    scale = min(740 / sheet.width_mm.value, 370 / sheet.height_mm.value)
++    assert float(rect.attrib["x"]) == pytest.approx(ox * scale)
++    assert float(rect.attrib["y"]) == pytest.approx(oy * scale)
++    assert float(rect.attrib["width"]) == pytest.approx(ow * scale)
++    assert float(rect.attrib["height"]) == pytest.approx(oh * scale)
++    assert (
++        "shaded remainder = waste except labelled offcut regions are remaining stock"
++        in cut2.svg
++    )
++    assert "not available offcut stock" not in cut2.svg
++
++
+ @pytest.mark.parametrize("alternate", [False, True])
+ def test_two_meaningful_parameterizations_and_complete_manual(alternate):
+     plan, parameters, process = build(alternate=alternate)
+@@ -153,6 +277,16 @@ def test_two_meaningful_parameterizations_and_complete_manual(alternate):
+         )
+         == 3 * plan.parts[0].geometry.width
+     )
++    expected_joints = sum(
++        1
++        for o in plan.operations
++        if o.type == "tape_joint" and o.args.stock_id == "fixture-tape-stock"
++    )
++    consumed = next(
++        b for b in result.bill_of_materials if b.id == "fixture-tape-stock-consumed"
++    )
++    assert str(expected_joints) in consumed.description
++    assert "hinge" not in consumed.description.lower()
+     assert any(
+         b.id == "fixture-sheet-waste" and b.quantity > 0
+         for b in result.bill_of_materials
+@@ -165,6 +299,7 @@ def test_two_meaningful_parameterizations_and_complete_manual(alternate):
+             for node in root.iter()
+             if "data-part-id" in node.attrib
+         } == set(panel.part_ids)
++        # checkpoint ids are rendered inline in each panel
+         assert all(checkpoint in panel.svg for checkpoint in panel.checkpoint_ids)
+         assert "SYNTHETIC SOFTWARE FIXTURE" in panel.svg
+         assert "Requires user confirmation" in panel.svg
+@@ -294,7 +429,6 @@ def test_malformed_supported_ids_block_without_crashing(change):
+             for c in data["checkpoints"]
+             if c["after_operation_id"] != "stand-inspect-cuts"
+         )
+-        # Keep the ID reference valid but point to a checkpoint owned by a different step.
+         data["operations"][1]["args"]["checkpoint_id"] = "stand-function-check"
+     elif change == "unknown_mass":
+         data["operations"][-1]["args"]["mass_g"] = None
+@@ -375,7 +509,123 @@ def test_unused_stock_remains_available_in_bill():
+     assert entries["unused-sheet-remaining"].quantity == 200 * 550
+ 
+ 
++def unknown_stock(stock_id, kind):
++    unknown = m.Measurement(value=None, unit="mm", source="unknown", confirmed=False)
++    return m.Stock(
++        id=stock_id,
++        kind=kind,
++        material="cardboard" if kind == "sheet" else "other_supported",
++        width_mm=unknown,
++        height_mm=unknown,
++        thickness_mm=unknown,
++        remaining_length_mm=unknown,
++        condition="uncertain",
++    )
++
++
++def compile_with_extra_stock(stock):
++    request, parameters, process = fixture()
++    data = request.model_dump()
++    data["stocks"] += (stock.model_dump(),)
++    compiled = compile_stand(
++        m.CompilerInput.model_validate(data),
++        parameters,
++        process=process,
++        allow_synthetic=True,
++    )
++    return compiled, parameters, process
++
++
++def test_unused_unknown_sheet_does_not_block_manual():
++    compiled, parameters, process = compile_with_extra_stock(
++        unknown_stock("unused-unmeasured", "sheet")
++    )
++    assert compiled.status == "accepted", compiled.blockers
++    retained = {stock.id: stock for stock in compiled.plan.stocks}
++    stock = retained["unused-unmeasured"]
++    assert stock.width_mm.value is None
++    assert stock.thickness_mm.value is None
++    assert not stock.width_mm.confirmed
++    assert stock.condition == "uncertain"
++    result = manual(compiled.plan, parameters, process)
++    assert result.status == "accepted", result.blockers
++    assert len(result.panels) == 8
++    entries = {item.id: item for item in result.bill_of_materials}
++    assert entries["unused-unmeasured-remaining"].quantity is None
++    assert "unknown" in entries["unused-unmeasured-remaining"].description.lower()
++    baseline_plan, _, _ = build()
++    baseline = {
++        item.id: item.quantity
++        for item in manual(baseline_plan, parameters, process).bill_of_materials
++    }
++    assert (
++        entries["fixture-sheet-remaining"].quantity
++        == baseline["fixture-sheet-remaining"]
++    )
++    assert (
++        entries["fixture-tape-stock-remaining"].quantity
++        == baseline["fixture-tape-stock-remaining"]
++    )
++
++
++def test_unused_unknown_tape_does_not_block_manual_or_fabricate_remaining():
++    compiled, parameters, process = compile_with_extra_stock(
++        unknown_stock("unused-unknown-tape", "tape")
++    )
++    assert compiled.status == "accepted", compiled.blockers
++    result = manual(compiled.plan, parameters, process)
++    assert result.status == "accepted", result.blockers
++    assert len(result.panels) == 8
++    entries = {item.id: item for item in result.bill_of_materials}
++    consumed = entries["unused-unknown-tape-consumed"]
++    assert consumed.quantity == 0
++    assert "not used" in consumed.description.lower()
++    assert "hinge" not in consumed.description.lower()
++    remaining = entries["unused-unknown-tape-remaining"]
++    assert remaining.quantity is None
++    assert remaining.quantity != 0
++    assert "unknown" in remaining.description.lower()
++
++
++def test_actual_use_of_unknown_tape_still_blocks_manual():
++    plan, parameters, process = build()
++    data = plan.model_dump()
++    stock = unknown_stock("unknown-tape", "tape").model_copy(
++        update={"condition": "usable"}
++    )
++    data["stocks"] += (stock.model_dump(),)
++    for operation in data["operations"]:
++        if operation["type"] == "tape_joint":
++            operation["stock_ids"] = ("unknown-tape",)
++            operation["args"]["stock_id"] = "unknown-tape"
++            break
++    result = manual(m.BuildPlan.model_validate(data), parameters, process)
++    assert result.status == "needs_measurement"
++    assert not result.panels
++    assert "missing_measurement" in {b.code for b in result.blockers}
++
++
+ def test_renderer_revalidates_model_copy():
+     plan, parameters, process = build()
+     result = manual(plan.model_copy(update={"parts": ()}), parameters, process)
+     assert result.status == "blocked" and not result.panels
++
++
++def test_overdrawn_tape_stock_blocks_manual():
++    plan, parameters, process = build()
++    tape_ops = [o for o in plan.operations if o.type == "tape_joint"]
++    assert len(tape_ops) == 3
++    stock_id = tape_ops[0].args.stock_id
++    width = tape_ops[0].args.length_mm
++    total = sum(o.args.length_mm for o in tape_ops)
++    initial = 2 * width
++    assert 0 < width < initial < total
++    data = plan.model_dump()
++    for stock in data["stocks"]:
++        if stock["id"] == stock_id:
++            stock["remaining_length_mm"]["value"] = initial
++    overdrawn = m.BuildPlan.model_validate(data)
++    result = manual(overdrawn, parameters, process)
++    assert result.status != "accepted"
++    assert result.blockers
++    assert any(b.code == "stock_exhausted" for b in result.blockers)
+diff --git a/packages/replanner/README.md b/packages/replanner/README.md
+index 21d9776..4936e43 100644
+--- a/packages/replanner/README.md
++++ b/packages/replanner/README.md
+@@ -27,6 +27,17 @@ or fabricates salvage transactions. Callers supply authenticated project scope,
+ reviewed cutting limits and a server-owned tested joint catalogue. Opaque profile
+ evidence IDs are trusted catalogue references, not proof supplied by a model.
+ 
++If `patch.base_version_id` differs from `base_plan.version_id`, the call
++returns `status='blocked'` with a `stale_version` blocker before any
++simulation runs. The snapshot and each supplied historical plan are dumped
++with warnings disabled and rebuilt through `ReplannerInput`/`BuildPlan`
++validation, because `model_copy` can bypass validators. When that rebuild
++fails, including malformed numeric data, the result is blocked with an
++`invalid_reference` blocker and a fixed message; validator details and
++serializer warnings are not exposed, and only `AttributeError`,
++`TypeError` and `ValueError` are handled this way. Caller inputs are not
++mutated, and blocked results are excluded by `rank_feasible`.
++
+ Supported targets: `resize_part` and `replace_part` name a part;
+ `replace_joint_profile` names a joint; `change_angle` names the base version.
+ Resize affects future cuts only. Compatible same-strategy catalogue profile
+@@ -45,6 +56,14 @@ currently return `unsupported`. A known `triangular-tape-stand-v1` plan requires
+ the injected geometry/manual continuation validator before it can be feasible;
+ resource checks alone cannot validate a new support triangle or printable manual.
+ 
++A `family_validator` result is fully materialized and each item validated as a `Blocker`
++before any of it is added. A validator that raises an ordinary `Exception` (including during
++lazy iteration) or returns an invalid result adds one stable `unsupported` blocker
++(`Family continuation validator did not return a valid result.`). Independent resource
++checks may add other blockers. The blocked result has no plan or cost, so `rank_feasible`
++excludes it. Blockers yielded before a lazy failure are
++discarded, the exception type and message are never exposed in the result. `KeyboardInterrupt` and `SystemExit` are not swallowed and propagate to the caller.
++
+ ## Execution, material and evidence accounting
+ 
+ Completion is chronological, user-confirmed and once per operation, after its
+diff --git a/packages/replanner/src/forma_replanner/simulation.py b/packages/replanner/src/forma_replanner/simulation.py
+index 3228be3..e4513d8 100644
+--- a/packages/replanner/src/forma_replanner/simulation.py
++++ b/packages/replanner/src/forma_replanner/simulation.py
+@@ -78,6 +78,21 @@ def _close(a, b):
+     return abs(a - b) <= 1e-7
+ 
+ 
++def _touched_stock_ids(snapshot):
++    """Stocks the base work, ledger or requested patch actually relies on."""
++    base, patch = snapshot.base_plan, snapshot.patch
++    touched = {p.source_stock_id for p in base.parts}
++    for op in base.operations:
++        touched.update(op.stock_ids)
++        stock_id = getattr(op.args, "stock_id", None)
++        if stock_id is not None:
++            touched.add(stock_id)
++    touched.update(tx.source_stock_id for tx in snapshot.material_transactions)
++    if patch.replacement_stock_id is not None:
++        touched.add(patch.replacement_stock_id)
++    return touched
++
++
+ def _affected(base, candidate):
+     """Include relevant interfaces and all prerequisites, not operation IDs alone."""
+     old_parts = {p.id: p for p in base.parts}
+@@ -137,6 +152,21 @@ def _affected(base, candidate):
+     return affected, changed_parts
+ 
+ 
++def _safe_result_id(value: object, fallback: str) -> str:
++    return value if isinstance(value, str) and value else fallback
++
++
++def _blocked_snapshot(
++    patch_id: str, base_version_id: str, code: str, message: str
++) -> SimulationResult:
++    return SimulationResult(
++        patch_id=patch_id,
++        base_version_id=base_version_id,
++        status="blocked",
++        blockers=(Blocker(code=code, message=message),),
++    )
++
++
+ def simulate_patch(
+     snapshot: ReplannerInput,
+     *,
+@@ -152,6 +182,50 @@ def simulate_patch(
+     independently reconciles the user's chronological execution ledger. No
+     transactions, events, passes or salvage claims are generated here.
+     """
++    raw_patch = getattr(snapshot, "patch", None)
++    raw_base_plan = getattr(snapshot, "base_plan", None)
++    result_patch_id = _safe_result_id(getattr(raw_patch, "id", None), "unknown_patch")
++    result_base_version_id = _safe_result_id(
++        getattr(raw_base_plan, "version_id", None), "unknown_version"
++    )
++    patch_base_version_id = getattr(raw_patch, "base_version_id", None)
++    base_version_id = getattr(raw_base_plan, "version_id", None)
++    if (
++        isinstance(patch_base_version_id, str)
++        and isinstance(base_version_id, str)
++        and patch_base_version_id != base_version_id
++    ):
++        return _blocked_snapshot(
++            result_patch_id,
++            result_base_version_id,
++            "stale_version",
++            "Patch base version does not match the supplied base plan version.",
++        )
++    # model_copy bypasses validators, so rebuild from dumped data to rerun
++    # nested record, reference, scope, uniqueness and chronology checks.
++    try:
++        snapshot = ReplannerInput.model_validate(
++            snapshot.model_dump(mode="python", warnings=False)
++        )
++    except (AttributeError, TypeError, ValueError):
++        return _blocked_snapshot(
++            result_patch_id,
++            result_base_version_id,
++            "invalid_reference",
++            "Supplied repair snapshot failed validation; no repair was simulated.",
++        )
++    try:
++        historical_plans = tuple(
++            BuildPlan.model_validate(plan.model_dump(mode="python", warnings=False))
++            for plan in historical_plans
++        )
++    except (AttributeError, TypeError, ValueError):
++        return _blocked_snapshot(
++            snapshot.patch.id,
++            snapshot.base_plan.version_id,
++            "invalid_reference",
++            "Supplied historical plan failed validation; no repair was simulated.",
++        )
+     base, patch = snapshot.base_plan, snapshot.patch
+     blockers = []
+ 
+@@ -524,38 +598,53 @@ def simulate_patch(
+             "invalid_reference",
+             "Remaining inventory must contain exactly the known physical sources.",
+         )
++    touched_stock_ids = _touched_stock_ids(snapshot)
+     actual_regions = {}
+     for stock in snapshot.remaining_stock:
+         original = stocks.get(stock.id)
+         if original is None:
+             continue
+-        if (
+-            stock.kind != original.kind
+-            or stock.material != original.material
+-            or stock.width_mm != original.width_mm
+-            or stock.height_mm != original.height_mm
+-            or stock.thickness_mm != original.thickness_mm
+-            or stock.condition != "usable"
+-        ):
+-            fail(
+-                "needs_confirmation",
+-                "Inventory identity, measurements or condition conflict with physical history.",
+-                stock.id,
+-            )
+-        if stock.kind in ("tape", "cord"):
+-            expected = lengths.get(stock.id)
+-            value = stock.remaining_length_mm
++        if stock.id not in touched_stock_ids:
++            # Untouched unused inventory may stay exactly as unknown and
++            # uncertain as originally recorded: it supports no part, operation
++            # or patch, so it neither blocks the repair nor becomes usable
++            # availability. Any change to it is a conflict, not confirmation.
++            # Regions are still collected below so structural reconciliation,
++            # including duplicate detection, applies unchanged.
++            if stock != original:
++                fail(
++                    "needs_confirmation",
++                    "Unused inventory changed from its original unknown state; confirm the new identity, measurements or condition explicitly.",
++                    stock.id,
++                )
++        else:
+             if (
+-                expected is None
+-                or value.value is None
+-                or not value.confirmed
+-                or not _close(expected, value.value)
++                stock.kind != original.kind
++                or stock.material != original.material
++                or stock.width_mm != original.width_mm
++                or stock.height_mm != original.height_mm
++                or stock.thickness_mm != original.thickness_mm
++                or stock.condition != "usable"
+             ):
+                 fail(
+-                    "stock_exhausted",
+-                    "Remaining connector length conflicts with confirmed consumption.",
++                    "needs_confirmation",
++                    "Inventory identity, measurements or condition conflict with physical history.",
+                     stock.id,
+                 )
++            if stock.kind in ("tape", "cord"):
++                expected = lengths.get(stock.id)
++                value = stock.remaining_length_mm
++                if (
++                    expected is None
++                    or value.value is None
++                    or not value.confirmed
++                    or not _close(expected, value.value)
++                ):
++                    fail(
++                        "stock_exhausted",
++                        "Remaining connector length conflicts with confirmed consumption.",
++                        stock.id,
++                    )
+         for region in stock.usable_regions:
+             if region.id in actual_regions:
+                 fail("stock_exhausted", "A remaining region appears twice.", region.id)
+@@ -959,14 +1048,21 @@ def simulate_patch(
+         )
+     if family_validator is not None:
+         try:
+-            blockers.extend(
++            # Materialize first so a failure during lazy iteration cannot
++            # leave partially validated blockers behind. Ordinary callback
++            # failures become one stable, safe blocker; the exception text
++            # is never exposed. BaseException (e.g. KeyboardInterrupt and
++            # SystemExit) is not an Exception subclass and still propagates.
++            family_blockers = tuple(
+                 Blocker.model_validate(b) for b in family_validator(candidate)
+             )
+-        except (ValueError, TypeError):
++        except Exception:
+             fail(
+                 "unsupported",
+                 "Family continuation validator did not return a valid result.",
+             )
++        else:
++            blockers.extend(family_blockers)
+     # Original stock validates historical cuts once. Only future work may spend
+     # the reconciled remaining ledger, including real subsequent loss events.
+     future_regions = dict(regions)
+diff --git a/packages/replanner/tests/test_simulation.py b/packages/replanner/tests/test_simulation.py
+index e94a3be..05642ff 100644
+--- a/packages/replanner/tests/test_simulation.py
++++ b/packages/replanner/tests/test_simulation.py
+@@ -1,12 +1,13 @@
+ """Synthetic offline regressions, never physical evidence."""
+ 
++import warnings
+ from copy import deepcopy
+ 
+ import pytest
+ from forma_compiler import CutProcess
+ from forma_replanner import rank_feasible, simulate_patch
+ 
+-from forma_domain.models import BuildPlan, Evidence, ReplannerInput
++from forma_domain.models import Blocker, BuildPlan, Evidence, ReplannerInput
+ 
+ STAMP = "2026-10-30T00:00:00Z"
+ 
+@@ -192,6 +193,29 @@ def codes(result):
+     return {b.code for b in result.blockers}
+ 
+ 
++def unused_unknown(kind="sheet"):
++    def unknown():
++        return dict(value=None, unit="mm", source="unknown", confirmed=False)
++
++    return dict(
++        id="unused-unknown",
++        kind=kind,
++        material="cardboard" if kind == "sheet" else "other_supported",
++        width_mm=unknown(),
++        height_mm=unknown(),
++        thickness_mm=unknown(),
++        remaining_length_mm=unknown(),
++        condition="uncertain",
++        usable_regions=[],
++    )
++
++
++def add_unused_unknown(data, stock):
++    data["base_plan"]["stocks"].append(deepcopy(stock))
++    data["remaining_stock"].append(deepcopy(stock))
++    return data
++
++
+ def test_future_resize_preserves_actual_cut_and_invalidates_downstream():
+     data = input_data()
+     data["evidence"] = [
+@@ -602,8 +626,6 @@ def test_noop_patch_is_not_ranked_as_a_free_repair():
+ 
+ 
+ def test_family_validator_rejection_blocks_ranking():
+-    from forma_domain.models import Blocker
+-
+     result = simulate_patch(
+         ReplannerInput.model_validate(input_data()),
+         process=process(),
+@@ -613,9 +635,105 @@ def test_family_validator_rejection_blocks_ranking():
+         ),
+     )
+     assert result.status == "blocked"
++    assert result.plan is None
++    assert result.cost is None
++    assert [b.code for b in result.blockers] == ["geometry_invalid"]
++    assert not rank_feasible((result,))
++
++
++def run_with_validator(data, family_validator):
++    return simulate_patch(
++        ReplannerInput.model_validate(data),
++        process=process(),
++        allow_synthetic=True,
++        family_validator=family_validator,
++    )
++
++
++def assert_safe_validator_block(result):
++    assert result.status == "blocked"
++    assert result.plan is None
++    assert result.cost is None
++    assert [(b.code, b.message) for b in result.blockers] == [
++        (
++            "unsupported",
++            "Family continuation validator did not return a valid result.",
++        )
++    ]
+     assert not rank_feasible((result,))
+ 
+ 
++def test_family_validator_runtime_error_blocks_safely_and_preserves_input():
++    data = input_data()
++    original_data = deepcopy(data)
++    request = ReplannerInput.model_validate(data)
++    original_request = request.model_dump()
++    original_events = request.events
++
++    def broken_validator(_plan):
++        raise RuntimeError("synthetic callback failure: private detail")
++
++    result = simulate_patch(
++        request,
++        process=process(),
++        allow_synthetic=True,
++        family_validator=broken_validator,
++    )
++
++    assert_safe_validator_block(result)
++    assert all("private detail" not in b.message for b in result.blockers)
++    assert all("RuntimeError" not in b.message for b in result.blockers)
++    assert data == original_data
++    assert request.model_dump() == original_request
++    assert request.events == original_events
++
++
++def test_family_validator_lazy_iteration_failure_blocks_safely():
++    def lazy_validator(_plan):
++        yield Blocker(
++            code="geometry_invalid", message="Yielded before synthetic failure."
++        )
++        raise RuntimeError("synthetic lazy failure: private detail")
++
++    result = run_with_validator(input_data(), lazy_validator)
++
++    # The partially yielded blocker must not leak into the stable result.
++    assert_safe_validator_block(result)
++    assert all("private detail" not in b.message for b in result.blockers)
++
++
++@pytest.mark.parametrize(
++    "family_validator",
++    [
++        pytest.param(lambda plan: None, id="none-result"),
++        pytest.param(lambda plan: ("synthetic invalid output",), id="invalid-item"),
++        pytest.param(
++            lambda plan: ({"code": "geometry_invalid"},), id="missing-message"
++        ),
++    ],
++)
++def test_family_validator_invalid_output_still_blocks_safely(family_validator):
++    result = run_with_validator(input_data(), family_validator)
++    assert_safe_validator_block(result)
++
++
++def test_family_validator_success_is_preserved_and_ranked():
++    result = run_with_validator(input_data(), lambda plan: ())
++    assert result.status == "feasible"
++    assert result.plan is not None
++    assert result.cost is not None
++    assert rank_feasible((result,)) == (result,)
++
++
++@pytest.mark.parametrize("control_error", [KeyboardInterrupt, SystemExit])
++def test_family_validator_process_control_errors_are_not_swallowed(control_error):
++    def interrupted_validator(_plan):
++        raise control_error
++
++    with pytest.raises(control_error):
++        run_with_validator(input_data(), interrupted_validator)
++
++
+ def two_offcut_data():
+     data = input_data()
+     second = dict(id="strip", geometry=dict(x=0, y=100, width=65, height=20))
+@@ -659,6 +777,154 @@ def test_same_offcut_recorded_twice_is_duplicate_accounting():
+     assert any("Duplicate" in b.message for b in result.blockers)
+ 
+ 
++def test_model_copy_stale_patch_base_blocks_at_public_boundary():
++    request = ReplannerInput.model_validate(input_data())
++    before = request.model_dump(mode="python")
++    stale = request.model_copy(
++        update={
++            "patch": request.patch.model_copy(
++                update={"base_version_id": "wrong-version"}
++            )
++        }
++    )
++    result = simulate_patch(stale, process=process(), allow_synthetic=True)
++    valid = run(input_data())
++    assert result.status == "blocked"
++    assert result.status != "feasible"
++    assert codes(result) == {"stale_version"}
++    assert result.patch_id == "resize"
++    assert result.base_version_id == "v1"
++    assert result.plan is None
++    assert result.cost is None
++    assert rank_feasible((result, valid)) == (valid,)
++    assert all("wrong-version" not in b.message for b in result.blockers)
++    assert stale.patch.base_version_id == "wrong-version"
++    assert stale.base_plan.version_id == "v1"
++    assert stale.events == request.events
++    assert request.model_dump(mode="python") == before
++
++
++def assert_invalid_snapshot(malformed, forbidden):
++    before = malformed.model_dump(mode="python", warnings=False)
++    result = simulate_patch(malformed, process=process(), allow_synthetic=True)
++    assert result.status == "blocked"
++    assert codes(result) == {"invalid_reference"}
++    assert result.plan is None
++    assert result.cost is None
++    assert rank_feasible((result,)) == ()
++    assert all(
++        b.message
++        == "Supplied repair snapshot failed validation; no repair was simulated."
++        for b in result.blockers
++    )
++    assert all(forbidden not in b.message for b in result.blockers)
++    assert malformed.model_dump(mode="python", warnings=False) == before
++
++
++def test_model_copy_malformed_nested_reference_blocks_at_public_boundary():
++    request = ReplannerInput.model_validate(input_data())
++    bad_part = request.base_plan.parts[0].model_copy(
++        update={"source_stock_id": "missing_stock_sentinel"}
++    )
++    malformed = request.model_copy(
++        update={
++            "base_plan": request.base_plan.model_copy(
++                update={"parts": (bad_part, *request.base_plan.parts[1:])}
++            )
++        }
++    )
++    assert_invalid_snapshot(malformed, "missing_stock_sentinel")
++
++
++def test_model_copy_duplicate_history_blocks_at_public_boundary():
++    request = ReplannerInput.model_validate(input_data())
++    malformed = request.model_copy(update={"events": request.events * 2})
++    assert_invalid_snapshot(malformed, "duplicate")
++
++
++def test_model_copy_out_of_scope_history_blocks_at_public_boundary():
++    request = ReplannerInput.model_validate(input_data())
++    bad_event = request.events[0].model_copy(
++        update={"project_id": "other_project_sentinel"}
++    )
++    malformed = request.model_copy(update={"events": (bad_event,)})
++    assert_invalid_snapshot(malformed, "other_project_sentinel")
++
++
++def test_model_copy_malformed_historical_plan_blocks_at_public_boundary():
++    request = ReplannerInput.model_validate(input_data())
++    old = BuildPlan.model_validate(fixture())
++    bad_part = old.parts[0].model_copy(
++        update={"source_stock_id": "missing_stock_sentinel"}
++    )
++    malformed_old = old.model_copy(update={"parts": (bad_part, *old.parts[1:])})
++    result = simulate_patch(
++        request,
++        process=process(),
++        allow_synthetic=True,
++        historical_plans=(malformed_old,),
++    )
++    assert result.status == "blocked"
++    assert codes(result) == {"invalid_reference"}
++    assert result.plan is None
++    assert result.cost is None
++    assert rank_feasible((result,)) == ()
++    assert all("missing_stock_sentinel" not in b.message for b in result.blockers)
++
++
++def test_model_copy_malformed_numeric_snapshot_blocks_without_serializer_warning():
++    request = ReplannerInput.model_validate(input_data())
++    bad_geometry = request.base_plan.parts[0].geometry.model_copy(
++        update={"width": "PRIVATE_NUMERIC_SENTINEL"}
++    )
++    bad_part = request.base_plan.parts[0].model_copy(update={"geometry": bad_geometry})
++    malformed = request.model_copy(
++        update={
++            "base_plan": request.base_plan.model_copy(
++                update={"parts": (bad_part, *request.base_plan.parts[1:])}
++            )
++        }
++    )
++    with warnings.catch_warnings(record=True) as caught:
++        warnings.simplefilter("error")
++        assert_invalid_snapshot(malformed, "PRIVATE_NUMERIC_SENTINEL")
++    assert caught == []
++
++
++def test_malformed_numeric_historical_plan_blocks_without_serializer_warning():
++    request = ReplannerInput.model_validate(input_data())
++    request_before = request.model_dump(mode="python", warnings=False)
++    old = BuildPlan.model_validate(fixture())
++    bad_geometry = old.parts[0].geometry.model_copy(
++        update={"width": "PRIVATE_NUMERIC_SENTINEL"}
++    )
++    bad_part = old.parts[0].model_copy(update={"geometry": bad_geometry})
++    malformed_old = old.model_copy(update={"parts": (bad_part, *old.parts[1:])})
++    before = malformed_old.model_dump(mode="python", warnings=False)
++    with warnings.catch_warnings(record=True) as caught:
++        warnings.simplefilter("error")
++        result = simulate_patch(
++            request,
++            process=process(),
++            allow_synthetic=True,
++            historical_plans=(malformed_old,),
++        )
++    assert caught == []
++    assert result.status == "blocked"
++    assert codes(result) == {"invalid_reference"}
++    assert result.plan is None
++    assert result.cost is None
++    assert rank_feasible((result,)) == ()
++    assert all(
++        b.message
++        == "Supplied historical plan failed validation; no repair was simulated."
++        for b in result.blockers
++    )
++    assert all("PRIVATE_NUMERIC_SENTINEL" not in b.message for b in result.blockers)
++    assert malformed_old.model_dump(mode="python", warnings=False) == before
++    assert request.model_dump(mode="python", warnings=False) == request_before
++
++
+ def test_salvaged_offcut_can_be_lost_again():
+     data = input_data()
+     for name in ("loss", "recovered", "lost_again"):
+@@ -689,3 +955,86 @@ def test_salvaged_offcut_can_be_lost_again():
+     assert not any("Duplicate" in b.message for b in result.blockers)
+     assert result.lost_region_ids == ("offcut",)
+     assert "stock_exhausted" in codes(result)
++
++
++def test_future_resize_with_identical_unused_unknown_sheet():
++    data = add_unused_unknown(input_data(), unused_unknown())
++    original = deepcopy(data)
++    result = run(data)
++    assert result.status == "feasible", result.blockers
++    assert result.preserved_operation_ids == ("cut",)
++    retained = next(s for s in result.plan.stocks if s.id == "unused-unknown")
++    assert retained.condition == "uncertain"
++    assert retained.width_mm.value is None
++    assert retained.height_mm.value is None
++    assert retained.thickness_mm.value is None
++    assert retained.remaining_length_mm.value is None
++    assert not retained.width_mm.confirmed
++    assert retained.usable_regions == ()
++    assert data == original
++
++
++def test_future_resize_with_identical_unused_unknown_connector():
++    data = add_unused_unknown(input_data(), unused_unknown(kind="tape"))
++    original = deepcopy(data)
++    result = run(data)
++    assert result.status == "feasible", result.blockers
++    assert result.preserved_operation_ids == ("cut",)
++    retained = next(s for s in result.plan.stocks if s.id == "unused-unknown")
++    assert retained.kind == "tape"
++    assert retained.condition == "uncertain"
++    assert retained.remaining_length_mm.value is None
++    assert not retained.remaining_length_mm.confirmed
++    assert data == original
++
++
++def test_unused_unknown_stock_with_unchanged_region_is_retained():
++    stock = unused_unknown()
++    stock["usable_regions"] = [
++        dict(id="unused-region", geometry=dict(x=0, y=0, width=10, height=10))
++    ]
++    data = add_unused_unknown(input_data(), stock)
++    result = run(data)
++    assert result.status == "feasible", result.blockers
++    retained = next(s for s in result.plan.stocks if s.id == "unused-unknown")
++    assert [r.id for r in retained.usable_regions] == ["unused-region"]
++
++
++def test_unknown_source_referenced_by_replacement_patch_still_blocks():
++    data = add_unused_unknown(input_data(("cut", "cut_brace")), unused_unknown())
++    data["patch"].update(
++        kind="replace_part",
++        target_id="brace",
++        replacement_stock_id="unused-unknown",
++        width_mm=None,
++        height_mm=None,
++    )
++    result = run(data)
++    assert result.status == "blocked"
++    assert result.plan is None
++    assert "needs_confirmation" in codes(result)
++    assert any("unused-unknown" in b.target_ids for b in result.blockers)
++
++
++@pytest.mark.parametrize("change", ["length", "condition", "material", "regions"])
++def test_changed_unused_unknown_connector_is_not_treated_as_confirmed(change):
++    data = add_unused_unknown(input_data(), unused_unknown(kind="tape"))
++    remaining = data["remaining_stock"][-1]
++    if change == "length":
++        remaining["remaining_length_mm"] = measurement(100)
++    elif change == "condition":
++        remaining["condition"] = "usable"
++    elif change == "material":
++        remaining["material"] = "cardboard"
++    else:
++        remaining["usable_regions"] = [
++            dict(
++                id="invented-region",
++                geometry=dict(x=0, y=0, width=10, height=10),
++            )
++        ]
++    result = run(data)
++    assert result.status == "blocked"
++    assert result.plan is None
++    assert "needs_confirmation" in codes(result)
++    assert any("unused-unknown" in b.target_ids for b in result.blockers)
+diff --git a/scripts/smoke_meta.py b/scripts/smoke_meta.py
+index c7e899a..c62fdd5 100644
+--- a/scripts/smoke_meta.py
++++ b/scripts/smoke_meta.py
+@@ -3,7 +3,9 @@
+ import argparse
+ import json
+ import os
++import sys
+ from dataclasses import asdict
++from importlib.metadata import PackageNotFoundError, version
+ from pathlib import Path
+ from typing import Literal
+ 
+@@ -31,36 +33,49 @@ class MeasurementResult(BaseModel):
+     needs_measurement: Literal[True] = True
+ 
+ 
+-def main():
+-    parser = argparse.ArgumentParser(description=__doc__)
+-    parser.add_argument("--image", type=Path)
+-    parser.add_argument("--consented", action="store_true")
+-    parser.add_argument("--live", action="store_true")
+-    parser.add_argument("--sam-concept", default="cardboard sheet")
+-    args = parser.parse_args()
++def _base_report(gateway) -> dict:
++    """Metadata header shared by run_smoke and photo-error paths."""
++    try:
++        forma_version = version("forma_api")
++    except PackageNotFoundError:
++        forma_version = None
++    return {
++        "prompt_version": "inventory-spike-v1",
++        "schema_version": "observation-v1",
++        "runtime": {
++            "python": (
++                f"{sys.version_info.major}."
++                f"{sys.version_info.minor}."
++                f"{sys.version_info.micro}"
++            ),
++            "pydantic": version("pydantic"),
++            "forma_api": forma_version,
++            "http_client": "stdlib http.client",
++        },
++        "models": {"spark": gateway.spark, "sam": gateway.sam},
++    }
++
++
++def preflight(args, env) -> list[str]:
++    """Pure prerequisite check; never touches the network."""
+     blockers = []
+-    if not os.environ.get("MODEL_API_KEY"):
++    if not env.get("MODEL_API_KEY"):
+         blockers.append("MODEL_API_KEY missing")
+-    if not args.image or not args.image.is_file():
++    image = getattr(args, "image", None)
++    if image is None or not Path(image).is_file():
+         blockers.append("real team photo missing")
+-    if not args.consented:
++    if not getattr(args, "consented", False):
+         blockers.append("photo consent missing")
+-    if not args.live:
++    if not getattr(args, "live", False):
+         blockers.append("explicit --live missing; no network attempted")
+-    if blockers:
+-        print(json.dumps({"status": "blocked", "blockers": blockers}))
+-        return 2
+-    gateway = MetaGateway.from_env()
+-    report = {
+-        "prompt_version": "inventory-spike-v1",
+-        "schema_version": "observation-v1",
+-    }
++    return blockers
++
++
++def run_smoke(gateway, image, sam_concept) -> tuple[int, dict]:
++    """Run Spark then SAM; report metadata and counts only, never private text."""
++    report = _base_report(gateway)
+     try:
+-        if args.image.stat().st_size > 5_000_000:
+-            raise GatewayError("invalid_image")
+-        mime = "image/png" if args.image.suffix.lower() == ".png" else "image/jpeg"
+-        image = ImageInput(args.image.read_bytes(), mime, True)
+-        gateway.propose(
++        observation = gateway.propose(
+             "Inspect this consented inventory photo. Call check_measurements with "
+             "measurements_confirmed=false, then list visible candidate stock labels and "
+             "questions. Measurement source must remain unknown. Do not infer scale.",
+@@ -73,26 +88,60 @@ def main():
+                 lambda args: MeasurementResult(),
+             ),
+         )
+-        report["spark_image_schema_tool"] = "validated"
+-        try:
+-            boxes = gateway.segment(image, args.sam_concept)
+-            report["sam"] = (
+-                "boxes_returned" if boxes else "no_matches_manual_box_required"
+-            )
+-            report["box_count"] = len(boxes)
+-        except GatewayError as exc:
+-            report["sam"] = exc.code
+-            report["fallback"] = (
+-                "manual Box validation available; user must label/correct"
+-            )
+-    except (GatewayError, OSError) as exc:
+-        report["status"] = (
+-            exc.code if isinstance(exc, GatewayError) else "photo_read_failed"
+-        )
+-        print(json.dumps(report | {"traces": [asdict(t) for t in gateway.traces]}))
++    except GatewayError as exc:
++        report["status"] = exc.code
++        report["traces"] = [asdict(t) for t in gateway.traces]
++        return 1, report
++    report["spark_image_schema_tool"] = "validated"
++    report["label_count"] = len(observation.labels)
++    report["question_count"] = len(observation.questions)
++    try:
++        boxes = gateway.segment(image, sam_concept)
++        report["sam"] = "boxes_returned" if boxes else "no_matches_manual_box_required"
++        report["box_count"] = len(boxes)
++        report["status"] = "ok"
++    except GatewayError as exc:
++        report["sam"] = exc.code
++        report["fallback"] = "manual Box validation available; user must label/correct"
++        report["status"] = "sam_failed"
++        report["traces"] = [asdict(t) for t in gateway.traces]
++        return 3, report
++    report["traces"] = [asdict(t) for t in gateway.traces]
++    return 0, report
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--image", type=Path)
++    parser.add_argument("--consented", action="store_true")
++    parser.add_argument("--live", action="store_true")
++    parser.add_argument("--sam-concept", default="cardboard sheet")
++    args = parser.parse_args(argv)
++    blockers = preflight(args, os.environ)
++    if blockers:
++        print(json.dumps({"status": "blocked", "blockers": blockers}))
++        return 2
++    gateway = MetaGateway.from_env()
++    try:
++        if args.image.stat().st_size > 5_000_000:
++            raise GatewayError("invalid_image")
++        mime = "image/png" if args.image.suffix.lower() == ".png" else "image/jpeg"
++        image = ImageInput(args.image.read_bytes(), mime, True)
++    except GatewayError as exc:
++        report = _base_report(gateway)
++        report["status"] = exc.code
++        report["traces"] = [asdict(t) for t in gateway.traces]
++        print(json.dumps(report))
++        return 1
++    except OSError:
++        report = _base_report(gateway)
++        report["status"] = "photo_read_failed"
++        report["traces"] = [asdict(t) for t in gateway.traces]
++        print(json.dumps(report))
+         return 1
+-    print(json.dumps(report | {"traces": [asdict(t) for t in gateway.traces]}))
+-    return 0
++    exit_code, report = run_smoke(gateway, image, args.sam_concept)
++    print(json.dumps(report))
++    return exit_code
+ 
+ 
+ if __name__ == "__main__":

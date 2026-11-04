@@ -1,0 +1,30 @@
+[
+  {
+    "worktree": "forma",
+    "base": "137961876554cda2802ec21ca8056883730f9fea",
+    "patch": "archived-work/2026-11-04/forma.patch",
+    "sha256": "473c60e21886fd3297e9c517ed6e916d73f0039a6a7f568fa8b94375c48310b9",
+    "status": "historical WIP; not merge approved"
+  },
+  {
+    "worktree": "forma-monitored-compatibility",
+    "base": "8f24c6b7427437762ce5b14d464d1a857fcc6904",
+    "patch": "archived-work/2026-11-04/forma-monitored-compatibility.patch",
+    "sha256": "dc218c89d19dbad592d62a0eebd57dd4ad4409fec7b1690acb2ed053548bf86f",
+    "status": "historical WIP; not merge approved"
+  },
+  {
+    "worktree": "forma-muse-feature-diagnosis",
+    "base": "9291418bef71fd7b97d4fc550bed28ef6790fac0",
+    "patch": "archived-work/2026-11-04/forma-muse-feature-diagnosis.patch",
+    "sha256": "6ab3677ed152f3dbb7a5cd8235e4bc5fc4fe9f719e2ca08f8e27a616a25375a1",
+    "status": "historical WIP; not merge approved"
+  },
+  {
+    "worktree": "review-current-compatible",
+    "base": "8f24c6b7427437762ce5b14d464d1a857fcc6904",
+    "patch": "archived-work/2026-11-04/review-current-compatible.patch",
+    "sha256": "52c860e7bd8ccbcd51f58a02363b31ef487bc21e073c95948c419918134898b8",
+    "status": "historical WIP; not merge approved"
+  }
+]

@@ -1,0 +1,429 @@
+diff --git a/apps/api/src/forma_api/diagnosis_runtime.py b/apps/api/src/forma_api/diagnosis_runtime.py
+index d0875aa..83bd7bb 100644
+--- a/apps/api/src/forma_api/diagnosis_runtime.py
++++ b/apps/api/src/forma_api/diagnosis_runtime.py
+@@ -23,6 +23,8 @@ from forma_api.provider_diagnostics import ProviderUsage, summarize_usage
+ from forma_domain.models import ID, DiagnosisProposal, Record, Stock, Text
+ 
+ MAX_REPORTED_PROBLEM_LENGTH = 1000
++DIAGNOSIS_TIMEOUT_SECONDS = 30.0
++DIAGNOSIS_MAX_COMPLETION_TOKENS = 4096
+ 
+ DIAGNOSIS_SYSTEM_PROMPT = (
+     instructions("diagnose")
+@@ -37,7 +39,11 @@ DIAGNOSIS_SYSTEM_PROMPT = (
+     + " active_plan is present, affected_ids may only use its"
+     + " allowed_affected_ids. Hidden strength, exact scale and test outcomes"
+     + " cannot be observed from a photo; ask targeted questions or"
+-    + " measurements when evidence is insufficient."
++    + " measurements when evidence is insufficient. Keep the diagnosis concise:"
++    + " at most three entries each in visible_observations, hypotheses and"
++    + " questions_or_measurements, with one short sentence per entry. Include"
++    + " only affected IDs directly relevant to the reported problem. Return"
++    + " one complete JSON object, without markdown or repeated context."
+ )
+ 
+ DIAGNOSIS_PROMPT = (
+@@ -111,7 +117,7 @@ class DiagnosisResult(Record):
+ 
+ 
+ def default_gateway_factory() -> MetaGateway:
+-    return MetaGateway.from_env()
++    return MetaGateway.from_env(timeout=DIAGNOSIS_TIMEOUT_SECONDS, max_retries=0)
+ 
+ 
+ def allowed_affected_ids(plan) -> set[str]:
+@@ -269,7 +275,7 @@ def diagnose_photo(
+     context: dict,
+     plan=None,
+ ) -> tuple[DiagnosisProposal, DiagnosisDiagnostics]:
+-    """One bounded Muse call through the gateway; no tool and no retries."""
++    """One proposal without tools; the default gateway disables retries."""
+ 
+     if content_type not in SUPPORTED_IMAGE_TYPES:
+         raise GatewayError("invalid_image")
+@@ -287,6 +293,7 @@ def diagnose_photo(
+         request_budget=budget,
+         system_prompt=DIAGNOSIS_SYSTEM_PROMPT,
+         context=context,
++        max_completion_tokens=DIAGNOSIS_MAX_COMPLETION_TOKENS,
+     )
+     validate_diagnosis(proposal, plan=plan)
+     elapsed_ms = round((time.monotonic() - start) * 1000)
+@@ -302,6 +309,32 @@ def diagnose_photo(
+ 
+ 
+ def gateway_error_details(code: str) -> tuple[int, str, str]:
++    if code == "incomplete_output":
++        return (
++            502,
++            "invalid_response",
++            "The provider returned an incomplete diagnosis. No diagnosis was accepted.",
++        )
++    if code in {"timeout", "budget_exhausted"}:
++        return (
++            504,
++            "timeout",
++            "Diagnosis request timed out. The provider may still finish processing; "
++            "usage may be unknown. No automatic retry was made.",
++        )
++    if code == "runtime_usage_unknown":
++        return (
++            502,
++            "provider_error",
++            "Diagnosis outcome and provider usage are unknown. Live requests are "
++            "paused pending review; do not resubmit.",
++        )
++    if code == "runtime_paused":
++        return (
++            503,
++            "provider_error",
++            "Live diagnosis requests are paused pending review; do not resubmit.",
++        )
+     if code in {"invalid_diagnosis_reference", "invalid_diagnosis_empty"}:
+         return (
+             502,
+diff --git a/apps/api/src/forma_api/model_gateway.py b/apps/api/src/forma_api/model_gateway.py
+index 801db86..d41dd3b 100644
+--- a/apps/api/src/forma_api/model_gateway.py
++++ b/apps/api/src/forma_api/model_gateway.py
+@@ -392,11 +392,13 @@ class MetaGateway:
+         self.traces: list[Trace] = []
+ 
+     @classmethod
+-    def from_env(cls):
++    def from_env(cls, *, timeout: float = 20, max_retries: int = 1):
+         return cls(
+             MetaHTTP(os.environ.get("MODEL_API_KEY", "")),
+             spark=os.environ.get("META_SPARK_MODEL", DEFAULT_SPARK_MODEL),
+             sam=os.environ.get("META_SAM_MODEL", DEFAULT_SAM_MODEL),
++            timeout=timeout,
++            max_retries=max_retries,
+         )
+ 
+     def _post(self, path, payload, deadline, trace_sink=None):
+@@ -478,8 +480,14 @@ class MetaGateway:
+         request_budget: ProposalBudget | None = None,
+         system_prompt: str | None = None,
+         context: dict | None = None,
++        max_completion_tokens: int = 2048,
+     ) -> T:
+         """Validate using the caller's domain model; tool must run before final output."""
++        if (
++            type(max_completion_tokens) is not int
++            or not 1 <= max_completion_tokens <= 4096
++        ):
++            raise GatewayError("invalid_completion_budget")
+         if not 0 < len(prompt) <= 16000:
+             raise GatewayError("invalid_prompt")
+         if context is not None:
+@@ -521,7 +529,7 @@ class MetaGateway:
+             payload = {
+                 "model": self.spark,
+                 "messages": messages,
+-                "max_completion_tokens": 2048,
++                "max_completion_tokens": max_completion_tokens,
+             }
+             if tool and not ran_tool:
+                 payload.update(
+diff --git a/apps/api/tests/test_diagnosis_runtime.py b/apps/api/tests/test_diagnosis_runtime.py
+index 9b5510a..a15af90 100644
+--- a/apps/api/tests/test_diagnosis_runtime.py
++++ b/apps/api/tests/test_diagnosis_runtime.py
+@@ -4,7 +4,7 @@ from types import SimpleNamespace
+ 
+ import pytest
+ 
+-from forma_api import diagnosis_runtime
++from forma_api import diagnosis_runtime, model_gateway
+ from forma_api.model_gateway import GatewayError, MetaGateway
+ from forma_api.proposal_prompts import LANGUAGE_RULE
+ from forma_domain.models import (
+@@ -76,6 +76,77 @@ def photo_only_context():
+     )
+ 
+ 
++def test_default_diagnosis_accepts_response_after_twenty_seconds(monkeypatch):
++    clock = [100.0]
++    monkeypatch.setattr(model_gateway.time, "monotonic", lambda: clock[0])
++    monkeypatch.setenv("MODEL_API_KEY", "synthetic-test-key")
++
++    class Delayed(Fake):
++        def post(self, path, payload, timeout):
++            assert timeout == 30
++            clock[0] += 25
++            return super().post(path, payload, timeout)
++
++    fake = Delayed(final(proposal_json()))
++    monkeypatch.setattr(model_gateway, "MetaHTTP", lambda key: fake)
++    gateway = diagnosis_runtime.default_gateway_factory()
++    _, diagnostics = diagnosis_runtime.diagnose_photo(
++        gateway,
++        image_data=PNG,
++        content_type="image/png",
++        context=photo_only_context(),
++    )
++    assert diagnostics.elapsed_ms == 25000
++    assert diagnostics.status == "ok"
++    assert len(fake.calls) == 1
++    assert gateway.timeout == model_gateway.MAX_TIMEOUT_SECONDS == 30
++    assert gateway.budget == 60
++
++
++@pytest.mark.parametrize(
++    "code,retryable",
++    [("timeout", False), ("runtime_usage_unknown", False), ("rate_limit", True)],
++)
++def test_default_diagnosis_preserves_failure_without_retry(
++    monkeypatch, code, retryable
++):
++    monkeypatch.setenv("MODEL_API_KEY", "synthetic-test-key")
++    fake = Fake(GatewayError(code, retryable=retryable), final(proposal_json()))
++    monkeypatch.setattr(model_gateway, "MetaHTTP", lambda key: fake)
++    gateway = diagnosis_runtime.default_gateway_factory()
++    with pytest.raises(GatewayError) as error:
++        diagnosis_runtime.diagnose_photo(
++            gateway,
++            image_data=PNG,
++            content_type="image/png",
++            context=photo_only_context(),
++        )
++    assert error.value.code == code
++    assert len(fake.calls) == 1
++    assert gateway.traces[-1].status == code
++    assert gateway.traces[-1].input_tokens is None
++    assert gateway.traces[-1].output_tokens is None
++
++
++@pytest.mark.parametrize(
++    "code,status,public_code,fragment",
++    [
++        ("timeout", 504, "timeout", "provider may still finish"),
++        ("budget_exhausted", 504, "timeout", "usage may be unknown"),
++        ("runtime_usage_unknown", 502, "provider_error", "usage are unknown"),
++        ("runtime_paused", 503, "provider_error", "paused pending review"),
++    ],
++)
++def test_diagnosis_failure_messages_preserve_uncertainty(
++    code, status, public_code, fragment
++):
++    actual_status, actual_code, message = diagnosis_runtime.gateway_error_details(code)
++    assert (actual_status, actual_code) == (status, public_code)
++    assert fragment in message
++    assert "retry later" not in message
++    diagnosis_runtime.DiagnosisErrorResponse(code=actual_code, message=message)
++
++
+ def test_photo_only_payload_schema_context_and_image_consent():
+     fake = Fake(final(proposal_json()))
+     proposal, diagnostics = diagnosis_runtime.diagnose_photo(
+@@ -91,6 +162,7 @@ def test_photo_only_payload_schema_context_and_image_consent():
+     assert diagnostics.model == "muse-spark-1.3"
+     path, payload, _ = fake.calls[0]
+     assert path == "/chat/completions"
++    assert payload["max_completion_tokens"] == 4096
+     assert "tools" not in payload
+     assert (
+         payload["response_format"]["json_schema"]["schema"]
+@@ -98,6 +170,8 @@ def test_photo_only_payload_schema_context_and_image_consent():
+     )
+     system = payload["messages"][0]["content"]
+     assert "visible_observations" in system
++    assert "at most three entries each" in system
++    assert "one short sentence per entry" in system
+     assert system.count(LANGUAGE_RULE) == 1
+     assert "bounded-proposals-v2" in system
+     user = payload["messages"][1]["content"]
+@@ -109,6 +183,46 @@ def test_photo_only_payload_schema_context_and_image_consent():
+     assert user[1]["image_url"]["url"].startswith("data:image/png;base64,")
+ 
+ 
++def test_incomplete_diagnosis_is_rejected_without_retry_and_retains_usage():
++    response = final_usage(
++        proposal_json(), {"prompt_tokens": 4827, "completion_tokens": 4096}
++    )
++    response["choices"][0]["finish_reason"] = "length"
++    fake = Fake(response, final(proposal_json()))
++    gateway = MetaGateway(fake, timeout=30, max_retries=0)
++    with pytest.raises(GatewayError, match="incomplete_output") as error:
++        diagnosis_runtime.diagnose_photo(
++            gateway,
++            image_data=PNG,
++            content_type="image/png",
++            context=photo_only_context(),
++        )
++    assert len(fake.calls) == 1
++    assert gateway.traces[-1].input_tokens == 4827
++    assert gateway.traces[-1].output_tokens == 4096
++    assert diagnosis_runtime.gateway_error_details(error.value.code) == (
++        502,
++        "invalid_response",
++        "The provider returned an incomplete diagnosis. No diagnosis was accepted.",
++    )
++
++
++@pytest.mark.parametrize("limit", [0, -1, 4097, True, 4096.0, "4096", None])
++def test_invalid_completion_budget_rejected_before_dispatch(limit):
++    fake = Fake(final(proposal_json()))
++    with pytest.raises(GatewayError, match="invalid_completion_budget"):
++        MetaGateway(fake).propose(
++            "diagnose", DiagnosisProposal, max_completion_tokens=limit
++        )
++    assert fake.calls == []
++
++
++def test_other_proposals_keep_default_completion_budget():
++    fake = Fake(final(proposal_json()))
++    MetaGateway(fake).propose("diagnose", DiagnosisProposal)
++    assert fake.calls[0][1]["max_completion_tokens"] == 2048
++
++
+ def test_spanish_reported_problem_returns_spanish_text_unchanged():
+     context = diagnosis_runtime.build_context(
+         project_id="project-a",
+diff --git a/apps/api/tests/test_model_gateway.py b/apps/api/tests/test_model_gateway.py
+index 60ea805..7fbaf4f 100644
+--- a/apps/api/tests/test_model_gateway.py
++++ b/apps/api/tests/test_model_gateway.py
+@@ -10,6 +10,7 @@ from pathlib import Path
+ import pytest
+ from pydantic import BaseModel, ConfigDict
+ 
++from forma_api import model_gateway
+ from forma_api.model_gateway import (
+     Box,
+     GatewayError,
+@@ -23,6 +24,29 @@ from forma_api.model_gateway import (
+ from forma_api.provider_diagnostics import summarize_usage
+ 
+ 
++def test_from_env_preserves_defaults_and_accepts_bounded_call_policy(monkeypatch):
++    monkeypatch.setenv("MODEL_API_KEY", "synthetic-test-key")
++    monkeypatch.setenv("META_SPARK_MODEL", "test-spark")
++    monkeypatch.setenv("META_SAM_MODEL", "test-sam")
++    transport = object()
++    monkeypatch.setattr(model_gateway, "MetaHTTP", lambda key: transport)
++    default = MetaGateway.from_env()
++    diagnosis = MetaGateway.from_env(timeout=30, max_retries=0)
++    assert default.timeout == 20
++    assert default.max_retries == 1
++    assert diagnosis.timeout == 30
++    assert diagnosis.max_retries == 0
++    for gateway in (default, diagnosis):
++        assert gateway.transport is transport
++        assert gateway.spark == "test-spark"
++        assert gateway.sam == "test-sam"
++        assert gateway.budget == 60
++    with pytest.raises(ValueError, match="invalid gateway bounds"):
++        MetaGateway.from_env(timeout=31)
++    with pytest.raises(ValueError, match="invalid max_retries"):
++        MetaGateway.from_env(max_retries=3)
++
++
+ class Proposal(BaseModel):
+     model_config = ConfigDict(extra="forbid", strict=True)
+     questions: list[str]
+diff --git a/apps/web/src/lib/api.ts b/apps/web/src/lib/api.ts
+index ed672e4..43bab56 100644
+--- a/apps/web/src/lib/api.ts
++++ b/apps/web/src/lib/api.ts
+@@ -85,6 +85,10 @@ const DIAGNOSIS_CODES = [...INTAKE_CODES];
+ 
+ const DIAGNOSIS_CODE_MESSAGES: Record<string, string> = {
+   ...INTAKE_CODE_MESSAGES,
++  timeout:
++    "The Muse diagnosis timed out. The provider may still finish and usage may be unknown. No automatic retry was made; check the request status before sending another request.",
++  provider_error:
++    "The diagnosis could not be confirmed. Ask the project operator to check the request status before sending another request; provider usage may be unknown.",
+   consent_required:
+     "Consent to send the selected photo, your reported problem and saved project context to Meta is required before asking Muse.",
+   stale_version:
+diff --git a/apps/web/tests/api.test.mjs b/apps/web/tests/api.test.mjs
+index 91f2303..d183d28 100644
+--- a/apps/web/tests/api.test.mjs
++++ b/apps/web/tests/api.test.mjs
+@@ -1823,11 +1823,34 @@ test("diagnosis scoped mismatches and provider errors are safe", async (t) => {
+       assert.ok(error instanceof ApiError);
+       assert.equal(error.code, "timeout");
+       assert.doesNotMatch(error.message, /PRIVATE|sk-secret/);
++      assert.match(error.message, /usage may be unknown/);
++      assert.doesNotMatch(error.message, /Try again later/);
+       return true;
+     },
+   );
+ });
+ 
++test("unknown diagnosis failure advises checking status without leaking provider text or retrying", async (t) => {
++  let calls = 0;
++  t.mock.method(globalThis, "fetch", async () => {
++    calls += 1;
++    return Response.json(
++      { code: "provider_error", message: "PRIVATE_PROVIDER_BODY sk-secret" },
++      { status: 502 },
++    );
++  });
++  await assert.rejects(
++    requestDiagnosis(token, "project-a", diagnosisBody),
++    (error) => {
++      assert.equal(error.code, "provider_error");
++      assert.match(error.message, /check the request status/);
++      assert.doesNotMatch(error.message, /PRIVATE|sk-secret|Try again/);
++      return true;
++    },
++  );
++  assert.equal(calls, 1);
++});
++
+ test("diagnosis cancellation aborts without leaking abort details", async (t) => {
+   let requestSignal;
+   t.mock.method(globalThis, "fetch", (path, options) => {
+diff --git a/docs/decisions.md b/docs/decisions.md
+index 96fa912..8f244ba 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -427,3 +427,45 @@ tokens and the optional provider key live in SSM Parameter Store, not git.
+ The host has no SSH; administration goes through SSM. This resolves P004 for the
+ demo only. Backups, token rotation and provider-side retention stay unverified.
+ See [hosted deployment](deploy.md).
++
++## D034: Bounded diagnosis deadline and explicit uncertainty, November 2, 2026
++
++A local photo trial returned a generic failure after 20.25 seconds. Its private
++wrapper discarded the original error, so timing is consistent with a timeout
++but does not prove the provider-side cause. The old unknown outcome and usage
++remain unresolved in the original journal.
++
++Diagnosis now uses the existing 30-second transport maximum and zero automatic
++retries. Other gateway defaults remain unchanged. Timeout and uncertain-outcome
++messages explain that provider processing/usage may remain unknown and direct
++operators to inspect status before a new request. Raw provider errors remain
++redacted; the browser uses its own safe messages.
++
++The user's explicit request to retry after repair and demonstrate a final manual
++also permits a separate, visibly SYNTHETIC local project using existing fixture
++measurements. That isolated adapter scopes synthetic compilation to one owner,
++project, inventory revision, data directory and trusted context. Production
++synthetic acceptance remains disabled. Actual live proposals still pass through
++the compiler and renderer, and fixture SVGs remain watermarked. No physical work
++or test pass may be fabricated. Each new live run retains finite, nonrenewing
++controls, durable reservations and a halt on unknown outcomes; the old journal
++is neither reset nor represented as settled.
++
++The connected retest exposed an unusable diagnosis with known usage of 2,048
++output tokens. This suggests the previous completion cap was reached, but the
++original finish reason was not retained, so truncation is not proven. Diagnosis
++now requests at most three short entries per category and a bounded 4,096-token
++completion allowance; other proposals retain 2,048. Incomplete output remains
++rejected, with no automatic retry. The same finite window permitted one reviewed
++diagnosis repair/retest by removing unused design allocation, without renewal.
++
++Live acceptance then succeeded: photo intake, a real two-call Muse design
++proposal accepted by the compiler, eight rendered manual panels, explicit plan
++activation, and diagnosis with active fold-step context. The final diagnosis
++finished normally in 21,703 ms (4,879 input / 1,827 output tokens). The five calls
++in this session used 15,505 input / 7,308 output tokens, including the unusable
++diagnosis; these are provider usage, not a monetary price or free-call claim.
++There are zero physical progress events. The manual and measurements are
++synthetic, physical verification remains not_attempted, and production defaults
++still reject synthetic evidence. Local exported artifacts are in the workspace's
++output directory; the private journals preserve the original unknown usage.

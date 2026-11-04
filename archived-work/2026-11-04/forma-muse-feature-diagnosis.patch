@@ -1,0 +1,1293 @@
+diff --git a/packages/renderer/src/forma_renderer/continuation.py b/packages/renderer/src/forma_renderer/continuation.py
+index 8e0bd99..005b3f9 100644
+--- a/packages/renderer/src/forma_renderer/continuation.py
++++ b/packages/renderer/src/forma_renderer/continuation.py
+@@ -105,6 +105,92 @@ class _TapeStage:
+         return self.cut + 2
+ 
+ 
++@dataclass(frozen=True)
++class _TapeActive:
++    """Active roles resolved once from the two new tape-undo joints."""
++
++    replacement_id: str
++    retired_id: str
++    role: str  # "brace" or "base"
++    active_ordered: tuple[str, str, str]
++    new_joint_by_original: dict[str, str]
++    peel_specs: tuple[tuple[str, str], ...]  # (original joint id, partner id)
++    new_joints_in_peel_order: tuple[str, ...]
++
++    @property
++    def final_required_joint_ids(self):
++        return tuple(
++            self.new_joint_by_original.get(jid, jid) for jid in _JOINT_IDS
++        )
++
++
++def _resolve_tape_active(parts, joints):
++    """Resolve the replacement role from exactly two new joints, or None.
++
++    Brace: new rear (base, replacement) and apex (support, replacement).
++    Base: new front (support, replacement) and rear (replacement, brace).
++    Any other shared-replacement topology (including a support replacement)
++    is unsupported here.
++    """
++    original_joints = {
++        "stand-joint-front": ("stand-support", "stand-base"),
++        "stand-joint-rear": ("stand-base", "stand-brace"),
++        "stand-joint-apex": ("stand-support", "stand-brace"),
++    }
++    extra = [j for jid, j in joints.items() if jid not in original_joints]
++    if len(extra) != 2 or any(len(j.part_ids) != 2 for j in extra):
++        return None
++    shared = set(extra[0].part_ids) & set(extra[1].part_ids)
++    if len(shared) != 1:
++        return None
++    replacement_id = next(iter(shared))
++    if replacement_id in _ORIGINALS or replacement_id not in parts:
++        return None
++    others = tuple(
++        pid for j in extra for pid in j.part_ids if pid != replacement_id
++    )
++    if set(others) == {"stand-base", "stand-support"}:
++        retired_id, role = "stand-brace", "brace"
++    elif set(others) == {"stand-support", "stand-brace"}:
++        retired_id, role = "stand-base", "base"
++    else:
++        return None
++    inverse = {pair: jid for jid, pair in original_joints.items()}
++    new_by_original: dict[str, str] = {}
++    for joint in extra:
++        mapped = tuple(
++            retired_id if pid == replacement_id else pid for pid in joint.part_ids
++        )
++        original_id = inverse.get(mapped)
++        if original_id is None or original_id in new_by_original:
++            return None
++        new_by_original[original_id] = joint.id
++    if len(new_by_original) != 2:
++        return None
++    peel_specs = tuple(
++        (
++            jid,
++            next(pid for pid in original_joints[jid] if pid != retired_id),
++        )
++        for jid in _JOINT_IDS
++        if jid in new_by_original
++    )
++    active_ordered = tuple(
++        replacement_id if pid == retired_id else pid for pid in _ORIGINALS
++    )
++    return _TapeActive(
++        replacement_id=replacement_id,
++        retired_id=retired_id,
++        role=role,
++        active_ordered=active_ordered,
++        new_joint_by_original=new_by_original,
++        peel_specs=peel_specs,
++        new_joints_in_peel_order=tuple(
++            new_by_original[jid] for jid, _partner in peel_specs
++        ),
++    )
++
++
+ def _resolve_tape_stage(operations):
+     """Map historical/recovery/active-final roles for exact tape layouts."""
+     types = tuple(o.type for o in operations)
+@@ -151,44 +237,23 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
+                 (joint_id,),
+             )
+     extra = [j for jid, j in joints.items() if jid not in original_joints]
+-    new_rear = next(
+-        (j for j in extra if len(j.part_ids) == 2 and j.part_ids[0] == "stand-base"),
+-        None,
+-    )
+-    new_apex = next(
+-        (j for j in extra if len(j.part_ids) == 2 and j.part_ids[0] == "stand-support"),
+-        None,
+-    )
+-    if len(extra) != 2 or new_rear is None or new_apex is None:
++    resolved = _resolve_tape_active(parts, joints)
++    if resolved is None:
+         add(
+             "unsupported",
+-            "Tape-undo continuation requires exactly two new rear/apex joints.",
++            "Tape-undo continuation requires exactly two new joints "
++            "attaching one replacement brace or base part.",
+             tuple(j.id for j in extra),
+         )
+         return tuple(blockers)
+-    if (
+-        new_rear.part_ids[1] != new_apex.part_ids[1]
+-        or new_rear.part_ids[1] not in parts
+-    ):
+-        add(
+-            "unsupported",
+-            "New rear and apex joints must attach the same replacement brace.",
+-            (new_rear.id, new_apex.id),
+-        )
+-        return tuple(blockers)
+-    active_brace_id = new_rear.part_ids[1]
+-    if active_brace_id in _ORIGINALS:
+-        add(
+-            "unsupported",
+-            "Tape-undo continuation requires a replacement brace part.",
+-            (active_brace_id,),
+-        )
+-        return tuple(blockers)
+-    support_part = parts["stand-support"]
+-    base_part = parts["stand-base"]
+-    brace_part = parts[active_brace_id]
+-    retired = parts["stand-brace"]
+-    active_ordered = ("stand-support", "stand-base", active_brace_id)
++    active_brace_id = resolved.replacement_id
++    retired_id = resolved.retired_id
++    support_part = parts[resolved.active_ordered[0]]
++    base_part = parts[resolved.active_ordered[1]]
++    brace_part = parts[resolved.active_ordered[2]]
++    retired = parts[retired_id]
++    active_ordered = resolved.active_ordered
++    replacement_part = parts[active_brace_id]
+ 
+     # Geometry of the active triangle, mirroring the legacy checks.
+     if len(support_part.features) != 1 or support_part.features[0].kind != "fold":
+@@ -226,12 +291,12 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
+                 f"Active {role} part must have no features.",
+                 (role_part.id,),
+             )
+-    if brace_part.geometry.width != retired.geometry.width or (
+-        brace_part.geometry.height != retired.geometry.height
++    if replacement_part.geometry.width != retired.geometry.width or (
++        replacement_part.geometry.height != retired.geometry.height
+     ):
+         add(
+             "geometry_invalid",
+-            "Active replacement brace part must have the same width "
++            f"Active replacement {resolved.role} part must have the same width "
+             "and height as its retired original.",
+             (active_brace_id, retired.id),
+         )
+@@ -341,10 +406,7 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
+             )
+     tape_stock_ids = {operations[i].args.stock_id for i in (3, 4, 5)}
+     peels = operations[stage.peel : stage.peel + 2]
+-    for op, joint_id, partner in (
+-        (peels[0], "stand-joint-rear", "stand-base"),
+-        (peels[1], "stand-joint-apex", "stand-support"),
+-    ):
++    for op, (joint_id, partner) in zip(peels, resolved.peel_specs, strict=True):
+         checks = " ".join(op.preconditions.human_checks).lower()
+         if (
+             op.args.joint_id != joint_id
+@@ -384,7 +446,7 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
+     if tuple(replacement_cut.args.child_part_ids) != (active_brace_id,):
+         add(
+             "invalid_reference",
+-            "Replacement cut must produce only the replacement brace.",
++            f"Replacement cut must produce only the replacement {resolved.role}.",
+             (replacement_cut.id, active_brace_id),
+         )
+     if active_brace_id not in replacement_inspect.args.target_ids or not any(
+@@ -394,14 +456,16 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
+     ):
+         add(
+             "invalid_reference",
+-            "Replacement inspection must target the replacement brace "
++            f"Replacement inspection must target the replacement {resolved.role} "
+             "with a matching checkpoint.",
+             (replacement_inspect.id,),
+         )
+-    for op, joint in (
+-        (operations[stage.reattach], new_rear),
+-        (operations[stage.reattach + 1], new_apex),
++    for op, joint_id in zip(
++        operations[stage.reattach : stage.reattach + 2],
++        resolved.new_joints_in_peel_order,
++        strict=True,
+     ):
++        joint = joints[joint_id]
+         if (
+             op.args.joint_id != joint.id
+             or op.part_ids != joint.part_ids
+@@ -411,7 +475,7 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
+             add(
+                 "invalid_reference",
+                 f"Reattachment operation {op.id} must attach {joint.id} "
+-                "to the replacement brace using the original tape stock.",
++                f"to the replacement {resolved.role} using the original tape stock.",
+                 (op.id, joint.id),
+             )
+     inspect_fit, test_op = operations[stage.fit], operations[stage.test]
+@@ -460,13 +524,12 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
+             (inspect_fit.id,),
+         )
+     if tuple(test_op.preconditions.required_joint_ids) != (
+-        "stand-joint-front",
+-        new_rear.id,
+-        new_apex.id,
++        resolved.final_required_joint_ids
+     ):
+         add(
+             "invalid_reference",
+-            "Functional test must require the front and new rear/apex joints.",
++            "Functional test must require the preserved original joint "
++            "and the new replacement joints in front/rear/apex order.",
+             (test_op.id,),
+         )
+     for op in (inspect_cuts, *historical_finals, inspect_fit, test_op):
+@@ -494,11 +557,11 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
+                 (checked_test.id,),
+             )
+     # Parts are produced exactly by the historical or replacement cut, and
+-    # no staged work after the peels may reference the retired brace.
++    # no staged work after the peels may reference the retired part.
+     if set(parts) != {*_ORIGINALS, active_brace_id}:
+         add(
+             "invalid_reference",
+-            "Tape-undo plan parts must be the originals plus one replacement brace.",
++            f"Tape-undo plan parts must be the originals plus one replacement {resolved.role}.",
+             tuple(sorted(set(parts) ^ {*_ORIGINALS, active_brace_id})),
+         )
+     for op in operations[stage.cut :]:
+@@ -507,12 +570,12 @@ def _tape_undo_blockers(plan: m.BuildPlan) -> tuple[m.Blocker, ...]:
+         refs.update(getattr(op.args, "target_ids", ()) or ())
+         if getattr(op.args, "part_id", None):
+             refs.add(op.args.part_id)
+-        if "stand-brace" in refs:
++        if retired_id in refs:
+             add(
+                 "invalid_reference",
+-                f"Operation {op.id} references retired part stand-brace; "
++                f"Operation {op.id} references retired part {retired_id}; "
+                 "active replacement parts must be used.",
+-                (op.id, "stand-brace"),
++                (op.id, retired_id),
+             )
+     return tuple(blockers)
+ 
+diff --git a/packages/renderer/src/forma_renderer/svg.py b/packages/renderer/src/forma_renderer/svg.py
+index ba04408..b7b8901 100644
+--- a/packages/renderer/src/forma_renderer/svg.py
++++ b/packages/renderer/src/forma_renderer/svg.py
+@@ -10,7 +10,11 @@ from forma_compiler import CutProcess, validate_plan
+ 
+ from forma_domain import models as m
+ 
+-from .continuation import _resolve_tape_stage, stand_continuation_blockers
++from .continuation import (
++    _resolve_tape_active,
++    _resolve_tape_stage,
++    stand_continuation_blockers,
++)
+ from .resources import ConnectorContext, validated_connectors
+ from .template import profile_evidence_valid
+ 
+@@ -461,20 +465,34 @@ def render_manual(
+         base_id,
+         joints_by_id["stand-joint-rear"].part_ids[1],
+     )
+-    new_rear = next(
+-        (
+-            j
+-            for jid, j in joints_by_id.items()
+-            if jid not in {"stand-joint-front", "stand-joint-rear", "stand-joint-apex"}
+-            and j.part_ids[0] == base_id
+-        ),
+-        None,
+-    )
+-    active_ids = (
+-        (support_id, base_id, new_rear.part_ids[1])
+-        if new_rear is not None
+-        else historical_ids
++    # Tape-undo plans keep the original joints and add two new ones; the
++    # shared resolver decides whether the replacement is the brace or the
++    # base. Ordinary replacements rewrite the original joints, so they keep
++    # the historical resolution below.
++    resolved_tape = (
++        _resolve_tape_active(
++            {p.id: p for p in plan.parts}, joints_by_id
++        )
++        if any(o.type == "detach" for o in plan.operations)
++        else None
+     )
++    if resolved_tape is not None:
++        active_ids = resolved_tape.active_ordered
++    else:
++        new_rear = next(
++            (
++                j
++                for jid, j in joints_by_id.items()
++                if jid not in {"stand-joint-front", "stand-joint-rear", "stand-joint-apex"}
++                and j.part_ids[0] == base_id
++            ),
++            None,
++        )
++        active_ids = (
++            (support_id, base_id, new_rear.part_ids[1])
++            if new_rear is not None
++            else historical_ids
++        )
+     core_child_ids = ("stand-support", "stand-base", "stand-brace")
+     stage = _resolve_tape_stage(plan.operations)
+     first_detach = next(
+diff --git a/packages/renderer/tests/test_manual_continuation_diff.py b/packages/renderer/tests/test_manual_continuation_diff.py
+index fa220a5..1da6ab1 100644
+--- a/packages/renderer/tests/test_manual_continuation_diff.py
++++ b/packages/renderer/tests/test_manual_continuation_diff.py
+@@ -251,6 +251,41 @@ def test_full_build_tape_undo_diff_keeps_original_and_adds_continuation():
+     assert outcome.removed == ()
+ 
+ 
++@pytest.mark.parametrize(
++    "completed_count,total,unchanged,added,changed,removed",
++    [
++        (6, 14, tuple(range(6)), tuple(range(6, 12)), (12, 13), ()),
++        (7, 15, tuple(range(7)), tuple(range(7, 15)), (), (7,)),
++        (8, 16, tuple(range(8)), tuple(range(8, 16)), (), ()),
++    ],
++)
++def test_base_tape_undo_diff_mirrors_brace_layout(
++    completed_count, total, unchanged, added, changed, removed
++):
++    from test_stand_continuation import _attached_brace_replacement
++
++    _base, _snapshot, result, _process = _attached_brace_replacement(
++        target_id="stand-base", completed_count=completed_count
++    )
++    assert result.status == "feasible", result.blockers
++    _, parameters, process = build()
++    old_plan, _p, _pr = build()
++    old = render(old_plan, parameters, process)
++    new = render(result.plan, parameters, process)
++    assert len(old.panels) == 8 and len(new.panels) == total
++    assert [p.svg for p in new.panels[:completed_count]] == [
++        p.svg for p in old.panels[:completed_count]
++    ]
++    keys = [p.step_key for p in new.panels]
++    assert len(keys) == len(set(keys))
++    assert all(k.startswith("continuation:") for k in keys[completed_count:])
++    outcome = diff(old, new)
++    assert outcome.unchanged == unchanged
++    assert outcome.added == added
++    assert outcome.changed == changed
++    assert outcome.removed == removed
++
++
+ def test_noop_resize_is_blocked_while_identical_visible_manuals_have_zero_diff():
+     plan, parameters, process = build()
+     base = next(p for p in plan.parts if p.id == "stand-base")
+diff --git a/packages/renderer/tests/test_stand_continuation.py b/packages/renderer/tests/test_stand_continuation.py
+index 3c2662f..7ee40e5 100644
+--- a/packages/renderer/tests/test_stand_continuation.py
++++ b/packages/renderer/tests/test_stand_continuation.py
+@@ -879,7 +879,144 @@ def test_attached_brace_tape_undo_insufficient_tape_blocks():
+     assert any(b.code == "stock_exhausted" for b in result.blockers)
+ 
+ 
+-@pytest.mark.parametrize("target", ["stand-base", "stand-support"])
++@pytest.mark.parametrize("completed_count,total", [(6, 14), (7, 15), (8, 16)])
++def test_attached_base_tape_undo_is_feasible_and_rendered(completed_count, total):
++    base, _snapshot, result, process = _attached_brace_replacement(
++        target_id="stand-base", completed_count=completed_count
++    )
++    assert result.status == "feasible", result.blockers
++    assert result.cost is not None and result.cost.known_weighted_cost == 8
++    assert stand_continuation_blockers(result.plan) == ()
++    plan = result.plan
++    assert len(plan.operations) == total
++    assert plan.operations[:completed_count] == base.operations[:completed_count]
++    new_id = _new_brace_id(base, result)
++    peels = [o for o in plan.operations if o.type == "detach"]
++    assert [o.args.joint_id for o in peels] == [
++        "stand-joint-front",
++        "stand-joint-rear",
++    ]
++    assert tuple(result.required_undo_operation_ids) == tuple(o.id for o in peels)
++    assert "stand-joint-apex-attach" in result.preserved_operation_ids
++    assert "stand-fold-lip" in result.preserved_operation_ids
++    new_joints = [
++        j
++        for j in plan.joints
++        if j.id not in {"stand-joint-front", "stand-joint-rear", "stand-joint-apex"}
++    ]
++    assert [j.part_ids for j in new_joints] == [
++        ("stand-support", new_id),
++        (new_id, "stand-brace"),
++    ]
++    finals = plan.operations[-2:]
++    assert tuple(finals[1].preconditions.required_joint_ids) == (
++        new_joints[0].id,
++        new_joints[1].id,
++        "stand-joint-apex",
++    )
++    _plan, parameters, _p = build()
++    rendered = render_manual(
++        plan,
++        process=process,
++        profile_evidence=parameters.profile_evidence,
++        allow_synthetic=True,
++    )
++    assert rendered.status == "accepted", rendered.blockers
++    assert len(rendered.panels) == total
++    original_plan, _params, _proc = build()
++    original = render_manual(
++        original_plan,
++        process=process,
++        profile_evidence=parameters.profile_evidence,
++        allow_synthetic=True,
++    )
++    assert [p.svg for p in rendered.panels[:completed_count]] == [
++        p.svg for p in original.panels[:completed_count]
++    ]
++    assert [p.dependency_hash for p in rendered.panels[:completed_count]] == [
++        p.dependency_hash for p in original.panels[:completed_count]
++    ]
++    assert [p.step_key for p in rendered.panels[:completed_count]] == [
++        p.step_key for p in original.panels[:completed_count]
++    ]
++    keys = [p.step_key for p in rendered.panels]
++    assert len(keys) == len(set(keys))
++    recovery = rendered.panels[completed_count:]
++    assert len(recovery) == 8
++    assert all(k.startswith("continuation:") for k in keys[completed_count:])
++    # Cut and inspect recovery panels draw only the replacement base.
++    assert _svg_part_ids(recovery[2]) == {new_id}
++    assert _svg_part_ids(recovery[3]) == {new_id}
++    # Reattachment and final panels draw the active triangle with the
++    # replacement base and the preserved original brace/support/apex.
++    for panel in recovery[4:]:
++        assert new_id in _svg_part_ids(panel)
++        assert "stand-base" not in _svg_part_ids(panel)
++        assert "stand-brace" in _svg_part_ids(panel)
++        assert "Side elevation" in panel.svg
++    for panel in recovery[-2:]:
++        for joint in new_joints:
++            assert joint.id in panel.svg
++        assert "stand-joint-apex" in panel.svg
++    tape_id = next(s.id for s in base.stocks if s.kind == "tape")
++    tape_bill = next(
++        item for item in rendered.bill_of_materials if item.id == f"{tape_id}-remaining"
++    )
++    assert tape_bill.quantity == 100
++
++
++def test_attached_base_tape_undo_invalid_fold_blocks():
++    def mutate(plan):
++        return _with_op_args(plan, "stand-fold-lip", angle_deg=45)
++
++    _base, _snapshot, result, _process = _attached_brace_replacement(
++        target_id="stand-base", mutate_plan=mutate
++    )
++    assert result.status == "blocked"
++    assert result.plan is None
++    assert any(
++        b.code == "geometry_invalid"
++        and "Fold operation arguments must match" in b.message
++        for b in result.blockers
++    ), result.blockers
++
++
++def test_attached_base_replacement_topology_is_blocked():
++    _base, _snapshot, result, _process = _attached_brace_replacement(
++        target_id="stand-base"
++    )
++    assert result.status == "feasible", result.blockers
++    plan = result.plan
++    joints = tuple(
++        j.model_copy(update={"part_ids": tuple(reversed(j.part_ids))})
++        if j.id not in {"stand-joint-front", "stand-joint-rear", "stand-joint-apex"}
++        and j.part_ids[0] != "stand-support"
++        else j
++        for j in plan.joints
++    )
++    changed = plan.model_copy(update={"joints": joints})
++    _assert_blocker(changed, "unsupported", "exactly two new joints")
++
++
++def test_attached_base_unequal_replacement_is_blocked():
++    _base, _snapshot, result, _process = _attached_brace_replacement(
++        target_id="stand-base"
++    )
++    assert result.status == "feasible", result.blockers
++    plan = result.plan
++    new_id = _new_brace_id(_base, result)
++    repl = next(p for p in plan.parts if p.id == new_id)
++    changed = _with_part(
++        plan,
++        new_id,
++        geometry=repl.geometry.model_copy(
++            update={"height": repl.geometry.height + 5}
++        ),
++    )
++    _assert_blocker(changed, "geometry_invalid", "same width and height")
++
++
++@pytest.mark.parametrize("target", ["stand-support"])
+ def test_attached_non_brace_targets_block(target):
+     _base, _snapshot, result, _process = _attached_brace_replacement(target_id=target)
+     assert result.status == "blocked"
+diff --git a/packages/replanner/src/forma_replanner/simulation.py b/packages/replanner/src/forma_replanner/simulation.py
+index c1836d9..181b9fe 100644
+--- a/packages/replanner/src/forma_replanner/simulation.py
++++ b/packages/replanner/src/forma_replanner/simulation.py
+@@ -934,7 +934,7 @@ def simulate_patch(
+     # stripped or rewritten to make the renamed candidate replayable.
+     if (
+         patch.kind == "replace_part"
+-        and patch.target_id == "stand-brace"
++        and patch.target_id in ("stand-brace", "stand-base")
+         and base.compiler_version == "triangular-tape-stand-v1"
+     ):
+         renamed_future = tuple(
+@@ -942,12 +942,21 @@ def simulate_patch(
+             for oid in ("stand-inspect-fit", "stand-functional-test")
+             if oid not in completed
+         )
+-        required_tape = {
+-            "stand-cut-panels",
+-            "stand-fold-lip",
+-            "stand-joint-rear-attach",
+-            "stand-joint-apex-attach",
+-        }
++        required_tape = (
++            {
++                "stand-cut-panels",
++                "stand-fold-lip",
++                "stand-joint-front-attach",
++                "stand-joint-rear-attach",
++            }
++            if patch.target_id == "stand-base"
++            else {
++                "stand-cut-panels",
++                "stand-fold-lip",
++                "stand-joint-rear-attach",
++                "stand-joint-apex-attach",
++            }
++        )
+         if renamed_future and required_tape <= completed:
+             checkpoint_ops = {c.id: c.after_operation_id for c in base.checkpoints}
+             for op in base.operations:
+diff --git a/packages/replanner/src/forma_replanner/tape_undo.py b/packages/replanner/src/forma_replanner/tape_undo.py
+index d663a04..b734929 100644
+--- a/packages/replanner/src/forma_replanner/tape_undo.py
++++ b/packages/replanner/src/forma_replanner/tape_undo.py
+@@ -1,14 +1,16 @@
+-"""Brace-only tape-peel continuation for the canonical triangular stand.
++"""Brace/base tape-peel continuation for the canonical triangular stand.
+ 
+ Pure offline helper used by ``simulation``. It only stages new work on a
+ copied plan dictionary: two explicit ``peel_tape`` detach operations for the
+-rear and apex joints, a replacement brace cut from a measured remaining
+-region, an inspection, and two reattachment tape joints using new joint
+-records. Historical operations, joints, parts and checkpoints in the copy
+-are left unchanged except for the not-yet-completed fit/functional-test
+-operations, which are retargeted to the replacement brace. The front hinge
+-is never touched. No tape is refunded: peeled tape is named as material
+-loss and the compiler/replanner ledgers charge reattachment separately.
++touching joints (rear/apex for a brace, front/rear for a base), a replacement
++part cut from a measured remaining region, an inspection, and two
++reattachment tape joints using new joint records. Historical operations,
++joints, parts and checkpoints in the copy are left unchanged except for the
++not-yet-completed fit/functional-test operations, which are retargeted to
++the active replacement parts. The untouched joint (front for a brace, apex
++for a base) is never peeled. No tape is refunded: peeled tape is named as
++material loss and the compiler/replanner ledgers charge reattachment
++separately.
+ """
+ 
+ import copy
+@@ -32,11 +34,23 @@ CORE_TYPES = (
+     "inspect",
+     "functional_test",
+ )
+-# (joint id, original tape op id, partner part id, short name)
+-TOUCHING = (
+-    ("stand-joint-rear", "stand-joint-rear-attach", "stand-base", "rear"),
+-    ("stand-joint-apex", "stand-joint-apex-attach", "stand-support", "apex"),
+-)
++# Fixed target choices only: brace or base. Each touching entry is
++# (joint id, original tape op id, partner part id, short name, new joint
++# part order as ("partner"/"replacement", ...) placeholders). The new-joint
++# order is explicit because (partner, replacement) is wrong for the base
++# rear joint, whose order is (replacement-base, brace).
++_TOUCHING_BY_TARGET = {
++    "stand-brace": (
++        ("stand-joint-rear", "stand-joint-rear-attach", "stand-base", "rear", ("partner", "replacement")),
++        ("stand-joint-apex", "stand-joint-apex-attach", "stand-support", "apex", ("partner", "replacement")),
++    ),
++    "stand-base": (
++        ("stand-joint-front", "stand-joint-front-attach", "stand-support", "front", ("partner", "replacement")),
++        ("stand-joint-rear", "stand-joint-rear-attach", "stand-brace", "rear", ("replacement", "partner")),
++    ),
++}
++# Backwards-compatible name for the brace layout.
++TOUCHING = _TOUCHING_BY_TARGET["stand-brace"]
+ 
+ 
+ def peel_human_checks(joint_id, partner_id):
+@@ -56,8 +70,11 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+     ``handled`` is False when this is not the canonical attached-brace case
+     and the generic replacement path should decide the outcome.
+     """
+-    if patch.kind != "replace_part" or patch.target_id != "stand-brace":
++    if patch.kind != "replace_part" or patch.target_id not in _TOUCHING_BY_TARGET:
+         return False, None, (), ()
++    touching = _TOUCHING_BY_TARGET[patch.target_id]
++    target_id = patch.target_id
++    role_label = "brace" if target_id == "stand-brace" else "base"
+     if base.compiler_version != "triangular-tape-stand-v1":
+         return False, None, (), ()
+     parts = {p.id: p for p in base.parts}
+@@ -86,7 +103,7 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+     # The brace must already be attached: fold and both touching tape
+     # joints completed. Reversibility of the touching work controls
+     # admissibility; an irreversible touching operation cannot be peeled.
+-    required_completed = ["stand-fold-lip"] + [op for _j, op, _p, _n in TOUCHING]
++    required_completed = ["stand-fold-lip"] + [op for _j, op, _p, _n, _o in touching]
+     missing = [oid for oid in required_completed if oid not in completed]
+     if creator.id not in completed or missing:
+         return False, None, (), ()
+@@ -104,7 +121,7 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+             "Tape-undo replacement does not support a completed "
+             "stand-inspect-fit or stand-functional-test operation; "
+             "completed final checks cannot be retargeted to the "
+-            "replacement brace.",
++            f"replacement {role_label}.",
+             *completed_final_checks,
+         )
+     # Resolve each original final checkpoint by the operation's own
+@@ -125,7 +142,7 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+                     referenced_id,
+                 )
+             original_final_checkpoints[old_op_id] = matches[0]
+-    for joint_id, op_id, _partner, _name in TOUCHING:
++    for joint_id, op_id, _partner, _name, _order in touching:
+         op = operations[op_id]
+         if op.reversible == "irreversible":
+             return blocked(
+@@ -144,7 +161,7 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+             "unsupported_profile",
+             "Replacement cut requires a measured cutting process.",
+         )
+-    original = parts["stand-brace"]
++    original = parts[target_id]
+     margin = max(process.edge_margin_min_mm, creator.args.edge_margin_mm)
+     kerf = max(process.kerf_min_mm, creator.args.kerf_mm)
+     source_stock = remaining.get(patch.replacement_stock_id)
+@@ -160,15 +177,15 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+     if source is None:
+         return blocked(
+             "stock_exhausted",
+-            "No actual remaining region fits the replacement brace and measured margins.",
++            f"No actual remaining region fits the replacement {role_label} and measured margins.",
+             patch.replacement_stock_id,
+         )
+-    tape_ids = {operations[op_id].args.stock_id for _j, op_id, _p, _n in TOUCHING}
++    tape_ids = {operations[op_id].args.stock_id for _j, op_id, _p, _n, _o in touching}
+     if len(tape_ids) != 1:
+         return blocked(
+             "unsupported",
+             "Touching tape joints must use one original tape stock.",
+-            *(op for _j, op, _p, _n in TOUCHING),
++            *(op for _j, op, _p, _n, _o in touching),
+         )
+     tape_id = next(iter(tape_ids))
+ 
+@@ -177,14 +194,21 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+     new_cut = f"replacement_cut_{token}"
+     inspect_id = f"replacement_inspect_{token}"
+     checkpoint_id = f"{inspect_id}-check"
+-    peel_ids = tuple(f"peel_tape_{token}_{name}" for _j, _o, _p, name in TOUCHING)
++    peel_ids = tuple(f"peel_tape_{token}_{name}" for _j, _o, _p, name, _ord in touching)
+     new_joint_ids = tuple(
+-        f"{joint_id}-replacement-{token}" for joint_id, _o, _p, _n in TOUCHING
++        f"{joint_id}-replacement-{token}" for joint_id, _o, _p, _n, _ord in touching
+     )
+     reattach_ids = tuple(f"{joint_id}-attach" for joint_id in new_joint_ids)
+     new_fit_id = f"replacement_inspect_fit_{token}"
+     new_test_id = f"replacement_functional_test_{token}"
+-    active = ("stand-support", "stand-base", new_pid)
++    active = tuple(new_pid if pid == target_id else pid for pid in ORIGINAL_PARTS)
++    new_joint_by_original = dict(zip((t[0] for t in touching), new_joint_ids, strict=True))
++    final_required_joint_ids = tuple(
++        new_joint_by_original.get(jid, jid) for jid in ORIGINAL_JOINTS
++    )
++
++    def new_joint_part_ids(entry, partner):
++        return tuple(new_pid if slot == "replacement" else partner for slot in entry[4])
+ 
+     new_part = original.model_dump(mode="python")
+     new_part.update(
+@@ -197,16 +221,15 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+         x=source.geometry.x + margin, y=source.geometry.y + margin
+     )
+     data["parts"] = (*data["parts"], new_part)
+-    for (joint_id, _op, partner, _name), new_joint_id in zip(
+-        TOUCHING, new_joint_ids, strict=True
+-    ):
++    for entry, new_joint_id in zip(touching, new_joint_ids, strict=True):
++        joint_id, _op, partner, _name, _order = entry
+         joint = joints[joint_id]
+         data["joints"] = (
+             *data["joints"],
+             {
+                 "id": new_joint_id,
+                 "profile_id": joint.profile_id,
+-                "part_ids": (partner, new_pid),
++                "part_ids": new_joint_part_ids(entry, partner),
+                 "interface_feature_ids": (),
+                 "confirmed_accessible": True,
+             },
+@@ -218,7 +241,7 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+             "after_operation_id": inspect_id,
+             "method": "ruler",
+             "description": (
+-                "Measure the replacement brace against the retired brace "
++                f"Measure the replacement {role_label} against the retired {role_label} "
+                 "dimensions and confirm its edges are undamaged before taping."
+             ),
+             "invalidated_by": (),
+@@ -248,8 +271,8 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+                 data["checkpoints"] = (*data["checkpoints"], cloned)
+ 
+     new_ops = []
+-    for (joint_id, op_id, partner, _name), peel_id in zip(
+-        TOUCHING, peel_ids, strict=True
++    for (joint_id, op_id, partner, _name, _order), peel_id in zip(
++        touching, peel_ids, strict=True
+     ):
+         depends = (op_id,) if peel_id == peel_ids[0] else (peel_ids[0], op_id)
+         new_ops.append(
+@@ -282,7 +305,17 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+         ),
+         None,
+     )
+-    cut_depends = (peel_ids[-1],) + ((source_producer,) if source_producer else ())
++    # For a base replacement the preserved apex attach is not an ancestor
++    # of either peel, so the replacement cut must depend on it explicitly
++    # for the final test to prove the apex joint was attached.
++    preserved_attach = (
++        ("stand-joint-apex-attach",) if target_id == "stand-base" else ()
++    )
++    cut_depends = (
++        (peel_ids[-1],)
++        + preserved_attach
++        + ((source_producer,) if source_producer else ())
++    )
+     new_ops.append(
+         {
+             "id": new_cut,
+@@ -323,7 +356,7 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+             "preconditions": {
+                 "accessible_part_ids": (new_pid,),
+                 "human_checks": (
+-                    "Confirm the replacement brace is undamaged and matches the retired brace dimensions.",
++                    f"Confirm the replacement {role_label} is undamaged and matches the retired {role_label} dimensions.",
+                 ),
+             },
+             "effects": {},
+@@ -335,14 +368,16 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+         }
+     )
+     width = parts["stand-support"].geometry.width
+-    for (_joint_id, _op, partner, _name), new_joint_id, reattach_id in zip(
+-        TOUCHING, new_joint_ids, reattach_ids, strict=True
++    for entry, new_joint_id, reattach_id in zip(
++        touching, new_joint_ids, reattach_ids, strict=True
+     ):
++        _joint_id, _op, partner, _name, _order = entry
++        joint_part_ids = new_joint_part_ids(entry, partner)
+         new_ops.append(
+             {
+                 "id": reattach_id,
+                 "type": "tape_joint",
+-                "part_ids": (partner, new_pid),
++                "part_ids": joint_part_ids,
+                 "stock_ids": (tape_id,),
+                 "depends_on": (
+                     (inspect_id,)
+@@ -352,7 +387,7 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+                 "expected_state_id": f"state_{reattach_id}",
+                 "requires_user_confirmation": True,
+                 "preconditions": {
+-                    "accessible_part_ids": (partner, new_pid),
++                    "accessible_part_ids": joint_part_ids,
+                     "human_checks": (
+                         f"Confirm access to {new_joint_id}; verify tape overlap on each face, the undamaged partner part {partner} and actual grip by hand.",
+                     ),
+@@ -387,10 +422,7 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+             expected_state_id=f"state_{new_test_id}",
+         )
+         test["preconditions"]["accessible_part_ids"] = ()
+-        test["preconditions"]["required_joint_ids"] = (
+-            "stand-joint-front",
+-            *new_joint_ids,
+-        )
++        test["preconditions"]["required_joint_ids"] = final_required_joint_ids
+         test["args"]["checkpoint_id"] = f"{new_test_id}-check"
+         new_ops = [*new_ops, fit, test]
+         if seven_build:
+@@ -412,10 +444,7 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+             elif op["id"] == "stand-functional-test":
+                 op["part_ids"] = active
+                 op["preconditions"]["accessible_part_ids"] = ()
+-                op["preconditions"]["required_joint_ids"] = (
+-                    "stand-joint-front",
+-                    *new_joint_ids,
+-                )
++                op["preconditions"]["required_joint_ids"] = final_required_joint_ids
+         insert_at = (
+             next(
+                 i
+@@ -427,5 +456,5 @@ def build_tape_undo_candidate(data, base, patch, completed, remaining, process):
+         data["operations"] = tuple(
+             operations_data[:insert_at] + new_ops + operations_data[insert_at:]
+         )
+-    peeled = tuple(op for _j, op, _p, _n in TOUCHING)
++    peeled = tuple(op for _j, op, _p, _n, _o in touching)
+     return True, None, peel_ids, peeled
+diff --git a/packages/replanner/tests/test_tape_undo.py b/packages/replanner/tests/test_tape_undo.py
+index 9462290..4234426 100644
+--- a/packages/replanner/tests/test_tape_undo.py
++++ b/packages/replanner/tests/test_tape_undo.py
+@@ -1044,6 +1044,439 @@ def test_full_candidate_replay_duplicate_peel_blocks():
+     assert any(b.code == "invalid_order" for b in outcome.blockers)
+ 
+ 
++def base_snapshot(prefix=6, tape_length=500, spare_height=550):
++    if prefix == 6:
++        base, snapshot, process = attached_snapshot(
++            tape_length=tape_length, spare_height=spare_height
++        )
++    elif prefix == 7:
++        base, snapshot, process = seven_snapshot(tape_length=tape_length)
++    else:
++        base, snapshot, process = full_snapshot(tape_length=tape_length)
++    snapshot = snapshot.model_copy(
++        update={
++            "patch": snapshot.patch.model_copy(
++                update={
++                    "id": "replace-attached-base-tape-undo",
++                    "target_id": "stand-base",
++                    "rationale": "SYNTHETIC tape-undo replacement of the attached base.",
++                }
++            )
++        }
++    )
++    return base, snapshot, process
++
++
++@pytest.mark.parametrize("prefix,total", [(6, 14), (7, 15), (8, 16)])
++def test_attached_base_peel_front_rear_and_reattach(prefix, total):
++    base, snapshot, process = base_snapshot(prefix=prefix)
++    result = simulate(snapshot, process)
++    assert result.status == "feasible", result.blockers
++    assert rank_feasible((result,)) == (result,)
++    assert result.cost is not None and result.cost.known_weighted_cost == 8
++    assert result.cost.required_physical_undos == 2
++    assert result.cost.irreversible_completed_actions_lost == 0
++    plan = result.plan
++    assert len(plan.operations) == total
++    assert plan.operations[:prefix] == base.operations[:prefix]
++    base_parts = {p.id: p for p in base.parts}
++    assert {p.id: p for p in plan.parts if p.id in base_parts} == base_parts
++    assert tuple(j for j in plan.joints if j.id.startswith("stand-joint-"))[:3] == (
++        base.joints
++    )
++    base_checks = {c.id: c for c in base.checkpoints}
++    plan_checks = {c.id: c for c in plan.checkpoints}
++    completed_ops = {o.id for o in base.operations[:prefix]}
++    for check in base.checkpoints:
++        if check.after_operation_id in completed_ops:
++            assert plan_checks[check.id] == check
++    assert base_checks.keys() <= plan_checks.keys() or prefix == 7
++    new_id = next(p.id for p in plan.parts if p.id not in base_parts)
++    active = ("stand-support", new_id, "stand-brace")
++    new_part = next(p for p in plan.parts if p.id == new_id)
++    retired = base_parts["stand-base"]
++    assert (new_part.geometry.width, new_part.geometry.height) == (
++        retired.geometry.width,
++        retired.geometry.height,
++    )
++    assert new_part.features == retired.features
++    support = next(p for p in plan.parts if p.id == "stand-support")
++    assert support == base_parts["stand-support"]
++    fold = next(o for o in plan.operations if o.id == "stand-fold-lip")
++    assert fold == next(o for o in base.operations if o.id == "stand-fold-lip")
++    peels = [o for o in plan.operations if o.type == "detach"]
++    assert len(peels) == 2
++    assert [o.args.joint_id for o in peels] == [
++        "stand-joint-front",
++        "stand-joint-rear",
++    ]
++    assert tuple(result.required_undo_operation_ids) == tuple(o.id for o in peels)
++    assert set(result.lost_operation_ids) == {
++        "stand-joint-front-attach",
++        "stand-joint-rear-attach",
++    }
++    assert "stand-fold-lip" in result.preserved_operation_ids
++    assert "stand-joint-apex-attach" in result.preserved_operation_ids
++    assert "stand-joint-front-attach" not in result.preserved_operation_ids
++    assert "stand-joint-rear-attach" not in result.preserved_operation_ids
++    for stale in ("stand-inspect-fit", "stand-functional-test"):
++        if stale in completed_ops:
++            assert stale not in result.preserved_operation_ids
++    new_joints = [j for j in plan.joints if j.id not in {x.id for x in base.joints}]
++    assert len(new_joints) == 2
++    assert new_joints[0].part_ids == ("stand-support", new_id)
++    assert new_joints[1].part_ids == (new_id, "stand-brace")
++    reattach = [o for o in plan.operations if o.id in {j.id + "-attach" for j in new_joints}]
++    assert [o.part_ids for o in reattach] == [j.part_ids for j in new_joints]
++    finals = plan.operations[-2:]
++    assert finals[0].part_ids == active
++    assert tuple(finals[0].args.target_ids) == active
++    assert finals[1].part_ids == active
++    assert tuple(finals[1].preconditions.required_joint_ids) == (
++        new_joints[0].id,
++        new_joints[1].id,
++        "stand-joint-apex",
++    )
++    if prefix == 6:
++        assert finals[0].id == "stand-inspect-fit"
++        assert finals[1].id == "stand-functional-test"
++    else:
++        assert finals[0].id not in {o.id for o in base.operations}
++        assert finals[1].id not in {o.id for o in base.operations}
++    appended_types = [o.type for o in plan.operations[prefix:prefix + 6]]
++    assert appended_types == [
++        "detach",
++        "detach",
++        "cut_rect",
++        "inspect",
++        "tape_joint",
++        "tape_joint",
++    ]
++    assert all(o.id in result.incomplete_operation_ids for o in peels)
++    assert all(
++        o.id in result.incomplete_operation_ids for o in plan.operations[prefix:]
++    )
++    tape_uses = [
++        d.quantity
++        for d in result.proposed_material_deltas
++        if d.stock_id == "fixture-tape-stock" and d.kind == "consume"
++    ]
++    assert tape_uses == [80, 80]
++    assert 500 - 240 - sum(tape_uses) == 100
++    sheet_consumes = [
++        d
++        for d in result.proposed_material_deltas
++        if d.kind == "consume" and d.source_region_id == "spare-region"
++    ]
++    assert len(sheet_consumes) == 1
++    assert result.lost_part_ids == ("stand-base",)
++
++
++def test_completed_support_fold_replacement_remains_unsupported():
++    base, snapshot, process = base_snapshot()
++    changed = snapshot.model_copy(
++        update={
++            "patch": snapshot.patch.model_copy(
++                update={"id": "replace-support", "target_id": "stand-support"}
++            )
++        }
++    )
++    result = simulate(changed, process)
++    assert result.status == "blocked"
++    assert result.plan is None
++    assert any(b.code == "unsupported" for b in result.blockers), result.blockers
++    assert base is not None
++
++
++def test_base_insufficient_sheet_blocks():
++    _base, snapshot, process = base_snapshot(spare_height=100)
++    result = simulate(snapshot, process)
++    assert result.status == "blocked"
++    assert any(b.code == "stock_exhausted" for b in result.blockers)
++
++
++def test_base_399mm_tape_blocks():
++    _base, snapshot, process = base_snapshot(tape_length=399)
++    result = simulate(snapshot, process)
++    assert result.status == "blocked"
++    assert any(b.code == "stock_exhausted" for b in result.blockers)
++
++
++def test_base_inaccessible_front_joint_blocks():
++    base, snapshot, process = base_snapshot()
++    joints = tuple(
++        j.model_copy(update={"confirmed_accessible": None})
++        if j.id == "stand-joint-front"
++        else j
++        for j in base.joints
++    )
++    changed = snapshot.model_copy(
++        update={"base_plan": base.model_copy(update={"joints": joints})}
++    )
++    result = simulate(changed, process)
++    assert result.status == "blocked"
++    assert any(
++        b.code == "needs_confirmation" and b.target_ids == ("stand-joint-front",)
++        for b in result.blockers
++    ), result.blockers
++
++
++def test_base_irreversible_front_tape_blocks():
++    base, snapshot, process = base_snapshot()
++    ops = tuple(
++        o.model_copy(update={"reversible": "irreversible"})
++        if o.id == "stand-joint-front-attach"
++        else o
++        for o in base.operations
++    )
++    changed = snapshot.model_copy(
++        update={"base_plan": base.model_copy(update={"operations": ops})}
++    )
++    result = simulate(changed, process)
++    assert result.status == "blocked"
++    assert any(b.code == "irreversible_conflict" for b in result.blockers)
++
++
++def test_base_full_redirected_final_checkpoint_blocks():
++    base, snapshot, process = base_snapshot(prefix=8)
++    checkpoints = tuple(
++        c.model_copy(update={"after_operation_id": "stand-inspect-cuts"})
++        if c.id == "stand-inspect-fit-check"
++        else c
++        for c in base.checkpoints
++    )
++    changed = m.ReplannerInput.model_validate(
++        snapshot.model_copy(
++            update={"base_plan": base.model_copy(update={"checkpoints": checkpoints})}
++        ).model_dump(mode="python")
++    )
++    result = simulate(changed, process)
++    assert result.status == "blocked"
++    assert result.plan is None and result.cost is None
++    assert any(
++        b.code == "invalid_reference"
++        and b.target_ids == ("stand-inspect-fit", "stand-inspect-fit-check")
++        for b in result.blockers
++    ), result.blockers
++    assert changed.events == snapshot.events
++    assert changed.evidence == snapshot.evidence
++
++
++def test_base_persisted_future_fit_event_blocks_six_prefix():
++    base, snapshot, process = base_snapshot()
++    event = _extra_event(base, "synthetic-base-obs-fit", "stand-inspect-fit")
++    changed = snapshot.model_copy(update={"events": snapshot.events + (event,)})
++    result = simulate(changed, process)
++    assert result.status == "blocked"
++    assert result.plan is None and result.cost is None
++    assert any(
++        b.code == "invalid_reference" and b.target_ids == ("stand-inspect-fit",)
++        for b in result.blockers
++    ), result.blockers
++    assert changed.events[-1] == event
++
++
++def test_base_persisted_future_function_evidence_blocks_six_prefix():
++    base, snapshot, process = base_snapshot()
++    check_id = next(
++        c.id for c in base.checkpoints if c.after_operation_id == "stand-functional-test"
++    )
++    evidence = m.Evidence(
++        id="synthetic-base-future-function-evidence",
++        project_id=base.project_id,
++        version_id=base.version_id,
++        kind="user_report",
++        provenance="user",
++        checkpoint_ids=(check_id,),
++        recorded_at=base.created_at,
++        description="SYNTHETIC future checkpoint evidence; no physical build.",
++        verification_state="not_checked",
++    )
++    changed = snapshot.model_copy(update={"evidence": (evidence,)})
++    result = simulate(changed, process)
++    assert result.status == "blocked"
++    assert any(
++        b.code == "invalid_reference" and b.target_ids == ("stand-functional-test",)
++        for b in result.blockers
++    ), result.blockers
++    assert changed.evidence == (evidence,)
++
++
++def test_base_persisted_future_function_event_blocks_seven_prefix():
++    base, snapshot, process = base_snapshot(prefix=7)
++    event = _extra_event(
++        base,
++        "synthetic-base-seven-test-not-attempted",
++        "stand-functional-test",
++        kind="test",
++        verification_state="not_checked",
++        test_result="not_attempted",
++    )
++    changed = snapshot.model_copy(update={"events": snapshot.events + (event,)})
++    result = simulate(changed, process)
++    assert result.status == "blocked"
++    assert result.plan is None
++    assert any(
++        b.code == "invalid_reference" and b.target_ids == ("stand-functional-test",)
++        for b in result.blockers
++    ), result.blockers
++
++
++def test_base_persisted_transaction_on_future_fit_blocks_six_prefix():
++    base, snapshot, process = base_snapshot()
++    event = _extra_event(base, "synthetic-base-tx-event", None)
++    spare = next(s for s in snapshot.remaining_stock if s.id == "spare")
++    region = spare.usable_regions[0]
++    tx = m.MaterialTransaction(
++        id="synthetic-base-tx-future-fit",
++        project_id=base.project_id,
++        version_id=base.version_id,
++        operation_id="stand-inspect-fit",
++        source_stock_id="spare",
++        kind="waste",
++        source_region_id=region.id,
++        quantity=region.geometry.width * region.geometry.height,
++        unit="mm2",
++        recorded_at=base.created_at,
++        physical_event_id=event.id,
++    )
++    changed = snapshot.model_copy(
++        update={
++            "events": snapshot.events + (event,),
++            "material_transactions": (tx,),
++            "remaining_stock": tuple(
++                s.model_copy(update={"usable_regions": ()}) if s.id == "spare" else s
++                for s in snapshot.remaining_stock
++            ),
++        }
++    )
++    result = simulate(changed, process)
++    assert result.status == "blocked"
++    assert result.plan is None
++    assert any(
++        b.code == "invalid_reference" and b.target_ids == ("stand-inspect-fit",)
++        for b in result.blockers
++    ), result.blockers
++    assert changed.material_transactions == (tx,)
++
++
++def test_base_failed_function_test_stays_needs_confirmation():
++    base, snapshot, process = base_snapshot()
++    event = _extra_event(
++        base,
++        "synthetic-base-failed-function",
++        "stand-functional-test",
++        kind="test",
++        verification_state="failed",
++        test_result="failed",
++    )
++    changed = snapshot.model_copy(update={"events": snapshot.events + (event,)})
++    result = simulate(changed, process)
++    assert result.status == "blocked"
++    assert result.plan is None
++    assert any(b.code == "needs_confirmation" for b in result.blockers), result.blockers
++
++
++def _replay_base_candidate(prefix, tape_value=260, duplicate_peel=False, peel_count=1):
++    base, snapshot, process = base_snapshot(prefix=prefix)
++    result = simulate(snapshot, process)
++    assert result.status == "feasible", result.blockers
++    candidate = result.plan
++    peels = [o for o in candidate.operations if o.type == "detach"]
++    peel_events = tuple(
++        m.PhysicalEvent(
++            id=f"synthetic-base-replay-{prefix}-{o.id}",
++            project_id=candidate.project_id,
++            version_id=candidate.version_id,
++            operation_id=o.id,
++            kind="operation_confirmed",
++            evidence_ids=(),
++            recorded_at=candidate.created_at,
++            actor="user",
++            observation="SYNTHETIC user-confirmed peel; no physical build.",
++            verification_state="user_confirmed",
++        )
++        for o in peels[:peel_count]
++    )
++    if duplicate_peel:
++        peel_events += (
++            peel_events[0].model_copy(update={"id": "synthetic-base-replay-dup"}),
++        )
++    remaining = []
++    for stock in candidate.stocks:
++        if stock.kind == "sheet" and stock.id != "spare":
++            remaining.append(stock.model_copy(update={"usable_regions": ()}))
++        elif stock.kind == "tape":
++            remaining.append(
++                stock.model_copy(
++                    update={
++                        "remaining_length_mm": stock.remaining_length_mm.model_copy(
++                            update={"value": tape_value}
++                        )
++                    }
++                )
++            )
++        else:
++            remaining.append(stock)
++    base_part = next(p for p in candidate.parts if p.id == "stand-base")
++    replay = m.ReplannerInput(
++        base_plan=candidate,
++        events=snapshot.events + peel_events,
++        evidence=snapshot.evidence,
++        material_transactions=(),
++        remaining_stock=tuple(remaining),
++        patch=m.RepairPatch(
++            id="synthetic-base-replay-noop",
++            base_version_id=candidate.version_id,
++            kind="resize_part",
++            target_id="stand-base",
++            replacement_stock_id=None,
++            replacement_profile_id=None,
++            width_mm=base_part.geometry.width,
++            height_mm=base_part.geometry.height,
++            angle_deg=None,
++            rationale="SYNTHETIC no-op follow-up after confirmed peel.",
++        ),
++    )
++    before = copy.deepcopy(replay)
++    outcome = simulate_patch(
++        replay,
++        process=process,
++        allow_synthetic=True,
++        historical_plans=(base,),
++        family_validator=stand_continuation_blockers,
++    )
++    assert replay.model_dump() == before.model_dump()
++    assert replay.evidence == snapshot.evidence
++    return outcome
++
++
++@pytest.mark.parametrize("prefix", [6, 7, 8])
++@pytest.mark.parametrize("peel_count", [1, 2])
++def test_base_candidate_replay_after_peels_has_no_history_blockers(prefix, peel_count):
++    outcome = _replay_base_candidate(prefix, peel_count=peel_count)
++    assert outcome.status == "blocked"
++    codes = {b.code for b in outcome.blockers}
++    assert codes <= {"unsupported", "no_feasible_repair"}
++    assert codes.isdisjoint(
++        {"invalid_reference", "stale_version", "stock_exhausted", "invalid_order"}
++    )
++
++
++@pytest.mark.parametrize("prefix", [6, 7, 8])
++def test_base_candidate_replay_wrong_remaining_tape_blocks(prefix):
++    outcome = _replay_base_candidate(prefix, tape_value=261)
++    assert outcome.status == "blocked"
++    assert any(b.code == "stock_exhausted" for b in outcome.blockers)
++
++
++@pytest.mark.parametrize("prefix", [6, 7, 8])
++def test_base_candidate_replay_duplicate_peel_blocks(prefix):
++    outcome = _replay_base_candidate(prefix, duplicate_peel=True)
++    assert outcome.status == "blocked"
++    assert any(b.code == "invalid_order" for b in outcome.blockers)
++
++
+ @pytest.mark.parametrize("invalid", ["unknown-target"])
+ def test_invalid_scope_blocks(invalid):
+     _base, snapshot, process = attached_snapshot()
