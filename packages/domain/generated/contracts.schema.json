@@ -1721,6 +1721,178 @@
       "title": "CaptureDeclaration",
       "type": "object"
     },
+    "CategoryInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "composition_unknown": {
+          "title": "Composition Unknown",
+          "type": "boolean"
+        },
+        "form": {
+          "enum": [
+            "flat_sheet",
+            "thick_sheet",
+            "soft_sheet",
+            "stick_strip",
+            "tube",
+            "container_3d",
+            "block_3d",
+            "small_part",
+            "roll",
+            "adhesive_container",
+            "loose_cord"
+          ],
+          "title": "Form",
+          "type": "string"
+        },
+        "group": {
+          "enum": [
+            "paper_cardboard",
+            "wood_plant",
+            "plastic",
+            "foam_soft",
+            "tape_adhesive_tie",
+            "connector_metal"
+          ],
+          "title": "Group",
+          "type": "string"
+        },
+        "id": {
+          "enum": [
+            "corrugated_cardboard",
+            "thin_packaging_card",
+            "cardstock",
+            "printer_paper",
+            "kraft_paper",
+            "paper_tube",
+            "egg_carton",
+            "paper_cup",
+            "craft_sticks",
+            "bamboo_skewers",
+            "toothpicks",
+            "wooden_dowels",
+            "wood_strips",
+            "small_wood_offcuts",
+            "plywood_sheet",
+            "cork_sheet",
+            "plastic_bottle",
+            "bottle_caps",
+            "food_container",
+            "plastic_lid",
+            "plastic_sheet",
+            "plastic_packaging_tray",
+            "drinking_straws",
+            "pvc_pipe",
+            "foam_board",
+            "eva_craft_foam",
+            "expanded_polystyrene",
+            "packing_foam",
+            "sponge",
+            "felt",
+            "fabric_scrap",
+            "denim_scrap",
+            "duct_tape",
+            "masking_tape",
+            "clear_tape",
+            "double_sided_tape",
+            "electrical_tape",
+            "white_glue",
+            "glue_stick",
+            "hot_glue_sticks",
+            "string_twine",
+            "zip_ties",
+            "rubber_bands",
+            "paper_clips",
+            "binder_clips",
+            "aluminum_foil",
+            "wire",
+            "nuts_and_bolts"
+          ],
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "material_family": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Material Family",
+          "type": "string"
+        },
+        "stock_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "sheet",
+                "strip",
+                "tape",
+                "cord"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stock Kind"
+        },
+        "stock_material": {
+          "anyOf": [
+            {
+              "enum": [
+                "cardboard",
+                "paperboard",
+                "other_supported"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stock Material"
+        },
+        "support": {
+          "enum": [
+            "build_rules_available",
+            "build_rules_not_available"
+          ],
+          "title": "Support",
+          "type": "string"
+        },
+        "support_note": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Support Note"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "group",
+        "form",
+        "material_family",
+        "composition_unknown",
+        "support"
+      ],
+      "title": "CategoryInfo",
+      "type": "object"
+    },
     "CenterOfMass": {
       "additionalProperties": false,
       "properties": {
@@ -5020,6 +5192,212 @@
       "title": "InspectArgs",
       "type": "object"
     },
+    "ItemIdentity": {
+      "additionalProperties": false,
+      "description": "What the object probably is. ``uncertain`` never selects a category.",
+      "properties": {
+        "alternatives": {
+          "default": [],
+          "items": {
+            "enum": [
+              "corrugated_cardboard",
+              "thin_packaging_card",
+              "cardstock",
+              "printer_paper",
+              "kraft_paper",
+              "paper_tube",
+              "egg_carton",
+              "paper_cup",
+              "craft_sticks",
+              "bamboo_skewers",
+              "toothpicks",
+              "wooden_dowels",
+              "wood_strips",
+              "small_wood_offcuts",
+              "plywood_sheet",
+              "cork_sheet",
+              "plastic_bottle",
+              "bottle_caps",
+              "food_container",
+              "plastic_lid",
+              "plastic_sheet",
+              "plastic_packaging_tray",
+              "drinking_straws",
+              "pvc_pipe",
+              "foam_board",
+              "eva_craft_foam",
+              "expanded_polystyrene",
+              "packing_foam",
+              "sponge",
+              "felt",
+              "fabric_scrap",
+              "denim_scrap",
+              "duct_tape",
+              "masking_tape",
+              "clear_tape",
+              "double_sided_tape",
+              "electrical_tape",
+              "white_glue",
+              "glue_stick",
+              "hot_glue_sticks",
+              "string_twine",
+              "zip_ties",
+              "rubber_bands",
+              "paper_clips",
+              "binder_clips",
+              "aluminum_foil",
+              "wire",
+              "nuts_and_bolts"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "title": "Alternatives",
+          "type": "array"
+        },
+        "category_id": {
+          "anyOf": [
+            {
+              "enum": [
+                "corrugated_cardboard",
+                "thin_packaging_card",
+                "cardstock",
+                "printer_paper",
+                "kraft_paper",
+                "paper_tube",
+                "egg_carton",
+                "paper_cup",
+                "craft_sticks",
+                "bamboo_skewers",
+                "toothpicks",
+                "wooden_dowels",
+                "wood_strips",
+                "small_wood_offcuts",
+                "plywood_sheet",
+                "cork_sheet",
+                "plastic_bottle",
+                "bottle_caps",
+                "food_container",
+                "plastic_lid",
+                "plastic_sheet",
+                "plastic_packaging_tray",
+                "drinking_straws",
+                "pvc_pipe",
+                "foam_board",
+                "eva_craft_foam",
+                "expanded_polystyrene",
+                "packing_foam",
+                "sponge",
+                "felt",
+                "fabric_scrap",
+                "denim_scrap",
+                "duct_tape",
+                "masking_tape",
+                "clear_tape",
+                "double_sided_tape",
+                "electrical_tape",
+                "white_glue",
+                "glue_stick",
+                "hot_glue_sticks",
+                "string_twine",
+                "zip_ties",
+                "rubber_bands",
+                "paper_clips",
+                "binder_clips",
+                "aluminum_foil",
+                "wire",
+                "nuts_and_bolts"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category Id"
+        },
+        "other_label": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Other Label"
+        },
+        "outcome": {
+          "enum": [
+            "catalog",
+            "other",
+            "uncertain"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        }
+      },
+      "required": [
+        "outcome"
+      ],
+      "title": "ItemIdentity",
+      "type": "object"
+    },
+    "ItemProposal": {
+      "additionalProperties": false,
+      "description": "One visible instance proposed by Muse.",
+      "properties": {
+        "box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisibleBox"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "identity": {
+          "$ref": "#/$defs/ItemIdentity"
+        },
+        "instance": {
+          "default": "single",
+          "enum": [
+            "single",
+            "group_count_unknown"
+          ],
+          "title": "Instance",
+          "type": "string"
+        },
+        "visibility": {
+          "default": "unclear",
+          "enum": [
+            "full",
+            "partial",
+            "unclear"
+          ],
+          "title": "Visibility",
+          "type": "string"
+        },
+        "visible_evidence": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Visible Evidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity",
+        "visible_evidence"
+      ],
+      "title": "ItemProposal",
+      "type": "object"
+    },
     "JoinArgs": {
       "additionalProperties": false,
       "properties": {
@@ -7463,6 +7841,148 @@
       "title": "QuantityEstimate",
       "type": "object"
     },
+    "RecognizedInventory": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RecognizedItem"
+          },
+          "maxItems": 64,
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "title": "RecognizedInventory",
+      "type": "object"
+    },
+    "RecognizedItem": {
+      "additionalProperties": false,
+      "description": "A saved, editable card. ``id`` is stable; ``name`` is the display name.",
+      "properties": {
+        "box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisibleBox"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "box_source": {
+          "anyOf": [
+            {
+              "enum": [
+                "muse_approximate",
+                "sam",
+                "user"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Box Source"
+        },
+        "id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "identity": {
+          "$ref": "#/$defs/ItemIdentity"
+        },
+        "identity_source": {
+          "enum": [
+            "muse_suggestion",
+            "user"
+          ],
+          "title": "Identity Source",
+          "type": "string"
+        },
+        "instance": {
+          "default": "single",
+          "enum": [
+            "single",
+            "group_count_unknown"
+          ],
+          "title": "Instance",
+          "type": "string"
+        },
+        "media_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Id"
+        },
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "stock_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stock Id"
+        },
+        "user_fields": {
+          "default": [],
+          "items": {
+            "enum": [
+              "identity",
+              "name",
+              "box",
+              "visibility",
+              "instance",
+              "stock_id"
+            ],
+            "type": "string"
+          },
+          "maxItems": 6,
+          "title": "User Fields",
+          "type": "array"
+        },
+        "visibility": {
+          "default": "unclear",
+          "enum": [
+            "full",
+            "partial",
+            "unclear"
+          ],
+          "title": "Visibility",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "identity",
+        "identity_source"
+      ],
+      "title": "RecognizedItem",
+      "type": "object"
+    },
     "Rect": {
       "additionalProperties": false,
       "properties": {
@@ -9645,6 +10165,44 @@
         "plan"
       ],
       "title": "VersionHistory",
+      "type": "object"
+    },
+    "VisibleBox": {
+      "additionalProperties": false,
+      "description": "Approximate, normalised to the photo (0..1). Not a measurement.",
+      "properties": {
+        "x1": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "X1",
+          "type": "number"
+        },
+        "x2": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "X2",
+          "type": "number"
+        },
+        "y1": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Y1",
+          "type": "number"
+        },
+        "y2": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Y2",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x1",
+        "y1",
+        "x2",
+        "y2"
+      ],
+      "title": "VisibleBox",
       "type": "object"
     }
   },

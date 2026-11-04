@@ -26,7 +26,26 @@ import type {
   Project,
   UnavailableRequest,
 } from "../../lib/generated/api-contracts";
-import type { OutlineInput, Stock } from "../../lib/generated/contracts";
+import type {
+  OutlineInput,
+  RecognizedItem,
+  Stock,
+} from "../../lib/generated/contracts";
+import type { RecognizedItemsUpdate } from "../../lib/generated/api-contracts";
+import {
+  ItemsRequestError,
+  recognizedItems,
+  validProposals,
+} from "../../lib/recognized-items";
+import IdentifiedItems from "./identified-items";
+import {
+  keepValidLink,
+  linkStock,
+  mergeProposals,
+  normalise,
+  pickSamBox,
+  support,
+} from "./recognized";
 import {
   answerBody,
   answerReceipts,
@@ -149,6 +168,20 @@ export default function GuidedIntake({
     [token, project.id],
   );
   const [records, setRecords] = useState<PhotoEstimateRecord[]>([]);
+  // Identified-item cards: saved separately from stock, never confirming it.
+  const itemsApi = useMemo(
+    () => recognizedItems(token, project.id),
+    [token, project.id],
+  );
+  const [items, setItems] = useState<RecognizedItem[]>([]);
+  const [itemsRevision, setItemsRevision] = useState<string | null>(null);
+  const [itemsLoaded, setItemsLoaded] = useState(false);
+  const [itemsDirty, setItemsDirty] = useState(false);
+  const [itemProblems, setItemProblems] = useState<Record<string, string[]>>(
+    {},
+  );
+  const itemsRetry = useRef<RecognizedItemsUpdate | null>(null);
+  const itemsAfterSave = useRef<string | null>(null);
   const [extras, setExtras] = useState<Record<string, Extra>>({});
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const [photoId, setPhotoId] = useState("");
@@ -181,6 +214,92 @@ export default function GuidedIntake({
       alive.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    itemsApi
+      .read(controller.signal)
+      .then((saved) => {
+        if (controller.signal.aborted) return;
+        setItems([...saved.items]);
+        setItemsRevision(saved.revision);
+        setItemProblems(problemMap(saved.problems ?? []));
+        setItemsLoaded(true);
+      })
+      .catch((failure) => {
+        if (!controller.signal.aborted) setError((failure as Error).message);
+      });
+    return () => controller.abort();
+  }, [itemsApi]);
+
+  function changeItems(
+    update: (current: RecognizedItem[]) => RecognizedItem[],
+  ) {
+    setItems(update);
+    setItemsDirty(true);
+    itemsRetry.current = null;
+  }
+  async function saveItems() {
+    if (!itemsLoaded) return;
+    const body: RecognizedItemsUpdate = itemsRetry.current ?? {
+      expected_revision: itemsRevision,
+      idempotency_key: crypto.randomUUID(),
+      // A link only holds for a saved stock of the matching type.
+      items: items.map((item) => keepValidLink(item, project.stocks ?? [])),
+    };
+    itemsRetry.current = body;
+    setBusy("items");
+    try {
+      const saved = await itemsApi.save(body);
+      itemsRetry.current = null;
+      if (!alive.current) return;
+      setItems([...saved.items]);
+      setItemsRevision(saved.revision);
+      setItemProblems(problemMap(saved.problems ?? []));
+      setItemsDirty(false);
+    } catch (failure) {
+      if (!(failure as ItemsRequestError).retryExact) itemsRetry.current = null;
+      if (alive.current) setError((failure as Error).message);
+    } finally {
+      if (alive.current) setBusy("");
+    }
+  }
+  // Item cards are saved right after the inventory they link to.
+  useEffect(() => {
+    if (
+      itemsAfterSave.current &&
+      itemsAfterSave.current !== project.revision_id
+    ) {
+      itemsAfterSave.current = null;
+      void saveItems();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.revision_id]);
+  function useAsMaterial(item: RecognizedItem) {
+    const s = support(item.identity);
+    if (s.state !== "available") return;
+    const id = stockIdFor(item.name, crypto.randomUUID());
+    const stock = newStock(
+      id,
+      { kind: s.kind, material: s.material, materialGuessed: false },
+      item.media_id ?? null,
+      item.name,
+    );
+    setExtras((current) => ({
+      ...current,
+      [id]: {
+        mediaId: item.media_id ?? null,
+        materialGuessed: false,
+        box: null,
+        boxSource: "manual_box",
+        polygon: null,
+      },
+    }));
+    onStocks((current) => [...current, stock]);
+    changeItems((current) =>
+      current.map((i) => (i.id === item.id ? linkStock(i, stock) : i)),
+    );
+  }
 
   // Estimate history for this project only; a late answer for an earlier
   // project or revision is discarded. The parent also keys this component by
@@ -334,6 +453,23 @@ export default function GuidedIntake({
         project.revision_id,
       );
       if (!alive.current) return;
+      const proposals = validProposals(result.observation.items);
+      if (proposals.length) {
+        const merged = mergeProposals(items, proposals, photo.id, (name) =>
+          stockIdFor(name, crypto.randomUUID()),
+        );
+        changeItems(() => merged.items);
+        for (const item of merged.items.slice(items.length))
+          if (support(item.identity).state === "available") useAsMaterial(item);
+        setNotice(
+          `Muse suggested ${merged.added} item${merged.added === 1 ? "" : "s"}` +
+            (merged.skipped
+              ? `; ${merged.skipped} already had a card and were left as you set them`
+              : "") +
+            ". These are suggestions; correct anything that is wrong.",
+        );
+        return;
+      }
       const labels = result.observation.labels.filter((label) => label.trim());
       if (labels.length) addCard(labels, photo.id);
       setNotice(
@@ -386,9 +522,26 @@ export default function GuidedIntake({
       if (!alive.current) return;
       setSamPending(null);
       setSamTarget(null);
-      const best = [...result.boxes].sort(
-        (a, b) => (b.x2 - b.x1) * (b.y2 - b.y1) - (a.x2 - a.x1) * (a.y2 - a.y1),
-      )[0];
+      // A card from a Muse item takes the SAM box that overlaps its own
+      // approximate box, so several similar objects stay separate.
+      const item = card
+        ? items.find(
+            (i) =>
+              i.stock_id === card.stock.id && i.media_id === request.media_id,
+          )
+        : undefined;
+      const scaled = result.boxes.map((b) =>
+        normalise(b, result.width_px, result.height_px),
+      );
+      const picked = item?.box ? pickSamBox(item, scaled) : null;
+      const best = picked
+        ? result.boxes[scaled.indexOf(picked)]
+        : item?.box
+          ? undefined
+          : [...result.boxes].sort(
+              (a, b) =>
+                (b.x2 - b.x1) * (b.y2 - b.y1) - (a.x2 - a.x1) * (a.y2 - a.y1),
+            )[0];
       if (!card) {
         setNotice(
           "The earlier SAM request finished, but the material it was for is no longer here. Draw a box instead.",
@@ -1417,7 +1570,27 @@ export default function GuidedIntake({
           );
         })}
       </ol>
-      {cards.length > 0 && (
+      <IdentifiedItems
+        token={token}
+        projectId={project.id}
+        items={items}
+        photos={photos}
+        stocks={stocks}
+        problems={itemProblems}
+        locked={locked}
+        onChange={(id, update) =>
+          changeItems((current) =>
+            current.map((i) =>
+              i.id === id ? keepValidLink(update(i), stocks) : i,
+            ),
+          )
+        }
+        onRemove={(id) =>
+          changeItems((current) => current.filter((i) => i.id !== id))
+        }
+        onUseAsMaterial={useAsMaterial}
+      />
+      {(cards.length > 0 || items.length > 0) && (
         <div className="guided-save">
           <button
             type="button"
@@ -1430,13 +1603,18 @@ export default function GuidedIntake({
           <button
             type="button"
             className="primary"
-            disabled={locked || inventoryStale || !dirty}
-            onClick={() => onSave()}
+            disabled={locked || inventoryStale || (!dirty && !itemsDirty)}
+            onClick={() => {
+              if (dirty) {
+                if (itemsDirty) itemsAfterSave.current = project.revision_id;
+                onSave();
+              } else void saveItems();
+            }}
           >
             Save materials
           </button>
           <span className="help">
-            {dirty
+            {dirty || itemsDirty
               ? "Unsaved changes. Unknown sizes stay unknown; photo estimates stay estimates."
               : project.inventory_confirmed
                 ? "Materials saved."
@@ -1565,4 +1743,12 @@ export default function GuidedIntake({
       )}
     </section>
   );
+}
+
+function problemMap(
+  problems: readonly { item_id: string; problem: string }[],
+): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  for (const p of problems) (map[p.item_id] ??= []).push(p.problem);
+  return map;
 }

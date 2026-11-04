@@ -96,6 +96,11 @@ from forma_api.projects import (
 from forma_api.proof import ProofSnapshot, ProofVersion
 from forma_api.proposal_service import IntakeObservation
 from forma_api.provider_diagnostics import ProviderUsage
+from forma_api.recognized_items_runtime import (
+    ItemProblem,
+    RecognizedItems,
+    RecognizedItemsUpdate,
+)
 from forma_api.repair_runtime import (
     RepairProposeDiagnostics,
     RepairProposeErrorResponse,
@@ -239,6 +244,9 @@ API_RECORDS = (
     PhotoEstimateList,
     PhotoEstimateRecord,
     PhotoEstimateRequest,
+    ItemProblem,
+    RecognizedItems,
+    RecognizedItemsUpdate,
     InventoryUpdate,
     ManualBillItem,
     ManualDocument,

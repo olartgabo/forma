@@ -16,6 +16,7 @@ from forma_api.model_gateway import (
     Tool,
 )
 from forma_api.proposal_prompts import PROMPT_VERSION, SCHEMA_VERSION, instructions
+from forma_domain.material_catalog import ItemProposal
 from forma_domain.models import (
     ID,
     Blocker,
@@ -149,6 +150,9 @@ class IntakeObservation(Record):
     labels: tuple[Text, ...] = Field(max_length=12)
     measurement_source: Literal["unknown"]
     questions: tuple[Text, ...] = Field(max_length=8)
+    # One proposal per visible instance, constrained to the recognition
+    # catalog with "other" and "uncertain" outcomes. Proposals, not proof.
+    items: tuple[ItemProposal, ...] = Field(default=(), max_length=24)
 
 
 class ScopedToolArgs(Record):

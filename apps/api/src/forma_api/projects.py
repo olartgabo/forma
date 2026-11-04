@@ -451,6 +451,9 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
             from forma_api.photo_measurement_runtime import purge
 
             purge(connection, owner, project_id)
+            from forma_api.recognized_items_runtime import purge as purge_items
+
+            purge_items(connection, owner, project_id)
             connection.execute("DELETE FROM projects WHERE id=?", (project_id,))
             result = DeleteResult(project_id=project_id).model_dump(mode="json")
             store.remember(connection, owner, scope, idempotency_key, digest, result)
@@ -484,6 +487,9 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
 
     router.include_router(photo_localization_router(store, authenticate))
     router.include_router(photo_estimates_router(store, authenticate))
+    from forma_api.routes.recognized_items import recognized_items_router
+
+    router.include_router(recognized_items_router(store, authenticate))
     router.include_router(intake_router(store, authenticate))
     router.include_router(plan_router(store, authenticate))
     router.include_router(progress_router(store, authenticate))

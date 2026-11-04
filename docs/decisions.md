@@ -870,3 +870,35 @@ Anything 3, Depth Pro) or reconstruction (COLMAP) without a measured
 improvement on our materials, compatible licences and deployable resources.
 Accuracy on real photographs is unvalidated until the evaluation procedure in
 the [photo measurement handoff](handoffs/issue-177-photo-measurement.md) runs.
+
+## D061: Recognition categories are not fabrication materials, November 4, 2026
+
+The user extended #177 to an initial catalog of 48 everyday categories. They are
+recognition categories: what a visible object probably is. Identity, a
+suggested material family, visible form and fabrication support are separate
+fields. Seven categories map onto build rules that already exist (corrugated
+cardboard to a cardboard sheet; thin packaging card and cardstock to a
+paperboard sheet; duct, masking and clear tape to tape; string or twine to
+cord). The other 41, and every `other` or `uncertain` answer, are shown as
+"Identified; build rules not available yet" and can never link to a stock, so
+recognised inventory stays visible without enabling operations. Nothing is
+forced into cardboard or a generic supported material.
+
+Muse returns structured item proposals constrained to the catalog through the
+existing bounded, consented intake call. `uncertain` never selects a category,
+alternatives carry look-alikes, and a pile is one proposal without a count.
+Proposals and SAM boxes locate and suggest; they are not evidence of
+composition, thickness, strength, mass or remaining quantity. A later
+suggestion never changes an existing card; it is skipped when it overlaps one.
+
+Measurement follows visible form: planar outlines for thin flat sheets (the
+existing estimator), top-face-only outlines for thick sheets, as-laid outlines
+for soft sheets, length and width for straight sticks lying flat, no photo size
+for tubes, containers, blocks and small parts, and no quantity for rolls,
+adhesive containers and loose cord. This change exposes these capabilities as
+text; photo measurement still runs only for supported sheet and strip stock.
+
+Recognition accuracy is not evaluated: no labelled real photographs exist in
+this checkout. `forma_api.recognition_evaluate` scores recorded proposals
+against such a set and refuses a coverage claim until every category and scene
+type has real labelled instances.
