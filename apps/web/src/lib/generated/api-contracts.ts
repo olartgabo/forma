@@ -116,6 +116,19 @@ export type CompilePreview = {
   readonly "candidate": DesignCandidate;
 };
 
+export type ConfirmedLocation = {
+  readonly "latitude": number;
+  readonly "longitude": number;
+  readonly "accuracy_m"?: (number | null);
+  readonly "location_basis": "city_center" | "device";
+  readonly "label": string;
+  readonly "country_code"?: (string | null);
+  readonly "city"?: (string | null);
+  readonly "region"?: (string | null);
+  readonly "confirmed": true;
+  readonly "transfer_consented": boolean;
+};
+
 export type ConnectorMeasurement = {
   readonly "stock_id": string;
   readonly "remaining_length_mm": number;
@@ -395,6 +408,38 @@ export type ItemProblem = {
   readonly "problem": string;
 };
 
+export type LocationChoice = {
+  readonly "id": string;
+  readonly "label": string;
+  readonly "latitude": number;
+  readonly "longitude": number;
+  readonly "accuracy_m"?: (number | null);
+  readonly "location_basis"?: "city_center";
+  readonly "country_code"?: (string | null);
+  readonly "city"?: (string | null);
+  readonly "region"?: (string | null);
+};
+
+export type LocationReverseRequest = {
+  readonly "location": ConfirmedLocation;
+};
+
+export type LocationReverseResponse = {
+  readonly "location": ConfirmedLocation;
+  readonly "suggested_currency"?: (string | null);
+  readonly "attribution"?: string;
+};
+
+export type LocationSearchRequest = {
+  readonly "city": string;
+  readonly "transfer_consented": boolean;
+};
+
+export type LocationSearchResponse = {
+  readonly "choices"?: ReadonlyArray<LocationChoice>;
+  readonly "attribution"?: string;
+};
+
 export type ManualBillItem = {
   readonly "id": string;
   readonly "stock_id": string;
@@ -499,6 +544,44 @@ export type MuseConstructionResult = {
   readonly "questions": ReadonlyArray<string>;
   readonly "diagnostics": DesignDiagnostics;
   readonly "replayed"?: boolean;
+};
+
+export type NearbyPlace = {
+  readonly "id": string;
+  readonly "name": string;
+  readonly "latitude": number;
+  readonly "longitude": number;
+  readonly "distance_m": number;
+  readonly "distance_min_m"?: (number | null);
+  readonly "distance_max_m"?: (number | null);
+  readonly "address": string;
+  readonly "website"?: (string | null);
+  readonly "osm_url": string;
+  readonly "category": "hardware" | "stationery" | "doityourself" | "craft";
+};
+
+export type NearbyRequest = {
+  readonly "location": ConfirmedLocation;
+  readonly "radius_m"?: number;
+  readonly "category"?: "hardware" | "stationery" | "doityourself" | "craft";
+};
+
+export type NearbyResponse = {
+  readonly "places"?: ReadonlyArray<NearbyPlace>;
+  readonly "status": "found" | "empty";
+  readonly "attribution"?: string;
+  readonly "message": string;
+};
+
+export type OfferObservation = {
+  readonly "title": string;
+  readonly "url": string;
+  readonly "price"?: (string | null);
+  readonly "currency": string;
+  readonly "price_status": "listed" | "listed_free" | "price_unknown" | "price_conflict" | "partial_price";
+  readonly "availability"?: string;
+  readonly "location"?: string;
+  readonly "notes"?: string;
 };
 
 export type OperationReadiness = {
@@ -820,6 +903,40 @@ export type ResearchFinding = {
   readonly "url": string;
 };
 
+export type ResearchRequest = {
+  readonly "expected_revision_id": string;
+  readonly "idempotency_key": string;
+  readonly "item": string;
+  readonly "area": string;
+  readonly "currency": string;
+  readonly "provider_transfer_consented"?: boolean;
+  readonly "source"?: "suppliers" | "marketplace" | "supplier_page";
+  readonly "supplier_url"?: (string | null);
+  readonly "location"?: (ConfirmedLocation | null);
+  readonly "radius_m"?: number;
+  readonly "category"?: "hardware" | "stationery" | "doityourself" | "craft";
+};
+
+export type ResearchRun = {
+  readonly "kind"?: "meta" | "public_discovery" | "supplier_page";
+  readonly "nearby_places"?: ReadonlyArray<NearbyPlace>;
+  readonly "discovery_message"?: (string | null);
+  readonly "provider_response_id"?: (string | null);
+  readonly "id": string;
+  readonly "project_id": string;
+  readonly "revision_id": string;
+  readonly "status": "running" | "succeeded" | "no_verified_results" | "failed" | "outcome_unknown";
+  readonly "offers"?: ReadonlyArray<OfferObservation>;
+  readonly "usage"?: (SourcingUsage | null);
+  readonly "error"?: (string | null);
+  readonly "replayed"?: boolean;
+  readonly "active_version_id"?: (string | null);
+  readonly "observed_at": string;
+  readonly "item": string;
+  readonly "area": string;
+  readonly "currency": string;
+};
+
 export type ResizeMeasurement = {
   readonly "part_id": string;
   readonly "width_mm": number;
@@ -884,6 +1001,35 @@ export type SimulationResult = {
 export type SnapshotToolArgs = {
   readonly "project_id": string;
   readonly "inventory_revision_id": string;
+};
+
+export type SourcingErrorResponse = {
+  readonly "code": string;
+  readonly "message": string;
+};
+
+export type SourcingNeed = {
+  readonly "id": string;
+  readonly "label": string;
+  readonly "kind": "material" | "tool";
+  readonly "origin"?: "engine";
+  readonly "reason": string;
+};
+
+export type SourcingNeeds = {
+  readonly "pending_run_id"?: (string | null);
+  readonly "project_id": string;
+  readonly "revision_id": string;
+  readonly "active_version_id"?: (string | null);
+  readonly "needs"?: ReadonlyArray<SourcingNeed>;
+  readonly "guidance"?: ReadonlyArray<string>;
+  readonly "marketplace_status"?: "authorization_required";
+};
+
+export type SourcingUsage = {
+  readonly "search_queries"?: (number | null);
+  readonly "input_tokens"?: (number | null);
+  readonly "output_tokens"?: (number | null);
 };
 
 export type StabilityAnalysisRequest = {

@@ -7,7 +7,7 @@ geometry. Users review those assumptions before opening illustrated steps.
 
 Estimates remain proposal data. They do not populate confirmed physical stock,
 create a fabrication-ready plan, or report physical work. Geometry and step
-illustrations use the existing construction engine. See D068.
+illustrations use the existing construction engine. See D070.
 
 Verification results are recorded in the implementation chat. Offline provider
 fixtures verify the route and client behavior; they do not establish recognition
