@@ -7,6 +7,7 @@ import {
   correctIdentity,
   identityLabel,
   keepValidLink,
+  linkFits,
   linkStock,
   mergeProposals,
   pickSamBox,
@@ -147,6 +148,31 @@ test("overlapping objects in one answer stay separate cards", () => {
   assert.equal(later.added, 1);
 });
 
+test("matching with saved cards has maximum size, so none is duplicated", () => {
+  const card = (id, x1, x2) => ({
+    id,
+    name: id,
+    identity: { outcome: "catalog", category_id: "plastic_bottle" },
+    identity_source: "user",
+    media_id: "photo-1",
+    box: box(x1, 0, x2, 1),
+    box_source: "user",
+  });
+  const saved = [card("a", 0, 0.6), card("b", 0.28, 0.88)];
+  const later = mergeProposals(
+    saved,
+    [
+      proposal({ outcome: "uncertain" }, box(0.1, 0, 0.7, 1)),
+      proposal({ outcome: "uncertain" }, box(0, 0, 0.4, 1)),
+    ],
+    "photo-1",
+    newId,
+  );
+  assert.equal(later.added, 0);
+  assert.equal(later.skipped, 2);
+  assert.deepEqual(later.items, saved);
+});
+
 test("corrections survive later suggestions and a save/reload round trip", () => {
   const first = mergeProposals(
     [],
@@ -215,13 +241,15 @@ test("only supported categories back a stock of the matching type", () => {
       linkStock(box1, { id: "t", kind: "tape", material: "other_supported" }),
     /cannot back/,
   );
-  // Correcting the identity away from cardboard drops the link.
-  const unlinked = keepValidLink(
+  // A correction keeps the link but marks it as not fitting; only a missing
+  // stock drops it.
+  const corrected = keepValidLink(
     correctIdentity(linked, { outcome: "uncertain" }),
     [sheet],
   );
-  assert.equal(unlinked.stock_id, null);
-  assert.equal(keepValidLink(linked, [sheet]).stock_id, "sheet-a");
+  assert.equal(corrected.stock_id, "sheet-a");
+  assert.equal(linkFits(corrected, [sheet]), false);
+  assert.equal(linkFits(linked, [sheet]), true);
   assert.equal(keepValidLink(linked, []).stock_id, null);
 });
 

@@ -19,6 +19,7 @@ import {
   category,
   correctIdentity,
   identityLabel,
+  linkFits,
   renameItem,
   setInstance,
   setVisibility,
@@ -304,6 +305,13 @@ export default function IdentifiedItems({
                   {p}
                 </p>
               ))}
+              {linked && !linkFits(item, [linked]) && (
+                <p className="warning">
+                  This no longer matches the saved material &ldquo;
+                  {linked.name ?? linked.id}&rdquo;. Remove that material, or
+                  change this item back.
+                </p>
+              )}
               {s.state === "available" &&
                 (linked ? (
                   <p className="help">

@@ -128,26 +128,39 @@ export function mergeProposals(
   mediaId: string,
   newId: (name: string) => string,
 ): { items: RecognizedItem[]; added: number; skipped: number } {
-  // A proposal matches at most one existing card on the same photo (best
-  // overlap, IoU >= 0.5) and each card absorbs at most one proposal. Proposals
-  // in the same answer never suppress each other, so overlapping objects stay
-  // separate cards.
-  const pairs: [number, number, number][] = [];
-  proposals.forEach((p, pi) =>
-    items.forEach((item, ii) => {
-      if (!p.box || !item.box || item.media_id !== mediaId) return;
-      const score = iou(item.box, p.box);
-      if (score >= 0.5) pairs.push([score, pi, ii]);
-    }),
+  // A proposal matches at most one existing card on the same photo
+  // (IoU >= 0.5) and each card absorbs at most one proposal. The matching has
+  // maximum size (augmenting paths, best overlap tried first), so no card is
+  // duplicated when another assignment covers it. Proposals in the same
+  // answer never suppress each other.
+  const edges: number[][] = proposals.map((p) =>
+    items
+      .map((item, ii) => ({
+        ii,
+        score:
+          p.box && item.box && item.media_id === mediaId
+            ? iou(item.box, p.box)
+            : 0,
+      }))
+      .filter((e) => e.score >= 0.5)
+      .sort((a, b) => b.score - a.score)
+      .map((e) => e.ii),
   );
-  pairs.sort((a, b) => b[0] - a[0]);
-  const matched = new Set<number>();
-  const used = new Set<number>();
-  for (const [, pi, ii] of pairs) {
-    if (matched.has(pi) || used.has(ii)) continue;
-    matched.add(pi);
-    used.add(ii);
-  }
+  const owner = new Map<number, number>(); // card index -> proposal index
+  const augment = (pi: number, seen: Set<number>): boolean => {
+    for (const ii of edges[pi]) {
+      if (seen.has(ii)) continue;
+      seen.add(ii);
+      const other = owner.get(ii);
+      if (other === undefined || augment(other, seen)) {
+        owner.set(ii, pi);
+        return true;
+      }
+    }
+    return false;
+  };
+  proposals.forEach((_, pi) => augment(pi, new Set()));
+  const matched = new Set(owner.values());
   const next = [...items];
   let added = 0;
   proposals.forEach((proposal, pi) => {
@@ -270,17 +283,31 @@ export function linkStock(
 }
 
 /** After an identity correction, a link that no longer fits is dropped. */
-export function keepValidLink(
+/** Whether a link fits: a supported category and a stock of its kind and
+ * material. */
+export function linkFits(
   item: RecognizedItem,
   stocks: readonly Pick<Stock, "id" | "kind" | "material">[],
-): RecognizedItem {
-  if (!item.stock_id) return item;
+): boolean {
   const stock = stocks.find((s) => s.id === item.stock_id);
   const s = support(item.identity);
-  return stock &&
+  return (
+    !!stock &&
     s.state === "available" &&
     s.kind === stock.kind &&
     s.material === stock.material
+  );
+}
+
+/** A link is dropped only when its stock is gone. A link that no longer fits
+ * after a correction is kept and shown as a mismatch, so it is resolved
+ * explicitly (remove the material, or change the item back). */
+export function keepValidLink(
+  item: RecognizedItem,
+  stocks: readonly Pick<Stock, "id">[],
+): RecognizedItem {
+  if (!item.stock_id) return item;
+  return stocks.some((s) => s.id === item.stock_id)
     ? item
     : { ...item, stock_id: null };
 }

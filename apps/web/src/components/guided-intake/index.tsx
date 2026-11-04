@@ -40,6 +40,7 @@ import {
 import IdentifiedItems from "./identified-items";
 import {
   keepValidLink,
+  linkFits,
   linkStock,
   mergeProposals,
   normalise,
@@ -160,7 +161,8 @@ export default function GuidedIntake({
   onStocks: (update: (current: readonly Stock[]) => Stock[]) => void;
   // True while a guided request runs; the workbench locks Details meanwhile.
   onBusy: (busy: boolean) => void;
-  onSave: () => void;
+  // `after` runs only when this exact inventory save succeeds.
+  onSave: (after?: () => void) => void;
   onProject: (project: Project) => void;
 }) {
   const api = useMemo(
@@ -185,10 +187,8 @@ export default function GuidedIntake({
   // A save whose answer was lost: retried with the same body and key before
   // any later edits are sent, so its receipt is never orphaned.
   const pendingItems = useRef<RecognizedItemsUpdate | null>(null);
-  // The inventory save the item cards are waiting for.
-  const itemsAfterSave = useRef<{ from: string; stocks: string } | null>(null);
-  // Saved materials whose item was later identified as something else.
-  const [strayStocks, setStrayStocks] = useState<Record<string, string>>({});
+  // Bumped by the workbench when the inventory save the cards wait for lands.
+  const [itemsSaveTick, setItemsSaveTick] = useState(0);
   const [extras, setExtras] = useState<Record<string, Extra>>({});
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
   const [photoId, setPhotoId] = useState("");
@@ -255,15 +255,20 @@ export default function GuidedIntake({
   ) {
     const before = items.find((i) => i.id === id);
     if (!before) return;
-    const after = keepValidLink(update(before), stocks);
-    const dropped = before.stock_id && !after.stock_id ? before.stock_id : null;
-    if (dropped) {
-      if (!(project.stocks ?? []).some((s) => s.id === dropped))
-        // Generated for this item and never saved: it goes with the link.
-        onStocks((current) => current.filter((s) => s.id !== dropped));
-      else setStrayStocks((m) => ({ ...m, [dropped]: after.name }));
+    let next = keepValidLink(update(before), stocks);
+    const linked = next.stock_id;
+    if (
+      linked &&
+      !linkFits(next, stocks) &&
+      !(project.stocks ?? []).some((s) => s.id === linked)
+    ) {
+      // Generated for this item and never saved: it goes with the link.
+      onStocks((current) => current.filter((s) => s.id !== linked));
+      next = { ...next, stock_id: null };
     }
-    changeItems((current) => current.map((i) => (i.id === id ? after : i)));
+    // A saved material keeps its link; the mismatch is shown on both cards and
+    // reported by the server until the user removes it or changes it back.
+    changeItems((current) => current.map((i) => (i.id === id ? next : i)));
   }
   async function saveItems() {
     if (itemsState !== "ready") {
@@ -285,6 +290,11 @@ export default function GuidedIntake({
         sent = pendingItems.current.items ?? [];
         pendingItems.current = null;
         revision = saved.revision;
+        // Keep the recovered revision even if the next save fails.
+        if (alive.current) {
+          setItemsRevision(saved.revision);
+          setItemProblems(problemMap(saved.problems ?? []));
+        }
       }
       if (!sent || JSON.stringify(sent) !== JSON.stringify(draft)) {
         const body: RecognizedItemsUpdate = {
@@ -309,19 +319,11 @@ export default function GuidedIntake({
       if (alive.current) setBusy("");
     }
   }
-  // Item cards are saved right after the inventory save they wait for, and
-  // only when that save is what landed; any other revision cancels them.
+  // Item cards are saved only after the exact inventory save they wait for.
   useEffect(() => {
-    const want = itemsAfterSave.current;
-    if (!want || want.from === project.revision_id) return;
-    itemsAfterSave.current = null;
-    if (stockKey(project.stocks ?? []) === want.stocks) void saveItems();
-    else
-      setNotice(
-        "Item cards were not saved because the saved materials changed. Review them and save again.",
-      );
+    if (itemsSaveTick) void saveItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project.revision_id]);
+  }, [itemsSaveTick]);
   function useAsMaterial(item: RecognizedItem) {
     const s = support(item.identity);
     if (s.state !== "available") return;
@@ -1258,14 +1260,18 @@ export default function GuidedIntake({
                   Different piece
                 </button>
               </div>
-              {strayStocks[card.stock.id] && (
-                <p className="warning">
-                  You identified &ldquo;{strayStocks[card.stock.id]}&rdquo; as
-                  something else, but this saved material is still a{" "}
-                  {card.stock.material} {card.stock.kind}. Remove it if it is
-                  not.
-                </p>
-              )}
+              {items
+                .filter(
+                  (i) =>
+                    i.stock_id === card.stock.id && !linkFits(i, [card.stock]),
+                )
+                .map((i) => (
+                  <p key={i.id} className="warning">
+                    You identified &ldquo;{i.name}&rdquo; as something else, but
+                    this material is still a {card.stock.material}{" "}
+                    {card.stock.kind}. Remove it, or change the item back.
+                  </p>
+                ))}
               <div className="field-row">
                 <label>
                   Type
@@ -1661,12 +1667,9 @@ export default function GuidedIntake({
             disabled={locked || inventoryStale || (!dirty && !itemsDirty)}
             onClick={() => {
               if (dirty) {
-                if (itemsDirty)
-                  itemsAfterSave.current = {
-                    from: project.revision_id,
-                    stocks: stockKey(stocks),
-                  };
-                onSave();
+                onSave(
+                  itemsDirty ? () => setItemsSaveTick((t) => t + 1) : undefined,
+                );
               } else void saveItems();
             }}
           >
@@ -1810,8 +1813,4 @@ function problemMap(
   const map: Record<string, string[]> = {};
   for (const p of problems) (map[p.item_id] ??= []).push(p.problem);
   return map;
-}
-
-function stockKey(stocks: readonly Stock[]): string {
-  return JSON.stringify(stocks.map((s) => [s.id, s.kind, s.material]).sort());
 }

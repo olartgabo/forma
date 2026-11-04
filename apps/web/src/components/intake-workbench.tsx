@@ -385,6 +385,8 @@ function ProjectWorkbench({
   const [stale, setStale] = useState(false);
   const controller = useRef(new AbortController());
   const epoch = useRef(0);
+  // Runs only when this exact inventory save succeeds (guided item cards).
+  const afterSave = useRef<{ key: string; run: () => void } | null>(null);
   const photoEpoch = useRef(0);
   const photoScope = useRef<{ projectId: string | null; token: string }>({
     projectId: null,
@@ -551,6 +553,9 @@ function ProjectWorkbench({
         );
         if (signal.aborted || requestEpoch !== epoch.current) return;
         install(result.project);
+        const after = afterSave.current;
+        afterSave.current = null;
+        if (after?.key === request.key) after.run();
         setNotice(
           "Materials and build requirements saved. Unknown measurements remain open.",
         );
@@ -648,7 +653,7 @@ function ProjectWorkbench({
     setNotice("");
   }
 
-  function submitInventory(stocks: Stock[]) {
+  function submitInventory(stocks: Stock[], after?: () => void) {
     if (!project || locked) return;
     const confirmedRequirements: BuildRequirements = {
       ...requirements,
@@ -686,9 +691,11 @@ function ProjectWorkbench({
           return;
         }
       }
+    const key = crypto.randomUUID();
+    afterSave.current = after ? { key, run: after } : null;
     void execute({
       kind: "save",
-      key: crypto.randomUUID(),
+      key,
       projectId: project.id,
       revision: project.revision_id,
       stocks: structuredClone(stocks),
@@ -1001,7 +1008,7 @@ function ProjectWorkbench({
                 museAvailability={museAvailability}
                 onStocks={changeGuided}
                 onBusy={setGuidedBusy}
-                onSave={() => submitInventory(stocks)}
+                onSave={(after) => submitInventory(stocks, after)}
                 onProject={install}
               />
               <details className="manual-intake">

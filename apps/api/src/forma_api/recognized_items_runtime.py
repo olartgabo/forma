@@ -109,7 +109,10 @@ def problems(connection, project, items) -> tuple[ItemProblem, ...]:
     return tuple(found)
 
 
-def _validate(connection, project, items) -> None:
+def _validate(connection, project, items, kept: set[tuple[str, str]]) -> None:
+    """``kept`` holds (item, stock) links already saved: a correction may keep
+    one that no longer fits, reported as a problem until resolved. A new link
+    must fit."""
     RecognizedInventory(items=items)  # unique IDs, one item per stock
     media = _media_ids(connection, project.id)
     stocks = {stock.id: stock for stock in project.stocks}
@@ -117,6 +120,13 @@ def _validate(connection, project, items) -> None:
         if item.media_id and item.media_id not in media:
             raise ProjectError(404, "not_found", f"Photo for {item.name} not found")
         if item.stock_id is None:
+            continue
+        stock = stocks.get(item.stock_id)
+        if stock is None:
+            raise ProjectError(
+                422, "validation_error", f"{item.name}: save the linked material first"
+            )
+        if (item.id, item.stock_id) in kept:
             continue
         info = (
             BY_ID.get(item.identity.category_id)
@@ -129,11 +139,6 @@ def _validate(connection, project, items) -> None:
                 422,
                 "validation_error",
                 f"{item.name}: build rules are not available for this item yet",
-            )
-        stock = stocks.get(item.stock_id)
-        if stock is None:
-            raise ProjectError(
-                422, "validation_error", f"{item.name}: save the linked material first"
             )
         if (stock.kind, stock.material) != (info.stock_kind, info.stock_material):
             raise ProjectError(
@@ -166,13 +171,14 @@ def save(store, owner: str, project_id: str, body: RecognizedItemsUpdate):
         )
         if replay:
             return RecognizedItems.model_validate({**replay, "replayed": True})
-        revision, _ = _stored(connection, project_id)
+        revision, previous = _stored(connection, project_id)
         if revision != body.expected_revision:
             raise ProjectError(
                 409, "stale_version", "Items changed elsewhere; reload them"
             )
         try:
-            _validate(connection, project, body.items)
+            kept = {(i.id, i.stock_id) for i in previous if i.stock_id}
+            _validate(connection, project, body.items, kept)
         except ValueError as exc:
             raise ProjectError(422, "validation_error", str(exc)[:200]) from None
         new_revision = "items-" + uuid4().hex

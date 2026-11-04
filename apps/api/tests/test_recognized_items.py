@@ -166,9 +166,10 @@ def test_unsupported_items_never_link_to_fabrication_stock(client):
         kept.json()["revision"],
     )
     assert linked.status_code == 200, linked.text
-    # A tape category cannot back a sheet.
+    # A new tape item cannot back a sheet.
     tape = {
         **cardboard,
+        "id": "tape--3",
         "identity": {"outcome": "catalog", "category_id": "masking_tape"},
     }
     assert (
@@ -213,3 +214,44 @@ def test_items_are_owner_scoped_and_validated(client):
     assert put(client, p, [forced], "items-0003").status_code == 422
     dupes = [item("x--1", None, box=None, box_source=None)] * 2
     assert put(client, p, dupes, "items-0004").status_code == 422
+
+
+def test_a_correction_keeps_a_saved_link_and_reports_the_mismatch(client):
+    p = project(client)
+    p = save_stocks(client, p, [stock("sheet-a")], "save-0001")
+    cardboard = item(
+        "box--1",
+        None,
+        box=None,
+        box_source=None,
+        identity={"outcome": "catalog", "category_id": "corrugated_cardboard"},
+        stock_id="sheet-a",
+    )
+    first = put(client, p, [cardboard], "items-0001")
+    assert first.status_code == 200, first.text
+    corrected = {
+        **cardboard,
+        "identity": {"outcome": "catalog", "category_id": "plastic_sheet"},
+        "identity_source": "user",
+        "user_fields": ["identity"],
+    }
+    second = put(client, p, [corrected], "items-0002", first.json()["revision"])
+    assert second.status_code == 200, second.text
+    assert get(client, p).json()["problems"] == [
+        {
+            "item_id": "box--1",
+            "problem": "The linked material no longer matches what this item is.",
+        }
+    ]
+    # A new mismatched link is still refused.
+    other = {**corrected, "id": "box--2"}
+    assert (
+        put(
+            client,
+            p,
+            [{**corrected, "stock_id": None}, other],
+            "items-0003",
+            second.json()["revision"],
+        ).status_code
+        == 422
+    )

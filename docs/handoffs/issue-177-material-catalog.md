@@ -129,7 +129,20 @@ after an inventory save only when that save's stock set landed; editing and
 Muse suggestions wait for the saved cards to load; Save stays visible while
 card changes are pending; proposals in one answer never suppress each other
 and each saved card absorbs at most one overlapping proposal; photos without
-a prediction reach the scene report. Re-review result is in the PR.
+a prediction reach the scene report.
+
+Re-review of 8203556: REQUEST_CHANGES (4 resolved, 3 partial, 2 new). Second
+and final repair: the workbench now runs the card save only on the success of
+the exact inventory save request (matched by its idempotency key); a replayed
+card save's revision is stored before the next save; overlap matching is a
+maximum matching; and a correction keeps an existing link to a saved material
+instead of dropping it, so the mismatch persists across reloads, is reported by
+the server and is shown on both cards until the user removes the material or
+changes the item back (new mismatched links are still refused).
+
+**Known limit:** that mismatch is shown and reported, but it does not block the
+saved material in design or fabrication readiness; doing so needs a change to
+the shared readiness gates and is left for review with @olartgabo.
 
 ## Recognition evaluation
 
