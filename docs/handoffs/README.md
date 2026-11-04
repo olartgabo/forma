@@ -35,6 +35,7 @@ remaining blockers clear so an agent can resume without repeating experiments.
 | #149  | [Measurement decisions](issue-149-measurement-decisions.md) | Deterministic next-measurement decisions, existing-service capture and explicit recalculation implemented; physical and model-extension cases remain explicit |
 | #177  | [Photo measurement](issue-177-photo-measurement.md) | Guided photo-first intake and calibrated planar estimates implemented offline; real-photo accuracy unvalidated |
 | #177  | [Material catalog](issue-177-material-catalog.md) | 48 recognition categories, constrained Muse item proposals and editable item cards; recognition accuracy not evaluated |
+| #177  | [Live intake repairs](issue-177-live-intake-repairs.md) | Required structured intake answers, failure finish reasons, SAM zero-region recovery and stock reconciliation; synthetic live acceptance only |
 
 The [fabrication report](issue-150-fabrication-report.md) handoff covers the
 read-only next-step report, its declared access/tool rules and its manual and
