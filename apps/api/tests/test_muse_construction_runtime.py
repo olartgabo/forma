@@ -136,6 +136,46 @@ def response(*candidates, questions=()):
     return value
 
 
+def test_approximate_photo_produces_unverified_manual_without_stock(inputs):
+    project, context = inputs
+    project = project.model_copy(update={"stocks": (), "inventory_confirmed": False})
+    proposed = candidate()
+    proposed.pop("stock_ids")
+    proposed["estimated_materials"] = [
+        dict(label="Cardboard", width_mm=120, height_mm=80, thickness_mm=None)
+    ]
+    transport = Fake(response(proposed))
+    result = generate_muse_construction(
+        MetaGateway(transport, max_retries=0),
+        project=project,
+        resolved=context,
+        image=ImageInput(
+            b"\x89PNG\r\n\x1a\nsoftware-test", "image/png", consented=True
+        ),
+        user_notes="Use a 120 mm wide sheet",
+        approximate=True,
+    )
+    item = result.candidates[0]
+    assert item.estimated_materials[0].width_mm == 120
+    assert len(item.construction.steps) == 2
+    assert item.fabrication_plan is None and item.fabrication_report is None
+    assert item.status == "needs_measurement"
+    assert len(transport.calls) == 1
+    assert "120 mm" in str(transport.calls[0][1])
+
+
+@pytest.mark.parametrize("value", [-1, 0, 10001, float("nan"), float("inf")])
+def test_approximate_dimensions_reject_invalid_values(value):
+    from pydantic import ValidationError
+
+    from forma_api.muse_construction import EstimatedMaterial
+
+    with pytest.raises(ValidationError):
+        EstimatedMaterial(
+            label="Sheet", width_mm=value, height_mm=None, thickness_mm=None
+        )
+
+
 def run(inputs, *responses, image=None):
     transport = Fake(*responses)
     project, context = inputs

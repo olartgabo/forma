@@ -95,12 +95,19 @@ def muse_construction_router(
                 "consent_required",
                 "Consent to send the selected photo to MetaMuse is required",
             )
+        if body.approximate and photo is None:
+            raise DesignError(
+                422, "validation_error", "Choose a photo for an approximate preview"
+            )
         resolver = context_resolver or design_context.default_context_resolver()
         resolved = resolver(project_id, project.revision_id)
         photo_hash = _photo_hash(photo)
         digest = _digest(
             {
-                "request": body.model_dump(mode="json"),
+                "request": body.model_dump(
+                    mode="json",
+                    exclude={"approximate"} if not body.approximate else set(),
+                ),
                 "project_id": project_id,
                 "context_fingerprint": resolved.fingerprint,
                 "photo_hash": photo_hash,
@@ -184,6 +191,8 @@ def muse_construction_router(
 
         try:
             gateway = (gateway_factory or design_runtime.default_gateway_factory)()
+            if body.approximate and isinstance(gateway, muse_construction.MetaGateway):
+                gateway.max_retries = 0
         except GatewayError as exc:
             clear_pending()
             raise _provider_error(exc) from None
@@ -203,6 +212,7 @@ def muse_construction_router(
                 image=ImageInput(data=photo[1], mime=photo[0], consented=True)
                 if photo
                 else None,
+                approximate=body.approximate,
             )
         except GatewayError as exc:
             if exc.code in _UNCERTAIN_CODES:

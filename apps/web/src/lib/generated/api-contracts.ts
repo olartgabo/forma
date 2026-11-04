@@ -260,6 +260,13 @@ export type DiagnosisResult = {
   readonly "diagnostics": DiagnosisDiagnostics;
 };
 
+export type EstimatedMaterial = {
+  readonly "label": string;
+  readonly "width_mm": (number | null);
+  readonly "height_mm": (number | null);
+  readonly "thickness_mm": (number | null);
+};
+
 export type FabricationAssessment = {
   readonly "expected_inventory_revision_id": string;
   readonly "expected_last_event_id": (string | null);
@@ -471,6 +478,7 @@ export type MuseConstructionCandidateResult = {
   readonly "fabrication_plan": (BuildPlan | null);
   readonly "fabrication_report": (FabricationReport | null);
   readonly "blockers": ReadonlyArray<string>;
+  readonly "estimated_materials"?: ReadonlyArray<EstimatedMaterial>;
 };
 
 export type MuseConstructionRequest = {
@@ -479,6 +487,7 @@ export type MuseConstructionRequest = {
   readonly "media_id"?: (string | null);
   readonly "provider_context_consented"?: boolean;
   readonly "provider_transfer_consented"?: boolean;
+  readonly "approximate"?: boolean;
   readonly "idempotency_key": string;
 };
 

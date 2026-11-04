@@ -144,6 +144,48 @@ def test_auth_foreign_photo_and_photo_consent(setup):
     assert not calls and not factories
 
 
+def test_approximate_requires_owned_consented_photo_before_dispatch(setup):
+    client, p, calls, factories, directory, _ = setup
+    assert post(client, p, body(p, approximate=True)).status_code == 422
+    other = create(client, "project-other")
+    foreign = upload(client, other).json()["media"]
+    assert (
+        post(
+            client,
+            p,
+            body(
+                p,
+                approximate=True,
+                media_id=foreign["id"],
+                provider_transfer_consented=True,
+            ),
+        ).status_code
+        == 404
+    )
+    photo_record = upload(client, p).json()["media"]
+    assert (
+        post(
+            client, p, body(p, approximate=True, media_id=photo_record["id"])
+        ).status_code
+        == 422
+    )
+    assert not calls and not factories and not receipts(directory)
+    assert (
+        post(
+            client,
+            p,
+            body(
+                p,
+                approximate=True,
+                media_id=photo_record["id"],
+                provider_transfer_consented=True,
+            ),
+        ).status_code
+        == 200
+    )
+    assert calls[0]["approximate"] is True
+
+
 def test_media_type_and_size_before_dispatch(setup):
     client, p, calls, factories, directory, _ = setup
     media = upload(client, p, body=photo("WEBP"), content_type="image/webp").json()[

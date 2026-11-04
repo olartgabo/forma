@@ -58,6 +58,7 @@ from forma_api.measurement_runtime import (
 from forma_api.media import Media, MediaDeleteResult, MediaList, MediaResult
 from forma_api.model_gateway import Box
 from forma_api.muse_construction import (
+    EstimatedMaterial,
     MuseConstructionCandidateResult,
     MuseConstructionRequest,
     MuseConstructionResult,
@@ -179,6 +180,7 @@ from forma_domain.repair_search_contracts import (
 API_RECORDS = (
     AssemblyViewResponse,
     Box,
+    EstimatedMaterial,
     MuseConstructionRequest,
     MuseConstructionResult,
     MuseConstructionCandidateResult,

@@ -963,3 +963,16 @@ The diagnostic reproduction exhausted 2,048 output tokens before completing the 
 The deployed structured-item request exhausted 8,192 output tokens. Meta documents that hidden reasoning shares this output allowance and unspecified effort is model-determined. Select low reasoning for photo intake only; other proposals retain their existing behavior. Keep one 120-second attempt and the 8,192 ceiling.
 
 A low-effort local call returned correct labels in 10.4 seconds with 665 output tokens, but omitted optional item records. Require the items field in the model-facing photo schema while retaining compatibility for stored/legacy observations. Items are primary output and labels are summaries; an image without visible objects can still return an empty list. These remain reviewable suggestions, never physical evidence.
+
+## D068 — Photo-first illustrated manuals (November 4, 2026)
+
+The user requests a hackathon flow that starts from a photo, proposes visible
+materials and approximate dimensions, asks for one editable review, and produces
+an illustrated manual without requiring millimeter measurements first. Keep a
+detailed-entry mode for measured inputs.
+
+Accepting a photo estimate approves a planning assumption. It does not record a
+ruler measurement, establish material strength, confirm a joint test, or complete
+physical work. Estimated dimensions and proposed geometry stay visibly approximate.
+Use the existing typed construction engine and diagrams for the manual preview;
+retain measured fabrication and physical-report checks for actual build records.
