@@ -337,6 +337,33 @@ class Trace:
     status: str
     input_tokens: int | None = None
     output_tokens: int | None = None
+    # Provider-reported, kept for failures too: why generation stopped, and
+    # how many output tokens went to reasoning when the provider says so.
+    finish_reason: str | None = None
+    reasoning_tokens: int | None = None
+
+
+FINISH_REASON_RE = re.compile(r"[a-z_]{1,32}")
+
+
+def _finish_reason(result) -> str | None:
+    """Safe finish reason from a chat or responses payload, else None."""
+
+    if not isinstance(result, dict):
+        return None
+    choices = result.get("choices")
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        value = choices[0].get("finish_reason")
+    else:
+        details = result.get("incomplete_details")
+        value = details.get("reason") if isinstance(details, dict) else None
+        if value is None and "output" in result:
+            value = result.get("status")
+    if value is None:
+        return None
+    if isinstance(value, str) and FINISH_REASON_RE.fullmatch(value):
+        return value
+    return "unrecognized"
 
 
 @dataclass
@@ -457,6 +484,12 @@ class MetaGateway:
                 value = usage.get(key)
                 return value if type(value) is int and 0 <= value <= 10**9 else None
 
+            details = usage.get("completion_tokens_details") or usage.get(
+                "output_tokens_details"
+            )
+            reasoning = (
+                details.get("reasoning_tokens") if isinstance(details, dict) else None
+            )
             self.traces.append(
                 Trace(
                     path,
@@ -471,6 +504,10 @@ class MetaGateway:
                         if "output_tokens" in usage
                         else "completion_tokens"
                     ),
+                    _finish_reason(result),
+                    reasoning
+                    if type(reasoning) is int and 0 <= reasoning <= 10**9
+                    else None,
                 )
             )
             if trace_sink is not None:

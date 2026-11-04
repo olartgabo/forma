@@ -393,6 +393,11 @@ def plan_router(store: ProjectStore, authenticate) -> APIRouter:
                 raise ProjectError(
                     409, "stale_version", "Plan or inventory changed; reload it"
                 )
+            if not project.inventory_confirmed:
+                # E.g. an item now contradicts a material this plan uses.
+                raise ProjectError(
+                    409, "blocked", "Confirm the saved inventory before starting"
+                )
             updated = Project(
                 **{**project.model_dump(), "active_version_id": version_id}
             )

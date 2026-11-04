@@ -311,3 +311,41 @@ export function keepValidLink(
     ? item
     : { ...item, stock_id: null };
 }
+
+/** What to tell the user about one Muse intake answer, applying usable item
+ * proposals through `apply`. A legacy answer (no `recognition`) has only text
+ * labels and never becomes item cards; "no objects" is said, not guessed. */
+export function intakeNotice(
+  observation: { recognition?: string | null; labels: readonly string[] },
+  proposals: readonly ItemProposal[],
+  apply: (proposals: readonly ItemProposal[]) => {
+    added: number;
+    skipped: number;
+  },
+): string {
+  const recognition = observation.recognition;
+  if (!recognition) {
+    const labels = observation.labels.filter((l) => l.trim());
+    return (
+      (labels.length
+        ? `Muse described ${labels.join(", ")}, but did not return item cards. `
+        : "Muse did not return item cards. ") +
+      "Nothing was added. Add materials by hand, or ask again."
+    );
+  }
+  if (recognition === "no_objects")
+    return "Muse found no objects in this photo. Nothing was added. Take another photo or add materials by hand.";
+  if (!proposals.length)
+    return "Muse's item list could not be used, so nothing was added. Ask again, or add materials by hand.";
+  const merged = apply(proposals);
+  return (
+    `Muse suggested ${merged.added} item${merged.added === 1 ? "" : "s"}` +
+    (merged.skipped
+      ? `; ${merged.skipped} already had a card and were left as you set them`
+      : "") +
+    ". These are suggestions; correct anything that is wrong." +
+    (recognition === "partial"
+      ? " Muse says more objects are visible than it listed; add the rest yourself."
+      : "")
+  );
+}

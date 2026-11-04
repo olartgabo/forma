@@ -3345,3 +3345,49 @@ test("material picker restores recovery after a second waste and scopes stock", 
   reports.push(salvage, { ...waste, kind: "consume" });
   assert.deepEqual(recoverableRegionIds(reports, "sheet-a"), []);
 });
+
+test("a truncated intake says it ran out of room, without provider text", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      {
+        code: "incomplete_output",
+        message: "PRIVATE_PROVIDER_BODY",
+        diagnostics: {
+          model: "muse-spark-1.3",
+          elapsed_ms: 22800,
+          finish_reason: "length",
+          usage: { model_calls: 1, input_tokens: 3632, output_tokens: 2048 },
+        },
+      },
+      { status: 502 },
+    ),
+  );
+  await assert.rejects(
+    requestIntakeObservation(token, "project-a", "media-a", "inventory-1"),
+    (error) => {
+      assert.equal(error.code, "incomplete_output");
+      assert.match(error.message, /stopped before finishing/);
+      assert.match(error.message, /ran out of room/);
+      assert.doesNotMatch(error.message, /PRIVATE/);
+      return true;
+    },
+  );
+  t.mock.restoreAll();
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json(
+      {
+        code: "invalid_response",
+        message: "x",
+        diagnostics: { finish_reason: "<script>" },
+      },
+      { status: 502 },
+    ),
+  );
+  await assert.rejects(
+    requestIntakeObservation(token, "project-a", "media-a", "inventory-1"),
+    (error) => {
+      assert.doesNotMatch(error.message, /script|stopped:/);
+      return true;
+    },
+  );
+});

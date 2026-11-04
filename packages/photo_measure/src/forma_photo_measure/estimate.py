@@ -34,7 +34,14 @@ from .outline import Outline, from_polygon, refine_box
 SAMPLES = 200
 # One-standard-deviation localisation assumptions, in image pixels.
 REFERENCE_SIGMA_PX = {"detected": 0.3, "user": 1.5}
-OUTLINE_SIGMA_PX = {"sam_box": 1.0, "manual_box": 1.0, "user_polygon": 2.0}
+OUTLINE_SIGMA_PX = {
+    "sam_box": 1.0,
+    "manual_box": 1.0,
+    "outline_suggestion": 1.0,
+    "user_polygon": 2.0,
+}
+# An outline lying mostly on the reference is the reference, not material.
+REFERENCE_OVERLAP = 0.5
 DISPLAY_STEPS = (0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0)
 RULES = {
     "reference_min_side_px": (50.0, 25.0),  # warning below, blocking below
@@ -60,6 +67,7 @@ REQUESTS = {
     "outline_clipped": "Part of the material is cut off at the photo edge. Step back so the whole piece and the reference are in view.",
     "outline_box_too_tight": "The box cuts off part of the material. Enlarge the box around the whole piece.",
     "outline_not_found": "The material edge could not be found. Draw its outline by placing its corners.",
+    "outline_is_reference": "The marked region is the reference, not the material. Mark the material itself.",
 }
 
 
@@ -569,6 +577,17 @@ def estimate(image: np.ndarray, data: EstimateInput) -> PhotoEstimate:
     if outline.problem:
         builder.note(outline.problem, "blocking", REQUESTS[outline.problem])
         return builder.result("needs_better_photo", REQUESTS[outline.problem])
+    material = Polygon(outline.outer).buffer(0)
+    reference_area = shapely.MultiPoint(np.vstack(corners)).convex_hull
+    if (
+        material.area > 0
+        and material.intersection(reference_area).area
+        > REFERENCE_OVERLAP * material.area
+    ):
+        builder.note(
+            "outline_is_reference", "blocking", REQUESTS["outline_is_reference"]
+        )
+        return builder.result("needs_better_photo", REQUESTS["outline_is_reference"])
     builder.extra["outline_px"] = _points(outline.outer)
     builder.extra["holes_px"] = tuple(_points(x) for x in outline.holes)
     builder.assumptions.append(

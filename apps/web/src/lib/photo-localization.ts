@@ -143,3 +143,88 @@ export const localizationReceipts = receipts<PhotoLocalizationRequest>(
   validLocalizationRequest,
   "SAM request",
 );
+
+export type OutlineSuggestionResult = {
+  status:
+    | "suggested"
+    | "nothing_found"
+    | "only_reference"
+    | "only_cut_off"
+    | "outline_not_confirmed"
+    | "unsupported_shape";
+  box: { x1: number; y1: number; x2: number; y2: number } | null;
+  message: string;
+};
+
+/** Local, deterministic region suggestion for when SAM finds nothing. No
+ * provider call and nothing is saved; the result is only a box to check. */
+export async function suggestOutline(
+  token: string,
+  projectId: string,
+  photo: Media,
+  body: {
+    media_id: string;
+    expected_revision_id: string;
+    stock_kind: "sheet" | "strip" | "tape" | "cord";
+    reference: unknown;
+  },
+): Promise<OutlineSuggestionResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/photo-outline-suggestions`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
+      },
+    );
+  } catch {
+    throw new Error("FORMA could not be reached. Draw a box instead.");
+  }
+  const value = (await response.json().catch(() => null)) as
+    | (OutlineSuggestionResult & {
+        project_id?: string;
+        media_id?: string;
+        revision_id?: string;
+        message?: string;
+      })
+    | null;
+  if (!response.ok || !value)
+    throw new Error(
+      response.status === 409
+        ? "Materials changed in another session. Reload before trying again."
+        : "No outline could be suggested. Draw a box instead.",
+    );
+  const box = value.box;
+  if (
+    value.project_id !== projectId ||
+    value.media_id !== body.media_id ||
+    value.revision_id !== body.expected_revision_id ||
+    typeof value.message !== "string" ||
+    (value.status === "suggested") !== !!box ||
+    (box &&
+      !(
+        Number.isInteger(box.x1) &&
+        Number.isInteger(box.y1) &&
+        Number.isInteger(box.x2) &&
+        Number.isInteger(box.y2) &&
+        0 <= box.x1 &&
+        box.x1 < box.x2 &&
+        box.x2 < photo.width_px &&
+        0 <= box.y1 &&
+        box.y1 < box.y2 &&
+        box.y2 < photo.height_px
+      ))
+  )
+    throw new Error("No outline could be suggested. Draw a box instead.");
+  return {
+    status: value.status,
+    box: box ? { x1: box.x1, y1: box.y1, x2: box.x2, y2: box.y2 } : null,
+    message: value.message,
+  };
+}

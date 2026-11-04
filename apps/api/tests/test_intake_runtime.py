@@ -7,6 +7,7 @@ from forma_api.model_gateway import GatewayError, MetaGateway
 from forma_api.proposal_prompts import LANGUAGE_RULE
 from forma_api.proposal_service import IntakeObservation
 from forma_api.provider_diagnostics import ProviderUsage, summarize_usage
+from forma_domain.material_catalog import IntakeProposal
 
 PNG = b"\x89PNG\r\n\x1a\nsynthetic"
 JPEG = b"\xff\xd8\xffsynthetic"
@@ -36,16 +37,27 @@ def final_usage(content, usage=None):
     return response
 
 
-INTAKE_JSON = (
-    '{"labels":["cardboard sheet"],"measurement_source":"unknown","questions":[]}'
+CARDBOARD = {
+    "identity": {"outcome": "catalog", "category_id": "corrugated_cardboard"},
+    "visible_evidence": "brown fluted sheet",
+    "box": {"x1": 0.2, "y1": 0.2, "x2": 0.8, "y2": 0.7},
+    "visibility": "full",
+}
+INTAKE_JSON = json.dumps(
+    {"recognition": "items", "items": [CARDBOARD], "questions": []}
 )
 
 
 def test_observe_photo_uses_strict_intake_schema_without_tool():
     fake = Fake(
         final(
-            '{"labels":["cardboard sheet"],"measurement_source":"unknown",'
-            '"questions":["Measure its thickness"]}'
+            json.dumps(
+                {
+                    "recognition": "items",
+                    "items": [CARDBOARD],
+                    "questions": ["Measure its thickness"],
+                }
+            )
         )
     )
     observation, diagnostics = intake_runtime.observe_photo(
@@ -56,16 +68,20 @@ def test_observe_photo_uses_strict_intake_schema_without_tool():
     )
     assert isinstance(observation, IntakeObservation)
     assert observation.measurement_source == "unknown"
+    assert observation.recognition == "items"
+    # Labels are derived from the structured items, never free text alone.
+    assert observation.labels == ("Corrugated cardboard",)
+    assert observation.items[0].identity.category_id == "corrugated_cardboard"
     assert diagnostics.status == "ok"
     assert diagnostics.model == "muse-spark-1.3"
     assert diagnostics.elapsed_ms >= 0
     path, payload, _ = fake.calls[0]
     assert path == "/chat/completions"
     assert "tools" not in payload
-    assert (
-        payload["response_format"]["json_schema"]["schema"]
-        == IntakeObservation.model_json_schema()
-    )
+    schema = payload["response_format"]["json_schema"]["schema"]
+    assert schema == IntakeProposal.model_json_schema()
+    assert schema["required"] == ["recognition", "items", "questions"]
+    assert payload["max_completion_tokens"] == 4096
     user = payload["messages"][1]["content"]
     serialized = user[0]["text"]
     assert "SECRET GOAL" in serialized
@@ -73,7 +89,9 @@ def test_observe_photo_uses_strict_intake_schema_without_tool():
     assert "required read-only tool" not in payload["messages"][0]["content"]
     system_prompt = payload["messages"][0]["content"]
     assert system_prompt.count(LANGUAGE_RULE) == 1
-    assert "bounded-proposals-v2" in system_prompt
+    assert "intake-items-v2" in system_prompt
+    # The old instruction contradicted the item request.
+    assert "labels and questions only" not in system_prompt
     assert user[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
 
@@ -138,20 +156,30 @@ def test_observe_photo_malformed_input_tokens_unknown_not_partial(bad):
     assert diagnostics.usage.output_tokens == 4
 
 
+# The shapes the live runs of November 4, 2026 returned for the cardboard and
+# notched-sheet photos (labels with no items), plus other non-answers.
 @pytest.mark.parametrize(
-    "labels,questions",
+    "answer",
     [
-        ([], []),
-        (["  "], []),
-        ([], [" \t\n "]),
-        ([" "], ["\n"]),
+        {
+            "labels": ["torn corrugated cardboard stack"],
+            "measurement_source": "unknown",
+            "questions": ["How many individual torn pieces make up the stack?"],
+            "items": [],
+        },
+        {
+            "labels": ["brown flat sheet candidate object"],
+            "measurement_source": "unknown",
+            "questions": [],
+        },
+        {"recognition": "items", "items": [], "questions": []},
+        {"recognition": "no_objects", "items": [CARDBOARD], "questions": []},
+        {"items": [CARDBOARD], "questions": []},
+        {"recognition": "items", "items": [CARDBOARD]},
     ],
 )
-def test_observe_photo_rejects_unusable_empty_observation(labels, questions):
-    content = json.dumps(
-        {"labels": labels, "measurement_source": "unknown", "questions": questions}
-    )
-    fake = Fake(final(content))
+def test_label_only_or_inconsistent_answers_are_not_recognition(answer):
+    fake = Fake(final(json.dumps(answer)))
     with pytest.raises(GatewayError) as error:
         intake_runtime.observe_photo(
             MetaGateway(fake),
@@ -159,21 +187,20 @@ def test_observe_photo_rejects_unusable_empty_observation(labels, questions):
             image_data=PNG,
             content_type="image/png",
         )
-    assert error.value.code == "invalid_response"
-    assert intake_runtime.gateway_error_details(error.value.code) == (
+    assert error.value.code == "invalid_proposal"
+    assert intake_runtime.gateway_error_details(error.value.code)[:2] == (
         502,
         "invalid_response",
-        "Model provider returned an unusable response; retry",
     )
     assert len(fake.calls) == 1
 
 
-def test_observe_photo_question_only_is_valid_and_unknown():
+def test_no_objects_is_an_explicit_answer_not_a_failure():
     content = json.dumps(
         {
-            "labels": [],
-            "measurement_source": "unknown",
-            "questions": ["Measure its thickness"],
+            "recognition": "no_objects",
+            "items": [],
+            "questions": ["Is the material outside the frame?"],
         }
     )
     fake = Fake(final(content))
@@ -183,11 +210,107 @@ def test_observe_photo_question_only_is_valid_and_unknown():
         image_data=PNG,
         content_type="image/png",
     )
-    assert observation.labels == ()
-    assert observation.questions == ("Measure its thickness",)
-    assert observation.measurement_source == "unknown"
+    assert observation.recognition == "no_objects"
+    assert observation.items == () and observation.labels == ()
+    assert observation.questions == ("Is the material outside the frame?",)
     assert diagnostics.status == "ok"
     assert len(fake.calls) == 1
+
+
+def test_partial_uncertain_and_group_items_are_kept_as_proposed():
+    content = json.dumps(
+        {
+            "recognition": "partial",
+            "items": [
+                {
+                    "identity": {
+                        "outcome": "uncertain",
+                        "alternatives": ["plastic_bottle", "food_container"],
+                    },
+                    "visible_evidence": "clear curved object",
+                    "box": None,
+                },
+                {
+                    "identity": {"outcome": "catalog", "category_id": "bottle_caps"},
+                    "visible_evidence": "pile of caps",
+                    "instance": "group_count_unknown",
+                },
+            ],
+            "questions": [],
+        }
+    )
+    observation, _ = intake_runtime.observe_photo(
+        MetaGateway(Fake(final(content))),
+        project_goal="stand",
+        image_data=PNG,
+        content_type="image/png",
+    )
+    assert observation.recognition == "partial"
+    first, second = observation.items
+    assert first.identity.outcome == "uncertain" and first.box is None
+    assert second.instance == "group_count_unknown"
+    assert observation.labels == ("Unidentified object", "Bottle caps")
+
+
+def test_truncated_answer_keeps_finish_reason_and_usage_without_retry():
+    # Run 3 (plastic bottle): 3632 input and 2048 output tokens, cut off.
+    response = {
+        "choices": [
+            {"finish_reason": "length", "message": {"content": '{"recognition":"it'}}
+        ],
+        "usage": {
+            "prompt_tokens": 3632,
+            "completion_tokens": 2048,
+            "completion_tokens_details": {"reasoning_tokens": 1990},
+        },
+    }
+    fake = Fake(response)
+    with pytest.raises(GatewayError) as error:
+        intake_runtime.observe_photo(
+            MetaGateway(fake),
+            project_goal="stand",
+            image_data=PNG,
+            content_type="image/png",
+        )
+    assert error.value.code == "incomplete_output"
+    diagnostics = error.value.diagnostics
+    assert diagnostics.finish_reason == "length"
+    assert diagnostics.usage.input_tokens == 3632
+    assert diagnostics.usage.output_tokens == 2048
+    assert diagnostics.usage.reasoning_tokens == 1990
+    assert len(fake.calls) == 1
+    assert intake_runtime.gateway_error_details("incomplete_output")[:2] == (
+        502,
+        "incomplete_output",
+    )
+
+
+def test_the_largest_valid_answer_leaves_most_of_the_budget_for_reasoning():
+    item = {
+        "identity": {
+            "outcome": "other",
+            "other_label": "x" * 80,
+            "alternatives": ["plastic_bottle", "food_container", "bottle_caps"],
+        },
+        "visible_evidence": "y" * 80,
+        "box": {"x1": 0.123456, "y1": 0.123456, "x2": 0.654321, "y2": 0.654321},
+        "visibility": "partial",
+        "instance": "group_count_unknown",
+    }
+    biggest = IntakeProposal.model_validate(
+        {
+            "recognition": "partial",
+            "items": [item] * 12,
+            "questions": ["q" * 160] * 3,
+        }
+    )
+    with pytest.raises(Exception):
+        IntakeProposal.model_validate(
+            {"recognition": "partial", "items": [item] * 13, "questions": []}
+        )
+    # Conservatively one token per three characters.
+    tokens = len(biggest.model_dump_json()) / 3
+    assert tokens < intake_runtime.INTAKE_MAX_COMPLETION_TOKENS / 2
 
 
 @pytest.mark.parametrize(
@@ -202,6 +325,7 @@ def test_observe_photo_question_only_is_valid_and_unknown():
         ("network_error", 502, "network_error"),
         ("invalid_response", 502, "invalid_response"),
         ("invalid_proposal", 502, "invalid_response"),
+        ("incomplete_output", 502, "incomplete_output"),
         ("provider_http_error", 502, "provider_http_error"),
         ("something_private", 502, "provider_error"),
     ],

@@ -16,9 +16,11 @@ from forma_domain.models import ID
 class IntakeError(Exception):
     """Intake-owned error; codes may exceed the domain ErrorEnvelope set."""
 
-    def __init__(self, status: int, code: str, message: str):
+    def __init__(self, status: int, code: str, message: str, diagnostics=None):
         self.status = status
-        self.body = intake_runtime.IntakeErrorResponse(code=code, message=message)
+        self.body = intake_runtime.IntakeErrorResponse(
+            code=code, message=message, diagnostics=diagnostics
+        )
 
 
 class IntakeRoute(APIRoute):
@@ -48,7 +50,7 @@ class IntakeRoute(APIRoute):
 
 def _provider_error(exc: GatewayError) -> IntakeError:
     status, code, message = intake_runtime.gateway_error_details(exc.code)
-    return IntakeError(status, code, message)
+    return IntakeError(status, code, message, getattr(exc, "diagnostics", None))
 
 
 def intake_router(

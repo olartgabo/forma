@@ -4,11 +4,12 @@
 // Stock values live in the workbench's rows (one draft shared with Details);
 // this component keeps only display state such as names, boxes and outlines.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { requestIntakeObservation } from "../../lib/api";
+import { loadProject, requestIntakeObservation } from "../../lib/api";
 import {
   localizationReceipts,
   localizePhoto,
   LocalizationError,
+  suggestOutline,
   validLocalizationRequest,
 } from "../../lib/photo-localization";
 import {
@@ -40,6 +41,8 @@ import {
 import IdentifiedItems from "./identified-items";
 import MaterialBoard from "../material-board";
 import {
+  identityLabel,
+  intakeNotice,
   keepValidLink,
   linkFits,
   linkStock,
@@ -80,6 +83,7 @@ import {
   stockIdFor,
   suggestFromLabel,
   applyEstimate,
+  usableSamBoxes,
   type Box,
   type Point,
   type ReferenceDraft,
@@ -90,7 +94,7 @@ type Extra = {
   mediaId: string | null;
   materialGuessed: boolean;
   box: Box | null;
-  boxSource: "sam_box" | "manual_box";
+  boxSource: "sam_box" | "manual_box" | "outline_suggestion";
   polygon: Point[] | null;
 };
 type Card = Extra & { stock: Stock; name: string };
@@ -126,7 +130,10 @@ function extraFor(
       outline && outline.source !== "user_polygon"
         ? { x1: outline.x1!, y1: outline.y1!, x2: outline.x2!, y2: outline.y2! }
         : null,
-    boxSource: outline?.source === "sam_box" ? "sam_box" : "manual_box",
+    boxSource:
+      outline?.source === "sam_box" || outline?.source === "outline_suggestion"
+        ? outline.source
+        : "manual_box",
     polygon:
       outline?.source === "user_polygon"
         ? (outline.polygon_px ?? []).map((p) => ({ ...p }))
@@ -204,6 +211,9 @@ export default function GuidedIntake({
   );
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Materials SAM found no usable region for: the photo, reference and
+  // material are kept, and the card offers a drawn box or a suggestion.
+  const [samMissed, setSamMissed] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
   const [museConsent, setMuseConsent] = useState(false);
   const [samConsent, setSamConsent] = useState(false);
@@ -321,6 +331,17 @@ export default function GuidedIntake({
       setItemsRevision(saved.revision);
       setItemProblems(problemMap(saved.problems ?? []));
       setItemsDirty(false);
+      if (
+        typeof saved.inventory_confirmed === "boolean" &&
+        saved.inventory_confirmed !== project.inventory_confirmed
+      ) {
+        const fresh = await loadProject(token, project.id);
+        if (alive.current) onProject(fresh);
+        if (alive.current && !saved.inventory_confirmed)
+          setNotice(
+            "An item now contradicts a saved material, so the materials are no longer confirmed for design. Reconcile it on the material card.",
+          );
+      }
     } catch (failure) {
       if (!(failure as ItemsRequestError).retryExact)
         pendingItems.current = null;
@@ -518,29 +539,21 @@ export default function GuidedIntake({
         project.revision_id,
       );
       if (!alive.current) return;
-      const proposals = validProposals(result.observation.items);
-      if (proposals.length) {
-        const merged = mergeProposals(items, proposals, photo.id, (name) =>
-          stockIdFor(name, crypto.randomUUID()),
-        );
-        changeItems(() => merged.items);
-        for (const item of merged.items.slice(items.length))
-          if (support(item.identity).state === "available") useAsMaterial(item);
-        setNotice(
-          `Muse suggested ${merged.added} item${merged.added === 1 ? "" : "s"}` +
-            (merged.skipped
-              ? `; ${merged.skipped} already had a card and were left as you set them`
-              : "") +
-            ". These are suggestions; correct anything that is wrong.",
-        );
-        return;
-      }
-      const labels = result.observation.labels.filter((label) => label.trim());
-      if (labels.length) addCard(labels, photo.id);
       setNotice(
-        labels.length
-          ? `Muse suggested ${labels.length} material${labels.length === 1 ? "" : "s"}. Correct anything that is wrong; names and types are only suggestions.`
-          : "Muse did not name any material. Add materials by hand.",
+        intakeNotice(
+          result.observation,
+          validProposals(result.observation.items),
+          (proposals) => {
+            const merged = mergeProposals(items, proposals, photo.id, (name) =>
+              stockIdFor(name, crypto.randomUUID()),
+            );
+            changeItems(() => merged.items);
+            for (const item of merged.items.slice(items.length))
+              if (support(item.identity).state === "available")
+                useAsMaterial(item);
+            return merged;
+          },
+        ),
       );
     } catch (failure) {
       if (alive.current) setError((failure as Error).message);
@@ -595,15 +608,22 @@ export default function GuidedIntake({
               i.stock_id === card.stock.id && i.media_id === request.media_id,
           )
         : undefined;
-      const scaled = result.boxes.map((b) =>
+      // Never the whole photo or the marked reference.
+      const { usable, rejected } = usableSamBoxes(
+        result.boxes,
+        result.width_px,
+        result.height_px,
+        referenceCorners(request.media_id),
+      );
+      const scaled = usable.map((b) =>
         normalise(b, result.width_px, result.height_px),
       );
       const picked = item?.box ? pickSamBox(item, scaled) : null;
       const best = picked
-        ? result.boxes[scaled.indexOf(picked)]
+        ? usable[scaled.indexOf(picked)]
         : item?.box
           ? undefined
-          : [...result.boxes].sort(
+          : [...usable].sort(
               (a, b) =>
                 (b.x2 - b.x1) * (b.y2 - b.y1) - (a.x2 - a.x1) * (a.y2 - a.y1),
             )[0];
@@ -614,11 +634,21 @@ export default function GuidedIntake({
         return;
       }
       if (!best) {
-        setNotice(
-          "SAM found nothing for this name. Draw a box around the material instead.",
-        );
+        setSamMissed((m) => ({
+          ...m,
+          [card.stock.id]: !result.boxes.length
+            ? `SAM returned no region for \u201c${request.concept}\u201d in this photo.`
+            : rejected === result.boxes.length
+              ? `SAM only marked the whole photo or the reference for \u201c${request.concept}\u201d, so nothing was selected.`
+              : `SAM's regions for \u201c${request.concept}\u201d do not overlap where Muse placed this item, so nothing was selected.`,
+        }));
         return;
       }
+      setSamMissed((m) => {
+        const copy = { ...m };
+        delete copy[card.stock.id];
+        return copy;
+      });
       patch(card.stock.id, (c) => ({
         box: { x1: best.x1, y1: best.y1, x2: best.x2, y2: best.y2 },
         boxSource: "sam_box",
@@ -632,8 +662,8 @@ export default function GuidedIntake({
             },
       }));
       setNotice(
-        result.boxes.length > 1
-          ? `SAM found ${result.boxes.length} matches; the largest is shown. Draw a box if it picked the wrong one.`
+        usable.length > 1
+          ? `SAM found ${usable.length} matches; ${picked ? "the one where Muse placed this item" : "the largest"} is shown. Draw a box if it picked the wrong one.`
           : "SAM marked the material. Check the box, then measure.",
       );
     } catch (failure) {
@@ -658,6 +688,70 @@ export default function GuidedIntake({
         setBusy("");
         setSamConsent(false);
       }
+    }
+  }
+
+  // Where the reference is in a photo: drawn corners, or the corners the
+  // estimator found in an earlier estimate of the same photo.
+  function referenceCorners(mediaId: string): Point[] {
+    const drawn = reference[mediaId];
+    if (drawn?.kind === "rectangle") return drawn.corners;
+    const earlier = records.find(
+      (r) =>
+        r.estimate.input.media_id === mediaId &&
+        r.estimate.reference_corners_px?.length,
+    );
+    return (earlier?.estimate.reference_corners_px ?? []).map((p) => ({
+      ...p,
+    }));
+  }
+
+  async function suggestRegion(card: Card) {
+    const target = photos.find((p) => p.id === (card.mediaId ?? photoId));
+    if (locked || !target) return;
+    let referenceBody;
+    try {
+      referenceBody = referenceInput(reference[target.id] ?? draft);
+    } catch (failure) {
+      setError(
+        `Set up the reference in this photo first. ${(failure as Error).message}`,
+      );
+      return;
+    }
+    setBusy("outline:" + card.stock.id);
+    setError("");
+    try {
+      const found = await suggestOutline(token, project.id, target, {
+        media_id: target.id,
+        expected_revision_id: project.revision_id,
+        stock_kind: card.stock.kind,
+        reference: referenceBody,
+      });
+      if (!alive.current) return;
+      if (found.box) {
+        patch(card.stock.id, (c) => ({
+          box: found.box,
+          boxSource: "outline_suggestion",
+          polygon: null,
+          mediaId: target.id,
+          stock: c.stock.image_ids?.includes(target.id)
+            ? c.stock
+            : {
+                ...c.stock,
+                image_ids: [...(c.stock.image_ids ?? []), target.id],
+              },
+        }));
+        setSamMissed((m) => {
+          const copy = { ...m };
+          delete copy[card.stock.id];
+          return copy;
+        });
+      }
+      setNotice(found.message);
+    } catch (failure) {
+      if (alive.current) setError((failure as Error).message);
+    } finally {
+      if (alive.current) setBusy("");
     }
   }
 
@@ -1332,11 +1426,29 @@ export default function GuidedIntake({
                       !linkFits(i, [card.stock]),
                   )
                   .map((i) => (
-                    <p key={i.id} className="warning">
-                      You identified &ldquo;{i.name}&rdquo; as something else,
-                      but this material is still a {card.stock.material}{" "}
-                      {card.stock.kind}. Remove it, or change the item back.
-                    </p>
+                    <div key={i.id} className="warning reconcile" role="alert">
+                      <p>
+                        &ldquo;{i.name}&rdquo; is now identified as{" "}
+                        {identityLabel(i.identity)}, but this material is saved
+                        as {card.stock.material} {card.stock.kind}. It cannot be
+                        used for a design until you choose:
+                      </p>
+                      <div className="button-row">
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={locked}
+                          onClick={() => remove(card)}
+                        >
+                          Remove this material
+                        </button>
+                      </div>
+                      <p className="help">
+                        Or change the item&rsquo;s type back under Identified
+                        items, or change this material&rsquo;s type to fit it.
+                        Then save.
+                      </p>
+                    </div>
                   ))}
                 <div className="field-row">
                   <label>
@@ -1421,6 +1533,44 @@ export default function GuidedIntake({
                         : ({ kind: "view" } as Mode)
                     }
                   />
+                )}
+                {samMissed[card.stock.id] && cardPhoto && (
+                  <div className="notice sam-missed" role="status">
+                    <p>
+                      {samMissed[card.stock.id]} Your photo, reference and this
+                      material are kept.
+                    </p>
+                    <div className="button-row">
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={locked}
+                        onClick={() =>
+                          setDrawing({ card: card.stock.id, what: "box" })
+                        }
+                      >
+                        Draw a box
+                      </button>
+                      {fields.length > 0 && (
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={locked || busy !== ""}
+                          onClick={() => void suggestRegion(card)}
+                        >
+                          {busy === "outline:" + card.stock.id
+                            ? "Looking…"
+                            : "Suggest an outline"}
+                        </button>
+                      )}
+                    </div>
+                    {fields.length > 0 && (
+                      <p className="help">
+                        A suggestion is found from colour edges on the server,
+                        without Muse or SAM. Check it before measuring.
+                      </p>
+                    )}
+                  </div>
                 )}
                 {fields.length > 0 && cardPhoto && (
                   <div className="button-row">

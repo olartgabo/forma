@@ -45,6 +45,7 @@ from forma_api.intake_research_muse import ResearchFinding
 from forma_api.intake_runtime import (
     IntakeDiagnostics,
     IntakeErrorResponse,
+    IntakeFailureDiagnostics,
     IntakeRequest,
     IntakeResult,
 )
@@ -65,6 +66,8 @@ from forma_api.photo_localization import (
     PhotoLocalizationResult,
 )
 from forma_api.photo_measurement_runtime import (
+    OutlineSuggestion,
+    OutlineSuggestionRequest,
     PhotoEstimateList,
     PhotoEstimateRecord,
     PhotoEstimateRequest,
@@ -106,6 +109,7 @@ from forma_api.recognized_items_runtime import (
     ItemProblem,
     RecognizedItems,
     RecognizedItemsUpdate,
+    StockConflict,
 )
 from forma_api.repair_runtime import (
     RepairProposeDiagnostics,
@@ -243,6 +247,7 @@ API_RECORDS = (
     ProjectSnapshot,
     SnapshotToolArgs,
     IntakeDiagnostics,
+    IntakeFailureDiagnostics,
     IntakeErrorResponse,
     IntakeObservation,
     IntakeRequest,
@@ -252,7 +257,10 @@ API_RECORDS = (
     PhotoEstimateList,
     PhotoEstimateRecord,
     PhotoEstimateRequest,
+    OutlineSuggestion,
+    OutlineSuggestionRequest,
     ItemProblem,
+    StockConflict,
     RecognizedItems,
     RecognizedItemsUpdate,
     InventoryUpdate,

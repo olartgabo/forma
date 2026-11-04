@@ -342,7 +342,7 @@ export type Box = { x1: number; y1: number; x2: number; y2: number };
 
 export function boxOutline(
   box: Box,
-  source: "sam_box" | "manual_box",
+  source: "sam_box" | "manual_box" | "outline_suggestion",
 ): OutlineInput {
   const x1 = Math.round(Math.min(box.x1, box.x2));
   const x2 = Math.round(Math.max(box.x1, box.x2));
@@ -392,4 +392,39 @@ export function estimateSummary(estimate: PhotoEstimate): string | null {
 
 export function sizeFieldsFor(kind: Kind): SizeField[] {
   return kind === "tape" || kind === "cord" ? [] : ["width_mm", "height_mm"];
+}
+
+/** A SAM box covering nearly the whole photo is the frame, not a material. */
+export const WHOLE_PHOTO = 0.9;
+
+/** SAM boxes that can be a material: never (nearly) the whole photo, and
+ * never a box lying mostly on the marked reference. */
+export function usableSamBoxes<T extends Box>(
+  boxes: readonly T[],
+  width: number,
+  height: number,
+  referenceCorners: readonly Point[] = [],
+): { usable: T[]; rejected: number } {
+  const area = (b: Box) =>
+    Math.max(0, b.x2 - b.x1 + 1) * Math.max(0, b.y2 - b.y1 + 1);
+  const ref: Box | null = referenceCorners.length
+    ? {
+        x1: Math.min(...referenceCorners.map((p) => p.x)),
+        y1: Math.min(...referenceCorners.map((p) => p.y)),
+        x2: Math.max(...referenceCorners.map((p) => p.x)),
+        y2: Math.max(...referenceCorners.map((p) => p.y)),
+      }
+    : null;
+  const usable = boxes.filter((b) => {
+    if (area(b) >= WHOLE_PHOTO * width * height) return false;
+    if (!ref) return true;
+    const overlap = area({
+      x1: Math.max(b.x1, ref.x1),
+      y1: Math.max(b.y1, ref.y1),
+      x2: Math.min(b.x2, ref.x2),
+      y2: Math.min(b.y2, ref.y2),
+    });
+    return overlap <= 0.5 * area(b);
+  });
+  return { usable, rejected: boxes.length - usable.length };
 }

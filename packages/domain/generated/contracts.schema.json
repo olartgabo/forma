@@ -3578,6 +3578,7 @@
             "outline_clipped",
             "outline_box_too_tight",
             "outline_not_found",
+            "outline_is_reference",
             "outline_crosses_horizon",
             "irregular_outline",
             "holes_present",
@@ -5217,6 +5218,46 @@
         "method"
       ],
       "title": "InspectArgs",
+      "type": "object"
+    },
+    "IntakeProposal": {
+      "additionalProperties": false,
+      "description": "The provider's whole answer. Every field is required, so a reply with\nonly text labels, or with items silently left out, is not accepted.\n\n``items``: each visible object is listed. ``partial``: more objects are\nvisible than are listed. ``no_objects``: nothing to list, stated\nexplicitly. An unidentifiable object is an ``uncertain`` item, never left\nout.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ProposedItem"
+          },
+          "maxItems": 12,
+          "title": "Items",
+          "type": "array"
+        },
+        "questions": {
+          "items": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 3,
+          "title": "Questions",
+          "type": "array"
+        },
+        "recognition": {
+          "enum": [
+            "items",
+            "partial",
+            "no_objects"
+          ],
+          "title": "Recognition",
+          "type": "string"
+        }
+      },
+      "required": [
+        "recognition",
+        "items",
+        "questions"
+      ],
+      "title": "IntakeProposal",
       "type": "object"
     },
     "ItemIdentity": {
@@ -6959,6 +7000,7 @@
           "enum": [
             "sam_box",
             "manual_box",
+            "outline_suggestion",
             "user_polygon"
           ],
           "title": "Source",
@@ -7732,6 +7774,57 @@
         "status"
       ],
       "title": "ProbeResult",
+      "type": "object"
+    },
+    "ProposedItem": {
+      "additionalProperties": false,
+      "description": "``ItemProposal`` with the shorter evidence a fresh response may use.",
+      "properties": {
+        "box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisibleBox"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "identity": {
+          "$ref": "#/$defs/ItemIdentity"
+        },
+        "instance": {
+          "default": "single",
+          "enum": [
+            "single",
+            "group_count_unknown"
+          ],
+          "title": "Instance",
+          "type": "string"
+        },
+        "visibility": {
+          "default": "unclear",
+          "enum": [
+            "full",
+            "partial",
+            "unclear"
+          ],
+          "title": "Visibility",
+          "type": "string"
+        },
+        "visible_evidence": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Visible Evidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity",
+        "visible_evidence"
+      ],
+      "title": "ProposedItem",
       "type": "object"
     },
     "QuantityEstimate": {

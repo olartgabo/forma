@@ -308,8 +308,16 @@ export type IntakeDiagnostics = {
 };
 
 export type IntakeErrorResponse = {
-  readonly "code": "validation_error" | "not_found" | "stale_version" | "consent_required" | "provider_not_configured" | "provider_authentication" | "access_denied" | "rate_limit" | "timeout" | "network_error" | "invalid_response" | "provider_http_error" | "provider_error";
+  readonly "code": "validation_error" | "not_found" | "stale_version" | "consent_required" | "provider_not_configured" | "provider_authentication" | "access_denied" | "rate_limit" | "timeout" | "network_error" | "invalid_response" | "incomplete_output" | "provider_http_error" | "provider_error";
   readonly "message": string;
+  readonly "diagnostics"?: (IntakeFailureDiagnostics | null);
+};
+
+export type IntakeFailureDiagnostics = {
+  readonly "model": string;
+  readonly "elapsed_ms": number;
+  readonly "finish_reason"?: (string | null);
+  readonly "usage": ProviderUsage;
 };
 
 export type IntakeObservation = {
@@ -317,6 +325,7 @@ export type IntakeObservation = {
   readonly "measurement_source": "unknown";
   readonly "questions": ReadonlyArray<string>;
   readonly "items"?: ReadonlyArray<ItemProposal>;
+  readonly "recognition"?: ("items" | "partial" | "no_objects" | null);
 };
 
 export type IntakeRequest = {
@@ -494,6 +503,23 @@ export type OrderStep = {
   readonly "operation_id": string;
   readonly "state_id": string;
   readonly "reordered": boolean;
+};
+
+export type OutlineSuggestion = {
+  readonly "project_id": string;
+  readonly "revision_id": string;
+  readonly "media_id": string;
+  readonly "status": "suggested" | "nothing_found" | "only_reference" | "only_cut_off" | "outline_not_confirmed" | "unsupported_shape";
+  readonly "box"?: (OutlineInput | null);
+  readonly "candidates"?: number;
+  readonly "message": string;
+};
+
+export type OutlineSuggestionRequest = {
+  readonly "media_id": string;
+  readonly "expected_revision_id": string;
+  readonly "stock_kind": "sheet" | "strip" | "tape" | "cord";
+  readonly "reference": ReferenceInput;
 };
 
 export type PanelDiff = {
@@ -689,6 +715,7 @@ export type ProviderUsage = {
   readonly "model_calls": number;
   readonly "input_tokens"?: (number | null);
   readonly "output_tokens"?: (number | null);
+  readonly "reasoning_tokens"?: (number | null);
 };
 
 export type RecalculateRequest = {
@@ -703,6 +730,8 @@ export type RecognizedItems = {
   readonly "catalog_version"?: string;
   readonly "items": ReadonlyArray<RecognizedItem>;
   readonly "problems"?: ReadonlyArray<ItemProblem>;
+  readonly "conflicts"?: ReadonlyArray<StockConflict>;
+  readonly "inventory_confirmed"?: (boolean | null);
   readonly "replayed"?: boolean;
 };
 
@@ -1013,6 +1042,12 @@ export type StageAnalysisResponse = {
   readonly "last_event_id": (string | null);
   readonly "analysis": StageAnalysisResult;
   readonly "hypothetical"?: boolean;
+};
+
+export type StockConflict = {
+  readonly "item_id": string;
+  readonly "stock_id": string;
+  readonly "message": string;
 };
 
 export type SynthesisMuseRequest = {

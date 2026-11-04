@@ -270,3 +270,68 @@ test("SAM boxes attach to the card they overlap, not the largest one", () => {
   assert.equal(pickSamBox({ ...item, box: null }, [left, right]), null);
   assert.deepEqual(pickSamBox({ ...item, box: null }, [left]), left);
 });
+
+test("intake answers: legacy labels, no objects and partial lists", async () => {
+  const { intakeNotice } =
+    await import("../src/components/guided-intake/recognized.ts");
+  let applied = 0;
+  const apply = (proposals) => {
+    applied += proposals.length;
+    return { added: proposals.length, skipped: 0 };
+  };
+  // Live runs 1 and 2 returned labels only: never turned into cards.
+  const legacy = intakeNotice(
+    { labels: ["torn corrugated cardboard stack"] },
+    [],
+    apply,
+  );
+  assert.match(legacy, /did not return item cards/);
+  assert.match(legacy, /Nothing was added/);
+  assert.equal(applied, 0);
+  assert.match(
+    intakeNotice({ recognition: "no_objects", labels: [] }, [], apply),
+    /found no objects/,
+  );
+  assert.match(
+    intakeNotice({ recognition: "items", labels: ["x"] }, [], apply),
+    /could not be used/,
+  );
+  assert.equal(applied, 0);
+  const one = proposal({
+    outcome: "catalog",
+    category_id: "corrugated_cardboard",
+  });
+  const partial = intakeNotice(
+    { recognition: "partial", labels: [] },
+    [one],
+    apply,
+  );
+  assert.match(partial, /Muse suggested 1 item/);
+  assert.match(partial, /more objects are visible/);
+  assert.equal(applied, 1);
+});
+
+test("SAM boxes for the whole photo or the reference are not materials", async () => {
+  const { usableSamBoxes } =
+    await import("../src/components/guided-intake/model.ts");
+  const whole = { x1: 0, y1: 0, x2: 799, y2: 599 };
+  const ref = { x1: 20, y1: 20, x2: 120, y2: 90 };
+  const sheet = { x1: 300, y1: 200, x2: 600, y2: 450 };
+  const corners = [
+    { x: 18, y: 18 },
+    { x: 122, y: 18 },
+    { x: 122, y: 92 },
+    { x: 18, y: 92 },
+  ];
+  assert.deepEqual(usableSamBoxes([], 800, 600), { usable: [], rejected: 0 });
+  assert.deepEqual(usableSamBoxes([whole, ref], 800, 600, corners), {
+    usable: [],
+    rejected: 2,
+  });
+  assert.deepEqual(usableSamBoxes([whole, ref, sheet], 800, 600, corners), {
+    usable: [sheet],
+    rejected: 2,
+  });
+  // Without a known reference position only the whole-photo box is dropped.
+  assert.deepEqual(usableSamBoxes([ref, sheet], 800, 600).usable, [ref, sheet]);
+});
