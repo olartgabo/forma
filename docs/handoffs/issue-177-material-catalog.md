@@ -14,7 +14,7 @@
 
 Bounded as requested: catalog and contracts, then connected suggestion cards,
 then the measured-evaluation tooling. The 48 categories are recognition
-categories, not newly supported fabrication materials (D061).
+categories, not newly supported fabrication materials (D062).
 
 | Owned (new)                                                                                                                                                       | Shared mount changed (needs @olartgabo review)                                                                                                                  |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |

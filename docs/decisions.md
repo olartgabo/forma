@@ -887,7 +887,7 @@ improvement on our materials, compatible licences and deployable resources.
 Accuracy on real photographs is unvalidated until the evaluation procedure in
 the [photo measurement handoff](handoffs/issue-177-photo-measurement.md) runs.
 
-## D061: Recognition categories are not fabrication materials, November 4, 2026
+## D062: Recognition categories are not fabrication materials, November 4, 2026
 
 The user extended #177 to an initial catalog of 48 everyday categories. They are
 recognition categories: what a visible object probably is. Identity, a
