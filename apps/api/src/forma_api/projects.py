@@ -454,6 +454,10 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
             from forma_api.recognized_items_runtime import purge as purge_items
 
             purge_items(connection, owner, project_id)
+            connection.execute(
+                "DELETE FROM requests WHERE owner=? AND scope=?",
+                (owner, project_id + ":intake-research"),
+            )
             connection.execute("DELETE FROM projects WHERE id=?", (project_id,))
             result = DeleteResult(project_id=project_id).model_dump(mode="json")
             store.remember(connection, owner, scope, idempotency_key, digest, result)
@@ -461,6 +465,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
 
     from forma_api.adapt import adapt_router
     from forma_api.construction_runtime import construction_router
+    from forma_api.intake_research import intake_research_router
     from forma_api.media import media_router
     from forma_api.plans import plan_router
     from forma_api.progress import progress_router
@@ -504,6 +509,7 @@ def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRoute
     router.include_router(fabrication_router(store, authenticate))
     router.include_router(repair_search_router(store, authenticate))
     router.include_router(synthesis_router(store, authenticate))
+    router.include_router(intake_research_router(store, authenticate))
     router.include_router(synthesis_muse_router(store, authenticate))
     router.include_router(measurement_router(store, authenticate))
     return router
