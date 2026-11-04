@@ -92,7 +92,7 @@ in-process, so the same ownership, validation, idempotency and stale-revision
 rules apply. Available tools: `list_projects`, `get_project`, `create_project`,
 `list_photos`, `upload_photo` (base64 JPEG/PNG/WebP, at most 8 MiB) and
 `update_inventory`. Provider calls, plan approval, physical records and deletion
-are not exposed. See D077 in the [decisions](../../docs/decisions.md).
+are not exposed. See D078 in the [decisions](../../docs/decisions.md).
 
 To inspect it locally with MCPJam while `npm run dev:api` runs:
 

@@ -1124,7 +1124,27 @@ generation remains possible. Any agent live verification still requires its own
 finite call ceiling, deadline and durable usage record; intercepted browser tests
 do not establish provider success or physical build readiness.
 
-## D077 - Expose an MCP endpoint for agent uploads (November 4, 2026)
+## D077 - Align construction camera depth with its viewing direction (November 4, 2026)
+
+Keep the existing yaw, tilt and canonical panel geometry, but make depth increase
+toward the viewer so ascending painter order draws distant facets before nearby
+ones. Positive tilt therefore views the model from above. The front diagram views
+along positive Y from negative Y; top and side retain their existing directions.
+A shared camera projection supplies both the viewer and regression tests. This
+corrects display occlusion without changing the model, construction steps,
+dimensions, physical evidence or fabrication readiness. Centroid painter sorting
+remains an approximation for intersecting polygons; no general visibility engine
+or new geometry support is introduced.
+
+Use the existing manual's blueprint sheet framing, blue grid and title blocks
+for construction step views and preparation outlines. White/cyan linework and
+numbered canonical parts match the workshop presentation; pink thick outlines
+identify the selected step's parts. Dimension arrows label proposed projected
+millimeter bounds and are omitted for zero spans. These are reference drawings,
+not measured stock sizes, cutting templates or fabrication approval. The 3D
+interaction and existing geometry remain unchanged by this styling pass.
+
+## D078 - Expose an MCP endpoint for agent uploads (November 4, 2026)
 
 The user requests an MCP server so an agent can upload project information for
 the user. `POST /api/mcp` serves stateless streamable-HTTP MCP from the API

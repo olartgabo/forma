@@ -34,6 +34,7 @@ import ConstructionStepDiagrams from "./construction-step-diagrams";
 import {
   projectConstructionFacets,
   fitConstructionProjection,
+  constructionCamera,
 } from "../lib/construction-projection";
 import MuseRequestStatus from "./muse-request-status";
 import {
@@ -113,8 +114,16 @@ function Preparation({ plan }: { plan: ConstructionPlan }) {
                       </p>
                     )}
                     {outline ? (
-                      <>
-                        <p>
+                      <figure className="drawing-sheet construction-blueprint construction-preparation-sheet">
+                        <figcaption className="drawing-sheet-title">
+                          <strong>Proposed face</strong>
+                          <span>{piece.reference}</span>
+                        </figcaption>
+                        <div
+                          className="drawing-sheet-ticks"
+                          aria-hidden="true"
+                        />
+                        <p className="construction-blueprint-caption">
                           Approximate face bounds:{" "}
                           {Math.round(outline.width * 10) / 10} ×{" "}
                           {Math.round(outline.height * 10) / 10} mm
@@ -123,24 +132,18 @@ function Preparation({ plan }: { plan: ConstructionPlan }) {
                           role="img"
                           aria-label={`Approximate outline of ${piece.display_name}${part.facets.length > 1 ? ` face ${index + 1}` : ""}`}
                           viewBox={`${outline.minX - 10} ${outline.minY - 10} ${outline.width + 20} ${outline.height + 20}`}
-                          style={{
-                            width: "100%",
-                            maxWidth: 240,
-                            maxHeight: 160,
-                          }}
+                          className="construction-blueprint-canvas"
                         >
                           <polygon
                             points={outline.points
                               .map((point) => `${point.x},${point.y}`)
                               .join(" ")}
-                            fill="#e0eafa"
-                            stroke="#245aa7"
-                            strokeWidth={
-                              Math.max(outline.width, outline.height) / 150
-                            }
+                            className="construction-blueprint-panel"
+                            strokeWidth="2"
+                            vectorEffect="non-scaling-stroke"
                           />
                         </svg>
-                      </>
+                      </figure>
                     ) : (
                       <p>Face dimensions are unavailable.</p>
                     )}
@@ -178,18 +181,10 @@ function ConstructionPreview({
   } | null>(null);
   const step = plan.steps[Math.min(index, plan.steps.length - 1)];
   const numbers = new Map(plan.piece_catalog.map((p, i) => [p.part_id, i + 1]));
-  const a = (yaw * Math.PI) / 180,
-    b = (pitch * Math.PI) / 180;
-  function project(p: { x: number; y: number; z: number }) {
-    const x = p.x * Math.cos(a) - p.y * Math.sin(a);
-    const y = p.x * Math.sin(a) + p.y * Math.cos(a);
-    return {
-      x,
-      y: -(y * Math.sin(b) + p.z * Math.cos(b)),
-      depth: y * Math.cos(b) - p.z * Math.sin(b),
-    };
-  }
-  const facets = projectConstructionFacets(step.analysis.facets, project);
+  const facets = projectConstructionFacets(
+    step.analysis.facets,
+    constructionCamera(yaw, pitch),
+  );
   const { x, y } = fitConstructionProjection(facets.flatMap((f) => f.points));
   return (
     <div>
