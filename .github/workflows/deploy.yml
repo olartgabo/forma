@@ -1,0 +1,75 @@
+name: Deploy
+
+# Deploys each main commit after its offline checks pass. workflow_run always
+# runs this file from main, so a pull request cannot change what deploys.
+on:
+  workflow_run:
+    workflows: [Offline checks]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+# The host builds in place, so deploys must not overlap. A newer main commit
+# replaces a deploy that is still waiting; a running one finishes.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://52-0-105-215.sslip.io
+    env:
+      INSTANCE_ID: i-04b51e85b3234c59b
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      # Pinned by SHA: this job's token can run commands as root on the host.
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::733366527874:role/forma-github-deploy
+          aws-region: us-east-1
+
+      - name: Rebuild the stack on the host
+        run: |
+          # Skips a commit the host has already moved past, so a late run for
+          # an older commit cannot roll the host back. Rerunning the current
+          # commit still redeploys.
+          script="set -eu
+          cd /opt/forma
+          git fetch --quiet origin
+          if [ \"\$(git rev-parse HEAD)\" != $SHA ] && git merge-base --is-ancestor $SHA HEAD; then
+            echo 'Host is already past $SHA'
+            exit 0
+          fi
+          git checkout --quiet --detach $SHA
+          bash deploy/host-up.sh"
+          command_id=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy $SHA" \
+            --parameters "$(jq -n --arg s "$script" '{commands: [$s], executionTimeout: ["1500"]}')" \
+            --query Command.CommandId --output text)
+
+          status=Pending
+          for _ in $(seq 160); do
+            sleep 10
+            # The invocation record can lag send-command by a few seconds.
+            status=$(aws ssm get-command-invocation --command-id "$command_id" \
+              --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null) || status=Pending
+            case $status in Pending | InProgress | Delayed) ;; *) break ;; esac
+          done
+
+          aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+            --query '[StandardOutputContent, StandardErrorContent]' --output text
+          echo "SSM status: $status"
+          [ "$status" = Success ]
+
+      - name: Check the public health endpoint
+        run: curl -fsS --retry 12 --retry-delay 5 --retry-all-errors https://52-0-105-215.sslip.io/api/health

@@ -763,3 +763,14 @@ are generated lazily and the time budget covers final evaluation. MetaMuse may
 compare the proposed designs through one read-only tool, `compare_stand_designs`,
 choosing only authorized candidate IDs and one grid probe value; the probe is the
 engine's result, shown apart from the model's words.
+
+## D056: Deploy main automatically, November 3, 2026
+
+The user asked for every `main` commit to reach the hosted demo without a
+manual step. A GitHub Actions workflow runs after `Offline checks` passes on a
+push to `main`, assumes a narrow IAM role through GitHub OIDC and runs the
+existing update steps on the instance through SSM Run Command. No long-lived
+AWS keys are stored in GitHub, and the host still has no SSH. The role trusts
+only this repository's `production` environment, which accepts deployments from
+`main` only. Deploys run one at a time and never move the host to an older
+commit. See [hosted deployment](deploy.md).
