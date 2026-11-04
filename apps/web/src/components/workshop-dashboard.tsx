@@ -60,6 +60,9 @@ function WorkshopSession({
   onToggleFavorite,
 }: Parameters<typeof WorkshopDashboard>[0]) {
   const [section, setSection] = useState<Section>("Home");
+  const [shoppingMounted, setShoppingMounted] = useState(false);
+  const [researchLocked, setResearchLocked] = useState(false);
+  const workDisabled = disabled || researchLocked;
   const [projects, setProjects] = useState<readonly SavedProjectSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -167,13 +170,16 @@ function WorkshopSession({
         (filter === "favorites" && !!favoriteIds?.has(p.id))),
   );
   const newProject = (intent?: "idea" | "materials" | "repair") => {
-    if (!disabled) onNewProject(intent);
+    if (!workDisabled) onNewProject(intent);
   };
   const open = (id: string) => {
-    if (!disabled) onOpen(id);
+    if (!workDisabled) onOpen(id);
   };
   const navigate = (next: Section) => {
-    if (!disabled) setSection(next);
+    if (!workDisabled) {
+      if (next === "Shopping list") setShoppingMounted(true);
+      setSection(next);
+    }
   };
   function cards(items: readonly SavedProjectSummary[]) {
     return (
@@ -188,7 +194,7 @@ function WorkshopSession({
               {onToggleFavorite && (
                 <button
                   className={styles.favorite}
-                  disabled={disabled}
+                  disabled={workDisabled}
                   aria-label={`${favoriteIds?.has(p.id) ? "Remove" : "Add"} ${p.goal || p.id} ${favoriteIds?.has(p.id) ? "from" : "to"} favorites`}
                   aria-pressed={!!favoriteIds?.has(p.id)}
                   onClick={() => {
@@ -206,7 +212,7 @@ function WorkshopSession({
               <p className={styles.projectId}>{p.id}</p>
               <button
                 className={styles.paperButton}
-                disabled={disabled}
+                disabled={workDisabled}
                 onClick={() => open(p.id)}
               >
                 Open project <span aria-hidden="true">↗</span>
@@ -227,7 +233,7 @@ function WorkshopSession({
           {sections.map((s, i) => (
             <button
               key={s}
-              disabled={disabled}
+              disabled={workDisabled}
               aria-current={section === s ? "page" : undefined}
               onClick={() => navigate(s)}
             >
@@ -240,9 +246,9 @@ function WorkshopSession({
         </nav>
         <div className={styles.sidebarFoot}>
           <button
-            disabled={disabled}
+            disabled={workDisabled}
             onClick={() => {
-              if (!disabled) onDisconnect();
+              if (!workDisabled) onDisconnect();
             }}
           >
             ↪ Disconnect
@@ -256,7 +262,7 @@ function WorkshopSession({
           </div>
           <button
             className={styles.paperButton}
-            disabled={disabled}
+            disabled={workDisabled}
             onClick={() => newProject()}
           >
             ＋ New project
@@ -265,17 +271,17 @@ function WorkshopSession({
         {onResume && (
           <button
             className={styles.moreButton}
-            disabled={disabled}
+            disabled={workDisabled}
             onClick={() => {
-              if (!disabled) onResume();
+              if (!workDisabled) onResume();
             }}
           >
             {resumeLabel || "Return to current work"} ↗
           </button>
         )}
-        {disabled && (
+        {workDisabled && (
           <p role="status" className={styles.notice}>
-            Finish the current action before leaving your work.
+            Finish or reconcile the current action before leaving your work.
           </p>
         )}
         {loading && (
@@ -315,7 +321,7 @@ function WorkshopSession({
                   <h3>{projects[0].goal || "Untitled project"}</h3>
                   <p>{status(projects[0])}</p>
                   <button
-                    disabled={disabled}
+                    disabled={workDisabled}
                     className={styles.paperButton}
                     onClick={() => open(projects[0].id)}
                   >
@@ -330,7 +336,7 @@ function WorkshopSession({
                 <div className={styles.sectionHeading}>
                   <h2>On your workbench</h2>
                   <button
-                    disabled={disabled}
+                    disabled={workDisabled}
                     onClick={() => navigate("My projects")}
                   >
                     All projects ↗
@@ -339,17 +345,20 @@ function WorkshopSession({
                 {cards(projects.slice(0, 4))}
               </section>
               <section className={styles.quickStart}>
-                <button disabled={disabled} onClick={() => newProject("idea")}>
+                <button
+                  disabled={workDisabled}
+                  onClick={() => newProject("idea")}
+                >
                   Start with an idea ↗
                 </button>
                 <button
-                  disabled={disabled}
+                  disabled={workDisabled}
                   onClick={() => newProject("materials")}
                 >
                   Start with materials ↗
                 </button>
                 <button
-                  disabled={disabled}
+                  disabled={workDisabled}
                   onClick={() => newProject("repair")}
                 >
                   Fix something ↗
@@ -374,7 +383,7 @@ function WorkshopSession({
                           <span className={styles.tag}>Confirm inventory</span>
                           <h3>{p.goal || "Untitled project"}</h3>
                           <button
-                            disabled={disabled}
+                            disabled={workDisabled}
                             onClick={() => open(p.id)}
                           >
                             Review project ↗
@@ -432,7 +441,7 @@ function WorkshopSession({
                   ))}
                 <small>Review remaining stock inside the project.</small>
                 <button
-                  disabled={disabled}
+                  disabled={workDisabled}
                   className={styles.paperButton}
                   onClick={() => navigate("My materials")}
                 >
@@ -446,7 +455,7 @@ function WorkshopSession({
                   Review a project’s missing materials before looking for more.
                 </p>
                 <button
-                  disabled={disabled}
+                  disabled={workDisabled}
                   onClick={() => navigate("Shopping list")}
                 >
                   Review project needs ↗
@@ -464,7 +473,7 @@ function WorkshopSession({
               <div>
                 <h2>Your workshop starts here.</h2>
                 <button
-                  disabled={disabled}
+                  disabled={workDisabled}
                   className={styles.paperButton}
                   onClick={() => newProject()}
                 >
@@ -499,7 +508,7 @@ function WorkshopSession({
                 ] as const
               ).map((item) => (
                 <button
-                  disabled={disabled}
+                  disabled={workDisabled}
                   key={item.kind}
                   className={styles.entry}
                   data-blueprint-surface={`entry-${item.kind}`}
@@ -524,7 +533,7 @@ function WorkshopSession({
               </div>
               <button
                 className={styles.paperButton}
-                disabled={disabled}
+                disabled={workDisabled}
                 onClick={() => newProject("materials")}
               >
                 Add materials ↗
@@ -588,7 +597,7 @@ function WorkshopSession({
                             : "Your saved builds will live here."}
                         </p>
                         <button
-                          disabled={disabled}
+                          disabled={workDisabled}
                           className={styles.paperButton}
                           onClick={() =>
                             projects.length
@@ -710,7 +719,7 @@ function WorkshopSession({
                       material history.
                     </p>
                     <button
-                      disabled={disabled}
+                      disabled={workDisabled}
                       className={styles.paperButton}
                       onClick={() => open(materialProject.id)}
                     >
@@ -723,7 +732,7 @@ function WorkshopSession({
               !error && (
                 <button
                   className={styles.paperButton}
-                  disabled={disabled}
+                  disabled={workDisabled}
                   onClick={() => newProject("materials")}
                 >
                   Start with materials ↗
@@ -732,13 +741,16 @@ function WorkshopSession({
             )}
           </section>
         )}
-        {!loading && section === "Shopping list" && (
-          <SourcingPanel
-            token={token}
-            projects={projects}
-            disabled={disabled}
-            onOpen={onOpen}
-          />
+        {shoppingMounted && (
+          <div hidden={section !== "Shopping list"}>
+            <SourcingPanel
+              token={token}
+              projects={projects}
+              disabled={disabled}
+              onOpen={open}
+              onBusyChange={setResearchLocked}
+            />
+          </div>
         )}
         {!loading && section === "Explore" && (
           <section
@@ -753,7 +765,7 @@ function WorkshopSession({
               yet. Every proposed design needs its own measurements and checks.
             </p>
             <button
-              disabled={disabled}
+              disabled={workDisabled}
               className={styles.paperButton}
               onClick={() => newProject("idea")}
             >

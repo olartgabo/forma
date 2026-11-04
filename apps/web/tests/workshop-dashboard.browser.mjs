@@ -172,6 +172,11 @@ async function scenario(width, mode, savedDrawing = false) {
     writes = [];
   let listCalls = 0;
   let moreCalls = 0;
+  let researchPosts = 0;
+  let finishResearch;
+  const researchGate = new Promise((resolve) => {
+    finishResearch = resolve;
+  });
   page.on("pageerror", (error) => errors.push(error.message));
   await context.route("**/*", async (route) => {
     const request = route.request();
@@ -182,6 +187,31 @@ async function scenario(width, mode, savedDrawing = false) {
     }
     if (!url.pathname.startsWith("/api/")) return route.continue();
     assert.equal(request.headers().authorization, `Bearer ${credential}`);
+    if (
+      request.method() === "POST" &&
+      url.pathname === `/api/projects/${fixture.id}/sourcing/research`
+    ) {
+      researchPosts++;
+      const body = request.postDataJSON();
+      assert.equal(body.source, "supplier_page");
+      await researchGate;
+      return route.fulfill({
+        json: {
+          id: "retained-research",
+          project_id: fixture.id,
+          revision_id: fixture.revision_id,
+          item: body.item,
+          area: body.area,
+          currency: body.currency,
+          observed_at: "2026-11-04T12:00:00Z",
+          status: "succeeded",
+          offers: [],
+          usage: null,
+          error: null,
+          replayed: false,
+        },
+      });
+    }
     if (request.method() !== "GET") {
       writes.push(`${request.method()} ${url.pathname}`);
       return route.abort("blockedbyclient");
@@ -287,6 +317,18 @@ async function scenario(width, mode, savedDrawing = false) {
     if (url.pathname === base) return route.fulfill({ json: fixture });
     if (url.pathname === `${base}/media`)
       return route.fulfill({ json: { media: [] } });
+    if (url.pathname === `${base}/sourcing/needs`)
+      return route.fulfill({
+        json: {
+          project_id: fixture.id,
+          revision_id: fixture.revision_id,
+          active_version_id: null,
+          needs: [],
+          guidance: [],
+          marketplace_status: "authorization_required",
+          pending_run_id: null,
+        },
+      });
     if (url.pathname === `${base}/recognized-items`)
       return route.fulfill({
         json: {
@@ -527,6 +569,69 @@ async function scenario(width, mode, savedDrawing = false) {
       for (const section of ["Shopping list", "Explore"]) {
         await nav.getByRole("button", { name: section, exact: true }).click();
         await assertClosedBlueprintBorders(page);
+      }
+      if (width === 1280 && !savedDrawing) {
+        await nav
+          .getByRole("button", { name: "Shopping list", exact: true })
+          .click();
+        await page.getByLabel("Shopping project").selectOption(fixture.id);
+        await page.getByLabel("Research method").selectOption("supplier_page");
+        await page
+          .getByLabel("Supplier product URL")
+          .fill("https://supplier.example/scissors");
+        await page
+          .getByLabel("City and country", { exact: true })
+          .fill("La Paz, Bolivia");
+        await page.getByLabel("Item to research").fill("one pair of scissors");
+        await page.getByLabel("Price currency", { exact: true }).fill("BOB");
+        await nav.getByRole("button", { name: "Home", exact: true }).click();
+        await nav
+          .getByRole("button", { name: "Shopping list", exact: true })
+          .click();
+        assert.equal(
+          await page.getByLabel("Shopping project").inputValue(),
+          fixture.id,
+        );
+        assert.equal(
+          await page.getByLabel("Item to research").inputValue(),
+          "one pair of scissors",
+        );
+        assert.equal(
+          await page.getByLabel("Supplier product URL").inputValue(),
+          "https://supplier.example/scissors",
+        );
+        await page
+          .getByRole("button", { name: "Check supplier page", exact: true })
+          .click();
+        assert(await page.getByLabel("Shopping project").isDisabled());
+        assert(
+          await nav
+            .getByRole("button", { name: "Home", exact: true })
+            .isDisabled(),
+        );
+        assert(
+          await page
+            .getByRole("button", { name: /New project/ })
+            .first()
+            .isDisabled(),
+        );
+        finishResearch();
+        await page
+          .getByRole("button", { name: "Check supplier page", exact: true })
+          .waitFor();
+        await nav.getByRole("button", { name: "Home", exact: true }).click();
+        await nav
+          .getByRole("button", { name: "Shopping list", exact: true })
+          .click();
+        assert.equal(
+          await page.getByLabel("Shopping project").inputValue(),
+          fixture.id,
+        );
+        assert.equal(
+          await page.getByLabel("Item to research").inputValue(),
+          "one pair of scissors",
+        );
+        assert.equal(researchPosts, 1);
       }
       await nav
         .getByRole("button", { name: "My materials", exact: true })

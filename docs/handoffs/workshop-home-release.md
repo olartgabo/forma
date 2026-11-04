@@ -27,3 +27,9 @@ real engine-generated geometry fixtures and verifies empty/error/populated state
 navigation, pagination, draft retention, favorites, thumbnails and responsive
 layout without provider calls or project writes. This is regression coverage;
 Terra's separate computer-use acceptance runs against the actual deployed app.
+
+Shopping state stays mounted after first opening the section. Active location or
+supplier requests and unresolved outcomes lock project changes and navigation
+until the current action finishes or is reconciled. Reconciliation controls stay
+usable. The regression retains a supplier-page draft across section changes and
+checks locking during a delayed reply, then retention and unlocking afterward.

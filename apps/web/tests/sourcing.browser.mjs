@@ -289,8 +289,16 @@ try {
     assert.equal(posts[0].location.confirmed, true);
     assert.equal(posts[0].supplier_url, undefined);
     assert.equal(posts[0].source, "suppliers");
-    await page.getByLabel("Shopping project").selectOption("sourcing-b");
-    await page.getByLabel("Item to research").waitFor();
+    assert(await page.getByLabel("Shopping project").isDisabled());
+    // Reload is a genuine remount; pending receipts must recover without POST.
+    await page.reload();
+    await page.getByLabel("Owner credential").fill("synthetic-sourcing-owner");
+    await page
+      .getByRole("button", { name: "Open workbench", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Shopping list", exact: true })
+      .click();
     await page.getByLabel("Shopping project").selectOption("sourcing-a");
     await page
       .getByRole("button", { name: "Check research status", exact: true })
