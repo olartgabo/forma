@@ -19,9 +19,18 @@ geometry. Partial, failed, damaged, carried, detached and repaired physical stat
 outside the canonical producer's support show no final geometry and retain the
 SVG/manual/history fallback. Display controls cannot record physical work.
 Missing report overlays are explicitly unavailable, without blocking viewing.
-There is no persistent report source in this baseline; a later report consumer
-must verify exact geometry, project, plan, inventory, history, evidence/profile
-and supported case identity before displaying any overlay.
+The viewer now consumes the merged saved-report store through a bounded read of
+the latest 50 project/plan reports. A saved overlay must match current typed
+measurement evidence, profiles, project, plan, inventory, history, canonical hash,
+producer and engine/dependency versions. Each displayed orientation must match
+its stored case, with a completed tipping calculation. A newer measurement or
+stale/mismatched report leaves ordinary nominal viewing available.
+
+The saved center of mass, support polygon and critical edge use the same camera
+projection as the canonical facets. Selecting a saved case, orbiting, zooming and
+separating parts performs no reads, writes or analysis. Separation hides the
+world-space overlay until its display offset returns to zero. Labels distinguish
+modeled point estimates from physical verification.
 
 Orbit and tilt work through buttons or focused arrow keys; pointer drag orbits
 and native range controls provide zoom/separation. Parts have exact ID labels,
@@ -56,8 +65,15 @@ one intercepted synthetic measurement save. All other mutations and non-local
 traffic are blocked. Screenshots are saved to the operating
 system temporary directory as `forma-assembly152-390.png` and `-1280.png`.
 
-Local targeted results: Python 10 passed; Node 6 passed; browser PASS at both
-widths. Repository-wide checks and independent review are recorded by the
+The current saved-overlay follow-up adds exact-identity, producer/dependency,
+case-orientation and stale-measurement checks, plus a database read-only assertion
+with numerical analysis patched to fail if called. Its browser check selects a
+second saved case, verifies camera projection and hidden overlays during
+separation, and records screenshots as `forma-assembly-overlay-current-390.png`
+and `-1280.png` in the operating system temporary directory.
+
+Local targeted results: Python 22 passed; Node 8 passed; browser PASS at both
+widths. Generated contracts, repository-wide checks and independent review are recorded by the
 integrating owner on the final combined head. These are software observations,
 not provider, hosted or physical-build acceptance.
 

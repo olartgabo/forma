@@ -146,3 +146,73 @@ test("a foreign context stops before loading a scene", async () => {
     globalThis.fetch = original;
   }
 });
+
+test("saved overlays require exact scene identity, known cases and finite display coordinates", () => {
+  const value = response();
+  value.overlay_coverage = "available";
+  value.overlay_report_id = `stability-report-${"b".repeat(64)}`;
+  value.overlay_report = {
+    identity: {
+      project_id: "p",
+      plan_version_id: "v",
+      inventory_revision: "i",
+      history_cursor: null,
+      canonical_geometry_hash: value.geometry.geometry_hash,
+    },
+    cache_hash: "b".repeat(64),
+    geometry_version: value.geometry.producer_version,
+    status: "indeterminate",
+    coverage: "partial",
+    unresolved_predicates: ["Synthetic unresolved input"],
+    policy: { required_case_ids: ["portrait"], required_check_types: ["tip"] },
+    results: [
+      {
+        case_id: "portrait",
+        check_type: "tip",
+        status: "indeterminate",
+        computation: "complete",
+        explanation: "Synthetic display test",
+        unresolved_predicates: ["Synthetic unresolved input"],
+        quantities: [],
+      },
+    ],
+    overlays: [
+      {
+        case_id: "portrait",
+        orientation: "portrait",
+        center_of_mass: { x: 0, y: 0, z: 0 },
+        support_polygon: [
+          { x: 0, y: 0, z: 0 },
+          { x: 0.1, y: 0, z: 0 },
+          { x: 0, y: 0.1, z: 0 },
+        ],
+        critical_edge: [
+          { x: 0, y: 0, z: 0 },
+          { x: 0.1, y: 0, z: 0 },
+        ],
+        signed_margin_m: 0,
+        restoring_moment_n_m: 0,
+      },
+    ],
+  };
+  assert.equal(
+    validateView(value, expected, null).overlay_coverage,
+    "available",
+  );
+  for (const mutate of [
+    (r) => (r.overlay_report.identity.canonical_geometry_hash = "c".repeat(64)),
+    (r) => (r.overlay_report.identity.history_cursor = "stale"),
+    (r) => (r.overlay_report.identity.inventory_revision = "stale"),
+    (r) => (r.overlay_report.identity.project_id = "foreign"),
+    (r) => (r.overlay_report_id = "foreign"),
+    (r) => (r.overlay_report.geometry_version = "old-producer"),
+    (r) => (r.overlay_report.overlays[0].case_id = "unknown"),
+    (r) => r.overlay_report.overlays.push(r.overlay_report.overlays[0]),
+    (r) => (r.overlay_report.overlays[0].center_of_mass.x = 1e308),
+    (r) => (r.overlay_coverage = "unavailable"),
+  ]) {
+    const changed = structuredClone(value);
+    mutate(changed);
+    assert.throws(() => validateView(changed, expected, null));
+  }
+});

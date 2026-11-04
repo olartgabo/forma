@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { initialCamera, projectFacets } from "../projection.ts";
+import {
+  initialCamera,
+  projectFacets,
+  projectWorldPoints,
+} from "../projection.ts";
 
 const facets = [
   {
@@ -48,6 +52,21 @@ test("camera and separation project exact source facets without mutating geometr
   for (const facet of moved)
     for (const point of facet.points)
       assert.ok(Number.isFinite(point.x) && Number.isFinite(point.y));
+});
+
+test("world overlay points share the facet camera but never inherit separated-part offsets", () => {
+  const before = structuredClone(facets);
+  const camera = { ...initialCamera, yaw: 40, pitch: -20, zoom: 1.4 };
+  const points = projectWorldPoints(facets, camera, facets[0].vertices);
+  const face = projectFacets(facets, camera).find(
+    (f) => f.facet_id === facets[0].facet_id,
+  );
+  assert.deepEqual(points, face.points);
+  assert.deepEqual(
+    points,
+    projectWorldPoints(facets, { ...camera, explode: 1 }, facets[0].vertices),
+  );
+  assert.deepEqual(facets, before);
 });
 test("separation preserves each facet shape and does not double count a folded part", () => {
   const folded = [
