@@ -74,7 +74,7 @@ export function validateView(
       overlays.some(
         (item) =>
           item.support_polygon.length > 16384 ||
-          !checked.report?.results.some(
+          !checked.report?.results?.some(
             (result) =>
               result.case_id === item.case_id &&
               result.check_type === "tip" &&
