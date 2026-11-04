@@ -1306,3 +1306,18 @@ def test_validation_diagnostics_bound_paths_and_redact_unknown_properties():
         issue == {"path": ["questions", "<index>"], "type": "string_type"}
         for issue in issues
     )
+
+
+@pytest.mark.parametrize("effort", ["minimal", "low", "medium", "high", "xhigh", "max"])
+def test_explicit_reasoning_effort_is_forwarded(effort):
+    fake = Fake(final())
+    MetaGateway(fake).propose("Propose panels", Proposal, reasoning_effort=effort)
+    assert fake.calls[0][1]["reasoning_effort"] == effort
+
+
+@pytest.mark.parametrize("effort", ["none", "auto", "LOW", "", True, 1, [], {}])
+def test_invalid_reasoning_effort_rejected_before_dispatch(effort):
+    fake = Fake()
+    with pytest.raises(ValueError, match="reasoning effort"):
+        MetaGateway(fake).propose("Propose panels", Proposal, reasoning_effort=effort)
+    assert not fake.calls

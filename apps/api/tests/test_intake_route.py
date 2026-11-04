@@ -32,13 +32,21 @@ class Fake:
 
 
 def final(content=None):
+    if content:
+        try:
+            data = json.loads(content)
+            if isinstance(data, dict):
+                data.setdefault("items", [])
+                content = json.dumps(data)
+        except ValueError:
+            pass
     return {
         "choices": [
             {
                 "finish_reason": "stop",
                 "message": {
                     "content": content
-                    or '{"labels":["cardboard sheet"],"measurement_source":"unknown",'
+                    or '{"items":[],"labels":["cardboard sheet"],"measurement_source":"unknown",'
                     '"questions":["Measure thickness"]}'
                 },
             }
