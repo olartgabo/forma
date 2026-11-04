@@ -30,7 +30,8 @@ jobs:
       INSTANCE_ID: i-04b51e85b3234c59b
       SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
-      - uses: aws-actions/configure-aws-credentials@v4
+      # Pinned by SHA: this job's token can run commands as root on the host.
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: arn:aws:iam::733366527874:role/forma-github-deploy
           aws-region: us-east-1
