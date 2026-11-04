@@ -1,13 +1,13 @@
 # Issue 147 handoff: saved stability reports and MetaMuse tools
 
-Status: second review repair done; re-review pending.
+Status: second review repair verified after rebase; re-review pending.
 
 - Issue and acceptance criteria: #147. Immutable content-addressed reports,
   owner-scoped history with stale marking, bounded read-only MetaMuse tools,
   at-most-two comparison, and the listed failure-mode tests. Live MetaMuse
   acceptance is outstanding (see below).
 - Owner and reviewer: @ResniDev; feature reviewer @olartgabo.
-- Branch and commit: `issue/147-stability-reports`, based on `main` at `98e7966`.
+- Branch and commit: `issue/147-stability-reports`, rebased onto `main` at `a4f0bfb`.
 - Changed files and module boundary:
   - Dedicated (owned): `apps/api/src/forma_api/stability_reports.py`,
     `stability_muse.py`, `routes/stability_muse.py`, `routes/stability.py`,
@@ -27,10 +27,10 @@ Status: second review repair done; re-review pending.
 - Contract/schema changes and generation command: new API records only; no
   domain contract change. `npm run contracts:generate`.
 - Checks actually run (Windows, Node 22.21.0, npm 11.16.0, Python 3.12.6):
-  - `npm run check`: exit 0. Python 1683 passed; web 154 pass; devloop 18
+  - `npm run check`: exit 0. Python 1685 passed; web 159 pass; devloop 18
     pass; production build compiled.
   - New tests: `test_stability_reports.py` (10), `test_stability_muse.py` (12),
-    `stability-history.test.mjs` (7).
+    `stability-history.test.mjs` (12).
   - Browser, local Edge via Playwright: `stability-history.browser.mjs` PASS at
     390px and 1280px; existing `stability-report.browser.mjs` PASS at both
     widths. The first run caught a duplicate React key that stacked measurement
@@ -67,6 +67,9 @@ Status: second review repair done; re-review pending.
   then an invalid 2xx then a replay with one key (both fail on `15a9e98`); the
   browser flow now goes through a lost, a code-less and an invalid response
   before the reload and the replay, with all four POSTs identical.
+- Rebase onto `a4f0bfb`: the only conflict was the decision number. Main took D052
+  for the vector artwork, so this entry is now D053. After the rebase,
+  `npm run check` and both browser checks passed again at both widths.
 - Pending decisions and blockers: an independent Sol/Terra review of this diff
   before publication; feature review and exact-head remote checks before merge.
 - Next concrete action and receiving owner: Codex review (user to start), then
