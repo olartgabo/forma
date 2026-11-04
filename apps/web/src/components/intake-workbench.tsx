@@ -322,6 +322,8 @@ function ProjectWorkbench({
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
   const [planPending, setPlanPending] = useState(false);
+  const [constructionBusy, setConstructionBusy] = useState(false);
+  const [constructionReady, setConstructionReady] = useState(false);
   const [pendingRepair, setPendingRepair] = useState<{
     handoff: RepairHandoff;
     targetId: string;
@@ -1006,6 +1008,9 @@ function ProjectWorkbench({
                 disabled={locked}
                 inventoryStale={stale}
                 museAvailability={museAvailability}
+                tools={requirements.tools ?? []}
+                designBusy={constructionBusy}
+                designReady={constructionReady}
                 onStocks={changeGuided}
                 onBusy={setGuidedBusy}
                 onSave={(after) => submitInventory(stocks, after)}
@@ -1355,6 +1360,8 @@ function ProjectWorkbench({
             museAvailability={museAvailability}
           />
           <MuseConstructionPanel
+            onBusyChange={setConstructionBusy}
+            onReadyChange={setConstructionReady}
             token={token}
             project={project}
             photos={photos}

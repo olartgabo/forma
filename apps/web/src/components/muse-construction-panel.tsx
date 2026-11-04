@@ -294,6 +294,8 @@ function Candidate({
 }
 
 export default function MuseConstructionPanel(props: {
+  onBusyChange?: (busy: boolean) => void;
+  onReadyChange?: (ready: boolean) => void;
   token: string;
   project: Project;
   photos: Media[];
@@ -310,6 +312,8 @@ export default function MuseConstructionPanel(props: {
 }
 
 function ConstructionPanel({
+  onBusyChange,
+  onReadyChange,
   token,
   project,
   photos,
@@ -317,6 +321,8 @@ function ConstructionPanel({
   disabled,
   museAvailability,
 }: {
+  onBusyChange?: (busy: boolean) => void;
+  onReadyChange?: (ready: boolean) => void;
   token: string;
   project: Project;
   photos: Media[];
@@ -329,8 +335,24 @@ function ConstructionPanel({
   const [consent, setConsent] = useState(false);
   const [photoConsent, setPhotoConsent] = useState(false);
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
   const [proposalInFlight, setProposalInFlight] = useState(false);
   const [result, setResult] = useState<MuseConstructionResult | null>(null);
+  useEffect(() => {
+    onReadyChange?.(
+      !busy &&
+        result !== null &&
+        result.status !== "blocked" &&
+        result.candidates.some(
+          (candidate) => candidate.construction !== null,
+        ) &&
+        !inventoryStale,
+    );
+    return () => onReadyChange?.(false);
+  }, [busy, result, inventoryStale, onReadyChange]);
   const [error, setError] = useState<ApiError | null>(null);
   const [pending, setPending] = useState<PendingConstruction | null>(null);
   const [recoveryContext, setRecoveryContext] = useState<string | null>(null);

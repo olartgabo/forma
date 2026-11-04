@@ -38,6 +38,7 @@ import {
   validProposals,
 } from "../../lib/recognized-items";
 import IdentifiedItems from "./identified-items";
+import MaterialBoard from "../material-board";
 import {
   keepValidLink,
   linkFits,
@@ -142,6 +143,9 @@ export default function GuidedIntake({
   disabled,
   inventoryStale,
   museAvailability,
+  tools = [],
+  designBusy = false,
+  designReady = false,
   onStocks,
   onBusy,
   onSave,
@@ -157,6 +161,9 @@ export default function GuidedIntake({
   disabled: boolean;
   inventoryStale: boolean;
   museAvailability?: MuseAvailability;
+  tools?: readonly string[];
+  designBusy?: boolean;
+  designReady?: boolean;
   // Applied to the latest shared draft, never to a stale snapshot.
   onStocks: (update: (current: readonly Stock[]) => Stock[]) => void;
   // True while a guided request runs; the workbench locks Details meanwhile.
@@ -200,6 +207,9 @@ export default function GuidedIntake({
   const [busy, setBusy] = useState("");
   const [museConsent, setMuseConsent] = useState(false);
   const [samConsent, setSamConsent] = useState(false);
+  const [captureConfirmed, setCaptureConfirmed] = useState<
+    Record<string, boolean>
+  >({});
   const [retry, setRetry] = useState<PhotoEstimateRequest | null>(null);
   const [samPending, setSamPending] = useState<PhotoLocalizationRequest | null>(
     null,
@@ -663,6 +673,10 @@ export default function GuidedIntake({
       if (exact) body = exact;
       else {
         const mediaId = card.mediaId ?? photoId;
+        if (!captureConfirmed[`${card.stock.id}:${mediaId}`])
+          throw new Error(
+            "Confirm that this piece is flat and on the same surface as the reference before measuring.",
+          );
         const outline =
           outlineOverride ??
           (card.polygon
@@ -911,780 +925,864 @@ export default function GuidedIntake({
           </div>
         )}
       </div>
-
-      <details className="guided-reference">
-        <summary>
-          Size reference for this photo:{" "}
-          {draft.kind === "forma_card"
-            ? draft.lineA
-              ? `FORMA card (line A ${draft.lineA} mm)`
-              : "FORMA card — check its printed size"
-            : draft.kind === "aruco_marker"
-              ? "printed marker"
-              : "rectangle you measured"}
-        </summary>
-        <p>
-          Lay the reference flat next to your materials and keep everything in
-          one photo, taken from above.{" "}
-          <a href={REFERENCE_CARD_URL} target="_blank" rel="noopener">
-            Print the FORMA reference card
-          </a>{" "}
-          at 100 % (Actual size), then measure its printed lines with a ruler.
-          Printer scaling would otherwise change every size.
-        </p>
-        <fieldset disabled={locked}>
-          <label>
-            Reference
-            <select
-              value={draft.kind}
-              onChange={(event) => {
-                const kind = event.target.value as ReferenceDraft["kind"];
-                setReference((r) => ({
-                  ...r,
-                  [photoId]:
-                    kind === "forma_card"
-                      ? { kind, lineA: "", lineB: "" }
-                      : kind === "aruco_marker"
-                        ? { kind, side: "", markerId: "" }
-                        : { kind, width: "", height: "", corners: [] },
-                }));
-              }}
-            >
-              <option value="forma_card">FORMA card</option>
-              <option value="aruco_marker">Single ArUco marker (4×4)</option>
-              <option value="rectangle">A rectangle I measured</option>
-            </select>
-          </label>
-          {draft.kind === "forma_card" && (
-            <div className="field-row">
-              <label>
-                Line A, measured (mm)
-                <input
-                  inputMode="decimal"
-                  value={draft.lineA}
-                  placeholder="about 150"
-                  onChange={(e) =>
-                    setReference((r) => ({
-                      ...r,
-                      [photoId]: { ...draft, lineA: e.target.value },
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                Line B, measured (mm, optional)
-                <input
-                  inputMode="decimal"
-                  value={draft.lineB}
-                  placeholder="about 100"
-                  onChange={(e) =>
-                    setReference((r) => ({
-                      ...r,
-                      [photoId]: { ...draft, lineB: e.target.value },
-                    }))
-                  }
-                />
-              </label>
-            </div>
-          )}
-          {draft.kind === "aruco_marker" && (
-            <div className="field-row">
-              <label>
-                Marker side, measured (mm)
-                <input
-                  inputMode="decimal"
-                  value={draft.side}
-                  onChange={(e) =>
-                    setReference((r) => ({
-                      ...r,
-                      [photoId]: { ...draft, side: e.target.value },
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                Marker ID
-                <input
-                  inputMode="numeric"
-                  value={draft.markerId}
-                  onChange={(e) =>
-                    setReference((r) => ({
-                      ...r,
-                      [photoId]: { ...draft, markerId: e.target.value },
-                    }))
-                  }
-                />
-              </label>
-            </div>
-          )}
-          {draft.kind === "rectangle" && (
-            <>
-              <div className="field-row">
-                <label>
-                  Width, first edge (mm)
-                  <input
-                    inputMode="decimal"
-                    value={draft.width}
-                    onChange={(e) =>
-                      setReference((r) => ({
-                        ...r,
-                        [photoId]: { ...draft, width: e.target.value },
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  Height (mm)
-                  <input
-                    inputMode="decimal"
-                    value={draft.height}
-                    onChange={(e) =>
-                      setReference((r) => ({
-                        ...r,
-                        [photoId]: { ...draft, height: e.target.value },
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-              <p className="help">
-                {draft.corners.length}/4 corners placed. Tap the corners in
-                order around the rectangle, starting at one end of the width. A
-                single rectangle cannot show how accurate its own fit is.
-              </p>
-              <div className="button-row">
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => setDrawing({ card: "", what: "reference" })}
-                >
-                  Place corners on the photo
-                </button>
-                <button
-                  type="button"
-                  className="quiet"
-                  onClick={() =>
-                    setReference((r) => ({
-                      ...r,
-                      [photoId]: { ...draft, corners: [] },
-                    }))
-                  }
-                >
-                  Clear corners
-                </button>
-              </div>
-            </>
-          )}
-        </fieldset>
-        {photo && draft.kind === "rectangle" && (
-          <PhotoCanvas
-            token={token}
-            projectId={project.id}
-            photo={photo}
-            label="Photo with the reference corners"
-            reference={draft.corners}
-            editable="reference"
-            onMove={(index, point) =>
-              setReference((r) => ({
-                ...r,
-                [photoId]: {
-                  ...draft,
-                  corners: draft.corners.map((p, i) =>
-                    i === index ? point : p,
-                  ),
-                },
-              }))
-            }
-            mode={
-              drawing?.what === "reference" && draft.corners.length < 4
-                ? {
-                    kind: "add-points",
-                    limit: 4,
-                    onAdd: (point) =>
-                      setReference((r) => ({
-                        ...r,
-                        [photoId]: {
-                          ...draft,
-                          corners: [...draft.corners, point].slice(0, 4),
-                        },
-                      })),
-                  }
-                : { kind: "view" }
-            }
-          />
-        )}
-      </details>
-
-      {photos.length > 1 && (
-        <label className="guided-photo-choice">
-          Photo to work on
-          <select
-            value={photoId}
-            onChange={(event) => setPhotoId(event.target.value)}
-          >
-            {photos.map((p, i) => (
-              <option key={p.id} value={p.id}>
-                Photo {i + 1}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      {cards.length === 0 && (
-        <div className="guided-start">
-          {photo && museReady ? (
-            <>
-              <p>
-                FORMA can suggest the materials it sees. You correct anything
-                that is wrong.
-              </p>
-              <label className="consent">
-                <input
-                  type="checkbox"
-                  checked={museConsent}
-                  disabled={locked}
-                  onChange={(e) => setMuseConsent(e.target.checked)}
-                />
-                Send this photo to Meta Muse for suggestions (this request only)
-              </label>
-              <button
-                type="button"
-                className="primary"
-                disabled={locked || !museConsent || itemsState !== "ready"}
-                onClick={() => void suggest()}
-              >
-                {busy === "muse"
-                  ? "Asking Muse…"
-                  : "Suggest materials from this photo"}
-              </button>
-            </>
-          ) : (
-            <p>
-              {photo
-                ? "Muse is unavailable. Add your materials by hand."
-                : "Add a photo of your materials first, or add them by hand."}
-            </p>
-          )}
-          <button
-            type="button"
-            className={photo && museReady ? "quiet" : "secondary"}
-            disabled={locked}
-            onClick={() => addCard([null], photo?.id ?? null)}
-          >
-            Add a material by hand
-          </button>
-        </div>
-      )}
-
-      {samPending && (
-        <aside className="retry-panel">
+      <MaterialBoard
+        items={items}
+        stocks={stocks}
+        tools={tools.filter((name) => name.trim())}
+        designReady={designReady}
+        designBusy={designBusy}
+        status={
+          busy === "muse"
+            ? "Looking at your materials…"
+            : itemsState === "loading"
+              ? "Loading your saved materials…"
+              : designBusy
+                ? "Preparing your design. Your materials stay here."
+                : busy
+                  ? "Updating your materials…"
+                  : null
+        }
+        onReview={(target) => {
+          const element =
+            target === "design"
+              ? document.getElementById("muse-construction-title")
+              : target === "tools"
+                ? document.getElementById("available-tools")
+                : target
+                  ? document.getElementById(target)
+                  : document.getElementById("material-review-details");
+          if (!element) return;
+          if (target === "design") {
+            element.tabIndex = -1;
+            element.scrollIntoView({ block: "start" });
+            element.focus({ preventScroll: true });
+            return;
+          }
+          let parent = element.parentElement;
+          while (parent) {
+            if (parent instanceof HTMLDetailsElement) parent.open = true;
+            parent = parent.parentElement;
+          }
+          if (element instanceof HTMLDetailsElement) element.open = true;
+          element.scrollIntoView({ block: "start" });
+          const control = element.matches("input,textarea,select,button")
+            ? element
+            : element.querySelector("input,select,button,summary");
+          (control as HTMLElement | null)?.focus({ preventScroll: true });
+        }}
+      />
+      <details
+        id="material-review-details"
+        open={items.length === 0 && cards.length === 0}
+      >
+        <summary>Review and edit every material</summary>
+        <details className="guided-reference">
+          <summary>
+            Size reference for this photo:{" "}
+            {draft.kind === "forma_card"
+              ? draft.lineA
+                ? `FORMA card (line A ${draft.lineA} mm)`
+                : "FORMA card — check its printed size"
+              : draft.kind === "aruco_marker"
+                ? "printed marker"
+                : "rectangle you measured"}
+          </summary>
           <p>
-            An earlier SAM request has not finished. Check it before sending
-            another.
+            Lay the reference flat next to your materials and keep everything in
+            one photo, taken from above.{" "}
+            <a href={REFERENCE_CARD_URL} target="_blank" rel="noopener">
+              Print the FORMA reference card
+            </a>{" "}
+            at 100 % (Actual size), then measure its printed lines with a ruler.
+            Printer scaling would otherwise change every size.
           </p>
-          <button
-            type="button"
-            className="secondary"
-            disabled={locked}
-            onClick={() => {
-              void locate(
-                cards.find((c) => c.stock.id === samTarget) ?? null,
-                samPending,
-              );
-            }}
-          >
-            Check the earlier SAM request
-          </button>
-        </aside>
-      )}
-
-      <ol className="material-cards">
-        {cards.map((card) => {
-          const record = latestRecord(records, card.stock.id);
-          const current = record?.status === "current" ? record : null;
-          const summary = current ? estimateSummary(current.estimate) : null;
-          const fields = sizeFieldsFor(card.stock.kind);
-          const stale = stalePhotoValues(card.stock, records);
-          const cardPhoto = photos.find(
-            (p) => p.id === (card.mediaId ?? photoId),
-          );
-          const outlinePoints =
-            adjusting === card.stock.id && card.polygon
-              ? card.polygon
-              : (current?.estimate.outline_px?.map((p) => ({ ...p })) ??
-                card.polygon ??
-                undefined);
-          const highlighted = focus === card.stock.id;
-          return (
-            <li
-              key={card.stock.id}
-              className={
-                highlighted ? "material-card highlighted" : "material-card"
-              }
-              id={`card-${card.stock.id}`}
-            >
-              <div className="material-card-head">
-                <label className="material-name">
-                  <span className="visually-hidden">Name</span>
-                  <input
-                    value={nameDrafts[card.stock.id] ?? card.name}
-                    disabled={locked}
-                    onChange={(e) =>
-                      setNameDrafts((d) => ({
-                        ...d,
-                        [card.stock.id]: e.target.value,
-                      }))
-                    }
-                    onBlur={() => commitName(card)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") commitName(card);
-                    }}
-                    aria-label="Material name"
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="quiet danger"
-                  disabled={locked}
-                  onClick={() => remove(card)}
-                >
-                  Remove
-                </button>
-                <button
-                  type="button"
-                  className="quiet"
-                  disabled={locked}
-                  onClick={() => replacePiece(card)}
-                >
-                  Different piece
-                </button>
-              </div>
-              {items
-                .filter(
-                  (i) =>
-                    i.stock_id === card.stock.id && !linkFits(i, [card.stock]),
-                )
-                .map((i) => (
-                  <p key={i.id} className="warning">
-                    You identified &ldquo;{i.name}&rdquo; as something else, but
-                    this material is still a {card.stock.material}{" "}
-                    {card.stock.kind}. Remove it, or change the item back.
-                  </p>
-                ))}
+          <fieldset disabled={locked}>
+            <label>
+              Reference
+              <select
+                value={draft.kind}
+                onChange={(event) => {
+                  const kind = event.target.value as ReferenceDraft["kind"];
+                  setReference((r) => ({
+                    ...r,
+                    [photoId]:
+                      kind === "forma_card"
+                        ? { kind, lineA: "", lineB: "" }
+                        : kind === "aruco_marker"
+                          ? { kind, side: "", markerId: "" }
+                          : { kind, width: "", height: "", corners: [] },
+                  }));
+                }}
+              >
+                <option value="forma_card">FORMA card</option>
+                <option value="aruco_marker">Single ArUco marker (4×4)</option>
+                <option value="rectangle">A rectangle I measured</option>
+              </select>
+            </label>
+            {draft.kind === "forma_card" && (
               <div className="field-row">
                 <label>
-                  Type
-                  <select
-                    value={card.stock.kind}
-                    disabled={locked}
+                  Line A, measured (mm)
+                  <input
+                    inputMode="decimal"
+                    value={draft.lineA}
+                    placeholder="about 150"
                     onChange={(e) =>
-                      patch(card.stock.id, (c) => ({
-                        stock: {
-                          ...c.stock,
-                          kind: e.target.value as Stock["kind"],
-                        },
+                      setReference((r) => ({
+                        ...r,
+                        [photoId]: { ...draft, lineA: e.target.value },
                       }))
                     }
-                  >
-                    <option value="sheet">Sheet</option>
-                    <option value="strip">Strip</option>
-                    <option value="tape">Tape</option>
-                    <option value="cord">Cord</option>
-                  </select>
+                  />
                 </label>
                 <label>
-                  Material
-                  <select
-                    value={card.stock.material}
-                    disabled={locked}
+                  Line B, measured (mm, optional)
+                  <input
+                    inputMode="decimal"
+                    value={draft.lineB}
+                    placeholder="about 100"
                     onChange={(e) =>
-                      patch(card.stock.id, (c) => ({
-                        materialGuessed: false,
-                        stock: {
-                          ...c.stock,
-                          material: e.target.value as Stock["material"],
-                        },
+                      setReference((r) => ({
+                        ...r,
+                        [photoId]: { ...draft, lineB: e.target.value },
                       }))
                     }
-                  >
-                    <option value="cardboard">Cardboard</option>
-                    <option value="paperboard">Paperboard</option>
-                    <option value="other_supported">Other</option>
-                  </select>
+                  />
                 </label>
               </div>
-              {card.materialGuessed && (
+            )}
+            {draft.kind === "aruco_marker" && (
+              <div className="field-row">
+                <label>
+                  Marker side, measured (mm)
+                  <input
+                    inputMode="decimal"
+                    value={draft.side}
+                    onChange={(e) =>
+                      setReference((r) => ({
+                        ...r,
+                        [photoId]: { ...draft, side: e.target.value },
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Marker ID
+                  <input
+                    inputMode="numeric"
+                    value={draft.markerId}
+                    onChange={(e) =>
+                      setReference((r) => ({
+                        ...r,
+                        [photoId]: { ...draft, markerId: e.target.value },
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+            )}
+            {draft.kind === "rectangle" && (
+              <>
+                <div className="field-row">
+                  <label>
+                    Width, first edge (mm)
+                    <input
+                      inputMode="decimal"
+                      value={draft.width}
+                      onChange={(e) =>
+                        setReference((r) => ({
+                          ...r,
+                          [photoId]: { ...draft, width: e.target.value },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Height (mm)
+                    <input
+                      inputMode="decimal"
+                      value={draft.height}
+                      onChange={(e) =>
+                        setReference((r) => ({
+                          ...r,
+                          [photoId]: { ...draft, height: e.target.value },
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
                 <p className="help">
-                  Material type is a guess. Change it if it is wrong.
+                  {draft.corners.length}/4 corners placed. Tap the corners in
+                  order around the rectangle, starting at one end of the width.
+                  A single rectangle cannot show how accurate its own fit is.
                 </p>
-              )}
-              {cardPhoto && (
-                <PhotoCanvas
-                  token={token}
-                  projectId={project.id}
-                  photo={cardPhoto}
-                  label={`Photo of ${card.name}`}
-                  box={card.polygon ? null : card.box}
-                  outline={outlinePoints}
-                  reference={current?.estimate.reference_corners_px?.map(
-                    (p) => ({ ...p }),
-                  )}
-                  editable={adjusting === card.stock.id ? "outline" : null}
-                  onMove={(index, point) =>
-                    patch(card.stock.id, (c) => ({
-                      polygon: (c.polygon ?? []).map((p, i) =>
-                        i === index ? point : p,
-                      ),
-                    }))
-                  }
-                  mode={
-                    drawing?.card === card.stock.id && drawing.what === "box"
-                      ? {
-                          kind: "box",
-                          onBox: (box) => {
-                            patch(card.stock.id, {
-                              box,
-                              boxSource: "manual_box",
-                              polygon: null,
-                              mediaId: cardPhoto?.id ?? null,
-                            });
-                            setDrawing(null);
-                          },
-                        }
-                      : ({ kind: "view" } as Mode)
-                  }
-                />
-              )}
-              {fields.length > 0 && cardPhoto && (
                 <div className="button-row">
-                  {museReady && (
-                    <>
-                      <label className="consent">
-                        <input
-                          type="checkbox"
-                          checked={samConsent}
-                          disabled={locked}
-                          onChange={(e) => setSamConsent(e.target.checked)}
-                        />
-                        Send this photo and name to Meta SAM
-                      </label>
-                      <button
-                        type="button"
-                        className="secondary"
-                        disabled={locked || !samConsent || !!samPending}
-                        onClick={() => void locate(card)}
-                      >
-                        {busy === "sam:" + card.stock.id
-                          ? "Finding…"
-                          : "Find it in the photo"}
-                      </button>
-                    </>
-                  )}
                   <button
                     type="button"
                     className="secondary"
-                    disabled={locked}
-                    onClick={() =>
-                      setDrawing({ card: card.stock.id, what: "box" })
-                    }
+                    onClick={() => setDrawing({ card: "", what: "reference" })}
                   >
-                    {drawing?.card === card.stock.id
-                      ? "Drag across the material…"
-                      : "Draw a box"}
+                    Place corners on the photo
                   </button>
                   <button
                     type="button"
-                    className="primary"
-                    disabled={locked || (!card.box && !card.polygon)}
-                    onClick={() => void measure(card)}
+                    className="quiet"
+                    onClick={() =>
+                      setReference((r) => ({
+                        ...r,
+                        [photoId]: { ...draft, corners: [] },
+                      }))
+                    }
                   >
-                    {busy === "measure:" + card.stock.id
-                      ? "Measuring…"
-                      : "Measure from photo"}
+                    Clear corners
                   </button>
                 </div>
-              )}
-              {fields.length === 0 && (
-                <p className="help">
-                  {card.stock.kind === "tape"
-                    ? "Tape width and remaining length cannot be read from a photo."
-                    : "Cord length cannot be read from a photo."}{" "}
-                  FORMA asks for them only if they matter.
+              </>
+            )}
+          </fieldset>
+          {photo && draft.kind === "rectangle" && (
+            <PhotoCanvas
+              token={token}
+              projectId={project.id}
+              photo={photo}
+              label="Photo with the reference corners"
+              reference={draft.corners}
+              editable="reference"
+              onMove={(index, point) =>
+                setReference((r) => ({
+                  ...r,
+                  [photoId]: {
+                    ...draft,
+                    corners: draft.corners.map((p, i) =>
+                      i === index ? point : p,
+                    ),
+                  },
+                }))
+              }
+              mode={
+                drawing?.what === "reference" && draft.corners.length < 4
+                  ? {
+                      kind: "add-points",
+                      limit: 4,
+                      onAdd: (point) =>
+                        setReference((r) => ({
+                          ...r,
+                          [photoId]: {
+                            ...draft,
+                            corners: [...draft.corners, point].slice(0, 4),
+                          },
+                        })),
+                    }
+                  : { kind: "view" }
+              }
+            />
+          )}
+        </details>
+
+        {photos.length > 1 && (
+          <label className="guided-photo-choice">
+            Photo to work on
+            <select
+              value={photoId}
+              onChange={(event) => setPhotoId(event.target.value)}
+            >
+              {photos.map((p, i) => (
+                <option key={p.id} value={p.id}>
+                  Photo {i + 1}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {cards.length === 0 && (
+          <div className="guided-start">
+            {photo && museReady ? (
+              <>
+                <p>
+                  FORMA can suggest the materials it sees. You correct anything
+                  that is wrong.
                 </p>
-              )}
-              {record && record.status === "stale" && (
-                <p className="warning">
-                  Earlier estimate is out of date:{" "}
-                  {record.stale_reasons?.join(" ")} Measure again.
-                </p>
-              )}
-              {stale.length > 0 && (
-                <p className="warning">
-                  The saved photo estimate no longer matches a current
-                  measurement. Measure again or enter a ruler value.
-                </p>
-              )}
-              {current && (
-                <div className="estimate-result">
-                  {summary ? (
-                    <p>
-                      <strong>Photo estimate:</strong> {summary}
+                <label className="consent">
+                  <input
+                    type="checkbox"
+                    checked={museConsent}
+                    disabled={locked}
+                    onChange={(e) => setMuseConsent(e.target.checked)}
+                  />
+                  Send this photo to Meta Muse for suggestions (this request
+                  only)
+                </label>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={locked || !museConsent || itemsState !== "ready"}
+                  onClick={() => void suggest()}
+                >
+                  {busy === "muse"
+                    ? "Asking Muse…"
+                    : "Suggest materials from this photo"}
+                </button>
+              </>
+            ) : (
+              <p>
+                {photo
+                  ? "Muse is unavailable. Add your materials by hand."
+                  : "Add a photo of your materials first, or add them by hand."}
+              </p>
+            )}
+            <button
+              type="button"
+              className={photo && museReady ? "quiet" : "secondary"}
+              disabled={locked}
+              onClick={() => addCard([null], photo?.id ?? null)}
+            >
+              Add a material by hand
+            </button>
+          </div>
+        )}
+
+        {samPending && (
+          <aside className="retry-panel">
+            <p>
+              An earlier SAM request has not finished. Check it before sending
+              another.
+            </p>
+            <button
+              type="button"
+              className="secondary"
+              disabled={locked}
+              onClick={() => {
+                void locate(
+                  cards.find((c) => c.stock.id === samTarget) ?? null,
+                  samPending,
+                );
+              }}
+            >
+              Check the earlier SAM request
+            </button>
+          </aside>
+        )}
+
+        <ol className="material-cards">
+          {cards.map((card) => {
+            const record = latestRecord(records, card.stock.id);
+            const current = record?.status === "current" ? record : null;
+            const summary = current ? estimateSummary(current.estimate) : null;
+            const fields = sizeFieldsFor(card.stock.kind);
+            const stale = stalePhotoValues(card.stock, records);
+            const cardPhoto = photos.find(
+              (p) => p.id === (card.mediaId ?? photoId),
+            );
+            const outlinePoints =
+              adjusting === card.stock.id && card.polygon
+                ? card.polygon
+                : (current?.estimate.outline_px?.map((p) => ({ ...p })) ??
+                  card.polygon ??
+                  undefined);
+            const highlighted = focus === card.stock.id;
+            return (
+              <li
+                key={card.stock.id}
+                className={
+                  highlighted ? "material-card highlighted" : "material-card"
+                }
+                id={`card-${card.stock.id}`}
+              >
+                <div className="material-card-head">
+                  <label className="material-name">
+                    <span className="visually-hidden">Name</span>
+                    <input
+                      value={nameDrafts[card.stock.id] ?? card.name}
+                      disabled={locked}
+                      onChange={(e) =>
+                        setNameDrafts((d) => ({
+                          ...d,
+                          [card.stock.id]: e.target.value,
+                        }))
+                      }
+                      onBlur={() => commitName(card)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitName(card);
+                      }}
+                      aria-label="Material name"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="quiet danger"
+                    disabled={locked}
+                    onClick={() => remove(card)}
+                  >
+                    Remove
+                  </button>
+                  <button
+                    type="button"
+                    className="quiet"
+                    disabled={locked}
+                    onClick={() => replacePiece(card)}
+                  >
+                    Different piece
+                  </button>
+                </div>
+                {items
+                  .filter(
+                    (i) =>
+                      i.stock_id === card.stock.id &&
+                      !linkFits(i, [card.stock]),
+                  )
+                  .map((i) => (
+                    <p key={i.id} className="warning">
+                      You identified &ldquo;{i.name}&rdquo; as something else,
+                      but this material is still a {card.stock.material}{" "}
+                      {card.stock.kind}. Remove it, or change the item back.
                     </p>
-                  ) : (
-                    <p className="warning">{current.estimate.request}</p>
-                  )}
-                  {current.estimate.outcome === "enclosing_only" && (
-                    <p className="help">{current.estimate.request}</p>
-                  )}
-                  <details>
-                    <summary>Details</summary>
-                    <dl className="estimate-details">
-                      {(current.estimate.dimensions ?? []).map((d) => (
-                        <div key={d.name}>
-                          <dt>{d.definition}</dt>
-                          <dd>
-                            {d.display_value} {d.unit === "mm2" ? "mm²" : "mm"}{" "}
-                            (sensitivity range {Math.round(d.sensitivity_low)}–
-                            {Math.round(d.sensitivity_high)})
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                    {current.estimate.uncertainty && (
-                      <p className="help">
-                        {current.estimate.uncertainty.statement}
-                      </p>
+                  ))}
+                <div className="field-row">
+                  <label>
+                    Type
+                    <select
+                      value={card.stock.kind}
+                      disabled={locked}
+                      onChange={(e) =>
+                        patch(card.stock.id, (c) => ({
+                          stock: {
+                            ...c.stock,
+                            kind: e.target.value as Stock["kind"],
+                          },
+                        }))
+                      }
+                    >
+                      <option value="sheet">Sheet</option>
+                      <option value="strip">Strip</option>
+                      <option value="tape">Tape</option>
+                      <option value="cord">Cord</option>
+                    </select>
+                  </label>
+                  <label>
+                    Material
+                    <select
+                      value={card.stock.material}
+                      disabled={locked}
+                      onChange={(e) =>
+                        patch(card.stock.id, (c) => ({
+                          materialGuessed: false,
+                          stock: {
+                            ...c.stock,
+                            material: e.target.value as Stock["material"],
+                          },
+                        }))
+                      }
+                    >
+                      <option value="cardboard">Cardboard</option>
+                      <option value="paperboard">Paperboard</option>
+                      <option value="other_supported">Other</option>
+                    </select>
+                  </label>
+                </div>
+                {card.materialGuessed && (
+                  <p className="help">
+                    Material type is a guess. Change it if it is wrong.
+                  </p>
+                )}
+                {cardPhoto && (
+                  <PhotoCanvas
+                    token={token}
+                    projectId={project.id}
+                    photo={cardPhoto}
+                    label={`Photo of ${card.name}`}
+                    box={card.polygon ? null : card.box}
+                    outline={outlinePoints}
+                    reference={current?.estimate.reference_corners_px?.map(
+                      (p) => ({ ...p }),
                     )}
-                    {current.estimate.uncertainty?.holdout_max_error_mm !=
-                      null && (
-                      <p className="help">
-                        Independent card-marker check: worst error{" "}
-                        {current.estimate.uncertainty.holdout_max_error_mm.toFixed(
-                          1,
-                        )}{" "}
-                        mm over {current.estimate.uncertainty.holdout_checks}{" "}
-                        markers.
-                      </p>
-                    )}
-                    <ul>
-                      {(current.estimate.diagnostics ?? [])
-                        .filter((d) => d.severity !== "info")
-                        .map((d, i) => (
-                          <li key={i}>{d.message}</li>
-                        ))}
-                    </ul>
-                    <p className="help">
-                      Assumptions:{" "}
-                      {(current.estimate.assumptions ?? []).join(" ")}
-                    </p>
-                    <p className="help">
-                      Internal ID {card.stock.id}; method{" "}
-                      {current.estimate.method_version}; lens{" "}
-                      {current.estimate.calibration_status}.
-                    </p>
-                  </details>
+                    editable={adjusting === card.stock.id ? "outline" : null}
+                    onMove={(index, point) =>
+                      patch(card.stock.id, (c) => ({
+                        polygon: (c.polygon ?? []).map((p, i) =>
+                          i === index ? point : p,
+                        ),
+                      }))
+                    }
+                    mode={
+                      drawing?.card === card.stock.id && drawing.what === "box"
+                        ? {
+                            kind: "box",
+                            onBox: (box) => {
+                              patch(card.stock.id, {
+                                box,
+                                boxSource: "manual_box",
+                                polygon: null,
+                                mediaId: cardPhoto?.id ?? null,
+                              });
+                              setDrawing(null);
+                            },
+                          }
+                        : ({ kind: "view" } as Mode)
+                    }
+                  />
+                )}
+                {fields.length > 0 && cardPhoto && (
                   <div className="button-row">
-                    {(current.estimate.outline_px?.length ?? 0) > 2 &&
-                      adjusting !== card.stock.id && (
+                    <label className="consent">
+                      <input
+                        type="checkbox"
+                        checked={
+                          captureConfirmed[
+                            `${card.stock.id}:${cardPhoto.id}`
+                          ] ?? false
+                        }
+                        disabled={locked}
+                        onChange={(event) =>
+                          setCaptureConfirmed((current) => ({
+                            ...current,
+                            [`${card.stock.id}:${cardPhoto.id}`]:
+                              event.target.checked,
+                          }))
+                        }
+                      />
+                      This piece is flat, not folded or stacked, and lies on the
+                      same surface as the reference in this photo.
+                    </label>
+                    {museReady && (
+                      <>
+                        <label className="consent">
+                          <input
+                            type="checkbox"
+                            checked={samConsent}
+                            disabled={locked}
+                            onChange={(e) => setSamConsent(e.target.checked)}
+                          />
+                          Send this photo and name to Meta SAM
+                        </label>
                         <button
                           type="button"
-                          className="quiet"
-                          disabled={locked}
+                          className="secondary"
+                          disabled={locked || !samConsent || !!samPending}
+                          onClick={() => void locate(card)}
+                        >
+                          {busy === "sam:" + card.stock.id
+                            ? "Finding…"
+                            : "Find it in the photo"}
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={locked}
+                      onClick={() =>
+                        setDrawing({ card: card.stock.id, what: "box" })
+                      }
+                    >
+                      {drawing?.card === card.stock.id
+                        ? "Drag across the material…"
+                        : "Draw a box"}
+                    </button>
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={
+                        locked ||
+                        (!card.box && !card.polygon) ||
+                        !captureConfirmed[`${card.stock.id}:${cardPhoto.id}`]
+                      }
+                      onClick={() => void measure(card)}
+                    >
+                      {busy === "measure:" + card.stock.id
+                        ? "Measuring…"
+                        : "Measure from photo"}
+                    </button>
+                  </div>
+                )}
+                {fields.length === 0 && (
+                  <p className="help">
+                    {card.stock.kind === "tape"
+                      ? "Tape width and remaining length cannot be read from a photo."
+                      : "Cord length cannot be read from a photo."}{" "}
+                    FORMA asks for them only if they matter.
+                  </p>
+                )}
+                {record && record.status === "stale" && (
+                  <p className="warning">
+                    Earlier estimate is out of date:{" "}
+                    {record.stale_reasons?.join(" ")} Measure again.
+                  </p>
+                )}
+                {stale.length > 0 && (
+                  <p className="warning">
+                    The saved photo estimate no longer matches a current
+                    measurement. Measure again or enter a ruler value.
+                  </p>
+                )}
+                {current && (
+                  <div className="estimate-result">
+                    {summary ? (
+                      <p>
+                        <strong>Photo estimate:</strong> {summary}
+                      </p>
+                    ) : (
+                      <p className="warning">{current.estimate.request}</p>
+                    )}
+                    {current.estimate.outcome === "enclosing_only" && (
+                      <p className="help">{current.estimate.request}</p>
+                    )}
+                    <details>
+                      <summary>Details</summary>
+                      <dl className="estimate-details">
+                        {(current.estimate.dimensions ?? []).map((d) => (
+                          <div key={d.name}>
+                            <dt>{d.definition}</dt>
+                            <dd>
+                              {d.display_value}{" "}
+                              {d.unit === "mm2" ? "mm²" : "mm"} (sensitivity
+                              range {Math.round(d.sensitivity_low)}–
+                              {Math.round(d.sensitivity_high)})
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                      {current.estimate.uncertainty && (
+                        <p className="help">
+                          {current.estimate.uncertainty.statement}
+                        </p>
+                      )}
+                      {current.estimate.uncertainty?.holdout_max_error_mm !=
+                        null && (
+                        <p className="help">
+                          Independent card-marker check: worst error{" "}
+                          {current.estimate.uncertainty.holdout_max_error_mm.toFixed(
+                            1,
+                          )}{" "}
+                          mm over {current.estimate.uncertainty.holdout_checks}{" "}
+                          markers.
+                        </p>
+                      )}
+                      <ul>
+                        {(current.estimate.diagnostics ?? [])
+                          .filter((d) => d.severity !== "info")
+                          .map((d, i) => (
+                            <li key={i}>{d.message}</li>
+                          ))}
+                      </ul>
+                      <p className="help">
+                        Assumptions:{" "}
+                        {(current.estimate.assumptions ?? []).join(" ")}
+                      </p>
+                      <p className="help">
+                        Internal ID {card.stock.id}; method{" "}
+                        {current.estimate.method_version}; lens{" "}
+                        {current.estimate.calibration_status}.
+                      </p>
+                    </details>
+                    <div className="button-row">
+                      {(current.estimate.outline_px?.length ?? 0) > 2 &&
+                        adjusting !== card.stock.id && (
+                          <button
+                            type="button"
+                            className="quiet"
+                            disabled={locked}
+                            onClick={() => {
+                              patch(card.stock.id, {
+                                polygon: editablePoints(
+                                  current.estimate.outline_px!.map((p) => ({
+                                    ...p,
+                                  })),
+                                ),
+                              });
+                              setAdjusting(card.stock.id);
+                            }}
+                          >
+                            Adjust outline
+                          </button>
+                        )}
+                      {adjusting === card.stock.id && card.polygon && (
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={
+                            locked ||
+                            !captureConfirmed[
+                              `${card.stock.id}:${card.mediaId ?? photoId}`
+                            ]
+                          }
                           onClick={() => {
-                            patch(card.stock.id, {
-                              polygon: editablePoints(
-                                current.estimate.outline_px!.map((p) => ({
-                                  ...p,
-                                })),
-                              ),
-                            });
-                            setAdjusting(card.stock.id);
+                            setAdjusting(null);
+                            void measure(card, polygonOutline(card.polygon!));
                           }}
                         >
-                          Adjust outline
+                          Measure the adjusted outline
                         </button>
                       )}
-                    {adjusting === card.stock.id && card.polygon && (
+                    </div>
+                  </div>
+                )}
+                {fields.length > 0 && (
+                  <div className="size-actions">
+                    {fields.map((field) => {
+                      const state = sizeState(card.stock[field]);
+                      return (
+                        <p key={field} className="size-line">
+                          {FIELD_LABEL[field]}:{" "}
+                          {state.state === "unknown"
+                            ? "unknown"
+                            : state.state === "photo"
+                              ? `${state.value} mm (photo estimate)`
+                              : state.state === "measured"
+                                ? `${state.value} mm (measured)`
+                                : `${state.value ?? "?"} mm (${state.source})`}
+                        </p>
+                      );
+                    })}
+                    <div className="button-row">
+                      {summary &&
+                        current?.estimate.outcome === "estimate" &&
+                        fields.some(
+                          (field) =>
+                            card.stock[field].source !== "photo_estimate" ||
+                            stale.includes(field),
+                        ) && (
+                          <button
+                            type="button"
+                            className="secondary"
+                            disabled={locked}
+                            onClick={() => {
+                              try {
+                                patch(card.stock.id, (c) => ({
+                                  stock: applyEstimate(c.stock, current),
+                                }));
+                              } catch (failure) {
+                                setError((failure as Error).message);
+                              }
+                            }}
+                          >
+                            Save estimated dimensions
+                          </button>
+                        )}
+                      <button
+                        type="button"
+                        className="quiet"
+                        disabled={locked}
+                        onClick={() =>
+                          patch(card.stock.id, (c) => ({
+                            stock: fields.reduce(
+                              (s, f) => clearValue(s, f),
+                              c.stock,
+                            ),
+                          }))
+                        }
+                      >
+                        I don&apos;t know
+                      </button>
+                    </div>
+                    <p className="help">
+                      Estimated dimensions are saved as unconfirmed. Before a
+                      buildable design, the app may ask you to measure a size
+                      with a ruler.
+                    </p>
+                    <details className="ruler-entry">
+                      <summary>I measured it with a ruler</summary>
+                      <div className="field-row">
+                        {fields.map((field) => (
+                          <label key={field}>
+                            {FIELD_LABEL[field]} (mm)
+                            <input
+                              inputMode="decimal"
+                              value={ruler[card.stock.id]?.[field] ?? ""}
+                              onChange={(e) =>
+                                setRuler((r) => ({
+                                  ...r,
+                                  [card.stock.id]: {
+                                    ...r[card.stock.id],
+                                    [field]: e.target.value,
+                                  },
+                                }))
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
                       <button
                         type="button"
                         className="secondary"
                         disabled={locked}
                         onClick={() => {
-                          setAdjusting(null);
-                          void measure(card, polygonOutline(card.polygon!));
+                          try {
+                            let next = card.stock;
+                            for (const field of fields) {
+                              const raw = ruler[card.stock.id]?.[field]?.trim();
+                              if (raw)
+                                next = recordRuler(
+                                  next,
+                                  field,
+                                  Number(raw.replace(",", ".")),
+                                );
+                            }
+                            patch(card.stock.id, { stock: next });
+                          } catch (failure) {
+                            setError((failure as Error).message);
+                          }
                         }}
                       >
-                        Measure the adjusted outline
+                        Record ruler measurement
                       </button>
-                    )}
+                    </details>
                   </div>
-                </div>
-              )}
-              {fields.length > 0 && (
-                <div className="size-actions">
-                  {fields.map((field) => {
-                    const state = sizeState(card.stock[field]);
-                    return (
-                      <p key={field} className="size-line">
-                        {FIELD_LABEL[field]}:{" "}
-                        {state.state === "unknown"
-                          ? "unknown"
-                          : state.state === "photo"
-                            ? `${state.value} mm (photo estimate)`
-                            : state.state === "measured"
-                              ? `${state.value} mm (measured)`
-                              : `${state.value ?? "?"} mm (${state.source})`}
-                      </p>
-                    );
-                  })}
-                  <div className="button-row">
-                    {summary &&
-                      current?.estimate.outcome === "estimate" &&
-                      fields.some(
-                        (field) =>
-                          card.stock[field].source !== "photo_estimate" ||
-                          stale.includes(field),
-                      ) && (
-                        <button
-                          type="button"
-                          className="secondary"
-                          disabled={locked}
-                          onClick={() => {
-                            try {
-                              patch(card.stock.id, (c) => ({
-                                stock: applyEstimate(c.stock, current),
-                              }));
-                            } catch (failure) {
-                              setError((failure as Error).message);
-                            }
-                          }}
-                        >
-                          Save estimated dimensions
-                        </button>
-                      )}
-                    <button
-                      type="button"
-                      className="quiet"
-                      disabled={locked}
-                      onClick={() =>
-                        patch(card.stock.id, (c) => ({
-                          stock: fields.reduce(
-                            (s, f) => clearValue(s, f),
-                            c.stock,
-                          ),
-                        }))
-                      }
-                    >
-                      I don&apos;t know
-                    </button>
-                  </div>
-                  <p className="help">
-                    Estimated dimensions are saved as unconfirmed. Before a
-                    buildable design, the app may ask you to measure a size with
-                    a ruler.
-                  </p>
-                  <details className="ruler-entry">
-                    <summary>I measured it with a ruler</summary>
-                    <div className="field-row">
-                      {fields.map((field) => (
-                        <label key={field}>
-                          {FIELD_LABEL[field]} (mm)
-                          <input
-                            inputMode="decimal"
-                            value={ruler[card.stock.id]?.[field] ?? ""}
-                            onChange={(e) =>
-                              setRuler((r) => ({
-                                ...r,
-                                [card.stock.id]: {
-                                  ...r[card.stock.id],
-                                  [field]: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </label>
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={locked}
-                      onClick={() => {
-                        try {
-                          let next = card.stock;
-                          for (const field of fields) {
-                            const raw = ruler[card.stock.id]?.[field]?.trim();
-                            if (raw)
-                              next = recordRuler(
-                                next,
-                                field,
-                                Number(raw.replace(",", ".")),
-                              );
-                          }
-                          patch(card.stock.id, { stock: next });
-                        } catch (failure) {
-                          setError((failure as Error).message);
-                        }
-                      }}
-                    >
-                      Record ruler measurement
-                    </button>
-                  </details>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-      <IdentifiedItems
-        token={token}
-        projectId={project.id}
-        items={items}
-        photos={photos}
-        stocks={stocks}
-        problems={itemProblems}
-        locked={locked || itemsState !== "ready"}
-        onChange={changeItem}
-        onRemove={(id) =>
-          changeItems((current) => current.filter((i) => i.id !== id))
-        }
-        onUseAsMaterial={useAsMaterial}
-      />
-      {(cards.length > 0 || items.length > 0 || itemsDirty) && (
-        <div className="guided-save">
-          <button
-            type="button"
-            className="quiet"
-            disabled={locked}
-            onClick={() => addCard([null], photo?.id ?? null)}
-          >
-            Add another material
-          </button>
-          <button
-            type="button"
-            className="primary"
-            disabled={locked || inventoryStale || (!dirty && !itemsDirty)}
-            onClick={() => {
-              if (dirty) {
-                onSave(
-                  itemsDirty ? () => setItemsSaveTick((t) => t + 1) : undefined,
-                );
-              } else void saveItems();
-            }}
-          >
-            Save materials
-          </button>
-          <span className="help">
-            {dirty || itemsDirty
-              ? "Unsaved changes. Unknown sizes stay unknown; photo estimates stay estimates."
-              : project.inventory_confirmed
-                ? "Materials saved."
-                : ""}
-          </span>
-        </div>
-      )}
-
+                )}
+              </li>
+            );
+          })}
+        </ol>
+        <IdentifiedItems
+          token={token}
+          projectId={project.id}
+          items={items}
+          photos={photos}
+          stocks={stocks}
+          problems={itemProblems}
+          locked={locked || itemsState !== "ready"}
+          onChange={changeItem}
+          onRemove={(id) =>
+            changeItems((current) => current.filter((i) => i.id !== id))
+          }
+          onUseAsMaterial={useAsMaterial}
+        />
+        {(cards.length > 0 || items.length > 0 || itemsDirty) && (
+          <div className="guided-save">
+            <button
+              type="button"
+              className="quiet"
+              disabled={locked}
+              onClick={() => addCard([null], photo?.id ?? null)}
+            >
+              Add another material
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={locked || inventoryStale || (!dirty && !itemsDirty)}
+              onClick={() => {
+                if (dirty) {
+                  onSave(
+                    itemsDirty
+                      ? () => setItemsSaveTick((t) => t + 1)
+                      : undefined,
+                  );
+                } else void saveItems();
+              }}
+            >
+              Save materials
+            </button>
+            <span className="help">
+              {dirty || itemsDirty
+                ? "Unsaved changes. Unknown sizes stay unknown; photo estimates stay estimates."
+                : project.inventory_confirmed
+                  ? "Materials saved."
+                  : ""}
+            </span>
+          </div>
+        )}
+      </details>
       {ready && (
         <section
           className="next-question"

@@ -902,3 +902,7 @@ Recognition accuracy is not evaluated: no labelled real photographs exist in
 this checkout. `forma_api.recognition_evaluate` scores recorded proposals
 against such a set and refuses a coverage claim until every category and scene
 type has real labelled instances.
+
+## D062 — Illustrated material review board (November 4, 2026)
+
+Use the supplied 60 front-facing cutouts as representative art over the shared guided-intake draft. Show at most six cutouts on desktop and three on phones, preserving full editable records below. Recognition does not grant fabrication support. CSS derives crisp offset shadows from image alpha; no runtime image generation or artificial discovery timing. Request state drives loading, and actual returned construction plans enable design navigation. See [handoff](handoffs/material-board.md).

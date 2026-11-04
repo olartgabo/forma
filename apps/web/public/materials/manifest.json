@@ -1,0 +1,485 @@
+{
+  "source": "material-library-reference-pose-20261104",
+  "records": [
+    {
+      "file": "01-corrugated-cardboard.webp",
+      "sourceBytes": 2012015,
+      "bytes": 87370,
+      "width": 576,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "02-thin-packaging-card.webp",
+      "sourceBytes": 1162830,
+      "bytes": 45034,
+      "width": 401,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "03-cardstock.webp",
+      "sourceBytes": 1437889,
+      "bytes": 34364,
+      "width": 541,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "04-printer-paper.webp",
+      "sourceBytes": 1129719,
+      "bytes": 43934,
+      "width": 567,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "05-kraft-paper.webp",
+      "sourceBytes": 1604868,
+      "bytes": 86586,
+      "width": 557,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "06-paper-tube.webp",
+      "sourceBytes": 814890,
+      "bytes": 51238,
+      "width": 312,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "07-egg-carton.webp",
+      "sourceBytes": 1323818,
+      "bytes": 108226,
+      "width": 702,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "08-paper-cup.webp",
+      "sourceBytes": 646660,
+      "bytes": 28124,
+      "width": 569,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "09-craft-stick.webp",
+      "sourceBytes": 343246,
+      "bytes": 21178,
+      "width": 181,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "10-bamboo-skewer.webp",
+      "sourceBytes": 148299,
+      "bytes": 16112,
+      "width": 140,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "11-toothpick.webp",
+      "sourceBytes": 155755,
+      "bytes": 14284,
+      "width": 116,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "12-wooden-dowel.webp",
+      "sourceBytes": 265103,
+      "bytes": 18310,
+      "width": 160,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "13-wood-strip.webp",
+      "sourceBytes": 322132,
+      "bytes": 21380,
+      "width": 180,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "14-wood-offcut.webp",
+      "sourceBytes": 997852,
+      "bytes": 110940,
+      "width": 720,
+      "height": 563,
+      "transparent": true
+    },
+    {
+      "file": "15-plywood-sheet.webp",
+      "sourceBytes": 1685714,
+      "bytes": 65390,
+      "width": 648,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "16-cork-sheet.webp",
+      "sourceBytes": 2115632,
+      "bytes": 167226,
+      "width": 551,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "17-plastic-bottle.webp",
+      "sourceBytes": 570231,
+      "bytes": 29698,
+      "width": 253,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "18-bottle-cap.webp",
+      "sourceBytes": 1076455,
+      "bytes": 59588,
+      "width": 720,
+      "height": 683,
+      "transparent": true
+    },
+    {
+      "file": "19-food-container.webp",
+      "sourceBytes": 643502,
+      "bytes": 28366,
+      "width": 720,
+      "height": 458,
+      "transparent": true
+    },
+    {
+      "file": "20-plastic-lid.webp",
+      "sourceBytes": 993574,
+      "bytes": 48660,
+      "width": 689,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "21-plastic-sheet.webp",
+      "sourceBytes": 1383101,
+      "bytes": 124468,
+      "width": 562,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "22-plastic-packaging-tray.webp",
+      "sourceBytes": 850338,
+      "bytes": 40084,
+      "width": 720,
+      "height": 479,
+      "transparent": true
+    },
+    {
+      "file": "23-drinking-straw.webp",
+      "sourceBytes": 168178,
+      "bytes": 14860,
+      "width": 134,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "24-pvc-pipe.webp",
+      "sourceBytes": 968747,
+      "bytes": 29964,
+      "width": 720,
+      "height": 607,
+      "transparent": true
+    },
+    {
+      "file": "25-foam-board.webp",
+      "sourceBytes": 1119189,
+      "bytes": 37308,
+      "width": 515,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "26-eva-foam.webp",
+      "sourceBytes": 1389473,
+      "bytes": 57892,
+      "width": 572,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "27-expanded-polystyrene.webp",
+      "sourceBytes": 756882,
+      "bytes": 72164,
+      "width": 720,
+      "height": 558,
+      "transparent": true
+    },
+    {
+      "file": "28-packing-foam.webp",
+      "sourceBytes": 1360994,
+      "bytes": 124222,
+      "width": 720,
+      "height": 526,
+      "transparent": true
+    },
+    {
+      "file": "29-sponge.webp",
+      "sourceBytes": 999586,
+      "bytes": 87538,
+      "width": 720,
+      "height": 506,
+      "transparent": true
+    },
+    {
+      "file": "30-felt.webp",
+      "sourceBytes": 1889464,
+      "bytes": 131608,
+      "width": 546,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "31-fabric-scrap.webp",
+      "sourceBytes": 1700594,
+      "bytes": 123010,
+      "width": 510,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "32-denim-scrap.webp",
+      "sourceBytes": 2286364,
+      "bytes": 184132,
+      "width": 613,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "33-duct-tape.webp",
+      "sourceBytes": 2071109,
+      "bytes": 115564,
+      "width": 675,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "34-masking-tape.webp",
+      "sourceBytes": 1255710,
+      "bytes": 74108,
+      "width": 623,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "35-clear-tape.webp",
+      "sourceBytes": 1167925,
+      "bytes": 99430,
+      "width": 642,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "36-double-sided-tape.webp",
+      "sourceBytes": 1411150,
+      "bytes": 73648,
+      "width": 634,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "37-electrical-tape.webp",
+      "sourceBytes": 1188230,
+      "bytes": 82576,
+      "width": 631,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "38-white-glue.webp",
+      "sourceBytes": 517612,
+      "bytes": 18066,
+      "width": 296,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "39-glue-stick.webp",
+      "sourceBytes": 423966,
+      "bytes": 13764,
+      "width": 186,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "40-hot-glue-stick.webp",
+      "sourceBytes": 215400,
+      "bytes": 15138,
+      "width": 150,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "41-string-twine.webp",
+      "sourceBytes": 1356862,
+      "bytes": 107764,
+      "width": 663,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "42-zip-tie.webp",
+      "sourceBytes": 176124,
+      "bytes": 12956,
+      "width": 128,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "43-rubber-band.webp",
+      "sourceBytes": 340857,
+      "bytes": 49026,
+      "width": 481,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "44-paper-clip.webp",
+      "sourceBytes": 389778,
+      "bytes": 45624,
+      "width": 270,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "45-binder-clip.webp",
+      "sourceBytes": 731469,
+      "bytes": 67142,
+      "width": 647,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "46-aluminum-foil.webp",
+      "sourceBytes": 1448069,
+      "bytes": 76252,
+      "width": 595,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "47-wire.webp",
+      "sourceBytes": 1059601,
+      "bytes": 110488,
+      "width": 682,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "48-nut-and-bolt.webp",
+      "sourceBytes": 856949,
+      "bytes": 59108,
+      "width": 720,
+      "height": 417,
+      "transparent": true
+    },
+    {
+      "file": "49-scissors.webp",
+      "sourceBytes": 460992,
+      "bytes": 33560,
+      "width": 365,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "50-utility-knife.webp",
+      "sourceBytes": 342824,
+      "bytes": 23944,
+      "width": 182,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "51-ruler.webp",
+      "sourceBytes": 329974,
+      "bytes": 20410,
+      "width": 147,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "52-measuring-tape.webp",
+      "sourceBytes": 769264,
+      "bytes": 43442,
+      "width": 720,
+      "height": 524,
+      "transparent": true
+    },
+    {
+      "file": "53-pencil.webp",
+      "sourceBytes": 219932,
+      "bytes": 17042,
+      "width": 139,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "54-cutting-mat.webp",
+      "sourceBytes": 1412118,
+      "bytes": 46214,
+      "width": 720,
+      "height": 484,
+      "transparent": true
+    },
+    {
+      "file": "55-hot-glue-gun.webp",
+      "sourceBytes": 833640,
+      "bytes": 80416,
+      "width": 693,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "56-screwdriver.webp",
+      "sourceBytes": 288075,
+      "bytes": 18362,
+      "width": 157,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "57-pliers.webp",
+      "sourceBytes": 497201,
+      "bytes": 31952,
+      "width": 235,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "58-hand-saw.webp",
+      "sourceBytes": 537215,
+      "bytes": 31742,
+      "width": 231,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "59-drill.webp",
+      "sourceBytes": 946453,
+      "bytes": 42264,
+      "width": 549,
+      "height": 720,
+      "transparent": true
+    },
+    {
+      "file": "60-clamp.webp",
+      "sourceBytes": 532360,
+      "bytes": 50758,
+      "width": 326,
+      "height": 720,
+      "transparent": true
+    }
+  ]
+}

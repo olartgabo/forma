@@ -1,3 +1,27 @@
+## Latest authorization — November 4, 2026: bounded app-runtime tests
+
+The user explicitly authorizes new MetaMuse calls for FORMA app-runtime and live
+end-to-end tests, and requests removing obsolete blockers while retaining good
+operating practices. This supersedes older blanket prohibitions tied to an expired
+external verification window for these explicitly requested runtime tests only.
+Do not renew or change the coding guard settings or its expiry to enable runtime.
+Preserve both coding STOP files; Meta/Muse/OpenCode coding workers and Meta-backed
+coding compaction remain prohibited. This does not change coding authorization.
+
+Before each live run, record a concrete scope, allowed app stages/model, maximum
+provider-call count, input/output token limits and a fixed finite end time. Use
+separate runtime controls; do not remove or bypass the coding STOPs. No automatic
+renewal, recurring probes or unlimited calls are authorized. Keep credentials
+server-only, append durable reservations before dispatch, and record outcomes and
+actual provider-reported usage metadata. Estimates are not actual billing. Preserve
+existing journals and do not change payments or invent funding balances.
+
+Historical unknown billing remains recorded as unknown and must never be relabeled
+settled without evidence. It does not impose an indefinite global ban on unrelated
+new calls explicitly authorized by the user. An unknown outcome in the current run
+halts that run; do not blindly retry that request. Reconcile its outcome before any
+future retry. New authorization never silently resolves or erases an old unknown.
+
 # Working in FORMA
 
 Read the complete [formspec.md](formspec.md) before implementation. Then read
