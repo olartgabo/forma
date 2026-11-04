@@ -89,6 +89,17 @@ displayed value for that stock, field and linked photo. GET
 `/api/photo-reference-card.svg` is the public printable reference. See the
 [photo measurement handoff](handoffs/issue-177-photo-measurement.md).
 
+The intake observation also returns `items`: one `ItemProposal` per visible
+object, constrained to the 48 recognition categories in
+`forma_domain.material_catalog` with `other` and `uncertain` outcomes and up to
+three alternatives; a pile is `group_count_unknown`, never a count. GET/PUT
+`/api/projects/{id}/recognized-items` stores the editable `RecognizedItem`
+cards (stable ID, display name, identity and who set it, approximate box, link
+to a saved stock) under their own revision and idempotency key. Only the
+categories mapped to existing build rules may link to a stock of the matching
+kind and material; saving cards never creates, measures or confirms stock. See
+the [material catalog handoff](handoffs/issue-177-material-catalog.md).
+
 Every mutation validates authenticated project scope, runtime input and
 idempotency. `adapt/commit` checks expected active version and returns 409 for
 stale writes. Neither simulation nor provider tools activate a plan.

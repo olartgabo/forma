@@ -1271,3 +1271,54 @@ figcaption span {
     width: 100%;
   }
 }
+
+/* Identified items (#177 follow-up) */
+.identified-items {
+  display: grid;
+  gap: 10px;
+}
+.identified-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+.identified-card {
+  border: 1px dashed var(--line);
+  background: #fff;
+  padding: 12px 16px;
+  display: grid;
+  gap: 10px;
+}
+.identified-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.identified-facts div {
+  display: grid;
+  grid-template-columns: minmax(7rem, max-content) 1fr;
+  gap: 8px;
+}
+.identified-facts dt {
+  font-weight: 600;
+}
+.identified-facts dd {
+  margin: 0;
+}
+button.link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--blueprint);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+@media (max-width: 520px) {
+  .identified-facts div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

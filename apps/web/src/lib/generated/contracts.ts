@@ -250,6 +250,19 @@ export type CaptureDeclaration = {
   readonly "same_surface_as_reference": boolean;
 };
 
+export type CategoryInfo = {
+  readonly "id": "corrugated_cardboard" | "thin_packaging_card" | "cardstock" | "printer_paper" | "kraft_paper" | "paper_tube" | "egg_carton" | "paper_cup" | "craft_sticks" | "bamboo_skewers" | "toothpicks" | "wooden_dowels" | "wood_strips" | "small_wood_offcuts" | "plywood_sheet" | "cork_sheet" | "plastic_bottle" | "bottle_caps" | "food_container" | "plastic_lid" | "plastic_sheet" | "plastic_packaging_tray" | "drinking_straws" | "pvc_pipe" | "foam_board" | "eva_craft_foam" | "expanded_polystyrene" | "packing_foam" | "sponge" | "felt" | "fabric_scrap" | "denim_scrap" | "duct_tape" | "masking_tape" | "clear_tape" | "double_sided_tape" | "electrical_tape" | "white_glue" | "glue_stick" | "hot_glue_sticks" | "string_twine" | "zip_ties" | "rubber_bands" | "paper_clips" | "binder_clips" | "aluminum_foil" | "wire" | "nuts_and_bolts";
+  readonly "label": string;
+  readonly "group": "paper_cardboard" | "wood_plant" | "plastic" | "foam_soft" | "tape_adhesive_tie" | "connector_metal";
+  readonly "form": "flat_sheet" | "thick_sheet" | "soft_sheet" | "stick_strip" | "tube" | "container_3d" | "block_3d" | "small_part" | "roll" | "adhesive_container" | "loose_cord";
+  readonly "material_family": string;
+  readonly "composition_unknown": boolean;
+  readonly "support": "build_rules_available" | "build_rules_not_available";
+  readonly "stock_kind"?: ("sheet" | "strip" | "tape" | "cord" | null);
+  readonly "stock_material"?: ("cardboard" | "paperboard" | "other_supported" | null);
+  readonly "support_note"?: (string | null);
+};
+
 export type CenterOfMass = {
   readonly "x": QuantityEstimate;
   readonly "y": QuantityEstimate;
@@ -784,6 +797,21 @@ export type InspectArgs = {
   readonly "method": "photo" | "ruler" | "human_inspection";
 };
 
+export type ItemIdentity = {
+  readonly "outcome": "catalog" | "other" | "uncertain";
+  readonly "category_id"?: ("corrugated_cardboard" | "thin_packaging_card" | "cardstock" | "printer_paper" | "kraft_paper" | "paper_tube" | "egg_carton" | "paper_cup" | "craft_sticks" | "bamboo_skewers" | "toothpicks" | "wooden_dowels" | "wood_strips" | "small_wood_offcuts" | "plywood_sheet" | "cork_sheet" | "plastic_bottle" | "bottle_caps" | "food_container" | "plastic_lid" | "plastic_sheet" | "plastic_packaging_tray" | "drinking_straws" | "pvc_pipe" | "foam_board" | "eva_craft_foam" | "expanded_polystyrene" | "packing_foam" | "sponge" | "felt" | "fabric_scrap" | "denim_scrap" | "duct_tape" | "masking_tape" | "clear_tape" | "double_sided_tape" | "electrical_tape" | "white_glue" | "glue_stick" | "hot_glue_sticks" | "string_twine" | "zip_ties" | "rubber_bands" | "paper_clips" | "binder_clips" | "aluminum_foil" | "wire" | "nuts_and_bolts" | null);
+  readonly "other_label"?: (string | null);
+  readonly "alternatives"?: ReadonlyArray<"corrugated_cardboard" | "thin_packaging_card" | "cardstock" | "printer_paper" | "kraft_paper" | "paper_tube" | "egg_carton" | "paper_cup" | "craft_sticks" | "bamboo_skewers" | "toothpicks" | "wooden_dowels" | "wood_strips" | "small_wood_offcuts" | "plywood_sheet" | "cork_sheet" | "plastic_bottle" | "bottle_caps" | "food_container" | "plastic_lid" | "plastic_sheet" | "plastic_packaging_tray" | "drinking_straws" | "pvc_pipe" | "foam_board" | "eva_craft_foam" | "expanded_polystyrene" | "packing_foam" | "sponge" | "felt" | "fabric_scrap" | "denim_scrap" | "duct_tape" | "masking_tape" | "clear_tape" | "double_sided_tape" | "electrical_tape" | "white_glue" | "glue_stick" | "hot_glue_sticks" | "string_twine" | "zip_ties" | "rubber_bands" | "paper_clips" | "binder_clips" | "aluminum_foil" | "wire" | "nuts_and_bolts">;
+};
+
+export type ItemProposal = {
+  readonly "identity": ItemIdentity;
+  readonly "visible_evidence": string;
+  readonly "box"?: (VisibleBox | null);
+  readonly "visibility"?: "full" | "partial" | "unclear";
+  readonly "instance"?: "single" | "group_count_unknown";
+};
+
 export type JoinArgs = {
   readonly "joint_id": string;
 };
@@ -1150,6 +1178,24 @@ export type QuantityEstimate = {
   readonly "uncertainty_notes"?: ReadonlyArray<string>;
 };
 
+export type RecognizedInventory = {
+  readonly "items"?: ReadonlyArray<RecognizedItem>;
+};
+
+export type RecognizedItem = {
+  readonly "id": string;
+  readonly "name": string;
+  readonly "identity": ItemIdentity;
+  readonly "identity_source": "muse_suggestion" | "user";
+  readonly "media_id"?: (string | null);
+  readonly "box"?: (VisibleBox | null);
+  readonly "box_source"?: ("muse_approximate" | "sam" | "user" | null);
+  readonly "visibility"?: "full" | "partial" | "unclear";
+  readonly "instance"?: "single" | "group_count_unknown";
+  readonly "stock_id"?: (string | null);
+  readonly "user_fields"?: ReadonlyArray<"identity" | "name" | "box" | "visibility" | "instance" | "stock_id">;
+};
+
 export type Rect = {
   readonly "x": number;
   readonly "y": number;
@@ -1478,6 +1524,13 @@ export type VersionHistory = {
   readonly "evidence"?: ReadonlyArray<Evidence>;
   readonly "carried_operation_ids"?: ReadonlyArray<string>;
   readonly "base_last_event_id"?: (string | null);
+};
+
+export type VisibleBox = {
+  readonly "x1": number;
+  readonly "y1": number;
+  readonly "x2": number;
+  readonly "y2": number;
 };
 
 export type Operation = (Measure | Mark | CutRect | CutSlot | Fold | InsertTab | TapeJoint | TieJoint | AttachBrace | Detach | Inspect | FunctionalTest);
