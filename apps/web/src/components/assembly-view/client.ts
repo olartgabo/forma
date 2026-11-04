@@ -1,5 +1,9 @@
 import type { AssemblyViewResponse } from "../../lib/generated/contracts";
 import {
+  initialCamera,
+  projectWorldPoints,
+} from "../../../../../packages/assembly_view/projection";
+import {
   validateAnalysis,
   validateContext,
   type ExpectedContext,
@@ -20,7 +24,7 @@ export function validateView(
     !["ready", "unsupported"].includes(String(value.status)) ||
     typeof value.evidence_revision !== "string" ||
     !/^[0-9a-f]{64}$/.test(value.evidence_revision) ||
-    value.overlay_coverage !== "unavailable" ||
+    !["unavailable", "available"].includes(String(value.overlay_coverage)) ||
     !Array.isArray(value.blockers) ||
     !value.blockers.every((item) => typeof item === "string") ||
     !Array.isArray(value.operation_parts) ||
@@ -41,6 +45,53 @@ export function validateView(
       expected,
       cursor,
     );
+  }
+  if (value.overlay_coverage === "available") {
+    const checked = validateAnalysis(
+      { ...value, status: "complete", report: value.overlay_report },
+      expected,
+      cursor,
+    );
+    if (
+      !checked.report ||
+      !object(value.geometry) ||
+      !/^[0-9a-f]{64}$/.test(checked.report.cache_hash) ||
+      checked.report.identity.canonical_geometry_hash !==
+        value.geometry.geometry_hash ||
+      checked.report.geometry_version !== value.geometry.producer_version ||
+      value.overlay_report_id !==
+        `stability-report-${checked.report.cache_hash}` ||
+      !checked.report.overlays?.length
+    )
+      throw new Error("The saved overlay does not match this assembly.");
+    const overlays = checked.report.overlays;
+    const canonical = value.geometry as NonNullable<
+      AssemblyViewResponse["geometry"]
+    >;
+    if (
+      overlays.length > 16 ||
+      new Set(overlays.map((item) => item.case_id)).size !== overlays.length ||
+      overlays.some(
+        (item) =>
+          item.support_polygon.length > 16384 ||
+          !checked.report?.results?.some(
+            (result) =>
+              result.case_id === item.case_id &&
+              result.check_type === "tip" &&
+              result.computation === "complete",
+          ) ||
+          projectWorldPoints(canonical.facets, initialCamera, [
+            ...item.support_polygon,
+            ...item.critical_edge,
+            item.center_of_mass,
+          ]).some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y)),
+      )
+    )
+      throw new Error(
+        "The saved overlay cannot be displayed for this assembly.",
+      );
+  } else if (value.overlay_report != null || value.overlay_report_id != null) {
+    throw new Error("Unavailable overlay must not contain a saved report.");
   }
   const geometry = value.geometry as AssemblyViewResponse["geometry"];
   const ids = new Set<string>();
