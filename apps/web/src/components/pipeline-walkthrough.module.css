@@ -1,0 +1,389 @@
+.shell {
+  --ink: #173248;
+  --line: #cbd7df;
+  max-width: 1440px;
+  margin: auto;
+  padding: 0 4.5vw 40px;
+  color: var(--ink);
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 96px;
+  border-bottom: 1px solid var(--line);
+}
+.header > span,
+.eyebrow,
+.stageTop {
+  font: 11px/1.6 monospace;
+  letter-spacing: 0.12em;
+}
+.header > a:last-child {
+  font-size: 13px;
+}
+.hero {
+  max-width: 850px;
+  padding: 66px 0 40px;
+}
+.hero h1 {
+  font-size: clamp(42px, 5vw, 70px);
+  font-weight: 500;
+  line-height: 1.03;
+  letter-spacing: -0.055em;
+  margin: 20px 0 24px;
+}
+.hero > p:not(.eyebrow) {
+  max-width: 630px;
+  font-size: 18px;
+  line-height: 1.6;
+}
+.notice {
+  margin-top: 25px;
+  padding: 16px 20px;
+  background: #eaf1f6;
+  border-left: 3px solid #3476ab;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 255px minmax(0, 1fr);
+  gap: 48px;
+  border-top: 1px solid var(--line);
+  padding-top: 28px;
+  align-items: start;
+}
+.rail {
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  padding-right: 8px;
+}
+.rail > button {
+  display: flex;
+  width: 100%;
+  gap: 14px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  padding: 13px 10px;
+  line-height: 1.35;
+  font-size: 13px;
+  border-radius: 0;
+}
+.rail > button[aria-current] {
+  background: #173c60;
+  color: white;
+}
+.rail small {
+  display: block;
+  font-size: 10px;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+.number {
+  font: 12px monospace;
+  opacity: 0.65;
+  padding-top: 2px;
+}
+.download {
+  display: block;
+  font-size: 12px;
+  margin-top: 22px;
+}
+.stage {
+  min-width: 0;
+  padding-bottom: 30px;
+}
+.stageTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.badge {
+  border: 1px solid var(--line);
+  padding: 4px 10px;
+  letter-spacing: 0;
+}
+.stage h2 {
+  font-size: clamp(27px, 3vw, 40px);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  margin: 22px 0 10px;
+  scroll-margin-top: 24px;
+}
+.stage h2:focus {
+  outline: none;
+}
+.description {
+  font-size: 17px;
+  line-height: 1.6;
+}
+.outcome {
+  padding: 18px 20px;
+  border-left: 3px solid #3476ab;
+  background: #eaf1f6;
+  font-size: 15px;
+  line-height: 1.7;
+}
+.assembly {
+  background: #edf3f7;
+  border: 1px solid var(--line);
+  padding: 24px;
+  margin-block: 24px;
+}
+.assembly h3 {
+  font-size: 27px;
+  font-weight: 500;
+  margin: 8px 0;
+}
+.assembly p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.assembly svg {
+  width: 100%;
+  max-height: 400px;
+}
+.assembly label {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-block: 18px;
+  font-size: 12px;
+}
+.assembly input {
+  width: min(300px, 65%);
+}
+.engine {
+  font: 11px/1.7 monospace;
+  overflow-wrap: anywhere;
+  color: #536a7c;
+}
+.result {
+  background: #fff;
+  border: 1px solid var(--line);
+  padding: 24px;
+  margin: 26px 0;
+}
+.result h3,
+.manual h3 {
+  font-size: 18px;
+  margin: 0 0 18px;
+}
+.result > summary {
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+}
+.result[open] > summary {
+  margin-bottom: 20px;
+}
+.reference {
+  margin: 24px 0;
+}
+.reference img {
+  display: block;
+  max-width: 100%;
+  max-height: 430px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+}
+.reference figcaption {
+  font-size: 11px;
+  margin-top: 8px;
+  color: #627789;
+}
+.reply {
+  min-width: 0;
+}
+.reply details {
+  border-top: 1px solid #e4eaf0;
+  padding: 10px 0;
+}
+.reply details > .reply {
+  padding: 12px 0 0 12px;
+}
+.reply summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.reply small {
+  font-weight: 400;
+  color: #627789;
+  margin-left: 7px;
+}
+.field {
+  display: grid;
+  grid-template-columns: minmax(95px, 28%) minmax(0, 1fr);
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid #edf0f3;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.field dt {
+  color: #627789;
+}
+.field dd {
+  margin: 0;
+  min-width: 0;
+}
+.value {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.muted {
+  color: #70818b;
+}
+.manual {
+  margin: 28px 0;
+}
+.panelButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.panelButtons button {
+  min-width: 38px;
+  padding: 8px;
+}
+.panelButtons button[aria-pressed="true"] {
+  background: #173c60;
+  color: white;
+}
+.inspector {
+  border: 1px solid var(--line);
+  padding: 16px;
+  margin: 24px 0;
+  font-size: 13px;
+}
+.inspector summary {
+  cursor: pointer;
+}
+.inspector pre {
+  max-height: 440px;
+  max-width: 100%;
+  overflow: auto;
+  padding: 16px;
+  background: #edf2f6;
+  font-size: 11px;
+}
+.notes {
+  padding: 25px 0;
+  border-top: 1px solid var(--line);
+}
+.notes label {
+  font-size: 18px;
+  font-weight: 500;
+}
+.notes p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #627789;
+}
+.notes textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: white;
+}
+.notes button {
+  font-size: 12px;
+}
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+.pager button {
+  min-height: 44px;
+  font-size: 13px;
+}
+.pager span {
+  font: 11px monospace;
+  white-space: nowrap;
+}
+.end {
+  background: #eaf1f6;
+  padding: 24px;
+  margin-top: 24px;
+}
+.end p {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.provenance {
+  border-top: 1px solid var(--line);
+  padding-top: 22px;
+  color: #627789;
+  font: 11px/1.8 monospace;
+  overflow-wrap: anywhere;
+}
+.provenance li {
+  margin-bottom: 8px;
+}
+@media (max-width: 800px) {
+  .shell {
+    padding-inline: 20px;
+  }
+  .header {
+    min-height: 78px;
+  }
+  .header > span {
+    display: none;
+  }
+  .hero {
+    padding-top: 35px;
+  }
+  .hero > p:not(.eyebrow) {
+    font-size: 16px;
+  }
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 26px;
+  }
+  .rail {
+    position: static;
+    display: flex;
+    gap: 8px;
+    max-height: none;
+    overflow-x: auto;
+    padding: 0 0 12px;
+  }
+  .rail > .eyebrow,
+  .rail .download {
+    display: none;
+  }
+  .rail > button {
+    min-width: 168px;
+    border: 1px solid var(--line);
+    padding: 12px;
+  }
+  .result {
+    padding: 16px;
+  }
+  .field {
+    grid-template-columns: minmax(75px, 30%) minmax(0, 1fr);
+    gap: 10px;
+    font-size: 12px;
+  }
+  .pager {
+    gap: 6px;
+  }
+  .pager button {
+    padding: 10px;
+    font-size: 11px;
+  }
+}
