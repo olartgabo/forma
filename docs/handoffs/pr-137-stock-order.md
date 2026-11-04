@@ -32,7 +32,6 @@ No live provider calls or physical attempts were made. These are software
 regressions and establish no physical pass. Independent review and publication
 remain with the coordinating owner.
 
-
 ## Repeated recovery review finding
 
 The independent review found that subtracting all historical salvage IDs from

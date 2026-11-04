@@ -70,6 +70,8 @@ from forma_api.photo_localization import (
     PhotoLocalizationResult,
 )
 from forma_api.photo_measurement_runtime import (
+    OutlineSuggestion,
+    OutlineSuggestionRequest,
     PhotoEstimateList,
     PhotoEstimateRecord,
     PhotoEstimateRequest,
@@ -109,6 +111,7 @@ from forma_api.proposal_service import IntakeObservation
 from forma_api.provider_diagnostics import ProviderUsage
 from forma_api.recognized_items_runtime import (
     ItemProblem,
+    MaterialConflict,
     RecognizedItems,
     RecognizedItemsUpdate,
 )
@@ -298,7 +301,10 @@ API_RECORDS = (
     PhotoEstimateList,
     PhotoEstimateRecord,
     PhotoEstimateRequest,
+    OutlineSuggestion,
+    OutlineSuggestionRequest,
     ItemProblem,
+    MaterialConflict,
     RecognizedItems,
     RecognizedItemsUpdate,
     InventoryUpdate,

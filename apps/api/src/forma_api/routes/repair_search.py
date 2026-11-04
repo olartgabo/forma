@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Response
 
 from forma_api import repair_search_runtime
 from forma_api.projects import ProjectStore
+from forma_api.recognized_items_runtime import require_no_holds
 from forma_api.repair_search_runtime import RepairSearchRequest, RepairSearchResult
 from forma_domain.models import ID
 
@@ -31,6 +32,7 @@ def repair_search_router(store: ProjectStore, authenticate) -> APIRouter:
             )
             if replay is not None:
                 return replay
+            require_no_holds(connection, project_id, "Repair search")
             result = repair_search_runtime.search(connection, project, body)
             store.remember(
                 connection, owner, scope, body.idempotency_key, digest, result

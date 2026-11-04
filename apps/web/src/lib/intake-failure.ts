@@ -27,6 +27,7 @@ const validationTypes = new Set([
 ]);
 const validationFields = new Set([
   "labels",
+  "recognition",
   "measurement_source",
   "questions",
   "items",
@@ -157,24 +158,39 @@ export function parseIntakeFailureDiagnostics(value: unknown) {
   if (
     !record(value) ||
     !Object.keys(value).every((key) =>
-      ["reason", "model", "elapsed_ms", "usage", "validation_issues"].includes(
-        key,
-      ),
+      [
+        "reason",
+        "model",
+        "elapsed_ms",
+        "usage",
+        "validation_issues",
+        "finish_reason",
+      ].includes(key),
     ) ||
     typeof value.reason !== "string" ||
     !Object.hasOwn(reasons, value.reason) ||
     typeof value.model !== "string" ||
     !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$/.test(value.model) ||
     !count(value.elapsed_ms, 86_400_000) ||
-    !record(value.usage)
+    !record(value.usage) ||
+    (value.finish_reason != null &&
+      (typeof value.finish_reason !== "string" ||
+        !/^[a-z_]{1,32}$/.test(value.finish_reason)))
   )
     return null;
   const usage = value.usage;
   if (
     !Object.keys(usage).every((key) =>
-      ["model_calls", "input_tokens", "output_tokens"].includes(key),
+      [
+        "model_calls",
+        "input_tokens",
+        "output_tokens",
+        "reasoning_tokens",
+      ].includes(key),
     ) ||
     !count(usage.model_calls, 16) ||
+    (usage.reasoning_tokens != null &&
+      !count(usage.reasoning_tokens, 16_000_000_000)) ||
     (usage.input_tokens != null &&
       !count(usage.input_tokens, 16_000_000_000)) ||
     (usage.output_tokens != null && !count(usage.output_tokens, 16_000_000_000))
@@ -185,12 +201,18 @@ export function parseIntakeFailureDiagnostics(value: unknown) {
     validationIssues: safeIssues(value.validation_issues),
     model: value.model,
     elapsedMs: value.elapsed_ms,
+    // Why the provider stopped generating, e.g. "length"; null if unreported.
+    finishReason:
+      value.finish_reason == null ? null : (value.finish_reason as string),
     usage: {
       model_calls: usage.model_calls,
       input_tokens:
         usage.input_tokens == null ? null : (usage.input_tokens as number),
       output_tokens:
         usage.output_tokens == null ? null : (usage.output_tokens as number),
+      ...(usage.reasoning_tokens == null
+        ? {}
+        : { reasoning_tokens: usage.reasoning_tokens as number }),
     },
   };
 }
@@ -203,7 +225,11 @@ export function intakeFailureReason(
   diagnostics: IntakeFailureDiagnostics,
   locale: unknown = "en",
 ) {
-  const reason = reasons[diagnostics.reason][locale === "es" ? 1 : 0];
+  const base = reasons[diagnostics.reason][locale === "es" ? 1 : 0];
+  const reason =
+    diagnostics.finishReason === "length"
+      ? `${base} ${locale === "es" ? "Se quedó sin espacio para la respuesta." : "It ran out of room for the answer."}`
+      : base;
   if (!diagnostics.validationIssues.length) return reason;
   const checks = diagnostics.validationIssues
     .map(

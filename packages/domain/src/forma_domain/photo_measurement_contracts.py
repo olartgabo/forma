@@ -79,7 +79,7 @@ class ReferenceInput(Record):
 class OutlineInput(Record):
     """Where the material is. Boxes are refined; a polygon is used as drawn."""
 
-    source: Literal["sam_box", "manual_box", "user_polygon"]
+    source: Literal["sam_box", "manual_box", "outline_suggestion", "user_polygon"]
     x1: int | None = Field(default=None, ge=0)
     y1: int | None = Field(default=None, ge=0)
     x2: int | None = Field(default=None, ge=0)
@@ -224,6 +224,7 @@ DiagnosticCode = Literal[
     "outline_clipped",
     "outline_box_too_tight",
     "outline_not_found",
+    "outline_is_reference",
     "outline_crosses_horizon",
     "irregular_outline",
     "holes_present",

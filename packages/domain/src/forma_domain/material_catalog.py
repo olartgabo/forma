@@ -499,6 +499,50 @@ class ItemProposal(Record):
     instance: Literal["single", "group_count_unknown"] = "single"
 
 
+# Fresh intake responses (intake-items-v2). Bounded so the largest valid answer
+# stays small next to the completion budget, leaving room for model reasoning.
+MAX_PROPOSED_ITEMS = 12
+RecognitionOutcome = Literal["items", "partial", "no_objects"]
+
+
+class ProposedItem(ItemProposal):
+    """``ItemProposal`` with the shorter evidence a fresh response may use."""
+
+    visible_evidence: Annotated[str, Field(min_length=1, max_length=80)]
+
+
+class IntakeProposal(Record):
+    """The provider's whole answer. Every field is required, so a reply with
+    only text labels, or with items silently left out, is not accepted.
+
+    ``items``: each visible object is listed. ``partial``: more objects are
+    visible than are listed. ``no_objects``: nothing to list, stated
+    explicitly. An unidentifiable object is an ``uncertain`` item, never left
+    out."""
+
+    recognition: RecognitionOutcome
+    items: tuple[ProposedItem, ...] = Field(max_length=MAX_PROPOSED_ITEMS)
+    questions: tuple[Annotated[str, Field(min_length=1, max_length=160)], ...] = Field(
+        max_length=3
+    )
+
+    @model_validator(mode="after")
+    def consistent(self):
+        if (self.recognition == "no_objects") != (not self.items):
+            raise ValueError("no_objects exactly when no item is listed")
+        return self
+
+
+def item_label(identity: ItemIdentity) -> str:
+    """Readable name for an identity; never a composition claim."""
+
+    if identity.outcome == "catalog":
+        return BY_ID[identity.category_id].label  # type: ignore[index]
+    if identity.outcome == "other":
+        return identity.other_label  # type: ignore[return-value]
+    return "Unidentified object"
+
+
 class RecognizedItem(Record):
     """A saved, editable card. ``id`` is stable; ``name`` is the display name."""
 
@@ -543,20 +587,27 @@ class RecognizedInventory(Record):
 
 
 def catalog_prompt() -> str:
-    """Trusted rules for constrained item proposals."""
+    """Trusted rules for the fresh intake answer (intake-items-v2)."""
     ids = ", ".join(CATEGORY_IDS)
     return (
-        f" Catalog {CATALOG_VERSION}. For items, return one entry per visible"
-        " object; a pile whose members cannot be told apart is one entry with"
-        " instance=group_count_unknown, never an invented count. identity.outcome"
-        " is catalog only when the photo clearly shows one of these category_id"
-        f" values: {ids}. Use outcome=other with a short other_label for an"
-        " object outside the catalog, and outcome=uncertain when the evidence"
-        " is insufficient; uncertain never selects a category. Put up to three"
-        " plausible look-alike categories in alternatives when appearance is"
-        " ambiguous. A category is what the object probably is, not its exact"
-        " composition, thickness, strength, mass or remaining quantity. box is"
-        " an approximate normalised (0..1) box around that one object, or null."
-        " visibility=partial when it is cut off or covered. visible_evidence"
-        " names what is visible, not inferred properties."
+        f" Catalog {CATALOG_VERSION}. Return JSON with recognition, items and"
+        " questions, nothing else. items has one entry per visible object (at"
+        f" most {MAX_PROPOSED_ITEMS}). recognition=items when every visible"
+        " object is listed, partial when more are visible than you list, and"
+        " no_objects only when the photo shows no object at all (then items is"
+        " empty). A pile whose members cannot be told apart is one entry with"
+        " instance=group_count_unknown, never an invented count. An object you"
+        " cannot identify is still listed, with identity.outcome=uncertain."
+        " identity.outcome=catalog only when the photo clearly shows one of"
+        f" these category_id values: {ids}. Use outcome=other with a short"
+        " other_label for an object outside the catalog; uncertain never"
+        " selects a category. Put up to three plausible look-alike categories"
+        " in alternatives when appearance is ambiguous. A category is what the"
+        " object probably is, not its composition, thickness, strength, mass or"
+        " remaining quantity. box is an approximate normalised (0..1) box"
+        " around that one object, or null if you cannot place it; never a box"
+        " around a printed reference card or marker. visibility=partial when"
+        " it is cut off or covered. visible_evidence is a few words naming"
+        " what is visible. questions: at most three short ones, only if needed."
+        " Be brief."
     )

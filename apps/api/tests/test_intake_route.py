@@ -31,6 +31,23 @@ class Fake:
         return response
 
 
+FRESH = json.dumps(
+    {
+        "recognition": "items",
+        "items": [
+            {
+                "identity": {
+                    "outcome": "catalog",
+                    "category_id": "corrugated_cardboard",
+                },
+                "visible_evidence": "brown fluted sheet",
+            }
+        ],
+        "questions": ["Measure thickness"],
+    }
+)
+
+
 def final(content=None):
     if content:
         try:
@@ -44,11 +61,7 @@ def final(content=None):
         "choices": [
             {
                 "finish_reason": "stop",
-                "message": {
-                    "content": content
-                    or '{"items":[],"labels":["cardboard sheet"],"measurement_source":"unknown",'
-                    '"questions":["Measure thickness"]}'
-                },
+                "message": {"content": content or FRESH},
             }
         ]
     }
@@ -126,12 +139,14 @@ def test_success_is_readonly_and_openapi_lists_route(client, monkeypatch):
     assert result["project_id"] == p["id"]
     assert result["revision_id"] == p["revision_id"]
     assert result["media_id"] == media["id"]
-    assert result["observation"] == {
-        "labels": ["cardboard sheet"],
-        "measurement_source": "unknown",
-        "questions": ["Measure thickness"],
-        "items": [],
-    }
+    observation = result["observation"]
+    assert observation["recognition"] == "items"
+    assert observation["labels"] == ["Corrugated cardboard"]
+    assert observation["measurement_source"] == "unknown"
+    assert observation["questions"] == ["Measure thickness"]
+    assert [i["identity"]["category_id"] for i in observation["items"]] == [
+        "corrugated_cardboard"
+    ]
     assert result["diagnostics"]["status"] == "ok"
     assert result["diagnostics"]["model"] == "muse-spark-1.3"
     assert isinstance(result["diagnostics"]["elapsed_ms"], int)
@@ -263,32 +278,35 @@ def test_provider_errors_are_mapped_without_leaks(
 
 
 @pytest.mark.parametrize(
-    "labels,questions",
+    "answer",
     [
-        ([], []),
-        (["  "], []),
-        ([], [" \t\n "]),
-        ([" "], ["\n"]),
+        # Live run 2 (cardboard) and run 1 (notched sheet): labels, no items.
+        {
+            "labels": ["torn corrugated cardboard stack"],
+            "measurement_source": "unknown",
+            "questions": ["What are the length and width of the pieces?"],
+            "items": [],
+        },
+        {"labels": [], "measurement_source": "unknown", "questions": []},
+        {"recognition": "items", "items": [], "questions": []},
     ],
 )
 def test_unusable_provider_output_is_redacted_502_and_readonly(
-    client, monkeypatch, labels, questions
+    client, monkeypatch, answer
 ):
     p = project(client)
     media = upload(client, p)
-    content = json.dumps(
-        {"labels": labels, "measurement_source": "unknown", "questions": questions}
-    )
-    fake = Fake(final(content))
+    fake = Fake(final(json.dumps(answer)))
     install(monkeypatch, fake)
     before = client.get(f"/api/projects/{p['id']}", headers=AUTH).json()
     result = call_intake(client, p, body(p, media))
     assert result.status_code == 502, result.text
-    assert {k: result.json()[k] for k in ("code", "message")} == {
-        "code": "invalid_response",
-        "message": "Model provider returned an unusable response; retry",
-    }
-    assert result.json()["diagnostics"]["reason"] == "empty_observation"
+    error = result.json()
+    assert error["code"] == "invalid_response"
+    assert error["message"] == "Model provider returned an unusable response; retry"
+    assert error["diagnostics"]["finish_reason"] == "stop"
+    assert error["diagnostics"]["reason"] == "invalid_schema"
+    assert "torn" not in result.text and "stand" not in result.text
     assert len(fake.calls) == 1
     assert client.get(f"/api/projects/{p['id']}", headers=AUTH).json() == before
     assert client.get(f"/api/projects/{p['id']}/media", headers=AUTH).json()[
@@ -296,15 +314,13 @@ def test_unusable_provider_output_is_redacted_502_and_readonly(
     ] == [media]
 
 
-def test_question_only_provider_output_succeeds_unknown_and_readonly(
-    client, monkeypatch
-):
+def test_no_objects_answer_succeeds_unknown_and_readonly(client, monkeypatch):
     p = project(client)
     media = upload(client, p)
     content = json.dumps(
         {
-            "labels": [],
-            "measurement_source": "unknown",
+            "recognition": "no_objects",
+            "items": [],
             "questions": ["Measure its thickness"],
         }
     )
@@ -318,6 +334,7 @@ def test_question_only_provider_output_succeeds_unknown_and_readonly(
         "measurement_source": "unknown",
         "questions": ["Measure its thickness"],
         "items": [],
+        "recognition": "no_objects",
     }
     assert result.json()["diagnostics"]["status"] == "ok"
     assert len(fake.calls) == 1
@@ -409,9 +426,7 @@ def test_catalog_items_are_returned_and_off_catalog_answers_refused(
             "instance": "group_count_unknown",
         },
     ]
-    content = json.dumps(
-        {"labels": [], "measurement_source": "unknown", "questions": [], "items": items}
-    )
+    content = json.dumps({"recognition": "items", "questions": [], "items": items})
     fake = Fake(final(content))
     install(monkeypatch, fake)
     result = call_intake(client, p, body(p, media))
@@ -428,18 +443,38 @@ def test_catalog_items_are_returned_and_off_catalog_answers_refused(
     q = project(client, key="project-002")
     media = upload(client, q)
     forced = [{**items[0], "identity": {"outcome": "catalog", "category_id": "pet"}}]
-    content = json.dumps(
-        {
-            "labels": ["x"],
-            "measurement_source": "unknown",
-            "questions": [],
-            "items": forced,
-        }
-    )
+    content = json.dumps({"recognition": "items", "questions": [], "items": forced})
     install(monkeypatch, Fake(final(content)))
     refused = call_intake(client, q, body(q, media))
     assert refused.status_code == 502
     assert refused.json()["code"] == "invalid_response"
+
+
+def test_truncated_answer_is_incomplete_with_finish_reason_and_usage(
+    client, monkeypatch
+):
+    p = project(client)
+    media = upload(client, p)
+    fake = Fake(
+        {
+            "choices": [{"finish_reason": "length", "message": {"content": '{"recog'}}],
+            "usage": {"prompt_tokens": 3632, "completion_tokens": 2048},
+        }
+    )
+    install(monkeypatch, fake)
+    result = call_intake(client, p, body(p, media))
+    assert result.status_code == 502
+    error = result.json()
+    assert error["code"] == "invalid_response"
+    assert error["diagnostics"]["reason"] == "incomplete_output"
+    assert error["diagnostics"]["finish_reason"] == "length"
+    assert error["diagnostics"]["usage"] == {
+        "model_calls": 1,
+        "input_tokens": 3632,
+        "output_tokens": 2048,
+    }
+    assert "recog" not in result.text
+    assert len(fake.calls) == 1
 
 
 @pytest.mark.parametrize(

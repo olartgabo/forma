@@ -107,7 +107,7 @@ const DIAGNOSIS_CODE_MESSAGES: Record<string, string> = {
     "Saved project state changed in another session. Reload the project before asking Muse again.",
 };
 
-const REPAIR_CODES = [...INTAKE_CODES];
+const REPAIR_CODES = [...INTAKE_CODES, "blocked"];
 
 const REPAIR_CODE_MESSAGES: Record<string, string> = {
   ...INTAKE_CODE_MESSAGES,
@@ -115,6 +115,8 @@ const REPAIR_CODE_MESSAGES: Record<string, string> = {
     "Consent to send the reported problem, the diagnosis and saved project context to Meta is required before asking Muse.",
   stale_version:
     "Saved project state changed in another session. Reload the project before asking Muse again.",
+  blocked:
+    "Repair advice is paused: a material in this build was identified as something else. Reconcile it on its material card first.",
 };
 
 const DESIGN_CODES = [
@@ -265,6 +267,10 @@ async function responseError(
       503: INTAKE_CODE_MESSAGES.provider_not_configured,
       504: INTAKE_CODE_MESSAGES.timeout,
     };
+    const message =
+      INTAKE_CODE_MESSAGES[code] ??
+      intakeStatusMessages[response.status] ??
+      "FORMA could not complete this request. Try again shortly.";
     return new ApiError(
       response.status,
       code,
@@ -283,7 +289,7 @@ async function responseError(
         ? "Materials or requirements changed in another session. Reload before saving again."
         : code === "idempotency_conflict"
           ? "This retry differs from the original request. Review your changes and try again."
-          : "This change is blocked. Review the saved project and its linked evidence.",
+          : "This change is blocked. Review the saved project, any material marked for reconciliation and its linked evidence.",
     413: "The photo is too large. Choose an image smaller than 8 MiB and 20 million pixels.",
     415: "Choose a JPEG, PNG or WebP photo.",
     422: "Some details could not be accepted. Check your measurements and photo, then try again.",

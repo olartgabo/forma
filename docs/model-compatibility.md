@@ -64,7 +64,7 @@ A second, separate set. It is not merged into the table above; its counts are no
 | Latency, usage and billed cost                        | Four samples (two per route)   | Not a distribution; no billed cost recorded                                                                       |
 | Design, repair and replanning with a live model       | Not requested                  | Receipts cover intake and diagnosis only                                                                          |
 | Manual box/label fallback primitive                   | Offline tested                 | Box validates label and inclusive image bounds without key/network                                                |
-| SAM box overlay/manual correction                    | Offline API/browser tested     | [Localization handoff](handoffs/issue-4-photo-localization.md); masks and live SAM remain unverified              |
+| SAM box overlay/manual correction                     | Offline API/browser tested     | [Localization handoff](handoffs/issue-4-photo-localization.md); masks and live SAM remain unverified              |
 | Physical success                                      | Not tested                     | Gateway has no physical-state authority                                                                           |
 
 Intake and diagnosis output is untrusted proposal data. The receipts do not establish measured dimensions, stock, part identity, failure cause or any physical pass. Mocked responses in tests remain synthetic protocol cases. No guessed privacy-mode field is sent. Confirm Standard account privacy/retention settings and permitted region before private media use.

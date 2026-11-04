@@ -27,6 +27,7 @@ from forma_api.plans import (
 )
 from forma_api.progress import snapshot
 from forma_api.projects import Key, Project, ProjectError, ProjectStore
+from forma_api.recognized_items_runtime import require_no_holds
 from forma_domain.models import (
     ID,
     Blocker,
@@ -463,6 +464,7 @@ def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
                 raise ProjectError(
                     409, "stale_version", "The active plan changed; reload it"
                 )
+            require_no_holds(connection, project_id, "Repair simulation")
             base = RepairBase(connection, project_id, body.expected_version_id)
             require_current_base(project, base, body)
             remaining = confirmed_remaining(base, body.connector_measurements)
@@ -522,6 +524,8 @@ def adapt_router(store: ProjectStore, authenticate) -> APIRouter:
             stored = read_preview(
                 connection, project_id, body.expected_version_id, body.preview_id
             )
+            # Includes previews saved before the hold: kept, but not approved.
+            require_no_holds(connection, project_id, "Approving this repair")
             base = RepairBase(connection, project_id, body.expected_version_id)
             require_current_base(project, base, body)
             if stored.base_last_event_id != body.expected_last_event_id:

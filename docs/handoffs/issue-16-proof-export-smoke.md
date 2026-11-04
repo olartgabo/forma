@@ -71,7 +71,7 @@ snapshot is the server's single transactional read; there is no second fetch.
 `forma_api` was confirmed to import from this tree.
 
 - `pytest apps/api/tests/test_proof_smoke.py apps/api/tests/test_proof.py
-  apps/api/tests/test_demo_smoke.py -q`: `172 passed in 43.62s`
+apps/api/tests/test_demo_smoke.py -q`: `172 passed in 43.62s`
   (`test_proof_smoke.py` alone: `67 passed`).
 - `ruff check` and `ruff format --check` on the two source/test files:
   `All checks passed!` and `2 files already formatted`.

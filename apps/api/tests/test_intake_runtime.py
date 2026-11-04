@@ -7,6 +7,7 @@ from forma_api.model_gateway import GatewayError, MetaGateway
 from forma_api.proposal_prompts import LANGUAGE_RULE
 from forma_api.proposal_service import IntakeObservation
 from forma_api.provider_diagnostics import ProviderUsage, summarize_usage
+from forma_domain.material_catalog import IntakeProposal
 
 PNG = b"\x89PNG\r\n\x1a\nsynthetic"
 JPEG = b"\xff\xd8\xffsynthetic"
@@ -44,16 +45,32 @@ def final_usage(content, usage=None):
     return response
 
 
-INTAKE_JSON = (
-    '{"labels":["cardboard sheet"],"measurement_source":"unknown","questions":[]}'
+CARDBOARD = {
+    "identity": {"outcome": "catalog", "category_id": "corrugated_cardboard"},
+    "visible_evidence": "brown fluted sheet",
+    "box": {"x1": 0.2, "y1": 0.2, "x2": 0.8, "y2": 0.7},
+    "visibility": "full",
+}
+INTAKE_JSON = json.dumps(
+    {"recognition": "items", "items": [CARDBOARD], "questions": []}
+)
+
+# A plain IntakeObservation answer, for calls other than photo intake.
+ORDINARY_JSON = json.dumps(
+    {"labels": ["cardboard"], "measurement_source": "unknown", "questions": []}
 )
 
 
 def test_observe_photo_uses_strict_intake_schema_without_tool():
     fake = Fake(
         final(
-            '{"labels":["cardboard sheet"],"measurement_source":"unknown",'
-            '"questions":["Measure its thickness"]}'
+            json.dumps(
+                {
+                    "recognition": "items",
+                    "items": [CARDBOARD],
+                    "questions": ["Measure its thickness"],
+                }
+            )
         )
     )
     observation, diagnostics = intake_runtime.observe_photo(
@@ -64,16 +81,21 @@ def test_observe_photo_uses_strict_intake_schema_without_tool():
     )
     assert isinstance(observation, IntakeObservation)
     assert observation.measurement_source == "unknown"
+    assert observation.recognition == "items"
+    # Labels are derived from the structured items, never free text alone.
+    assert observation.labels == ("Corrugated cardboard",)
+    assert observation.items[0].identity.category_id == "corrugated_cardboard"
     assert diagnostics.status == "ok"
     assert diagnostics.model == "muse-spark-1.3"
     assert diagnostics.elapsed_ms >= 0
     path, payload, _ = fake.calls[0]
     assert path == "/chat/completions"
     assert "tools" not in payload
-    assert (
-        payload["response_format"]["json_schema"]["schema"]
-        == intake_runtime.PhotoIntakeObservation.model_json_schema()
-    )
+    schema = payload["response_format"]["json_schema"]["schema"]
+    assert schema == IntakeProposal.model_json_schema()
+    assert schema["required"] == ["recognition", "items", "questions"]
+    assert payload["max_completion_tokens"] == 8192
+    assert payload["reasoning_effort"] == "low"
     user = payload["messages"][1]["content"]
     serialized = user[0]["text"]
     assert "SECRET GOAL" in serialized
@@ -81,7 +103,9 @@ def test_observe_photo_uses_strict_intake_schema_without_tool():
     assert "required read-only tool" not in payload["messages"][0]["content"]
     system_prompt = payload["messages"][0]["content"]
     assert system_prompt.count(LANGUAGE_RULE) == 1
-    assert "bounded-proposals-v2" in system_prompt
+    assert "intake-items-v2" in system_prompt
+    # The old instruction contradicted the item request.
+    assert "labels and questions only" not in system_prompt
     assert user[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
 
@@ -146,20 +170,30 @@ def test_observe_photo_malformed_input_tokens_unknown_not_partial(bad):
     assert diagnostics.usage.output_tokens == 4
 
 
+# The shapes the live runs of November 4, 2026 returned for the cardboard and
+# notched-sheet photos (labels with no items), plus other non-answers.
 @pytest.mark.parametrize(
-    "labels,questions",
+    "answer",
     [
-        ([], []),
-        (["  "], []),
-        ([], [" \t\n "]),
-        ([" "], ["\n"]),
+        {
+            "labels": ["torn corrugated cardboard stack"],
+            "measurement_source": "unknown",
+            "questions": ["How many individual torn pieces make up the stack?"],
+            "items": [],
+        },
+        {
+            "labels": ["brown flat sheet candidate object"],
+            "measurement_source": "unknown",
+            "questions": [],
+        },
+        {"recognition": "items", "items": [], "questions": []},
+        {"recognition": "no_objects", "items": [CARDBOARD], "questions": []},
+        {"items": [CARDBOARD], "questions": []},
+        {"recognition": "items", "items": [CARDBOARD]},
     ],
 )
-def test_observe_photo_rejects_unusable_empty_observation(labels, questions):
-    content = json.dumps(
-        {"labels": labels, "measurement_source": "unknown", "questions": questions}
-    )
-    fake = Fake(final(content))
+def test_label_only_or_inconsistent_answers_are_not_recognition(answer):
+    fake = Fake(final(json.dumps(answer)))
     with pytest.raises(GatewayError) as error:
         intake_runtime.observe_photo(
             MetaGateway(fake),
@@ -167,21 +201,20 @@ def test_observe_photo_rejects_unusable_empty_observation(labels, questions):
             image_data=PNG,
             content_type="image/png",
         )
-    assert error.value.code == "invalid_response"
-    assert intake_runtime.gateway_error_details(error.value.code) == (
+    assert error.value.code == "invalid_proposal"
+    assert intake_runtime.gateway_error_details(error.value.code)[:2] == (
         502,
         "invalid_response",
-        "Model provider returned an unusable response; retry",
     )
     assert len(fake.calls) == 1
 
 
-def test_observe_photo_question_only_is_valid_and_unknown():
+def test_no_objects_is_an_explicit_answer_not_a_failure():
     content = json.dumps(
         {
-            "labels": [],
-            "measurement_source": "unknown",
-            "questions": ["Measure its thickness"],
+            "recognition": "no_objects",
+            "items": [],
+            "questions": ["Is the material outside the frame?"],
         }
     )
     fake = Fake(final(content))
@@ -191,11 +224,111 @@ def test_observe_photo_question_only_is_valid_and_unknown():
         image_data=PNG,
         content_type="image/png",
     )
-    assert observation.labels == ()
-    assert observation.questions == ("Measure its thickness",)
-    assert observation.measurement_source == "unknown"
+    assert observation.recognition == "no_objects"
+    assert observation.items == () and observation.labels == ()
+    assert observation.questions == ("Is the material outside the frame?",)
     assert diagnostics.status == "ok"
     assert len(fake.calls) == 1
+
+
+def test_partial_uncertain_and_group_items_are_kept_as_proposed():
+    content = json.dumps(
+        {
+            "recognition": "partial",
+            "items": [
+                {
+                    "identity": {
+                        "outcome": "uncertain",
+                        "alternatives": ["plastic_bottle", "food_container"],
+                    },
+                    "visible_evidence": "clear curved object",
+                    "box": None,
+                },
+                {
+                    "identity": {"outcome": "catalog", "category_id": "bottle_caps"},
+                    "visible_evidence": "pile of caps",
+                    "instance": "group_count_unknown",
+                },
+            ],
+            "questions": [],
+        }
+    )
+    observation, _ = intake_runtime.observe_photo(
+        MetaGateway(Fake(final(content))),
+        project_goal="stand",
+        image_data=PNG,
+        content_type="image/png",
+    )
+    assert observation.recognition == "partial"
+    first, second = observation.items
+    assert first.identity.outcome == "uncertain" and first.box is None
+    assert second.instance == "group_count_unknown"
+    assert observation.labels == ("Unidentified object", "Bottle caps")
+
+
+def test_truncated_answer_keeps_finish_reason_and_usage_without_retry():
+    # Run 3 (plastic bottle): 3632 input and 2048 output tokens, cut off.
+    response = {
+        "choices": [
+            {"finish_reason": "length", "message": {"content": '{"recognition":"it'}}
+        ],
+        "usage": {
+            "prompt_tokens": 3632,
+            "completion_tokens": 2048,
+            "completion_tokens_details": {"reasoning_tokens": 1990},
+        },
+    }
+    fake = Fake(response)
+    with pytest.raises(GatewayError) as error:
+        intake_runtime.observe_photo(
+            MetaGateway(fake),
+            project_goal="stand",
+            image_data=PNG,
+            content_type="image/png",
+        )
+    assert error.value.code == "incomplete_output"
+    diagnostics = error.value.diagnostics
+    assert diagnostics.reason == "incomplete_output"
+    assert diagnostics.finish_reason == "length"
+    assert diagnostics.usage.input_tokens == 3632
+    assert diagnostics.usage.output_tokens == 2048
+    assert diagnostics.usage.reasoning_tokens == 1990
+    assert len(fake.calls) == 1
+    # The public code stays in the existing family; the reason says why.
+    assert intake_runtime.gateway_error_details("incomplete_output")[:2] == (
+        502,
+        "invalid_response",
+    )
+
+
+def test_the_largest_valid_answer_leaves_most_of_the_budget_for_reasoning():
+    item = {
+        "identity": {
+            "outcome": "other",
+            "other_label": "x" * 80,
+            "alternatives": ["plastic_bottle", "food_container", "bottle_caps"],
+        },
+        "visible_evidence": "y" * 80,
+        "box": {"x1": 0.123456, "y1": 0.123456, "x2": 0.654321, "y2": 0.654321},
+        "visibility": "partial",
+        "instance": "group_count_unknown",
+    }
+    biggest = IntakeProposal.model_validate(
+        {
+            "recognition": "partial",
+            "items": [item] * 12,
+            "questions": ["q" * 160] * 3,
+        }
+    )
+    with pytest.raises(Exception):
+        IntakeProposal.model_validate(
+            {"recognition": "partial", "items": [item] * 13, "questions": []}
+        )
+    # Conservatively one token per three characters: even the largest valid
+    # answer fits inside the old 2048 cap, leaving the rest of the 8192 cap
+    # for low-effort reasoning.
+    tokens = len(biggest.model_dump_json()) / 3
+    assert tokens < 2048 <= intake_runtime.INTAKE_MAX_COMPLETION_TOKENS / 4
 
 
 @pytest.mark.parametrize(
@@ -210,6 +343,7 @@ def test_observe_photo_question_only_is_valid_and_unknown():
         ("network_error", 502, "network_error"),
         ("invalid_response", 502, "invalid_response"),
         ("invalid_proposal", 502, "invalid_response"),
+        ("incomplete_output", 502, "invalid_response"),
         ("provider_http_error", 502, "provider_http_error"),
         ("something_private", 502, "provider_error"),
     ],
@@ -336,7 +470,7 @@ def test_failure_diagnostics_use_only_current_request_and_allowlisted_reason():
 
 
 def test_intake_completion_budget_does_not_change_other_proposal_defaults():
-    fake = Fake(final(INTAKE_JSON), final(INTAKE_JSON))
+    fake = Fake(final(INTAKE_JSON), final(ORDINARY_JSON))
     gateway = MetaGateway(fake)
     intake_runtime.observe_photo(
         gateway, project_goal="stand", image_data=PNG, content_type="image/png"
@@ -349,18 +483,18 @@ def test_intake_completion_budget_does_not_change_other_proposal_defaults():
 
 
 def test_intake_prompts_consistently_request_structured_items_and_unknown_measurements():
-    for prompt in (intake_runtime.INTAKE_SYSTEM_PROMPT, intake_runtime.INTAKE_PROMPT):
-        assert "structured item proposals in items" in prompt
-        assert "one item per visible object" in prompt
-        assert "when no objects are visible, items may be empty" in prompt
-        assert "measurement_source=unknown" in prompt
-        assert "labels and questions only" not in prompt
-    assert "never" in intake_runtime.INTAKE_SYSTEM_PROMPT
-    assert "infer millimeters" in intake_runtime.INTAKE_SYSTEM_PROMPT
+    system = intake_runtime.INTAKE_SYSTEM_PROMPT
+    assert "recognition, items and questions" in system
+    assert "one entry per visible object" in system
+    assert "no_objects only when the photo shows no object at all" in system
+    assert "never infer millimeters" in system
+    assert "labels and questions only" not in system
+    assert "labels" not in intake_runtime.INTAKE_PROMPT
+    assert "as an item" in intake_runtime.INTAKE_PROMPT
 
 
 def test_only_intake_selects_low_reasoning_effort():
-    fake = Fake(final(INTAKE_JSON), final(INTAKE_JSON))
+    fake = Fake(final(INTAKE_JSON), final(ORDINARY_JSON))
     gateway = MetaGateway(fake)
     intake_runtime.observe_photo(
         gateway, project_goal="stand", image_data=PNG, content_type="image/png"
@@ -371,23 +505,18 @@ def test_only_intake_selects_low_reasoning_effort():
 
 
 def test_photo_schema_requires_items_but_legacy_observation_remains_compatible():
-    schema = intake_runtime.PhotoIntakeObservation.model_json_schema()
-    assert "items" in schema["required"]
-    assert schema["properties"]["items"]["maxItems"] == 24
+    schema = IntakeProposal.model_json_schema()
+    assert schema["required"] == ["recognition", "items", "questions"]
+    assert schema["properties"]["items"]["maxItems"] == 12
     legacy = {
         "labels": [],
         "measurement_source": "unknown",
         "questions": ["Is there an object?"],
     }
+    # A stored legacy observation still parses; a fresh one must be structured.
     assert IntakeObservation.model_validate_json(json.dumps(legacy)).items == ()
     with pytest.raises(Exception):
-        intake_runtime.PhotoIntakeObservation.model_validate_json(json.dumps(legacy))
-    assert (
-        intake_runtime.PhotoIntakeObservation.model_validate_json(
-            json.dumps({**legacy, "items": []})
-        ).items
-        == ()
-    )
+        IntakeProposal.model_validate_json(json.dumps(legacy))
     fake = Fake(final(json.dumps(legacy), include_items=False))
     with pytest.raises(intake_runtime.IntakeGatewayError) as failure:
         intake_runtime.observe_photo(
@@ -397,16 +526,14 @@ def test_photo_schema_requires_items_but_legacy_observation_remains_compatible()
             content_type="image/png",
         )
     assert failure.value.diagnostics.reason == "invalid_schema"
-    assert {
-        "path": ["items"],
-        "type": "missing",
-    } in failure.value.diagnostics.model_dump()["validation_issues"]
+    issues = failure.value.diagnostics.model_dump()["validation_issues"]
+    assert {"path": ["items"], "type": "missing"} in issues
+    assert {"path": ["recognition"], "type": "missing"} in issues
 
 
 def test_intake_prompts_make_items_primary_for_noncatalog_objects():
-    for prompt in (intake_runtime.INTAKE_SYSTEM_PROMPT, intake_runtime.INTAKE_PROMPT):
-        assert "Items are the primary output" in prompt
-        assert "labels are a summary only" in prompt
-        assert "non-catalog tools" in prompt
-        assert "outcome=other" in prompt
-        assert "Never leave items empty when labels describe visible objects" in prompt
+    system = intake_runtime.INTAKE_SYSTEM_PROMPT
+    assert "outcome=other with a short other_label" in system
+    assert "identity.outcome=uncertain" in system
+    # Labels are derived from items, never asked for.
+    assert "labels" not in system.split("LANGUAGE:")[0]

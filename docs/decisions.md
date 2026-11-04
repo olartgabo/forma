@@ -18,20 +18,20 @@ constraints, not claims that software or physical tests exist.
 
 ## Pending decisions
 
-| ID   | Question and required evidence                                                                   | Owner                                  | Resolve before                   |
-| ---- | ------------------------------------------------------------------------------------------------ | -------------------------------------- | -------------------------------- |
-| P001 | Resolved for workspace scaffold; schema integration review remains pending (D008 below)         | @olartgabo with @ResniDev              | #1 review                         |
-| P002 | Resolved by D009: domain layout, generated schemas and error taxonomy                    | @ResniDev with @olartgabo              | #3 consumers                     |
-| P003 | Session/auth mechanism and authenticated project/media access                                    | @olartgabo                             | #6 persistence routes            |
-| P004 | Hosting region, DB/object-storage providers, migrations, backup and deletion approach            | @olartgabo                             | #6/#16 deployment                |
-| P005 | Actual inventories A/B, stand dimensions, material thickness and tools in hand                   | @olartgabo                             | #2/#5 geometry                   |
-| P006 | Three tested joint/repair strategies, measured tolerances and supported limits                   | @olartgabo; @ResniDev encodes profiles | #2/#5 profile promotion          |
-| P007 | Named device/mass, angle, surface, duration and repeated-use functional test                     | @olartgabo                             | First physical build             |
-| P008 | Live Meta access, actual endpoints/model IDs, SDK, region, quota, privacy mode and budget        | @ResniDev                              | #4 live smoke gate               |
-| P009 | SAM practical value versus manual box/label fallback                                             | @ResniDev with @olartgabo              | #4/#7 intake                     |
-| P010 | Portal team eligibility, terms/media consent, deliverables and exact deadline/timezone           | @olartgabo                             | Day 0; recheck before submission |
-| P011 | Independent builder availability and consented study scope                                       | @olartgabo                             | #15 evaluation                   |
-| P012 | Narrowing to tested templates/fewer operations if G2/G3 miss October 31                          | Both                                   | October 31 gate                  |
+| ID   | Question and required evidence                                                            | Owner                                  | Resolve before                   |
+| ---- | ----------------------------------------------------------------------------------------- | -------------------------------------- | -------------------------------- |
+| P001 | Resolved for workspace scaffold; schema integration review remains pending (D008 below)   | @olartgabo with @ResniDev              | #1 review                        |
+| P002 | Resolved by D009: domain layout, generated schemas and error taxonomy                     | @ResniDev with @olartgabo              | #3 consumers                     |
+| P003 | Session/auth mechanism and authenticated project/media access                             | @olartgabo                             | #6 persistence routes            |
+| P004 | Hosting region, DB/object-storage providers, migrations, backup and deletion approach     | @olartgabo                             | #6/#16 deployment                |
+| P005 | Actual inventories A/B, stand dimensions, material thickness and tools in hand            | @olartgabo                             | #2/#5 geometry                   |
+| P006 | Three tested joint/repair strategies, measured tolerances and supported limits            | @olartgabo; @ResniDev encodes profiles | #2/#5 profile promotion          |
+| P007 | Named device/mass, angle, surface, duration and repeated-use functional test              | @olartgabo                             | First physical build             |
+| P008 | Live Meta access, actual endpoints/model IDs, SDK, region, quota, privacy mode and budget | @ResniDev                              | #4 live smoke gate               |
+| P009 | SAM practical value versus manual box/label fallback                                      | @ResniDev with @olartgabo              | #4/#7 intake                     |
+| P010 | Portal team eligibility, terms/media consent, deliverables and exact deadline/timezone    | @olartgabo                             | Day 0; recheck before submission |
+| P011 | Independent builder availability and consented study scope                                | @olartgabo                             | #15 evaluation                   |
+| P012 | Narrowing to tested templates/fewer operations if G2/G3 miss October 31                   | Both                                   | October 31 gate                  |
 
 Use spec section 18 as the starting reference list for provider/competition
 verification. No live external claims were revalidated by this scaffold.
@@ -109,7 +109,6 @@ the project removes its photos. Deletion is logical and does not promise
 forensic erasure or backup deletion. Provider transfer and public sharing are
 unavailable in this slice; their consent and external-retention policy remain
 pending. No measurements or physical outcomes are inferred from uploads.
-
 
 ## D012: Development intake access and API contracts, October 31, 2026
 
@@ -232,6 +231,7 @@ Coverage is limited to initial plans and user reports. Repair diffs, evidence
 invalidation/freshness and measured waste/salvage totals remain unavailable.
 Pending downloads are invalidated by known report changes, including while the
 panel is closed. See the [handoff](handoffs/issue-14-proof-summary.md).
+
 ## D020: Stand replacement roles and stable core manual steps, October 31, 2026
 
 Stand continuation validates active panel roles through joint topology while
@@ -241,7 +241,6 @@ use separate headings; the original eight core slots keep stable numbering so
 unchanged visible panels retain their hashes. Hashes still cover the entire SVG.
 Grouped cuts are preserved while their other outputs remain useful; retired-part
 material loss is explicit. This changes no schema, physical claim or approval flow.
-
 
 ## D021: Brace-only explicit tape undo, November 1, 2026
 
@@ -255,7 +254,6 @@ Completed final fit/function checks block before construction of this candidate;
 the current slice does not rewrite or drop their completion history. Base/support
 replacement and generic physical inverses remain unsupported. Synthetic
 compile/simulate/rank/render regression evidence does not establish a bench pass.
-
 
 ## D022: Completed-build brace history, November 1, 2026
 
@@ -316,7 +314,6 @@ Meta spend is capped at $90 by a local ledger. The loop opens draft PRs only;
 humans review and merge. No product scope changes; CI gains one job (handoff to
 @olartgabo for `.github/workflows/checks.yml`).
 
-
 ## D026: Codex coding fallback and Muse preference, October 31, 2026
 
 The user authorizes Codex agents to implement code as well as plan and review.
@@ -333,7 +330,6 @@ do not reset history or silently raise the existing lifetime cap. PR #33 remains
 draft until its reproduced runner defects are repaired and verified. No physical
 or live-provider acceptance is established by development-agent work.
 
-
 ## D027: Muse implementation, tests and repairs; bounded premium review, November 1, 2026
 
 The user directs Muse to own implementation, regression tests, offline check
@@ -347,7 +343,6 @@ The guarded Node launcher uses the existing external budget authority; the legac
 Python command exits before dispatch. Existing lifetime cap, reserve, STOP,
 uncertain-outcome accounting and finite verification window remain in force.
 No product runtime, contract, ownership, or physical acceptance changes.
-
 
 ## D028: Monitored own-work loop without the fixed90 cap, November1,2026
 
@@ -501,7 +496,7 @@ remain unchanged. No physical success follows from this authorization.
 
 ## D039: Measured stability and a separate engine lab, November 3, 2026
 
-Issue #17 now sequences ResniDev's #146â€“#149 separately from Gabo's #150â€“#152.
+Issue #17 now sequences ResniDev's #146–#149 separately from Gabo's #150–#152.
 The user requested continuing #146 and a direct way to assess the calculation
 engine. This work builds on PR #145 without merging that draft implicitly.
 
@@ -919,9 +914,10 @@ this checkout. `forma_api.recognition_evaluate` scores recorded proposals
 against such a set and refuses a coverage claim until every category and scene
 type has real labelled instances.
 
-## D064 â€” Illustrated material review board (November 4, 2026)
+## D064 — Illustrated material review board (November 4, 2026)
 
 Use the supplied 60 front-facing cutouts as representative art over the shared guided-intake draft. Show at most six cutouts on desktop and three on phones, preserving full editable records below. Recognition does not grant fabrication support. CSS derives crisp offset shadows from image alpha; no runtime image generation or artificial discovery timing. Request state drives loading, and actual returned construction plans enable design navigation. See [handoff](handoffs/material-board.md).
+
 ## D063: Check web research against saved materials during intake, November 4, 2026
 
 An opt-in investigation adds cited research to the existing stock-feasible
@@ -946,13 +942,13 @@ When the engine identifies a missing measurement, the research result opens
 the existing measurement form and fetches a decision for the current inventory.
 The builder still has to enter and confirm the measured value before saving.
 
-## D065 â€” Photo recognition deadline and board annotations (November 4, 2026)
+## D065 — Photo recognition deadline and board annotations (November 4, 2026)
 
 Give photo intake one provider attempt with a 120-second total budget and timeout; retain the ordinary gateway defaults for other operations and the longer browser/proxy deadlines. A timeout does not prove provider cancellation or zero usage. Preserve unknown receipts and reconcile them without inventing billing outcomes.
 
 Selected and hovered representative cutouts use a faint alpha-derived white glow. Italic labels and angled leader lines evoke blueprint annotations; selection still opens the existing material correction controls.
 
-## D066 â€” Retain safe photo-recognition failure diagnostics (November 4, 2026)
+## D066 — Retain safe photo-recognition failure diagnostics (November 4, 2026)
 
 A deployed photo request exposed that generic invalid_response errors discarded why the proposal was rejected and any provider usage. Keep the public error family compatible while returning bounded owner-only failure diagnostics from the same request. Show those details in both photo-recognition interfaces without raw provider content or credentials. Failed recognition never becomes a material or physical observation; unknown usage stays unknown.
 
@@ -1045,3 +1041,16 @@ from immutable plan effects. It is a target-position reference, not an observed
 intermediate pose or a stability result. Physical geometry and evidence checks
 remain separate, and report overlays cannot be applied to planned illustrations.
 No navigation, preview or regression test records work in a user's project.
+
+## D071 — Live intake repairs: structured answers, recoverable localization, reconciled stock (November 4, 2026)
+
+Live MetaMuse runs on synthetic images (head 7dc1744) returned useful text labels with no items for cardboard and a notched sheet, an incomplete bottle answer at the 2048-token cap, and zero SAM boxes for the notched sheet. The connected intake prompt also told the model to list "labels and questions only", which contradicted the item request.
+
+- Fresh intake answers use a separate provider schema (`intake-items-v2`, `IntakeProposal`) whose `recognition`, `items` and `questions` are all required. `recognition` is `items`, `partial` or `no_objects`; `no_objects` exactly when no item is listed; an unidentifiable object is an `uncertain` item. A label-only or inconsistent answer is refused as `invalid_response`; labels in the API observation are derived from items. The API `IntakeObservation` keeps its earlier shape, with `recognition` left out when absent, so an older label-only response still parses and is shown as "no item cards", never as catalog intake.
+- This is one implementation with D066 and D067: their 8,192 completion ceiling, low reasoning effort for photo intake only, one 120-second attempt without retries, and the `invalid_response` public code with an allowlisted `reason` and validation issues. It adds the provider finish reason and reported reasoning tokens to those diagnostics; a truncated answer has reason `incomplete_output`. The answer is bounded (12 items, 80-character evidence, three short questions) so even its largest valid form fits the old 2,048-token cap. The D067 photo schema that required `items` is replaced by `IntakeProposal`, which also requires `recognition`, and labels are no longer requested from the model.
+- When SAM returns no usable region (none, only the whole photo, only the marked reference, or none where Muse placed the item), the card says so, keeps the photo, reference and material, and offers a drawn box or a local, deterministic outline suggestion for sheets and strips. The suggestion excludes the reference and regions cut off at the photo edge, is kept only if the outline search confirms it, and is labelled as a suggestion. The estimator now refuses any outline lying mostly on the reference.
+- A saved item whose identity contradicts its linked material withdraws the inventory's confirmation (recorded as a hold) until the user removes the material, retypes it to fit, or changes the item back. Design readiness and generation, construction, synthesis and plan compilation require confirmation; plan activation now does too. Confirmation is restored automatically only when a hold placed for that reason is resolved. A new contradiction is refused while a build is active; contradictions saved earlier are held at startup, active builds included. Confirmation alone does not gate an active build's repair and fabrication actions, so those check the holds directly: repair search, Muse repair advice, repair simulation and approval, fabrication assessment and saved-preview scheduling are refused (`blocked`) while a material is held, and the active fabrication report stays readable but carries a `needs_confirmation` blocker naming the held material, so it offers no order. The fabrication rules are unchanged; the hold enters through their existing context-blocker input. Events, evidence, plan versions and saved previews are never rewritten, an exact replay of an earlier recorded outcome is still returned, and a saved preview can be scheduled and approved again once the hold is released.
+
+Synthetic results do not establish real-photo accuracy or 48-category recognition coverage.
+
+The D073 construction preview remains available as hypothetical geometry when material confirmation is missing. A held material cannot gain fabrication approval from that preview; active-build action gates and physical evidence requirements remain in force.

@@ -1262,6 +1262,62 @@ def test_smoke_main_empty_photo_reports_invalid_image(monkeypatch, tmp_path, cap
     assert fake_key not in raw
 
 
+class _Replay:
+    def __init__(self, *responses):
+        self.responses = list(responses)
+
+    def post(self, path, payload, timeout):
+        return self.responses.pop(0)
+
+
+def test_traces_keep_finish_reason_and_reported_reasoning_on_failure():
+    from pydantic import BaseModel
+
+    from forma_api.model_gateway import GatewayError, ImageInput, MetaGateway
+    from forma_api.provider_diagnostics import summarize_usage
+
+    class Out(BaseModel):
+        value: int
+
+    gateway = MetaGateway(
+        _Replay(
+            {
+                "choices": [{"finish_reason": "length", "message": {"content": "{"}}],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 20,
+                    "completion_tokens_details": {"reasoning_tokens": 18},
+                },
+            },
+            {
+                "choices": [{"finish_reason": "Weird Reason!", "message": {}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            },
+            {
+                "status": "completed",
+                "output": [{"content": [{"type": "output_text", "text": ""}]}],
+            },
+        ),
+        max_retries=0,
+    )
+    with pytest.raises(GatewayError, match="incomplete_output"):
+        gateway.propose("x", Out)
+    first = gateway.traces[-1]
+    assert (first.finish_reason, first.reasoning_tokens) == ("length", 18)
+    with pytest.raises(GatewayError):
+        gateway.propose("x", Out)
+    # Provider text is never copied into diagnostics.
+    assert gateway.traces[-1].finish_reason == "unrecognized"
+    assert gateway.traces[-1].reasoning_tokens is None
+    assert summarize_usage(gateway.traces[:1]).reasoning_tokens == 18
+    assert summarize_usage(gateway.traces[:2]).reasoning_tokens is None
+    assert "reasoning_tokens" not in summarize_usage(gateway.traces[1:2]).model_dump()
+    # SAM: zero boxes is a completed answer, and its status is kept.
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+    assert gateway.segment(ImageInput(png, "image/png", True), "brown sheet") == []
+    assert gateway.traces[-1].finish_reason == "completed"
+
+
 def test_extended_gateway_timeout_respects_shared_budget():
     fake = Fake(final())
     gateway = MetaGateway(fake, timeout=120, budget=120)

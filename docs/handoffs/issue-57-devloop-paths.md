@@ -13,6 +13,7 @@ supervisor context, not model-selected context paths. Canonical checks validate
 static filesystem state; they are not isolation against concurrent file swaps.
 
 No product schemas or generated contracts changed. On the integrated main tree:
+
 - uv run --locked pytest -q: 297 passed, 6 skipped, exit 0.
 - Tooling subset: 51 passed, 6 skipped. Four skips require POSIX shell; two
   require file-symlink privileges. A real Windows directory-junction escape test ran.

@@ -591,3 +591,139 @@ def test_drawn_outline_outside_the_photo_is_refused():
     )
     assert result.outcome == "needs_better_photo"
     assert "cut off at the photo edge" in result.request
+
+
+# Recovery when SAM returns no region (November 4, 2026 live run 4).
+def suggest(image, reference=None):
+    from forma_photo_measure.suggest import reference_points, suggest_region
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    return suggest_region(image, reference_points(gray, reference or card_reference()))
+
+
+def test_suggested_region_finds_the_sheet_not_the_reference():
+    image, h, _ = scene()
+    found = suggest(image)
+    assert found.reason == "suggested"
+    x1, y1, x2, y2 = found.box
+    sheet = project(h, SHEET)
+    assert x1 <= sheet[:, 0].min() and x2 >= sheet[:, 0].max()
+    assert y1 <= sheet[:, 1].min() and y2 >= sheet[:, 1].max()
+    result = estimate(
+        image,
+        make_input(
+            image,
+            OutlineInput(source="outline_suggestion", x1=x1, y1=y1, x2=x2, y2=y2),
+        ),
+    )
+    found_dims = dims(result)
+    assert_covers(found_dims["edge_length_mm"], 280, 3)
+    assert_covers(found_dims["edge_width_mm"], 190, 3)
+
+
+def test_suggested_region_on_a_notched_sheet_stays_irregular():
+    notched = [
+        (200, 60),
+        (300, 60),
+        (300, 85),
+        (330, 85),
+        (330, 60),
+        (480, 60),
+        (480, 250),
+        (200, 250),
+    ]
+    image, _, _ = scene(outer=notched)
+    found = suggest(image)
+    assert found.reason == "suggested"
+    x1, y1, x2, y2 = found.box
+    result = estimate(
+        image,
+        make_input(
+            image,
+            OutlineInput(source="outline_suggestion", x1=x1, y1=y1, x2=x2, y2=y2),
+        ),
+    )
+    assert result.outcome == "enclosing_only"
+    assert all(d.stock_field is None for d in result.dimensions)
+
+
+def test_only_the_reference_is_never_suggested():
+    image, _, _ = scene(outer=rect_mm(0, 0, 0.1, 0.1))
+    found = suggest(image)
+    assert found.reason in ("only_reference", "nothing_found")
+    assert found.box is None
+
+
+def test_material_cut_off_at_the_edge_is_not_suggested():
+    from forma_photo_measure.suggest import suggest_region
+
+    far = np.array([(700.0, 40.0), (760.0, 40.0), (760.0, 80.0), (700.0, 80.0)])
+    image = np.full((600, 800, 3), 200, np.uint8)
+    cv2.rectangle(image, (0, 200), (300, 400), (40, 90, 150), -1)
+    found = suggest_region(image, far)
+    assert (found.reason, found.box) == ("only_cut_off", None)
+    blank = suggest_region(np.full((600, 800, 3), 200, np.uint8), far)
+    assert (blank.reason, blank.box) == ("nothing_found", None)
+
+
+def test_no_suggestion_when_the_reference_cannot_be_located():
+    # An unlocated card could itself be the most distinct region.
+    from forma_photo_measure.suggest import suggest_region
+
+    image, _, _ = scene()
+    found = suggest_region(image, np.zeros((0, 2)))
+    assert (found.reason, found.box) == ("reference_not_found", None)
+
+
+def test_a_box_around_the_reference_is_refused_as_material():
+    image, h, _ = scene()
+    from forma_photo_measure.detect import detect_markers
+
+    corners = np.vstack(
+        list(detect_markers(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)).values())
+    )
+    x1, y1 = np.floor(corners.min(axis=0)).astype(int) - 6
+    x2, y2 = np.ceil(corners.max(axis=0)).astype(int) + 6
+    result = estimate(
+        image,
+        make_input(
+            image,
+            OutlineInput(
+                source="sam_box", x1=int(x1), y1=int(y1), x2=int(x2), y2=int(y2)
+            ),
+        ),
+    )
+    assert result.outcome == "needs_better_photo"
+    assert not result.dimensions
+
+
+def test_a_frame_around_the_reference_is_still_material():
+    # The card sits in the frame's opening: the hole is not material.
+    frame = rect_mm(5, 5, 200, 140)
+    opening = rect_mm(15, 15, 175, 120)
+    image, h, _ = scene(outer=frame, holes=[opening], tilt=0, yaw=0)
+    from forma_photo_measure.detect import detect_markers
+
+    assert detect_markers(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
+    corners = project(h, frame)
+    outline = OutlineInput(
+        source="user_polygon",
+        polygon_px=points(corners),
+        holes_px=(points(project(h, opening)),),
+    )
+    result = estimate(image, make_input(image, outline))
+    assert "outline_is_reference" not in [d.code for d in result.diagnostics]
+
+
+def test_a_partly_found_card_gives_no_suggestion():
+    # One visible marker cannot exclude the rest of the card.
+    from forma_photo_measure.detect import detect_markers
+
+    image, _, _ = scene()
+    markers = detect_markers(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
+    for quad in list(markers.values())[1:]:
+        x1, y1 = quad.min(axis=0).astype(int) - 6
+        x2, y2 = quad.max(axis=0).astype(int) + 6
+        cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), (90, 90, 90), -1)
+    found = suggest(image)
+    assert (found.reason, found.box) == ("reference_not_found", None)

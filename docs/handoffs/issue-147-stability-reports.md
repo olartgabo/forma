@@ -52,9 +52,9 @@ Status: second review repair verified after rebase; re-review pending.
      message no longer claims that nothing changed.
   3. Refreshing history re-judges open detail, comparison, save and MetaMuse
      views.
-  Regressions: backend replay-after-change and lost-response replay (both fail
-  on `9f49b2b`), web receipt, lost-response and ambiguity tests, and the browser
-  flow with a lost POST, a reload, a refresh failure and a change from another tab.
+     Regressions: backend replay-after-change and lost-response replay (both fail
+     on `9f49b2b`), web receipt, lost-response and ambiguity tests, and the browser
+     flow with a lost POST, a reload, a refresh failure and a change from another tab.
 - Second review repair (Codex re-review of `15a9e98`, one P2): a JSON error
   without a code was read as the string `"undefined"` and treated as definite,
   and a 2xx with an invalid body threw a plain error. Both released the

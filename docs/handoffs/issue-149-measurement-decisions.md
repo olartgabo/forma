@@ -20,7 +20,7 @@ See [packages/measurement/README.md](../../packages/measurement/README.md) and D
   pieces by reference.
 - Capture reuses existing services: stock and requirement answers are the
   existing `PUT /inventory` confirmation (`source: user_ruler`, `confirmed:
-  true`, only the target value changed; a usable area becomes one whole-sheet
+true`, only the target value changed; a usable area becomes one whole-sheet
   region only after an explicit inspection). Assembled-stand answers use the
   #146 measurement form. No new measurement storage or intake schema.
 - `POST .../measurement-decisions/unavailable` records that a selected value
