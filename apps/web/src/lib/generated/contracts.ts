@@ -139,6 +139,49 @@ export type BuildPlan = {
   readonly "created_at": string;
 };
 
+export type CandidateCheck = {
+  readonly "check_id": string;
+  readonly "category": "compiler" | "geometry" | "fabrication" | "access" | "stability" | "retention" | "joint_strength";
+  readonly "case_id"?: (string | null);
+  readonly "status": "modeled_pass" | "modeled_failure" | "missing_input" | "unsupported" | "evidence_incompatible" | "unverified";
+  readonly "detail": string;
+  readonly "blocker_codes"?: ReadonlyArray<string>;
+};
+
+export type CandidatePiece = {
+  readonly "piece": PieceReference;
+  readonly "source_stock_id": string;
+  readonly "source_region_id": string;
+  readonly "width_mm": number;
+  readonly "height_mm": number;
+  readonly "x_mm": number;
+  readonly "y_mm": number;
+  readonly "dependent": boolean;
+  readonly "derivation": string;
+};
+
+export type CandidateReport = {
+  readonly "candidate_id": string;
+  readonly "design": StandDesign;
+  readonly "status": "acceptable" | "rejected";
+  readonly "pieces"?: ReadonlyArray<CandidatePiece>;
+  readonly "material"?: (MaterialUse | null);
+  readonly "checks"?: ReadonlyArray<CandidateCheck>;
+  readonly "construction"?: ReadonlyArray<CandidateStep>;
+  readonly "cut_layout_svg"?: (string | null);
+  readonly "canonical_geometry_hash"?: (string | null);
+  readonly "unresolved"?: ReadonlyArray<string>;
+  readonly "blockers"?: ReadonlyArray<Blocker>;
+};
+
+export type CandidateStep = {
+  readonly "operation_id": string;
+  readonly "operation_type": string;
+  readonly "title": string;
+  readonly "instruction": string;
+  readonly "part_ids": ReadonlyArray<string>;
+};
+
 export type CanonicalFacet = {
   readonly "facet_id": string;
   readonly "part_id": string;
@@ -394,6 +437,19 @@ export type DiagnosisProposal = {
   readonly "questions_or_measurements": ReadonlyArray<string>;
   readonly "affected_ids": ReadonlyArray<string>;
   readonly "failure_type": "torn_slot" | "wrong_dimension" | "missing_material" | "damaged_part" | "unstable" | "unknown";
+};
+
+export type DimensionDomain = {
+  readonly "sheet_stock_id": string;
+  readonly "parameter": "part_width_mm" | "support_length_mm" | "footprint_depth_mm";
+  readonly "unit"?: "mm";
+  readonly "step_mm": number;
+  readonly "lower_mm": number;
+  readonly "upper_mm": number;
+  readonly "count": number;
+  readonly "lower_basis": string;
+  readonly "upper_basis": string;
+  readonly "empty_reason"?: (string | null);
 };
 
 export type Effects = {
@@ -692,6 +748,19 @@ export type MaterialTransaction = {
   readonly "physical_event_id": string;
 };
 
+export type MaterialUse = {
+  readonly "sheet_stock_id": string;
+  readonly "region_id": string;
+  readonly "region_area_mm2": number;
+  readonly "part_area_mm2": number;
+  readonly "unallocated_area_mm2": number;
+  readonly "tape_stock_id": string;
+  readonly "tape_length_mm": number;
+  readonly "tape_remaining_before_mm"?: (number | null);
+  readonly "tape_remaining_after_mm"?: (number | null);
+  readonly "note": string;
+};
+
 export type Measure = {
   readonly "id": string;
   readonly "part_ids"?: ReadonlyArray<string>;
@@ -863,6 +932,21 @@ export type Preconditions = {
   readonly "human_checks"?: ReadonlyArray<string>;
 };
 
+export type ProbeResult = {
+  readonly "search_id": string;
+  readonly "identity": SearchIdentity;
+  readonly "parameter": "part_width_mm" | "support_length_mm" | "footprint_depth_mm";
+  readonly "value_mm": number;
+  readonly "status": "evaluated" | "outside_domain" | "requires_repair" | "unsupported";
+  readonly "base_candidate_id"?: (string | null);
+  readonly "previous_value_mm"?: (number | null);
+  readonly "report"?: (CandidateReport | null);
+  readonly "changed_piece_ids"?: ReadonlyArray<string>;
+  readonly "repair"?: (RepairProbeSummary | null);
+  readonly "blockers"?: ReadonlyArray<Blocker>;
+  readonly "physical_verification"?: "not_attempted";
+};
+
 export type QuantityEstimate = {
   readonly "kind": "scalar" | "interval" | "unknown";
   readonly "unit": "1" | "m" | "m2" | "m3" | "m4" | "kg" | "s" | "rad" | "N" | "N_m" | "Pa" | "kg_m3" | "m_s2";
@@ -890,6 +974,11 @@ export type Region = {
   readonly "geometry": Rect;
 };
 
+export type RejectionCount = {
+  readonly "code": string;
+  readonly "count": number;
+};
+
 export type RepairPatch = {
   readonly "id": string;
   readonly "base_version_id": string;
@@ -901,6 +990,16 @@ export type RepairPatch = {
   readonly "height_mm": (number | null);
   readonly "angle_deg": (number | null);
   readonly "rationale": string;
+};
+
+export type RepairProbeSummary = {
+  readonly "patch_kind": string;
+  readonly "target_part_id": string;
+  readonly "status": string;
+  readonly "preserved_operation_ids": ReadonlyArray<string>;
+  readonly "undo_operation_ids": ReadonlyArray<string>;
+  readonly "recheck_ids": ReadonlyArray<string>;
+  readonly "blockers": ReadonlyArray<Blocker>;
 };
 
 export type RepairProposals = {
@@ -920,6 +1019,21 @@ export type ReplannerInput = {
 export type RigidTransform = {
   readonly "rotation": readonly [readonly [number, number, number], readonly [number, number, number], readonly [number, number, number]];
   readonly "translation_m": Point3;
+};
+
+export type SearchBudget = {
+  readonly "max_nodes"?: number;
+  readonly "max_seconds"?: number;
+};
+
+export type SearchIdentity = {
+  readonly "project_id": string;
+  readonly "inventory_revision_id": string;
+  readonly "active_version_id": (string | null);
+  readonly "last_event_id": (string | null);
+  readonly "context_fingerprint": string;
+  readonly "measurement_record_ids": ReadonlyArray<string>;
+  readonly "engine_version"?: "stand-synthesis-v1";
 };
 
 export type SlidingDemand = {
@@ -1044,6 +1158,19 @@ export type StageSnapshot = {
   readonly "component_loads"?: ReadonlyArray<LoadCase>;
 };
 
+export type StandDesign = {
+  readonly "family"?: "triangular-tape-stand-v1";
+  readonly "sheet_stock_id": string;
+  readonly "tape_stock_id": string;
+  readonly "tape_profile_id": string;
+  readonly "fold_profile_id": string;
+  readonly "part_width_mm": number;
+  readonly "support_length_mm": number;
+  readonly "footprint_depth_mm": number;
+  readonly "lip_mm": number;
+  readonly "support_angle_deg": number;
+};
+
 export type Stock = {
   readonly "id": string;
   readonly "kind": "sheet" | "strip" | "tape" | "cord";
@@ -1064,6 +1191,23 @@ export type SupportContact = {
   readonly "polygon_world": ReadonlyArray<Point3>;
   readonly "active": boolean;
   readonly "assumption_ids"?: ReadonlyArray<string>;
+};
+
+export type SynthesisResult = {
+  readonly "search_id": string;
+  readonly "identity": SearchIdentity;
+  readonly "status": "candidates_found" | "infeasible" | "search_exhausted" | "needs_input" | "active_build";
+  readonly "budget": SearchBudget;
+  readonly "exhausted"?: ("node_budget" | "time_budget" | null);
+  readonly "nodes_evaluated": number;
+  readonly "nodes_total": number;
+  readonly "domains"?: ReadonlyArray<DimensionDomain>;
+  readonly "candidates"?: ReadonlyArray<CandidateReport>;
+  readonly "rejections"?: ReadonlyArray<RejectionCount>;
+  readonly "blockers"?: ReadonlyArray<Blocker>;
+  readonly "ranking": string;
+  readonly "limitations": ReadonlyArray<string>;
+  readonly "physical_verification"?: "not_attempted";
 };
 
 export type TapeJoint = {

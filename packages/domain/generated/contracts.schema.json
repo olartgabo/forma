@@ -917,6 +917,300 @@
       "title": "BuildPlan",
       "type": "object"
     },
+    "CandidateCheck": {
+      "additionalProperties": false,
+      "description": "One row of the declared check matrix. Unknown is never a pass.",
+      "properties": {
+        "blocker_codes": {
+          "default": [],
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Blocker Codes",
+          "type": "array"
+        },
+        "case_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Case Id"
+        },
+        "category": {
+          "enum": [
+            "compiler",
+            "geometry",
+            "fabrication",
+            "access",
+            "stability",
+            "retention",
+            "joint_strength"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "check_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Check Id",
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "modeled_pass",
+            "modeled_failure",
+            "missing_input",
+            "unsupported",
+            "evidence_incompatible",
+            "unverified"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "check_id",
+        "category",
+        "status",
+        "detail"
+      ],
+      "title": "CandidateCheck",
+      "type": "object"
+    },
+    "CandidatePiece": {
+      "additionalProperties": false,
+      "description": "A named canonical piece. Names are engine labels, not observations.",
+      "properties": {
+        "dependent": {
+          "title": "Dependent",
+          "type": "boolean"
+        },
+        "derivation": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Derivation",
+          "type": "string"
+        },
+        "height_mm": {
+          "exclusiveMinimum": 0,
+          "title": "Height Mm",
+          "type": "number"
+        },
+        "piece": {
+          "$ref": "#/$defs/PieceReference"
+        },
+        "source_region_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Source Region Id",
+          "type": "string"
+        },
+        "source_stock_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Source Stock Id",
+          "type": "string"
+        },
+        "width_mm": {
+          "exclusiveMinimum": 0,
+          "title": "Width Mm",
+          "type": "number"
+        },
+        "x_mm": {
+          "minimum": 0,
+          "title": "X Mm",
+          "type": "number"
+        },
+        "y_mm": {
+          "minimum": 0,
+          "title": "Y Mm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "piece",
+        "source_stock_id",
+        "source_region_id",
+        "width_mm",
+        "height_mm",
+        "x_mm",
+        "y_mm",
+        "dependent",
+        "derivation"
+      ],
+      "title": "CandidatePiece",
+      "type": "object"
+    },
+    "CandidateReport": {
+      "additionalProperties": false,
+      "properties": {
+        "blockers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Blocker"
+          },
+          "maxItems": 16,
+          "title": "Blockers",
+          "type": "array"
+        },
+        "candidate_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "canonical_geometry_hash": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical Geometry Hash"
+        },
+        "checks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CandidateCheck"
+          },
+          "maxItems": 32,
+          "title": "Checks",
+          "type": "array"
+        },
+        "construction": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CandidateStep"
+          },
+          "maxItems": 16,
+          "title": "Construction",
+          "type": "array"
+        },
+        "cut_layout_svg": {
+          "anyOf": [
+            {
+              "maxLength": 200000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cut Layout Svg"
+        },
+        "design": {
+          "$ref": "#/$defs/StandDesign"
+        },
+        "material": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MaterialUse"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pieces": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CandidatePiece"
+          },
+          "maxItems": 8,
+          "title": "Pieces",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "acceptable",
+            "rejected"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "unresolved": {
+          "default": [],
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Unresolved",
+          "type": "array"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "design",
+        "status"
+      ],
+      "title": "CandidateReport",
+      "type": "object"
+    },
+    "CandidateStep": {
+      "additionalProperties": false,
+      "properties": {
+        "instruction": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Instruction",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_type": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Operation Type",
+          "type": "string"
+        },
+        "part_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Part Ids",
+          "type": "array"
+        },
+        "title": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "operation_type",
+        "title",
+        "instruction",
+        "part_ids"
+      ],
+      "title": "CandidateStep",
+      "type": "object"
+    },
     "CanonicalFacet": {
       "additionalProperties": false,
       "properties": {
@@ -2502,6 +2796,89 @@
         "failure_type"
       ],
       "title": "DiagnosisProposal",
+      "type": "object"
+    },
+    "DimensionDomain": {
+      "additionalProperties": false,
+      "description": "A finite step-aligned grid between explicit inclusive bounds.\n\nValues are ``lower_mm + k * step_mm`` for ``k`` in ``0..count-1``. When the\nbounds are empty the count is zero and ``empty_reason`` names the limiting\ninventory or requirement.",
+      "properties": {
+        "count": {
+          "maximum": 16,
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "empty_reason": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Empty Reason"
+        },
+        "lower_basis": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Lower Basis",
+          "type": "string"
+        },
+        "lower_mm": {
+          "title": "Lower Mm",
+          "type": "number"
+        },
+        "parameter": {
+          "enum": [
+            "part_width_mm",
+            "support_length_mm",
+            "footprint_depth_mm"
+          ],
+          "title": "Parameter",
+          "type": "string"
+        },
+        "sheet_stock_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Sheet Stock Id",
+          "type": "string"
+        },
+        "step_mm": {
+          "exclusiveMinimum": 0,
+          "title": "Step Mm",
+          "type": "number"
+        },
+        "unit": {
+          "const": "mm",
+          "default": "mm",
+          "title": "Unit",
+          "type": "string"
+        },
+        "upper_basis": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Upper Basis",
+          "type": "string"
+        },
+        "upper_mm": {
+          "title": "Upper Mm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "sheet_stock_id",
+        "parameter",
+        "step_mm",
+        "lower_mm",
+        "upper_mm",
+        "count",
+        "lower_basis",
+        "upper_basis"
+      ],
+      "title": "DimensionDomain",
       "type": "object"
     },
     "Effects": {
@@ -4337,6 +4714,88 @@
       "title": "MaterialTransaction",
       "type": "object"
     },
+    "MaterialUse": {
+      "additionalProperties": false,
+      "properties": {
+        "note": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        },
+        "part_area_mm2": {
+          "minimum": 0,
+          "title": "Part Area Mm2",
+          "type": "number"
+        },
+        "region_area_mm2": {
+          "minimum": 0,
+          "title": "Region Area Mm2",
+          "type": "number"
+        },
+        "region_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Region Id",
+          "type": "string"
+        },
+        "sheet_stock_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Sheet Stock Id",
+          "type": "string"
+        },
+        "tape_length_mm": {
+          "minimum": 0,
+          "title": "Tape Length Mm",
+          "type": "number"
+        },
+        "tape_remaining_after_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tape Remaining After Mm"
+        },
+        "tape_remaining_before_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tape Remaining Before Mm"
+        },
+        "tape_stock_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Tape Stock Id",
+          "type": "string"
+        },
+        "unallocated_area_mm2": {
+          "minimum": 0,
+          "title": "Unallocated Area Mm2",
+          "type": "number"
+        }
+      },
+      "required": [
+        "sheet_stock_id",
+        "region_id",
+        "region_area_mm2",
+        "part_area_mm2",
+        "unallocated_area_mm2",
+        "tape_stock_id",
+        "tape_length_mm",
+        "note"
+      ],
+      "title": "MaterialUse",
+      "type": "object"
+    },
     "Measure": {
       "additionalProperties": false,
       "properties": {
@@ -5361,6 +5820,124 @@
       "title": "Preconditions",
       "type": "object"
     },
+    "ProbeResult": {
+      "additionalProperties": false,
+      "properties": {
+        "base_candidate_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Candidate Id"
+        },
+        "blockers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Blocker"
+          },
+          "maxItems": 16,
+          "title": "Blockers",
+          "type": "array"
+        },
+        "changed_piece_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Changed Piece Ids",
+          "type": "array"
+        },
+        "identity": {
+          "$ref": "#/$defs/SearchIdentity"
+        },
+        "parameter": {
+          "enum": [
+            "part_width_mm",
+            "support_length_mm",
+            "footprint_depth_mm"
+          ],
+          "title": "Parameter",
+          "type": "string"
+        },
+        "physical_verification": {
+          "const": "not_attempted",
+          "default": "not_attempted",
+          "title": "Physical Verification",
+          "type": "string"
+        },
+        "previous_value_mm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Previous Value Mm"
+        },
+        "repair": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RepairProbeSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "report": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CandidateReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "search_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Search Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "evaluated",
+            "outside_domain",
+            "requires_repair",
+            "unsupported"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "value_mm": {
+          "exclusiveMinimum": 0,
+          "title": "Value Mm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "search_id",
+        "identity",
+        "parameter",
+        "value_mm",
+        "status"
+      ],
+      "title": "ProbeResult",
+      "type": "object"
+    },
     "QuantityEstimate": {
       "additionalProperties": false,
       "description": "A scalar, inclusive interval or unknown in an explicit SI unit.\n\nDependencies and correlation groups preserve shared uncertainty. Provenance is\ndescriptive, never a calibrated confidence probability or physical test result.",
@@ -5556,6 +6133,28 @@
       "title": "Region",
       "type": "object"
     },
+    "RejectionCount": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "code",
+        "count"
+      ],
+      "title": "RejectionCount",
+      "type": "object"
+    },
     "RepairPatch": {
       "additionalProperties": false,
       "description": "Flat parameter edits, not executable operations or arbitrary JSON patches.",
@@ -5666,6 +6265,75 @@
         "rationale"
       ],
       "title": "RepairPatch",
+      "type": "object"
+    },
+    "RepairProbeSummary": {
+      "additionalProperties": false,
+      "description": "Read-only result of the existing repair simulation for an active build.",
+      "properties": {
+        "blockers": {
+          "items": {
+            "$ref": "#/$defs/Blocker"
+          },
+          "maxItems": 32,
+          "title": "Blockers",
+          "type": "array"
+        },
+        "patch_kind": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Patch Kind",
+          "type": "string"
+        },
+        "preserved_operation_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Preserved Operation Ids",
+          "type": "array"
+        },
+        "recheck_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Recheck Ids",
+          "type": "array"
+        },
+        "status": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        },
+        "target_part_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Target Part Id",
+          "type": "string"
+        },
+        "undo_operation_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Undo Operation Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "patch_kind",
+        "target_part_id",
+        "status",
+        "preserved_operation_ids",
+        "undo_operation_ids",
+        "recheck_ids",
+        "blockers"
+      ],
+      "title": "RepairProbeSummary",
       "type": "object"
     },
     "RepairProposals": {
@@ -5815,6 +6483,98 @@
         "translation_m"
       ],
       "title": "RigidTransform",
+      "type": "object"
+    },
+    "SearchBudget": {
+      "additionalProperties": false,
+      "description": "Node budget is deterministic; the time budget is a guard reported apart.",
+      "properties": {
+        "max_nodes": {
+          "default": 192,
+          "maximum": 512,
+          "minimum": 1,
+          "title": "Max Nodes",
+          "type": "integer"
+        },
+        "max_seconds": {
+          "default": 5.0,
+          "exclusiveMinimum": 0,
+          "maximum": 20,
+          "title": "Max Seconds",
+          "type": "number"
+        }
+      },
+      "title": "SearchBudget",
+      "type": "object"
+    },
+    "SearchIdentity": {
+      "additionalProperties": false,
+      "description": "Every revision the result depends on; a mismatch makes it stale.",
+      "properties": {
+        "active_version_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Active Version Id"
+        },
+        "context_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Context Fingerprint",
+          "type": "string"
+        },
+        "engine_version": {
+          "const": "stand-synthesis-v1",
+          "default": "stand-synthesis-v1",
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "inventory_revision_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Inventory Revision Id",
+          "type": "string"
+        },
+        "last_event_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Event Id"
+        },
+        "measurement_record_ids": {
+          "items": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Measurement Record Ids",
+          "type": "array"
+        },
+        "project_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "inventory_revision_id",
+        "active_version_id",
+        "last_event_id",
+        "context_fingerprint",
+        "measurement_record_ids"
+      ],
+      "title": "SearchIdentity",
       "type": "object"
     },
     "SlidingDemand": {
@@ -6582,6 +7342,77 @@
       "title": "StageSnapshot",
       "type": "object"
     },
+    "StandDesign": {
+      "additionalProperties": false,
+      "description": "Complete identity of one candidate; every value is checked on the server.",
+      "properties": {
+        "family": {
+          "const": "triangular-tape-stand-v1",
+          "default": "triangular-tape-stand-v1",
+          "title": "Family",
+          "type": "string"
+        },
+        "fold_profile_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Fold Profile Id",
+          "type": "string"
+        },
+        "footprint_depth_mm": {
+          "exclusiveMinimum": 0,
+          "title": "Footprint Depth Mm",
+          "type": "number"
+        },
+        "lip_mm": {
+          "exclusiveMinimum": 0,
+          "title": "Lip Mm",
+          "type": "number"
+        },
+        "part_width_mm": {
+          "exclusiveMinimum": 0,
+          "title": "Part Width Mm",
+          "type": "number"
+        },
+        "sheet_stock_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Sheet Stock Id",
+          "type": "string"
+        },
+        "support_angle_deg": {
+          "exclusiveMaximum": 90,
+          "exclusiveMinimum": 0,
+          "title": "Support Angle Deg",
+          "type": "number"
+        },
+        "support_length_mm": {
+          "exclusiveMinimum": 0,
+          "title": "Support Length Mm",
+          "type": "number"
+        },
+        "tape_profile_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Tape Profile Id",
+          "type": "string"
+        },
+        "tape_stock_id": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,95}$",
+          "title": "Tape Stock Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sheet_stock_id",
+        "tape_stock_id",
+        "tape_profile_id",
+        "fold_profile_id",
+        "part_width_mm",
+        "support_length_mm",
+        "footprint_depth_mm",
+        "lip_mm",
+        "support_angle_deg"
+      ],
+      "title": "StandDesign",
+      "type": "object"
+    },
     "Stock": {
       "additionalProperties": false,
       "properties": {
@@ -6722,6 +7553,129 @@
         "active"
       ],
       "title": "SupportContact",
+      "type": "object"
+    },
+    "SynthesisResult": {
+      "additionalProperties": false,
+      "properties": {
+        "blockers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Blocker"
+          },
+          "maxItems": 32,
+          "title": "Blockers",
+          "type": "array"
+        },
+        "budget": {
+          "$ref": "#/$defs/SearchBudget"
+        },
+        "candidates": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CandidateReport"
+          },
+          "maxItems": 2,
+          "title": "Candidates",
+          "type": "array"
+        },
+        "domains": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DimensionDomain"
+          },
+          "maxItems": 48,
+          "title": "Domains",
+          "type": "array"
+        },
+        "exhausted": {
+          "anyOf": [
+            {
+              "enum": [
+                "node_budget",
+                "time_budget"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exhausted"
+        },
+        "identity": {
+          "$ref": "#/$defs/SearchIdentity"
+        },
+        "limitations": {
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Limitations",
+          "type": "array"
+        },
+        "nodes_evaluated": {
+          "minimum": 0,
+          "title": "Nodes Evaluated",
+          "type": "integer"
+        },
+        "nodes_total": {
+          "minimum": 0,
+          "title": "Nodes Total",
+          "type": "integer"
+        },
+        "physical_verification": {
+          "const": "not_attempted",
+          "default": "not_attempted",
+          "title": "Physical Verification",
+          "type": "string"
+        },
+        "ranking": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Ranking",
+          "type": "string"
+        },
+        "rejections": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RejectionCount"
+          },
+          "maxItems": 32,
+          "title": "Rejections",
+          "type": "array"
+        },
+        "search_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Search Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "candidates_found",
+            "infeasible",
+            "search_exhausted",
+            "needs_input",
+            "active_build"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "search_id",
+        "identity",
+        "status",
+        "budget",
+        "nodes_evaluated",
+        "nodes_total",
+        "ranking",
+        "limitations"
+      ],
+      "title": "SynthesisResult",
       "type": "object"
     },
     "TapeJoint": {
