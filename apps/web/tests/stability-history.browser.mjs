@@ -117,6 +117,16 @@ try {
         musePosts.push(body);
         // The server completes the first POST, but its response is lost.
         if (musePosts.length === 1) return route.abort("connectionreset");
+        // Then an error without a code, then a 2xx that is not a valid answer.
+        if (musePosts.length === 2)
+          return route.fulfill({
+            status: 500,
+            json: { message: "Proxy error" },
+          });
+        if (musePosts.length === 3)
+          return route.fulfill({
+            json: { ...fixture.muse_replay, physical_status: "verified" },
+          });
         return route.fulfill({ json: fixture.muse_replay });
       }
       if (method === "GET" && replay.has(url.pathname))
@@ -205,6 +215,15 @@ try {
     });
     await retry.waitFor();
     assert.equal(await ask.count(), 0, "a new request cannot be started");
+    // Unclassified failures keep the request instead of releasing its key.
+    await retry.click();
+    await panel.getByText("are unavailable", { exact: false }).waitFor();
+    await retry.click();
+    await panel
+      .getByText("invalid MetaMuse explanation", { exact: false })
+      .waitFor();
+    await retry.waitFor();
+    assert.equal(await ask.count(), 0, "still only the same request");
 
     // The retained request survives a reload of the page.
     await page.reload();
@@ -247,8 +266,9 @@ try {
     await panel
       .getByText("Your result is kept below", { exact: false })
       .waitFor();
-    assert.equal(musePosts.length, 2);
-    assert.deepEqual(musePosts[1], musePosts[0], "the exact request is resent");
+    assert.equal(musePosts.length, 4);
+    for (const post of musePosts.slice(1))
+      assert.deepEqual(post, musePosts[0], "the exact request is resent");
     await panel
       .getByRole("button", { name: "Ask MetaMuse to explain" })
       .waitFor();
@@ -270,7 +290,7 @@ try {
     await answer.getByText("Stale —", { exact: false }).waitFor();
     assert.deepEqual(
       writes.map(([kind]) => kind),
-      ["save", "muse", "muse"],
+      ["save", "muse", "muse", "muse", "muse"],
     );
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth + 1,
@@ -279,7 +299,7 @@ try {
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
     console.log(
-      `PASS ${width}px saved report, history with stale entry, read-only detail, check-by-check comparison, lost MetaMuse response retried with the same request after reload, kept answer on refresh failure, open views re-judged after another tab's measurement change, stopped request`,
+      `PASS ${width}px saved report, history with stale entry, read-only detail, check-by-check comparison, lost, code-less and invalid MetaMuse responses retried with the same request after reload, kept answer on refresh failure, open views re-judged after another tab's measurement change, stopped request`,
     );
     await page.context().close();
   }

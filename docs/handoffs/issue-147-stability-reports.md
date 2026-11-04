@@ -1,6 +1,6 @@
 # Issue 147 handoff: saved stability reports and MetaMuse tools
 
-Status: review findings repaired; re-review of the repair pending.
+Status: second review repair done; re-review pending.
 
 - Issue and acceptance criteria: #147. Immutable content-addressed reports,
   owner-scoped history with stale marking, bounded read-only MetaMuse tools,
@@ -55,6 +55,18 @@ Status: review findings repaired; re-review of the repair pending.
   Regressions: backend replay-after-change and lost-response replay (both fail
   on `9f49b2b`), web receipt, lost-response and ambiguity tests, and the browser
   flow with a lost POST, a reload, a refresh failure and a change from another tab.
+- Second review repair (Codex re-review of `15a9e98`, one P2): a JSON error
+  without a code was read as the string `"undefined"` and treated as definite,
+  and a 2xx with an invalid body threw a plain error. Both released the
+  retained MetaMuse request, so the next click used a new key. Now only a
+  known definite refusal (`consent_required`, `blocked`, `stale_version`,
+  `not_found`, `idempotency_conflict`, `provider_not_configured`,
+  `invalid_response`) releases it. Any other code, a missing or non-string
+  code, and an invalid 2xx answer keep it for a retry with the same body and
+  key. Regressions: web unit tests for those codes and for a code-less error
+  then an invalid 2xx then a replay with one key (both fail on `15a9e98`); the
+  browser flow now goes through a lost, a code-less and an invalid response
+  before the reload and the replay, with all four POSTs identical.
 - Pending decisions and blockers: an independent Sol/Terra review of this diff
   before publication; feature review and exact-head remote checks before merge.
 - Next concrete action and receiving owner: Codex review (user to start), then
