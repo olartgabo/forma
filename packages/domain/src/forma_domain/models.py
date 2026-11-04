@@ -21,7 +21,10 @@ class Record(BaseModel):
 class Measurement(Record):
     value: float | None = Field(allow_inf_nan=False)
     unit: Literal["mm", "g", "deg"]
-    source: Literal["user_ruler", "known_reference", "calculated", "unknown"]
+    # photo_estimate: a planar photo estimate (#177); exploration only.
+    source: Literal[
+        "user_ruler", "known_reference", "calculated", "photo_estimate", "unknown"
+    ]
     confirmed: bool
     evidence_ids: tuple[ID, ...] = ()
 
@@ -33,6 +36,8 @@ class Measurement(Record):
             )
         if self.value is not None and self.source == "unknown":
             raise ValueError("known value requires provenance")
+        if self.source == "photo_estimate" and self.confirmed:
+            raise ValueError("a photo estimate is never a confirmed measurement")
         return self
 
 
