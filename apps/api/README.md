@@ -58,6 +58,15 @@ exposes FastAPI's OpenAPI UI. No database or provider readiness is implied.
 `/api/provider/status` checks local key/model configuration only; it makes no Meta request and does not prove key
 acceptance or provider reachability.
 
+Developer mode can send an optional `X-Forma-Model-Key` header for a Meta request.
+The API uses that key for the current request only, including its provider-status
+check, and otherwise uses the configured server key. It never changes the process
+environment or stores the supplied key. Owner authentication, explicit transfer
+consent, call limits and durable request receipts still apply. Keys must contain
+1–4,096 printable non-space ASCII characters; invalid or duplicate headers return
+a fixed error without reflecting the value. The browser must retain keys in memory
+only and send them through the fixed same-origin API proxy over HTTPS.
+
 The gateway retries rate-limit and temporary server responses (429, 500, 502,
 503 and 504) once by default within the same deadline. Retry waits are capped
 at three seconds and require at least two seconds remaining afterward. Timeouts,

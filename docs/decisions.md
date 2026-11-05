@@ -1143,3 +1143,10 @@ identify the selected step's parts. Dimension arrows label proposed projected
 millimeter bounds and are omitted for zero spans. These are reference drawings,
 not measured stock sizes, cutting templates or fabrication approval. The 3D
 interaction and existing geometry remain unchanged by this styling pass.
+
+
+## D074 — Simple view and opt-in developer tools
+
+November 4, 2026. The default experience prioritizes models, illustrated instructions, material review and required checks. Raw inputs, full JSON replies and technical diagnostics belong behind an off-by-default Developer mode in Settings. This preference is session-only.
+
+Developer mode also offers an optional Meta API key. The browser retains it only in memory and sends it to the fixed FORMA API for model requests. The API uses a request-scoped override without changing the server key or persisting the supplied key. Existing project authentication, transfer consent, request limits and evidence gates still apply. Turning developer mode off clears the key.

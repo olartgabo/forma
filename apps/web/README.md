@@ -173,3 +173,9 @@ node apps/web/tests/manual-mobile.browser.mjs /absolute/path/to/playwright/index
 The runner blocks service workers, unexpected APIs, writes and non-local network,
 and fails on page errors. It is a software browser replay only, not a provider,
 physical or hosted pass, and is not part of `npm run check`.
+
+## Developer settings
+
+Settings at the bottom of the page offers a session-only Developer mode. It starts off. Turn it on to inspect raw inputs, complete replies, engine details, request diagnostics and JSON exports; turn it off to return to models, guides and required checks.
+
+Developer mode also accepts an optional Meta API key. Choose Use this key to apply it to model requests through the fixed FORMA API. This key stays in memory and clears on disconnect, refresh or disabling developer mode. Existing owner authentication and transfer consent still apply. Empty settings use the server provider. No provider request is sent by entering a key or checking configuration.

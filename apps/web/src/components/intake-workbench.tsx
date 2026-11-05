@@ -1,5 +1,6 @@
 "use client";
 
+import { setModelKey } from "../lib/developer-settings";
 import {
   useCallback,
   useEffect,
@@ -205,7 +206,10 @@ export default function IntakeWorkbench() {
         <ProjectWorkbench
           key={session}
           token={token}
-          disconnect={() => setToken(null)}
+          disconnect={() => {
+            setModelKey("");
+            setToken(null);
+          }}
           onDashboardChange={setDashboard}
         />
       ) : (
@@ -446,7 +450,9 @@ function ProjectWorkbench({
   }, [token]);
   useEffect(() => {
     loadProviderStatus();
+    window.addEventListener("forma-model-key-changed", loadProviderStatus);
     return () => {
+      window.removeEventListener("forma-model-key-changed", loadProviderStatus);
       providerRequest.current += 1;
       providerController.current?.abort();
       providerController.current = null;

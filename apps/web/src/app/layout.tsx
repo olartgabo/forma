@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import MuseLanguageProvider from "../components/muse-language-provider";
+import DeveloperModeProvider from "../components/developer-mode";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +14,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     // Dark-mode extensions can add attributes to the document before hydration.
     <html lang="en" suppressHydrationWarning>
       <body>
-        <MuseLanguageProvider>{children}</MuseLanguageProvider>
+        <MuseLanguageProvider>
+          <DeveloperModeProvider>{children}</DeveloperModeProvider>
+        </MuseLanguageProvider>
       </body>
     </html>
   );

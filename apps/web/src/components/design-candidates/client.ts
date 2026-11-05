@@ -1,3 +1,6 @@
+// prettier-ignore
+// @ts-expect-error -- Node tests import TypeScript directly.
+import { modelKeyHeaders } from "../../lib/developer-settings.ts";
 import type {
   PlanCompileResult,
   SynthesisMuseRequest,
@@ -340,6 +343,7 @@ export function synthesisApi(token: string, projectId: string) {
         signal,
         headers: {
           Authorization: `Bearer ${token}`,
+          ...(path === "muse-explanations" ? modelKeyHeaders() : {}),
           "Content-Type": "application/json",
         },
         cache: "no-store",
