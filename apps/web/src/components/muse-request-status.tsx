@@ -1,3 +1,4 @@
+import { DeveloperOnly } from "./developer-mode";
 import type { ProviderUsage } from "../lib/generated/api-contracts";
 import { museCopyFor } from "../lib/muse-language";
 import {
@@ -67,26 +68,28 @@ export default function MuseRequestStatus({
           {failure.label}: {errorMessage}
         </p>
       )}
-      {diagnostics && (
-        <p className="help">
-          {copy.diagnostics.label} — {copy.diagnostics.status}:{" "}
-          {diagnostics.status}; {copy.diagnostics.model}: {diagnostics.model};
-          {diagnostics.modelRounds !== undefined && (
-            <>
-              {" "}
-              {copy.diagnostics.rounds}: {diagnostics.modelRounds};
-            </>
-          )}
-          {diagnostics.toolExecutions !== undefined && (
-            <>
-              {" "}
-              {copy.diagnostics.toolCalls}: {diagnostics.toolExecutions};
-            </>
-          )}{" "}
-          {formatMuseLatency(diagnostics.elapsedMs, effectiveLocale)}.{" "}
-          {formatProviderUsage(diagnostics.usage, effectiveLocale)}
-        </p>
-      )}
+      <DeveloperOnly>
+        {diagnostics && (
+          <p className="help">
+            {copy.diagnostics.label} — {copy.diagnostics.status}:{" "}
+            {diagnostics.status}; {copy.diagnostics.model}: {diagnostics.model};
+            {diagnostics.modelRounds !== undefined && (
+              <>
+                {" "}
+                {copy.diagnostics.rounds}: {diagnostics.modelRounds};
+              </>
+            )}
+            {diagnostics.toolExecutions !== undefined && (
+              <>
+                {" "}
+                {copy.diagnostics.toolCalls}: {diagnostics.toolExecutions};
+              </>
+            )}{" "}
+            {formatMuseLatency(diagnostics.elapsedMs, effectiveLocale)}.{" "}
+            {formatProviderUsage(diagnostics.usage, effectiveLocale)}
+          </p>
+        )}
+      </DeveloperOnly>
     </div>
   );
 }

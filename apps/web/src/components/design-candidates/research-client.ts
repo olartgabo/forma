@@ -1,3 +1,6 @@
+// prettier-ignore
+// @ts-expect-error -- Node tests import TypeScript directly.
+import { modelKeyHeaders } from "../../lib/developer-settings.ts";
 import type {
   IntakeResearchRequest,
   IntakeResearchResult,
@@ -179,7 +182,11 @@ export function researchApi(token: string, context: SearchContext) {
         response = await fetch(path, {
           method: "POST",
           body: JSON.stringify(body),
-          headers: { ...headers, "Content-Type": "application/json" },
+          headers: {
+            ...headers,
+            ...modelKeyHeaders(),
+            "Content-Type": "application/json",
+          },
           signal: AbortSignal.any([signal, AbortSignal.timeout(35_000)]),
           cache: "no-store",
           credentials: "omit",

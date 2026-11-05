@@ -1,3 +1,6 @@
+// prettier-ignore
+// @ts-expect-error -- Node tests import TypeScript directly.
+import { modelKeyHeaders } from "./developer-settings.ts";
 export class LocalizationError extends Error {
   readonly status: number;
   readonly code: string;
@@ -54,6 +57,7 @@ export async function localizePhoto(
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
+        ...modelKeyHeaders(),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),

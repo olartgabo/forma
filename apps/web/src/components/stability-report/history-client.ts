@@ -1,3 +1,6 @@
+// prettier-ignore
+// @ts-expect-error -- Node tests import TypeScript directly.
+import { modelKeyHeaders } from "../../lib/developer-settings.ts";
 import type {
   StabilityMuseRequest,
   StabilityMuseResult,
@@ -294,6 +297,7 @@ export function stabilityApi(token: string, projectId: string) {
         signal,
         headers: {
           Authorization: `Bearer ${token}`,
+          ...(url.endsWith("/muse-explanations") ? modelKeyHeaders() : {}),
           "Content-Type": "application/json",
         },
         cache: "no-store",

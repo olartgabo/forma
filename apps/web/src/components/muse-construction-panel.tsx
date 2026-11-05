@@ -1,5 +1,6 @@
 "use client";
 
+import { DeveloperOnly } from "./developer-mode";
 import { useEffect, useRef, useState } from "react";
 import type {
   Media,
@@ -232,10 +233,12 @@ function ConstructionPreview({
                   ? "Bring the highlighted pieces together as shown. The connection method and strength still need verification."
                   : "Inspect the proposed placement and connections."}
             </p>
-            <details>
-              <summary>Engine step details</summary>
-              {step.instruction}
-            </details>
+            <DeveloperOnly>
+              <details>
+                <summary>Engine step details</summary>
+                {step.instruction}
+              </details>
+            </DeveloperOnly>
           </>
         ) : (
           <p>{step.instruction}</p>
@@ -467,19 +470,21 @@ function Candidate({
           This does not establish stability, joint strength or completed work.
         </p>
       )}
-      <details>
-        <summary>Exact engine and fabrication results</summary>
-        <pre
-          style={{
-            whiteSpace: "pre-wrap",
-            overflowWrap: "anywhere",
-            maxHeight: 400,
-            overflow: "auto",
-          }}
-        >
-          {JSON.stringify(candidate, null, 2)}
-        </pre>
-      </details>
+      <DeveloperOnly>
+        <details>
+          <summary>Exact engine and fabrication results</summary>
+          <pre
+            style={{
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+              maxHeight: 400,
+              overflow: "auto",
+            }}
+          >
+            {JSON.stringify(candidate, null, 2)}
+          </pre>
+        </details>
+      </DeveloperOnly>
     </article>
   );
 }

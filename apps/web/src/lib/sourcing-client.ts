@@ -1,3 +1,6 @@
+// prettier-ignore
+// @ts-expect-error -- Node tests import TypeScript directly.
+import { modelKeyHeaders } from "./developer-settings.ts";
 import type {
   ResearchRequest,
   ResearchRun,
@@ -71,6 +74,7 @@ async function request(
       method: body ? "POST" : "GET",
       headers: {
         Authorization: `Bearer ${token}`,
+        ...(body ? modelKeyHeaders() : {}),
         ...(body ? { "Content-Type": "application/json" } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),

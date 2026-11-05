@@ -1161,3 +1161,10 @@ server instructions tell the agent to set it only after the user reviewed the
 values. No tool calls a model provider, approves or activates a plan, records
 physical work or evidence, or deletes data. Those remain in the app with the
 user present. Agent-supplied values are user-reported inventory, not measurements.
+
+## D079 — Simple view and opt-in developer tools
+
+November 4, 2026. The default experience prioritizes models, illustrated instructions, material review and required checks. Raw inputs, full JSON replies and technical diagnostics belong behind an off-by-default Developer mode in Settings. This preference is session-only.
+
+Developer mode also offers an optional Meta API key. The browser retains it only in memory and sends it to the fixed FORMA API for model requests. The API uses a request-scoped override without changing the server key or persisting the supplied key. Existing project authentication, transfer consent, request limits and evidence gates still apply. Turning developer mode off clears the key.
+
