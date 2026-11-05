@@ -1,11 +1,11 @@
 """Official Meta search adapter, isolated from engine and persistence authority."""
 
 import json
-import os
 import re
 from decimal import Decimal
 
 from forma_api.model_gateway import GatewayError
+from forma_api.provider_credentials import model_api_key
 from forma_api.sourcing import (
     OfferObservation,
     ResearchRequest,
@@ -328,6 +328,4 @@ def default_gateway_factory():
     # are separate; this factory neither removes STOPs nor renews any window.
     from forma_api.retail_evidence import discover_offers
 
-    return SourcingGateway(
-        SourcingHTTP(os.environ.get("MODEL_API_KEY", "")), price_lookup=discover_offers
-    )
+    return SourcingGateway(SourcingHTTP(model_api_key()), price_lookup=discover_offers)

@@ -14,6 +14,8 @@ from typing import Callable, Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from forma_api.provider_credentials import model_api_key
+
 T = TypeVar("T", bound=BaseModel)
 DEFAULT_SPARK_MODEL = "muse-spark-1.3"
 DEFAULT_SAM_MODEL = "sam-3.1"
@@ -497,7 +499,7 @@ class MetaGateway:
     @classmethod
     def from_env(cls, *, timeout=20, budget=60, max_rounds=4, max_retries=1):
         return cls(
-            MetaHTTP(os.environ.get("MODEL_API_KEY", "")),
+            MetaHTTP(model_api_key()),
             spark=os.environ.get("META_SPARK_MODEL", DEFAULT_SPARK_MODEL),
             sam=os.environ.get("META_SAM_MODEL", DEFAULT_SAM_MODEL),
             timeout=timeout,

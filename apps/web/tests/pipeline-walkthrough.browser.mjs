@@ -45,6 +45,26 @@ try {
     await page
       .getByRole("heading", { name: "Your starting point", exact: true })
       .waitFor();
+    const inspector = page.getByText("Inspect the input and complete reply", {
+      exact: true,
+    });
+    const savedReplies = page.getByText("Download all saved replies ↓", {
+      exact: true,
+    });
+    assert.equal(await inspector.count(), 0);
+    assert.equal(await savedReplies.count(), 0);
+    await page.getByText("Settings", { exact: true }).click();
+    const developerMode = page.getByRole("checkbox", {
+      name: "Developer mode",
+      exact: true,
+    });
+    await developerMode.check();
+    assert.equal(await inspector.count(), 1);
+    assert.equal(await savedReplies.count(), 1);
+    await developerMode.uncheck();
+    assert.equal(await inspector.count(), 0);
+    assert.equal(await savedReplies.count(), 0);
+    await developerMode.check();
     const stages = page
       .getByRole("navigation", { name: "Pipeline stages" })
       .getByRole("button");
@@ -66,6 +86,12 @@ try {
       `UX note ${width}`,
     );
     await page.reload();
+    await page
+      .getByRole("heading", { name: "Your starting point", exact: true })
+      .waitFor();
+    assert.equal(await inspector.count(), 0);
+    await page.getByText("Settings", { exact: true }).click();
+    await developerMode.check();
     assert.equal(
       await page.getByLabel("What would you improve here?").inputValue(),
       `UX note ${width}`,

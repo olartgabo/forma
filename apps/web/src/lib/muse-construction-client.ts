@@ -1,3 +1,6 @@
+// prettier-ignore
+// @ts-expect-error -- Node tests import TypeScript directly.
+import { modelKeyHeaders } from "./developer-settings.ts";
 import type {
   MuseConstructionRequest,
   MuseConstructionResult,
@@ -235,6 +238,7 @@ export async function proposeConstruction(
       {
         method: "POST",
         headers: {
+          ...modelKeyHeaders(),
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },

@@ -1,3 +1,4 @@
+import { DeveloperOnly } from "./developer-mode";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, loadProof } from "../lib/api";
 import {
@@ -181,19 +182,22 @@ export default function ProofWorkbench({
         >
           Download text summary
         </button>
-        <button
-          type="button"
-          disabled={
-            disabled ||
-            loading ||
-            exporting ||
-            diagnosisPending ||
-            (diagnosisUncertain && !asOfAcknowledged)
-          }
-          onClick={() => void download("json")}
-        >
-          Download JSON report
-        </button>
+        <DeveloperOnly>
+          {" "}
+          <button
+            type="button"
+            disabled={
+              disabled ||
+              loading ||
+              exporting ||
+              diagnosisPending ||
+              (diagnosisUncertain && !asOfAcknowledged)
+            }
+            onClick={() => void download("json")}
+          >
+            Download JSON report
+          </button>
+        </DeveloperOnly>
       </div>
       <div aria-live="polite">
         {diagnosisPending && (

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import MuseLanguageProvider from "../components/muse-language-provider";
+import DeveloperModeProvider from "../components/developer-mode";
 import "./globals.css";
 
 const description =
@@ -39,6 +40,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           }}
         />
         <MuseLanguageProvider>{children}</MuseLanguageProvider>
+        <MuseLanguageProvider>
+          <DeveloperModeProvider>{children}</DeveloperModeProvider>
+        </MuseLanguageProvider>
       </body>
     </html>
   );

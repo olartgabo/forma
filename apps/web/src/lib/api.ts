@@ -1,3 +1,6 @@
+// prettier-ignore
+// @ts-expect-error -- Node tests import TypeScript directly.
+import { modelKeyHeaders } from "./developer-settings.ts";
 import type { Stock } from "./generated/contracts";
 // prettier-ignore
 // @ts-expect-error -- Node tests import TypeScript directly.
@@ -327,6 +330,10 @@ async function request<T>(
   try {
     const headers = new Headers(init.headers);
     headers.set("Authorization", `Bearer ${token}`);
+    if (intake || design || diagnosis || repair) {
+      for (const [name, value] of Object.entries(modelKeyHeaders()))
+        headers.set(name, value);
+    }
     const response = await fetch(path, {
       ...init,
       headers,
@@ -438,7 +445,7 @@ export function getProviderStatus(
   return request(
     token,
     "/api/provider/status",
-    { method: "GET" },
+    { method: "GET", headers: modelKeyHeaders() },
     async (response) => checkedProviderStatus(await json<unknown>(response)),
     signal,
   );

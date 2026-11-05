@@ -7,6 +7,7 @@ import {
   initialCamera,
   projectFacets,
 } from "../../../../packages/assembly_view/projection";
+import { DeveloperOnly } from "./developer-mode";
 import Diagram from "./manual-diagram";
 import FormaWordmark from "./forma-wordmark";
 import styles from "./pipeline-walkthrough.module.css";
@@ -85,6 +86,51 @@ function Reply({ value, depth = 0 }: { value: Value; depth?: number }) {
         );
       })}
     </div>
+  );
+}
+
+function UserFindings({ value }: { value: Value }) {
+  const findings = new Set<string>();
+  function visit(item: Value) {
+    if (!item || typeof item !== "object") return;
+    if (Array.isArray(item)) {
+      item.forEach(visit);
+      return;
+    }
+    for (const [key, child] of Object.entries(item)) {
+      if (
+        [
+          "blockers",
+          "questions",
+          "explanation",
+          "reason",
+          "reasons",
+          "missing_capabilities",
+          "question",
+          "unresolved_predicates",
+        ].includes(key)
+      ) {
+        if (typeof child === "string") findings.add(child);
+        if (Array.isArray(child)) {
+          child.forEach((text) => {
+            if (typeof text === "string") findings.add(text);
+          });
+        }
+      }
+      visit(child);
+    }
+  }
+  visit(value);
+  if (!findings.size) return null;
+  return (
+    <section aria-label="Questions and checks">
+      <h3>Questions and checks</h3>
+      <ul>
+        {[...findings].slice(0, 12).map((text) => (
+          <li key={text}>{text}</li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -359,13 +405,15 @@ export default function PipelineWalkthrough() {
                 </span>
               </button>
             ))}
-            <a
-              className={styles.download}
-              href="/walkthrough/project.json"
-              download="forma-synthetic-project.json"
-            >
-              Download all saved replies ↓
-            </a>
+            <DeveloperOnly>
+              <a
+                className={styles.download}
+                href="/walkthrough/project.json"
+                download="forma-synthetic-project.json"
+              >
+                Download all saved replies ↓
+              </a>
+            </DeveloperOnly>
           </nav>
           <article className={styles.stage}>
             <div className={styles.stageTop}>
@@ -384,7 +432,11 @@ export default function PipelineWalkthrough() {
               <p className={styles.description}>{step.description}</p>
             )}
             {step.summary && <p className={styles.outcome}>{step.summary}</p>}
-            <p className={styles.engine}>Run by {step.engine}</p>
+            <UserFindings value={step.output} />
+            {step.error && <UserFindings value={step.error} />}
+            <DeveloperOnly>
+              <p className={styles.engine}>Run by {step.engine}</p>
+            </DeveloperOnly>
             {step.id === "assembly-view" && (
               <SavedAssembly
                 response={step.output as unknown as AssemblyViewResponse}
@@ -399,21 +451,23 @@ export default function PipelineWalkthrough() {
                 <figcaption>Synthetic reference image</figcaption>
               </figure>
             )}
-            <details
-              key={step.id}
-              className={styles.result}
-              open={step.id.startsWith("muse-") || step.id.startsWith("sam-")}
-              aria-label="Saved reply"
-            >
-              <summary>Read the saved reply</summary>
-              <Reply value={step.output} />
-              {step.error && (
-                <div role="note">
-                  <h4>Why this stage needs attention</h4>
-                  <Reply value={step.error} />
-                </div>
-              )}
-            </details>
+            <DeveloperOnly>
+              <details
+                key={step.id}
+                className={styles.result}
+                open={step.id.startsWith("muse-") || step.id.startsWith("sam-")}
+                aria-label="Saved reply"
+              >
+                <summary>Read the saved reply</summary>
+                <Reply value={step.output} />
+                {step.error && (
+                  <div role="note">
+                    <h4>Why this stage needs attention</h4>
+                    <Reply value={step.error} />
+                  </div>
+                )}
+              </details>
+            </DeveloperOnly>
             {selectedPanel && (
               <section className={styles.manual} aria-label="Assembly manual">
                 <h3>The illustrated manual</h3>
@@ -449,73 +503,83 @@ export default function PipelineWalkthrough() {
                 </div>
               </section>
             )}
-            <details className={styles.inspector}>
-              <summary>Inspect the input and complete reply</summary>
-              <h3>Input</h3>
-              <pre>{JSON.stringify(step.input, null, 2)}</pre>
-              <h3>Complete reply</h3>
-              <pre>
-                {JSON.stringify(
-                  {
-                    status: step.status,
-                    output: step.output,
-                    ...(step.error ? { error: step.error } : {}),
-                  },
-                  null,
-                  2,
-                )}
-              </pre>
-            </details>
-            <section
-              className={styles.notes}
-              aria-label="Interaction review notes"
-            >
-              <label htmlFor="review-note">What would you improve here?</label>
-              <p>
-                Private notes stay in this browser. They survive moving between
-                stages and reloading.
-              </p>
-              <textarea
-                id="review-note"
-                rows={3}
-                maxLength={5000}
-                placeholder="For example: I don't understand what to do next…"
-                value={notes[step.id] ?? ""}
-                onChange={(event) => {
-                  const next = { ...notes, [step.id]: event.target.value };
-                  setNotes(next);
-                  try {
-                    localStorage.setItem(
-                      "forma-walkthrough-notes-v1",
-                      JSON.stringify(next),
-                    );
-                    setNoteStatus("Saved in this browser.");
-                  } catch {
-                    setNoteStatus(
-                      "Browser storage unavailable; keep this page open or download your notes.",
-                    );
-                  }
-                }}
-              />
-              <p role="status">{noteStatus}</p>
-              <button
-                onClick={() => {
-                  const url = URL.createObjectURL(
-                    new Blob(
-                      [JSON.stringify({ project: data.label, notes }, null, 2)],
-                      { type: "application/json" },
-                    ),
-                  );
-                  const anchor = document.createElement("a");
-                  anchor.href = url;
-                  anchor.download = "forma-interaction-notes.json";
-                  anchor.click();
-                  setTimeout(() => URL.revokeObjectURL(url), 1000);
-                }}
+            <DeveloperOnly>
+              <details className={styles.inspector}>
+                <summary>Inspect the input and complete reply</summary>
+                <h3>Input</h3>
+                <pre>{JSON.stringify(step.input, null, 2)}</pre>
+                <h3>Complete reply</h3>
+                <pre>
+                  {JSON.stringify(
+                    {
+                      status: step.status,
+                      output: step.output,
+                      ...(step.error ? { error: step.error } : {}),
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
+              </details>
+              <section
+                className={styles.notes}
+                aria-label="Interaction review notes"
               >
-                Download my review notes
-              </button>
-            </section>
+                <label htmlFor="review-note">
+                  What would you improve here?
+                </label>
+                <p>
+                  Private notes stay in this browser. They survive moving
+                  between stages and reloading.
+                </p>
+                <textarea
+                  id="review-note"
+                  rows={3}
+                  maxLength={5000}
+                  placeholder="For example: I don't understand what to do next…"
+                  value={notes[step.id] ?? ""}
+                  onChange={(event) => {
+                    const next = { ...notes, [step.id]: event.target.value };
+                    setNotes(next);
+                    try {
+                      localStorage.setItem(
+                        "forma-walkthrough-notes-v1",
+                        JSON.stringify(next),
+                      );
+                      setNoteStatus("Saved in this browser.");
+                    } catch {
+                      setNoteStatus(
+                        "Browser storage unavailable; keep this page open or download your notes.",
+                      );
+                    }
+                  }}
+                />
+                <p role="status">{noteStatus}</p>
+                <button
+                  onClick={() => {
+                    const url = URL.createObjectURL(
+                      new Blob(
+                        [
+                          JSON.stringify(
+                            { project: data.label, notes },
+                            null,
+                            2,
+                          ),
+                        ],
+                        { type: "application/json" },
+                      ),
+                    );
+                    const anchor = document.createElement("a");
+                    anchor.href = url;
+                    anchor.download = "forma-interaction-notes.json";
+                    anchor.click();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                  }}
+                >
+                  Download my review notes
+                </button>
+              </section>
+            </DeveloperOnly>
             <footer className={styles.pager}>
               <button disabled={current === 0} onClick={() => go(current - 1)}>
                 ← Previous stage
@@ -546,22 +610,25 @@ export default function PipelineWalkthrough() {
       )}
       {data && (
         <footer className={styles.provenance}>
-          <p>
-            Saved {data.generated_at} · {data.provider_calls} recorded provider
-            calls
-            {data.source_head
-              ? ` · Source ${data.source_head.slice(0, 8)}`
-              : ""}
-          </p>
-          {data.actual_usage_totals && (
+          <DeveloperOnly>
             <p>
-              Provider-reported usage:{" "}
-              {data.actual_usage_totals.input_tokens.toLocaleString()} input
-              tokens · {data.actual_usage_totals.output_tokens.toLocaleString()}{" "}
-              output tokens · {data.actual_usage_totals.images_processed} SAM
-              image. No monetary amount was reported.
+              Saved {data.generated_at} · {data.provider_calls} recorded
+              provider calls
+              {data.source_head
+                ? ` · Source ${data.source_head.slice(0, 8)}`
+                : ""}
             </p>
-          )}
+            {data.actual_usage_totals && (
+              <p>
+                Provider-reported usage:{" "}
+                {data.actual_usage_totals.input_tokens.toLocaleString()} input
+                tokens ·{" "}
+                {data.actual_usage_totals.output_tokens.toLocaleString()} output
+                tokens · {data.actual_usage_totals.images_processed} SAM image.
+                No monetary amount was reported.
+              </p>
+            )}
+          </DeveloperOnly>
           <details>
             <summary>Scope and current limitations</summary>
             <ul>

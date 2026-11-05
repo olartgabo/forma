@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from forma_api.model_gateway import DEFAULT_SAM_MODEL, DEFAULT_SPARK_MODEL, MODEL_ID_RE
+from forma_api.provider_credentials import model_api_key
 from forma_domain.models import Record
 
 router = APIRouter()
@@ -32,7 +33,7 @@ def provider_status() -> ProviderStatusResponse:
     sam = os.environ.get("META_SAM_MODEL", DEFAULT_SAM_MODEL)
     valid_spark = MODEL_ID_RE.fullmatch(candidate) is not None
     configured = (
-        bool(os.environ.get("MODEL_API_KEY", "").strip())
+        bool(model_api_key().strip())
         and valid_spark
         and MODEL_ID_RE.fullmatch(sam) is not None
     )

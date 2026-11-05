@@ -13,6 +13,7 @@ from forma_api.projects import (
     project_error_handler,
     project_router,
 )
+from forma_api.provider_credentials import ProviderCredentialMiddleware
 from forma_api.routes.health import router as health_router
 from forma_api.routes.photo_estimates import reference_router
 
@@ -29,6 +30,7 @@ def create_app(
             yield
 
     app = FastAPI(title="FORMA API", version="0.1.0", lifespan=lifespan)
+    app.add_middleware(ProviderCredentialMiddleware)
     app.add_exception_handler(ProjectError, project_error_handler)
     app.include_router(health_router, prefix="/api")
     app.include_router(reference_router, prefix="/api")
