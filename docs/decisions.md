@@ -1144,9 +1144,27 @@ millimeter bounds and are omitted for zero spans. These are reference drawings,
 not measured stock sizes, cutting templates or fabrication approval. The 3D
 interaction and existing geometry remain unchanged by this styling pass.
 
+## D078 - Expose an MCP endpoint for agent uploads (November 4, 2026)
 
-## D074 — Simple view and opt-in developer tools
+The user requests an MCP server so an agent can upload project information for
+the user. `POST /api/mcp` serves stateless streamable-HTTP MCP from the API
+process, so hosted traffic reaches it through the existing `/api/*` rewrite. It
+requires the same owner bearer tokens as the REST routes and returns 401 before
+any MCP parsing when the token is missing or unknown.
+
+Each tool forwards to the existing REST route in-process with the caller's
+token, so ownership checks, validation, idempotency and stale-revision 409s are
+the REST behavior unchanged. The tools are `list_projects`, `get_project`,
+`create_project`, `list_photos`, `upload_photo` (base64, same 8 MiB limit) and
+`update_inventory`. Inventory updates still require `user_confirmed: true`; the
+server instructions tell the agent to set it only after the user reviewed the
+values. No tool calls a model provider, approves or activates a plan, records
+physical work or evidence, or deletes data. Those remain in the app with the
+user present. Agent-supplied values are user-reported inventory, not measurements.
+
+## D079 — Simple view and opt-in developer tools
 
 November 4, 2026. The default experience prioritizes models, illustrated instructions, material review and required checks. Raw inputs, full JSON replies and technical diagnostics belong behind an off-by-default Developer mode in Settings. This preference is session-only.
 
 Developer mode also offers an optional Meta API key. The browser retains it only in memory and sends it to the fixed FORMA API for model requests. The API uses a request-scoped override without changing the server key or persisting the supplied key. Existing project authentication, transfer consent, request limits and evidence gates still apply. Turning developer mode off clears the key.
+

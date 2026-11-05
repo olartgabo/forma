@@ -4,6 +4,7 @@ import hashlib
 import json
 import secrets
 import sqlite3
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated, Literal
@@ -240,31 +241,43 @@ class ProjectStore:
         )
 
 
-def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRouter:
+def owner_lookup(credentials: dict[str, str]) -> Callable[[str], str | None]:
     if any(len(token) < 32 for token in credentials.values()) or len(
         set(credentials.values())
     ) != len(credentials):
         raise ValueError(
             "Owner credentials must be distinct and at least 32 characters"
         )
-    from forma_api.recognized_items_runtime import reconcile_existing
-
-    reconcile_existing(store)
-    # Keep only digests in the dependency closure; never expose tokens in responses.
+    # Keep only digests in the closure; never expose tokens in responses.
     owners = {
         hashlib.sha256(token.encode()).digest(): owner
         for owner, token in credentials.items()
     }
+
+    def lookup(token: str) -> str | None:
+        digest = hashlib.sha256(token.encode()).digest()
+        for candidate, owner in owners.items():
+            if secrets.compare_digest(digest, candidate):
+                return owner
+        return None
+
+    return lookup
+
+
+def project_router(store: ProjectStore, credentials: dict[str, str]) -> APIRouter:
+    lookup = owner_lookup(credentials)
+    from forma_api.recognized_items_runtime import reconcile_existing
+
+    reconcile_existing(store)
     bearer = HTTPBearer(auto_error=False)
 
     def authenticate(
         supplied: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
     ) -> str:
         if supplied is not None:
-            digest = hashlib.sha256(supplied.credentials.encode()).digest()
-            for candidate, owner in owners.items():
-                if secrets.compare_digest(digest, candidate):
-                    return owner
+            owner = lookup(supplied.credentials)
+            if owner is not None:
+                return owner
         raise ProjectError(
             401, "forbidden", "A configured bearer credential is required"
         )
