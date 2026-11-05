@@ -120,7 +120,10 @@ try {
     );
   });
   await page.goto(`${origin.origin}/?project=${project.id}`);
-  await page.getByLabel("Owner credential").fill("synthetic-intake-owner");
+  await page.evaluate(
+    (t) => localStorage.setItem("forma.visitor-token", t),
+    "synthetic-intake-owner",
+  );
   await page
     .getByRole("button", { name: "Open workbench", exact: true })
     .click();

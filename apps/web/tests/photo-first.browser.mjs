@@ -124,7 +124,10 @@ try {
     });
   });
   await page.goto(`${origin.origin}/?project=${fixture.project.id}`);
-  await page.getByLabel("Owner credential").fill("offline-owner");
+  await page.evaluate(
+    (t) => localStorage.setItem("forma.visitor-token", t),
+    "offline-owner",
+  );
   await page.getByRole("button", { name: "Open workbench" }).click();
   const panel = page.getByRole("region", {
     name: "Create an illustrated concept",
@@ -216,7 +219,10 @@ try {
     },
   ];
   await page.reload();
-  await page.getByLabel("Owner credential").fill("offline-owner");
+  await page.evaluate(
+    (t) => localStorage.setItem("forma.visitor-token", t),
+    "offline-owner",
+  );
   await page.getByRole("button", { name: "Open workbench" }).click();
   await panel
     .getByText(/Saved proposal restored without a model request/)
@@ -303,7 +309,10 @@ try {
     releaseMedia = resolve;
   });
   await page.reload();
-  await page.getByLabel("Owner credential").fill("offline-owner");
+  await page.evaluate(
+    (t) => localStorage.setItem("forma.visitor-token", t),
+    "offline-owner",
+  );
   await page.getByRole("button", { name: "Open workbench" }).click();
   await panel
     .getByText(/Saved proposal restored without a model request/)
@@ -329,7 +338,10 @@ try {
   ];
   const readsBefore = previewReads;
   await page.reload();
-  await page.getByLabel("Owner credential").fill("offline-owner");
+  await page.evaluate(
+    (t) => localStorage.setItem("forma.visitor-token", t),
+    "offline-owner",
+  );
   await page.getByRole("button", { name: "Open workbench" }).click();
   await panel.getByText(/Stored request state: unknown/).waitFor();
   assert.equal(previewReads, readsBefore);
@@ -376,7 +388,10 @@ try {
   // unknown but no longer blocks a separately consented new request.
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await page.getByLabel("Owner credential").fill("offline-owner");
+  await page.evaluate(
+    (t) => localStorage.setItem("forma.visitor-token", t),
+    "offline-owner",
+  );
   await page.getByRole("button", { name: "Open workbench" }).click();
   await panel
     .getByText(/Saved proposal restored without a model request/)
@@ -406,7 +421,10 @@ try {
     r.url().includes("/construction/preview"),
   );
   await page.reload();
-  await page.getByLabel("Owner credential").fill("offline-owner");
+  await page.evaluate(
+    (t) => localStorage.setItem("forma.visitor-token", t),
+    "offline-owner",
+  );
   await page.getByRole("button", { name: "Open workbench" }).click();
   await previewStarted;
   authorizedKey = null;
@@ -439,7 +457,10 @@ try {
   // even when the browser previously selected photo-first entry.
   fixture.project.active_version_id = "active-fixture";
   await page.reload();
-  await page.getByLabel("Owner credential").fill("offline-owner");
+  await page.evaluate(
+    (t) => localStorage.setItem("forma.visitor-token", t),
+    "offline-owner",
+  );
   await page.getByRole("button", { name: "Open workbench" }).click();
   await page
     .getByRole("heading", { name: "Review your plan and manual" })

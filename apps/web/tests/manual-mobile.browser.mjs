@@ -182,10 +182,11 @@ async function scenario(width, failed, extra = null) {
       await route.fulfill({ json: replay.get(url.pathname) });
     });
     await page.goto(`${origin.origin}/?project=${project.id}`);
-    const owner = page.getByLabel("Owner credential");
-    const open = page.getByRole("button", { name: "Open workbench" });
-    await owner.fill(credential);
-    await open.click();
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      credential,
+    );
+    await page.getByRole("button", { name: "Open workbench" }).click();
     const manual = page.locator(".manual-step");
     await manual.waitFor();
     await manual

@@ -194,9 +194,10 @@ try {
     });
     async function open(expectedName = "Cardboard") {
       await page.goto(`${origin.origin}/?project=${project.id}`);
-      await page
-        .getByLabel("Owner credential")
-        .fill("synthetic-material-board-owner");
+      await page.evaluate(
+        (t) => localStorage.setItem("forma.visitor-token", t),
+        "synthetic-material-board-owner",
+      );
       await page
         .getByRole("button", { name: "Open workbench", exact: true })
         .click();

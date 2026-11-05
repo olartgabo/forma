@@ -184,7 +184,10 @@ try {
       );
     });
     await page.goto(`${origin.origin}/?project=${project.id}`);
-    await page.getByLabel("Owner credential").fill("offline-owner");
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      "offline-owner",
+    );
     await page.getByRole("button", { name: "Open workbench" }).click();
     await page.getByRole("button", { name: "Estimate material sizes" }).click();
     await page.getByLabel("Line A, measured (mm)", { exact: true }).fill("150");

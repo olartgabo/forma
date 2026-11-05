@@ -95,7 +95,10 @@ try {
       page.getByRole("region", { name: "Find a material in your photo" });
     async function connect() {
       await page.goto(`${origin.origin}/?project=${shown.id}`);
-      await page.getByLabel("Owner credential").fill("synthetic-owner");
+      await page.evaluate(
+        (t) => localStorage.setItem("forma.visitor-token", t),
+        "synthetic-owner",
+      );
       await page
         .getByRole("button", { name: "Open workbench", exact: true })
         .click();

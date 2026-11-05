@@ -360,7 +360,10 @@ async function scenario(width, mode, savedDrawing = false) {
   });
   try {
     await page.goto(baseUrl);
-    await page.getByLabel("Owner credential", { exact: true }).fill(credential);
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      credential,
+    );
     await page
       .getByRole("button", { name: "Open workbench", exact: true })
       .click();

@@ -33,7 +33,10 @@ const ruler = (value) => ({
 
 async function open(page, projectId) {
   await page.goto(`${origin.origin}/?project=${projectId}`);
-  await page.getByLabel("Owner credential").fill("synthetic-browser-owner");
+  await page.evaluate(
+    (t) => localStorage.setItem("forma.visitor-token", t),
+    "synthetic-browser-owner",
+  );
   await page.getByRole("button", { name: "Open workbench" }).click();
   return page.getByRole("region", {
     name: "The measurement that matters next",

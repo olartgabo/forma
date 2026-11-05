@@ -259,6 +259,10 @@ def owner_lookup(credentials: dict[str, str]) -> Callable[[str], str | None]:
         for candidate, owner in owners.items():
             if secrets.compare_digest(digest, candidate):
                 return owner
+        # Anyone may use the workbench: an unconfigured token of at least 32
+        # characters is its own guest owner, so guests only see their own data.
+        if len(token) >= 32:
+            return "guest-" + digest.hex()
         return None
 
     return lookup

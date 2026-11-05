@@ -195,7 +195,10 @@ try {
       return route.abort();
     });
     await page.goto(`${origin.origin}/?project=${project.id}`);
-    await page.getByLabel("Owner credential").fill("synthetic-browser-owner");
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      "synthetic-browser-owner",
+    );
     await page.getByRole("button", { name: "Open workbench" }).click();
     const panel = page.getByRole("region", { name: "Stability analysis" });
     await panel.waitFor();
@@ -428,7 +431,10 @@ try {
     // Unknown write survives both a component unmount and a full page reload.
     assert.equal(measurementWrites.length, 2);
     await page.getByRole("button", { name: "Disconnect", exact: true }).click();
-    await page.getByLabel("Owner credential").fill("synthetic-browser-owner");
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      "synthetic-browser-owner",
+    );
     await page
       .getByRole("button", { name: "Open workbench", exact: true })
       .click();
@@ -474,7 +480,10 @@ try {
       0,
     );
     await page.reload();
-    await page.getByLabel("Owner credential").fill("synthetic-browser-owner");
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      "synthetic-browser-owner",
+    );
     await page
       .getByRole("button", { name: "Open workbench", exact: true })
       .click();

@@ -30,7 +30,10 @@ const browser = await chromium.launch(
 
 async function open(page) {
   await page.goto(`${origin.origin}/?project=${project.id}`);
-  await page.getByLabel("Owner credential").fill("synthetic-browser-owner");
+  await page.evaluate(
+    (t) => localStorage.setItem("forma.visitor-token", t),
+    "synthetic-browser-owner",
+  );
   await page.getByRole("button", { name: "Open workbench" }).click();
   return page.getByRole("region", {
     name: "Search designs from your saved stock",

@@ -191,9 +191,10 @@ try {
       throw new Error(`Unexpected API ${url.pathname}`);
     });
     await page.goto(baseUrl);
-    await page
-      .getByLabel("Owner credential", { exact: true })
-      .fill("synthetic-sourcing-owner");
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      "synthetic-sourcing-owner",
+    );
     await page
       .getByRole("button", { name: "Open workbench", exact: true })
       .click();
@@ -292,7 +293,10 @@ try {
     assert(await page.getByLabel("Shopping project").isDisabled());
     // Reload is a genuine remount; pending receipts must recover without POST.
     await page.reload();
-    await page.getByLabel("Owner credential").fill("synthetic-sourcing-owner");
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      "synthetic-sourcing-owner",
+    );
     await page
       .getByRole("button", { name: "Open workbench", exact: true })
       .click();

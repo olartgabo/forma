@@ -107,7 +107,10 @@ try {
     origin.origin,
     "Do not enter the credential after a cross-origin redirect",
   );
-  await page.getByLabel("Owner credential", { exact: true }).fill(owner);
+  await page.evaluate(
+    (t) => localStorage.setItem("forma.visitor-token", t),
+    owner,
+  );
   await page
     .getByRole("button", { name: "Open workbench", exact: true })
     .click();

@@ -319,16 +319,10 @@ async function scenario({
   });
   try {
     await page.goto(new URL(`/?project=${project.id}`, origin).href);
-    // A development page can paint before hydration attaches input handlers.
-    // Repeat this user input only while its submit action remains disabled.
-    for (let attempt = 0; attempt < 50; attempt++) {
-      await page.getByLabel("Owner credential").fill("synthetic-browser-owner");
-      if (
-        await page.getByRole("button", { name: "Open workbench" }).isEnabled()
-      )
-        break;
-      await page.waitForTimeout(100);
-    }
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      "synthetic-browser-owner",
+    );
     await page.getByRole("button", { name: "Open workbench" }).click();
     if (repairCase) {
       const repair = page.locator("#repair-review");

@@ -201,7 +201,10 @@ try {
     });
     try {
       await page.goto(`${origin.origin}/?project=${shown.project.id}`);
-      await page.getByLabel("Owner credential").fill("synthetic-owner");
+      await page.evaluate(
+        (t) => localStorage.setItem("forma.visitor-token", t),
+        "synthetic-owner",
+      );
       await page.getByRole("button", { name: "Open workbench" }).click();
       // Locate by retained accessible heading so layout nesting remains free.
       const activePanel = page.getByRole("region", {

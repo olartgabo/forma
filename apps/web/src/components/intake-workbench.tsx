@@ -171,15 +171,35 @@ function PhotoPreview({
   );
 }
 
+const VISITOR_TOKEN_KEY = "forma.visitor-token";
+
+// The API treats any unconfigured token of 32+ characters as its own guest
+// owner, so a random per-browser token keeps each visitor's projects separate.
+function visitorToken() {
+  try {
+    const saved = localStorage.getItem(VISITOR_TOKEN_KEY);
+    if (saved) return saved;
+  } catch {
+    // Storage can be blocked; fall through to a token for this page load.
+  }
+  const token =
+    crypto.randomUUID().replaceAll("-", "") +
+    crypto.randomUUID().replaceAll("-", "");
+  try {
+    localStorage.setItem(VISITOR_TOKEN_KEY, token);
+  } catch {
+    // Without storage the guest keeps this session only.
+  }
+  return token;
+}
+
 export default function IntakeWorkbench() {
-  const [credential, setCredential] = useState("");
   const [token, setToken] = useState<string | null>(null);
   const [session, setSession] = useState(0);
   const [dashboard, setDashboard] = useState(true);
   function connect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setToken(credential.trim());
-    setCredential("");
+    setToken(visitorToken());
     setSession((value) => value + 1);
     setDashboard(true);
   }
@@ -292,27 +312,12 @@ export default function IntakeWorkbench() {
           <section className="access-panel" aria-labelledby="access-title">
             <div>
               <h2 id="access-title">Open your workbench</h2>
-              <p className="help" id="owner-credential-help">
-                Use your project owner credential. Never enter a model-provider
-                API key.
+              <p className="help">
+                No sign-up needed. Your projects stay private to this browser.
               </p>
             </div>
             <form onSubmit={connect}>
-              <label htmlFor="owner-credential">Owner credential</label>
-              <input
-                id="owner-credential"
-                aria-describedby="owner-credential-help"
-                type="password"
-                autoComplete="off"
-                required
-                value={credential}
-                onChange={(event) => setCredential(event.target.value)}
-              />
-              <button
-                className="primary"
-                type="submit"
-                disabled={!credential.trim()}
-              >
+              <button className="primary" type="submit">
                 Open workbench
               </button>
             </form>
@@ -985,7 +990,7 @@ function ProjectWorkbench({
             </section>
             <section className="reopen-panel" aria-labelledby="reopen-title">
               <h2 id="reopen-title">Continue a project</h2>
-              <p>Use its saved project ID with the same owner credential.</p>
+              <p>Use its saved project ID in the same browser.</p>
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
@@ -1029,8 +1034,8 @@ function ProjectWorkbench({
                 </p>
                 <h1 id="project-title">{project.goal}</h1>
                 <p>
-                  Save this page’s address to return. Your credential is never
-                  included.
+                  Save this page’s address to return in this browser. Your
+                  access token is never included.
                 </p>
               </div>
               <button
