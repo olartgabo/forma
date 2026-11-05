@@ -2,9 +2,27 @@
 
 Turn what you have into what you need.
 
+**Live demo: <https://52-0-105-215.sslip.io>.** The
+[filled-in walkthrough](https://52-0-105-215.sslip.io/walkthrough) needs no
+sign-in. The workbench asks for a project owner credential, which judges
+receive from the team.
+
 FORMA helps a person turn measured reused materials into a small tabletop
 fixture, follow a deterministic assembly manual, and recover when the physical
-build disagrees with the plan.
+build disagrees with the plan. It is an entry in the
+[Meta Global AI Developer Hackathon 2026](https://dev.meta.ai/events/global-hackathon).
+Muse (Meta's multimodal model) reads photos, proposes designs and diagnoses
+failures. A deterministic Assembly Compiler in Python checks every proposal
+against measured stock, geometry and joints before it becomes an instruction.
+
+| Question                   | Answer                                                                                                                                                   |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What does it build?        | Low-risk desktop fixtures (phone stands, organizers) from reused sheet materials such as cardboard                                                       |
+| What does the model do?    | Muse reads photos, proposes named geometry and repair options, and diagnoses failure photos. It never confirms a measurement or records physical work    |
+| What does the compiler do? | Validates stock, geometry, joints and operations; tracks consumed material; keeps usable completed work during repair; marks which checks must be redone |
+| What is the output?        | An SVG assembly manual, a repair revision with a plan diff, and a Proof export of recorded evidence                                                      |
+| Stack                      | Next.js 16 + React + TypeScript (web), FastAPI + Pydantic + SQLite (API), Docker Compose + Caddy on AWS EC2                                              |
+| Agent access               | [`llms.txt`](llms.txt) for a summary and reading order; `POST /api/mcp` for MCP tools ([API README](apps/api/README.md#agent-access-over-mcp))           |
 
 **Status: connected local build and repair flow; physical acceptance pending.** Next.js supports goal intake,
 private photos and confirmed inventory editing through the scoped FastAPI API.

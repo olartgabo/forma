@@ -1,0 +1,43 @@
+# FORMA
+
+> FORMA turns measured reused materials (mostly cardboard and other sheet stock) into a small tabletop fixture, produces a deterministic step-by-step assembly manual, and revises the unfinished build when the physical result disagrees with the plan. Built for the Meta Global AI Developer Hackathon 2026. Meta's Muse model proposes designs and diagnoses failure photos; a deterministic Python Assembly Compiler validates every proposal before it becomes an instruction.
+
+Live demo: https://52-0-105-215.sslip.io (the walkthrough at /walkthrough needs no sign-in; the workbench needs an owner credential from the team).
+Source: https://github.com/olartgabo/forma
+
+Key facts:
+
+- The model proposes and the compiler decides. Muse output never confirms a measurement, approves a plan or records completed physical work.
+- Repair is history-aware. A revision keeps usable completed work, accounts for material already consumed, and lists which checks must be redone.
+- Physical acceptance gates (a real functioning build and a real compiler-approved repair) are recorded as unverified in docs/submission.md. Software and hosted checks are documented separately from physical results.
+- Stack: Next.js 16, React, TypeScript (apps/web); FastAPI, Pydantic, SQLite (apps/api); pure Python packages for the compiler, replanner and SVG renderer; Docker Compose with Caddy on one AWS EC2 instance.
+
+## Start here
+
+- [README](https://github.com/olartgabo/forma/blob/main/README.md): status, repository map, run and check commands
+- [Product spec](https://github.com/olartgabo/forma/blob/main/formspec.md): the product source of truth
+- [Architecture](https://github.com/olartgabo/forma/blob/main/docs/architecture.md): modules, dependency direction and revision flow
+- [Decisions](https://github.com/olartgabo/forma/blob/main/docs/decisions.md): accepted constraints and their reasons
+
+## Evidence and status
+
+- [Submission checklist](https://github.com/olartgabo/forma/blob/main/docs/submission.md): acceptance gates G0 to G5 and their current state
+- [Evaluation protocol](https://github.com/olartgabo/forma/blob/main/docs/evaluation-protocol.md): cases, baselines and metrics
+- [Model compatibility](https://github.com/olartgabo/forma/blob/main/docs/model-compatibility.md): recorded live Muse requests
+- [Hosted deployment](https://github.com/olartgabo/forma/blob/main/docs/deploy.md): AWS layout and verification results
+- [Connected demo handoff](https://github.com/olartgabo/forma/blob/main/docs/handoffs/connected-muse-demo.md): recorded live software observations
+
+## Code
+
+- [packages/compiler](https://github.com/olartgabo/forma/tree/main/packages/compiler): stock, geometry, joint and operation validation
+- [packages/replanner](https://github.com/olartgabo/forma/tree/main/packages/replanner): repair feasibility, preservation, undo and invalidation
+- [packages/renderer](https://github.com/olartgabo/forma/tree/main/packages/renderer): deterministic SVG manual
+- [packages/domain](https://github.com/olartgabo/forma/tree/main/packages/domain): Pydantic domain models
+- [apps/api](https://github.com/olartgabo/forma/tree/main/apps/api): FastAPI routes, persistence, Muse gateway and the MCP endpoint
+- [apps/web](https://github.com/olartgabo/forma/tree/main/apps/web): Next.js product UI
+
+## Optional
+
+- [Demo runbook](https://github.com/olartgabo/forma/blob/main/docs/demo-runbook.md): the full local connected flow
+- [Demo script](https://github.com/olartgabo/forma/blob/main/docs/demo-script.md): recording sequence
+- [Joint profiles](https://github.com/olartgabo/forma/blob/main/docs/joint-profiles.md): measured physical profile requirements
