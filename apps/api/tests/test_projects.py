@@ -391,11 +391,11 @@ def test_delete_purges_data_and_replays(client, tmp_path):
     )
 
 
-def test_unconfigured_auth_disables_access(tmp_path):
+def test_unconfigured_auth_admits_isolated_guests(tmp_path):
     with TestClient(create_app(tmp_path, {})) as client:
-        assert (
-            client.get("/api/projects/project-missing", headers=AUTH).status_code == 401
-        )
+        assert client.get("/api/projects", headers=AUTH).json()["projects"] == []
+        short = {"Authorization": "Bearer " + "s" * 31}
+        assert client.get("/api/projects", headers=short).status_code == 401
     with pytest.raises(ValueError):
         create_app(tmp_path, {"owner": "short"})
 
