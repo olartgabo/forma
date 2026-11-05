@@ -1,0 +1,15 @@
+# FORMA
+
+> FORMA turns measured reused materials (mostly cardboard and other sheet stock) into a small tabletop fixture, produces a deterministic step-by-step assembly manual, and revises the unfinished build when the physical result disagrees with the plan. Built for the Meta Global AI Developer Hackathon 2026. Meta's Muse model proposes designs and diagnoses failure photos; a deterministic Python Assembly Compiler validates every proposal before it becomes an instruction.
+
+This is the hosted instance. The full project summary, with links to the spec, architecture, evidence and code, is at https://github.com/olartgabo/forma/blob/main/llms.txt
+
+## Pages
+
+- [Walkthrough](/walkthrough): a filled-in example project from photos and materials through design, manual and repair. No sign-in needed
+- [Workbench](/): the product app. Opening a project needs an owner credential from the team
+
+## API
+
+- [Health](/api/health): returns {"status":"ok"} when the API process is up
+- MCP: `POST /api/mcp` is a streamable-HTTP MCP endpoint for agents acting for a project owner. Send `Authorization: Bearer <owner token>`. Tools: list_projects, get_project, create_project, list_photos, upload_photo, update_inventory. Provider calls, plan approval, physical records and deletion stay in the app
