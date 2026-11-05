@@ -182,7 +182,10 @@ try {
       return route.fulfill({ json: replay.get(url.pathname) });
     });
     await page.goto(`${origin.origin}/?project=${project.id}`);
-    await page.getByLabel("Owner credential").fill("synthetic-browser-owner");
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      "synthetic-browser-owner",
+    );
     await page
       .getByRole("button", { name: "Open workbench", exact: true })
       .click();

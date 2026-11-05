@@ -48,14 +48,21 @@ def create(client, headers=AUTH, key="project-001"):
 
 @pytest.mark.parametrize(
     "headers",
-    [ACCEPT, {**ACCEPT, "Authorization": "Bearer " + "c" * 40}],
-    ids=["missing", "unknown"],
+    [ACCEPT, {**ACCEPT, "Authorization": "Bearer " + "c" * 31}],
+    ids=["missing", "short"],
 )
-def test_rejects_requests_without_a_configured_token(client, headers):
+def test_rejects_requests_without_a_usable_token(client, headers):
     response = rpc(client, "tools/list", headers=headers)
     assert response.status_code == 401
     assert response.headers["WWW-Authenticate"] == "Bearer"
     assert response.json()["code"] == "forbidden"
+
+
+def test_unconfigured_token_is_an_isolated_guest_owner(client):
+    guest = {**ACCEPT, "Authorization": "Bearer " + "c" * 40}
+    create(client, headers=guest)
+    listed = call(client, "list_projects", {}, AUTH)
+    assert listed["structuredContent"]["projects"] == []
 
 
 def test_lists_only_upload_and_read_tools(client):

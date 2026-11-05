@@ -87,7 +87,10 @@ try {
       );
     });
     await page.goto(`${origin.origin}/?project=${fixture.project.id}`);
-    await page.getByLabel("Owner credential").fill("offline-owner");
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      "offline-owner",
+    );
     await page.getByRole("button", { name: "Open workbench" }).click();
     await page.getByRole("button", { name: "Detailed entry" }).click();
     const panel = page.getByRole("region", {

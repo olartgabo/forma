@@ -108,7 +108,10 @@ try {
     );
   });
   await page.goto(`${origin.origin}/?project=${project.id}`);
-  await page.getByLabel("Owner credential").fill("synthetic-capture-owner");
+  await page.evaluate(
+    (t) => localStorage.setItem("forma.visitor-token", t),
+    "synthetic-capture-owner",
+  );
   await page
     .getByRole("button", { name: "Open workbench", exact: true })
     .click();

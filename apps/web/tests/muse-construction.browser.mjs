@@ -180,7 +180,10 @@ try {
       return route.abort();
     });
     await page.goto(`${origin.origin}/?project=${fixture.project.id}`);
-    await page.getByLabel("Owner credential").fill("offline-owner");
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      "offline-owner",
+    );
     await page.getByRole("button", { name: "Open workbench" }).click();
     await page.getByRole("button", { name: "Detailed entry" }).click();
     const panel = page.getByRole("region", {
@@ -307,7 +310,10 @@ try {
     assert.deepEqual(JSON.parse(retained[0][1]).payload, requests[1]);
     assert.ok(!JSON.stringify(retained).includes("offline-owner"));
     await page.reload();
-    await page.getByLabel("Owner credential").fill("offline-owner");
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      "offline-owner",
+    );
     await page.getByRole("button", { name: "Open workbench" }).click();
     const retry = panel.getByRole("button", {
       name: "Check original proposal request",
@@ -408,7 +414,10 @@ try {
       revision_id: "new-inventory",
     });
     await page.reload();
-    await page.getByLabel("Owner credential").fill("offline-owner");
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      "offline-owner",
+    );
     await page.getByRole("button", { name: "Open workbench" }).click();
     await panel.getByText(/retained request belongs to an earlier/).waitFor();
     assert.equal(await retry.isDisabled(), true);

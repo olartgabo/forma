@@ -136,7 +136,10 @@ try {
       return route.abort();
     });
     await page.goto(`${origin.origin}/?project=${project.id}`);
-    await page.getByLabel("Owner credential").fill("synthetic-browser-owner");
+    await page.evaluate(
+      (t) => localStorage.setItem("forma.visitor-token", t),
+      "synthetic-browser-owner",
+    );
     await page.getByRole("button", { name: "Open workbench" }).click();
     const panel = page.getByRole("region", { name: "Saved stability reports" });
     await panel.waitFor();
@@ -228,11 +231,8 @@ try {
 
     // The retained request survives a reload of the page.
     await page.reload();
-    const credential = page.getByLabel("Owner credential");
-    if (await credential.count()) {
-      await credential.fill("synthetic-browser-owner");
-      await page.getByRole("button", { name: "Open workbench" }).click();
-    }
+    const reopen = page.getByRole("button", { name: "Open workbench" });
+    if (await reopen.count()) await reopen.click();
     await panel.waitFor();
     await retry.waitFor();
     await panel
